@@ -20,6 +20,14 @@ import { showToast } from "@/components/common/Toast";
 
 let editorView: EditorView | null = null;
 
+// Reuse a single empty state instead of creating a new EditorState on every
+// effect run when no file is active. EditorState.create is not free — it
+// initialises all extensions, keymaps, and facets.
+const EMPTY_EDITOR_STATE = EditorState.create({
+  doc: "",
+  extensions: [baseExtensions],
+});
+
 function getLanguageExtension(language: Language) {
   switch (language) {
     case "kotlin":
@@ -43,23 +51,29 @@ export function createEditorState(
   return EditorState.create({
     doc: content,
     extensions: [
-      // Pass baseExtensions as a nested array — CM6 flattens extension arrays
-      // at creation time, so we avoid copying the ~15-item array on every open.
       baseExtensions,
       getLanguageExtension(language),
-      // Cursor position tracking and dirty detection
       EditorView.updateListener.of((update) => {
         if (update.docChanged && editorView) {
           const activePath = editorState.activeFilePath;
           if (activePath === path) {
             const file = editorState.openFiles[activePath];
             if (file) {
-              const currentContent = update.state.doc.toString();
-              const isDirty = currentContent !== file.savedContent;
-              if (isDirty && !file.dirty) {
-                markDirty(activePath);
-              } else if (!isDirty && file.dirty) {
-                markClean(activePath);
+              // Fast path: compare document length first (O(1)).
+              // Only fall through to the expensive toString() comparison when
+              // lengths match, which is rare — most edits change the length.
+              const docLen = update.state.doc.length;
+              const savedLen = file.savedContent.length;
+              if (docLen !== savedLen) {
+                if (!file.dirty) markDirty(activePath);
+              } else {
+                const currentContent = update.state.doc.toString();
+                const isDirty = currentContent !== file.savedContent;
+                if (isDirty && !file.dirty) {
+                  markDirty(activePath);
+                } else if (!isDirty && file.dirty) {
+                  markClean(activePath);
+                }
               }
             }
           }
@@ -73,7 +87,6 @@ export function createEditorState(
           }
         }
       }),
-      // Cmd+S save (handled inside CM6 so it only fires when editor is focused)
       keymap.of([
         {
           key: "Mod-s",
@@ -111,13 +124,9 @@ export function CodeEditor(props: CodeEditorProps): JSX.Element {
   onMount(() => {
     editorView = new EditorView({
       parent: containerRef,
-      state: EditorState.create({
-        doc: "",
-        extensions: [baseExtensions],
-      }),
+      state: EMPTY_EDITOR_STATE,
     });
 
-    // If there's already an active file, load it immediately.
     const activePath = editorState.activeFilePath;
     if (activePath) {
       const file = editorState.openFiles[activePath];
@@ -134,18 +143,12 @@ export function CodeEditor(props: CodeEditorProps): JSX.Element {
     }
   });
 
-  // React to active file changes — swap EditorState without recreating the DOM.
   createEffect(() => {
     const activePath = editorState.activeFilePath;
     if (!editorView) return;
 
     if (!activePath) {
-      editorView.setState(
-        EditorState.create({
-          doc: "",
-          extensions: [baseExtensions],
-        })
-      );
+      editorView.setState(EMPTY_EDITOR_STATE);
       return;
     }
 
@@ -160,7 +163,6 @@ export function CodeEditor(props: CodeEditorProps): JSX.Element {
       editorView.setState(newState);
     }
 
-    // Ensure editor has focus after tab switch.
     setTimeout(() => editorView?.focus(), 0);
   });
 

@@ -1,4 +1,4 @@
-import { createSignal, Show, onMount, onCleanup, type JSX } from "solid-js";
+import { createSignal, createMemo, Show, onMount, onCleanup, type JSX } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import { projectState, type FileNode } from "@/stores/project.store";
 import {
@@ -208,19 +208,25 @@ export function FileTree(): JSX.Element {
   async function handleOpenFolder() {
     const result = await openProjectFolder();
     if (result) {
-      setExpandedDirs(new Set(result.rootDirs));
+      // Use expandDir (which loads children) instead of raw setExpandedDirs.
+      // Setting expandedDirs without loading children causes the folders to
+      // appear open (chevron rotated, open-folder icon) but show no contents,
+      // requiring two clicks to actually open them.
+      for (const dirPath of result.rootDirs) {
+        await expandDir(dirPath);
+      }
     }
   }
 
   // ── Visible nodes list (for keyboard navigation) ──────────────────────────
 
   /**
-   * Compute the flat ordered list of visible node paths by walking the tree
-   * in depth-first order, following only expanded directories.
-   * This is called on every keyboard event — for typical projects (< 500
-   * visible nodes) it takes < 1ms.
+   * Memoized flat ordered list of visible node paths (DFS, following expanded dirs).
+   * Recomputes only when the tree structure changes (expand/collapse/refresh),
+   * not on every keypress. For typical projects (< 500 visible nodes) this
+   * takes < 1ms to compute.
    */
-  function getVisiblePaths(): string[] {
+  const visiblePaths = createMemo<string[]>(() => {
     const tree = projectState.fileTree;
     if (!tree?.children) return [];
 
@@ -240,7 +246,7 @@ export function FileTree(): JSX.Element {
 
     walk(tree.children);
     return result;
-  }
+  });
 
   // ── Keyboard navigation ────────────────────────────────────────────────────
 
@@ -249,7 +255,7 @@ export function FileTree(): JSX.Element {
     if (renamingPath() || inlineNew()) return;
 
     const focused = focusedPath();
-    const visible = getVisiblePaths();
+    const visible = visiblePaths();
     if (visible.length === 0) return;
 
     const idx = focused ? visible.indexOf(focused) : -1;

@@ -15,6 +15,8 @@
     "generate:bindings": "cd src-tauri && cargo test && echo 'TypeScript bindings regenerated in src/bindings/'",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
+    "perf:collect": "node scripts/collect-metrics.mjs",
+    "perf:report": "node scripts/collect-metrics.mjs --report",
     "build:dmg": "tauri build --target aarch64-apple-darwin --bundles dmg",
     "build:dmg:intel": "tauri build --target x86_64-apple-darwin --bundles dmg",
     "build:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg"

@@ -36,7 +36,7 @@ const LOADING_INDICATOR_STYLE = {
 
 // ── File type helpers ─────────────────────────────────────────────────────────
 
-function getExtensionColor(extension?: string): string {
+function getExtensionColor(extension?: string | null): string {
   switch (extension) {
     case "kt":
     case "kts":
@@ -62,7 +62,7 @@ function getExtensionColor(extension?: string): string {
   }
 }
 
-function getExtensionLabel(extension?: string, name?: string): string {
+function getExtensionLabel(extension?: string | null, name?: string): string {
   if (name?.endsWith(".gradle.kts")) return "G";
   switch (extension) {
     case "kt":
@@ -127,8 +127,12 @@ export function FileTreeNode(props: FileTreeNodeProps): JSX.Element {
   async function expand() {
     if (!isDir()) return;
 
+    const wasExpanded = isExpanded();
     const cached = props.dirCache[props.node.path];
-    if (!isExpanded() && (!cached || cached.length === 0)) {
+    const hadLoadedChildren = cached !== undefined;
+
+    // Load children if they haven't been fetched yet.
+    if (!hadLoadedChildren) {
       setLoading(true);
       try {
         const fetched = await getDirectoryChildren(props.node.path);
@@ -138,6 +142,12 @@ export function FileTreeNode(props: FileTreeNodeProps): JSX.Element {
       } finally {
         setLoading(false);
       }
+    }
+
+    // If the dir was pre-expanded (e.g. root dirs on project open) but
+    // children weren't loaded yet, we just loaded them — keep it open.
+    if (wasExpanded && !hadLoadedChildren) {
+      return;
     }
 
     props.toggleDir(props.node.path);

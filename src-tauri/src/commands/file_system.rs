@@ -41,6 +41,41 @@ fn ensure_within_project(path: &Path, root: &Path) -> Result<(), FsError> {
     Ok(())
 }
 
+/// Read the project root from state, dropping the lock immediately.
+/// Returns `None` if no project is open.
+/// All `canonicalize()` calls happen OUTSIDE the lock to avoid holding
+/// the Mutex during blocking syscalls.
+async fn get_project_root_unlocked(state: &State<'_, FsState>) -> Option<PathBuf> {
+    let guard = state.0.lock().await;
+    guard.project_root.clone()
+}
+
+/// Validate that a path is within the project (if one is open).
+/// The Mutex is only held for the brief clone of `project_root`;
+/// the expensive `canonicalize()` calls run after the lock is released.
+async fn validate_path(
+    path: &Path,
+    state: &State<'_, FsState>,
+) -> Result<(), String> {
+    if let Some(root) = get_project_root_unlocked(state).await {
+        ensure_within_project(path, &root).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Validate two paths (for rename operations).
+async fn validate_paths(
+    path_a: &Path,
+    path_b: &Path,
+    state: &State<'_, FsState>,
+) -> Result<(), String> {
+    if let Some(root) = get_project_root_unlocked(state).await {
+        ensure_within_project(path_a, &root).map_err(|e| e.to_string())?;
+        ensure_within_project(path_b, &root).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -72,13 +107,9 @@ pub async fn open_project(
 
 #[tauri::command]
 pub async fn get_file_tree(state: State<'_, FsState>) -> Result<FileNode, String> {
-    let guard = state.0.lock().await;
-    let root = guard
-        .project_root
-        .as_ref()
-        .ok_or("No project open")?
-        .clone();
-    drop(guard);
+    let root = get_project_root_unlocked(&state)
+        .await
+        .ok_or("No project open")?;
     Ok(fs_manager::build_file_tree(&root))
 }
 
@@ -91,24 +122,14 @@ pub async fn get_directory_children(
     if !dir.is_dir() {
         return Err(format!("Not a directory: {path}"));
     }
-
-    let guard = state.0.lock().await;
-    if let Some(root) = &guard.project_root {
-        ensure_within_project(&dir, root).map_err(|e| e.to_string())?;
-    }
-    drop(guard);
-
+    validate_path(&dir, &state).await?;
     Ok(fs_manager::expand_directory(&dir))
 }
 
 #[tauri::command]
 pub async fn read_file(path: String, state: State<'_, FsState>) -> Result<String, String> {
     let p = PathBuf::from(&path);
-    let guard = state.0.lock().await;
-    if let Some(root) = &guard.project_root {
-        ensure_within_project(&p, root).map_err(|e| e.to_string())?;
-    }
-    drop(guard);
+    validate_path(&p, &state).await?;
     fs_manager::read_file(&p).map_err(|e| e.to_string())
 }
 
@@ -119,44 +140,28 @@ pub async fn write_file(
     state: State<'_, FsState>,
 ) -> Result<(), String> {
     let p = PathBuf::from(&path);
-    let guard = state.0.lock().await;
-    if let Some(root) = &guard.project_root {
-        ensure_within_project(&p, root).map_err(|e| e.to_string())?;
-    }
-    drop(guard);
+    validate_path(&p, &state).await?;
     fs_manager::write_file(&p, &content).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn create_file(path: String, state: State<'_, FsState>) -> Result<(), String> {
     let p = PathBuf::from(&path);
-    let guard = state.0.lock().await;
-    if let Some(root) = &guard.project_root {
-        ensure_within_project(&p, root).map_err(|e| e.to_string())?;
-    }
-    drop(guard);
+    validate_path(&p, &state).await?;
     fs_manager::create_file(&p).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn create_directory(path: String, state: State<'_, FsState>) -> Result<(), String> {
     let p = PathBuf::from(&path);
-    let guard = state.0.lock().await;
-    if let Some(root) = &guard.project_root {
-        ensure_within_project(&p, root).map_err(|e| e.to_string())?;
-    }
-    drop(guard);
+    validate_path(&p, &state).await?;
     fs_manager::create_directory(&p).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn delete_path(path: String, state: State<'_, FsState>) -> Result<(), String> {
     let p = PathBuf::from(&path);
-    let guard = state.0.lock().await;
-    if let Some(root) = &guard.project_root {
-        ensure_within_project(&p, root).map_err(|e| e.to_string())?;
-    }
-    drop(guard);
+    validate_path(&p, &state).await?;
     fs_manager::delete_path(&p).map_err(|e| e.to_string())
 }
 
@@ -168,21 +173,14 @@ pub async fn rename_path(
 ) -> Result<(), String> {
     let old = PathBuf::from(&old_path);
     let new = PathBuf::from(&new_path);
-    let guard = state.0.lock().await;
-    if let Some(root) = &guard.project_root {
-        ensure_within_project(&old, root).map_err(|e| e.to_string())?;
-        ensure_within_project(&new, root).map_err(|e| e.to_string())?;
-    }
-    drop(guard);
+    validate_paths(&old, &new, &state).await?;
     fs_manager::rename_path(&old, &new).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_project_root(state: State<'_, FsState>) -> Result<Option<String>, String> {
-    let guard = state.0.lock().await;
-    Ok(guard
-        .project_root
-        .as_ref()
+    Ok(get_project_root_unlocked(&state)
+        .await
         .map(|p| p.to_string_lossy().to_string()))
 }
 
@@ -221,8 +219,6 @@ mod tests {
     #[test]
     fn rejects_path_outside_root() {
         let (_dir, root) = setup();
-        // Use a path that exists outside the project so canonicalize succeeds
-        // but the prefix check rejects it.
         let escaped = PathBuf::from("/tmp");
         let result = ensure_within_project(&escaped, &root);
         assert!(result.is_err(), "path outside root must be rejected");

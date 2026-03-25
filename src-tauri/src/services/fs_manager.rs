@@ -79,6 +79,22 @@ pub fn expand_directory(path: &Path) -> Vec<FileNode> {
     collect_children(path)
 }
 
+/// Case-insensitive sort by name using pre-computed lowercase keys.
+/// Avoids O(n log n) String allocations from calling `to_lowercase()`
+/// inside `sort_by`'s comparator.
+fn sort_by_name_insensitive(nodes: &mut [FileNode]) {
+    let keys: Vec<String> = nodes.iter().map(|n| n.name.to_lowercase()).collect();
+    let mut indices: Vec<usize> = (0..nodes.len()).collect();
+    indices.sort_by(|&a, &b| keys[a].cmp(&keys[b]));
+
+    // Apply the sorted permutation in-place.
+    let sorted_nodes: Vec<FileNode> = indices.into_iter().map(|i| nodes[i].clone()).collect();
+    nodes.clone_from_slice(&sorted_nodes);
+
+    // keys are dropped here — total allocations: O(n) instead of O(n log n).
+    drop(keys);
+}
+
 fn collect_children(dir: &Path) -> Vec<FileNode> {
     let mut dirs: Vec<FileNode> = Vec::new();
     let mut files: Vec<FileNode> = Vec::new();
@@ -128,8 +144,10 @@ fn collect_children(dir: &Path) -> Vec<FileNode> {
         }
     }
 
-    dirs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
-    files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    // Pre-compute lowercase sort keys (one allocation per node) instead of
+    // calling to_lowercase() on every comparison (O(n log n) allocations).
+    sort_by_name_insensitive(&mut dirs);
+    sort_by_name_insensitive(&mut files);
 
     let mut result = dirs;
     result.extend(files);

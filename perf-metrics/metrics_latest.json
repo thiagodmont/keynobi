@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-03-25T21:58:36.678Z",
+  "version": "0.1.0",
+  "gitCommit": "ba34539",
+  "frontend": {
+    "bundleSizeBytes": 622582,
+    "cssSizeBytes": 1995,
+    "chunkCount": 1,
+    "largestChunkBytes": 622582,
+    "totalDistBytes": 629265
+  },
+  "rust": {
+    "binarySizeBytes": 39722896,
+    "benchmarks": {}
+  }
+}
