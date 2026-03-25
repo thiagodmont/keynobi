@@ -1,10 +1,26 @@
 import { type JSX } from "solid-js";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { projectState } from "@/stores/project.store";
+
+async function startDrag(e: MouseEvent) {
+  // Only respond to left-button press; ignore right-click / middle-click
+  if (e.button !== 0) return;
+
+  // Prevent text selection while dragging
+  e.preventDefault();
+
+  try {
+    await getCurrentWindow().startDragging();
+  } catch {
+    // startDragging() can throw if the mouse button was already released —
+    // safe to ignore.
+  }
+}
 
 export function TitleBar(): JSX.Element {
   return (
     <div
-      data-tauri-drag-region
+      onMouseDown={startDrag}
       style={{
         height: "var(--titlebar-height)",
         background: "var(--bg-tertiary)",
@@ -15,20 +31,16 @@ export function TitleBar(): JSX.Element {
         "padding-right": "16px",
         "flex-shrink": "0",
         "user-select": "none",
-        // CSS-level drag for WebKit — works natively even when the OS
-        // title bar overlays this area in Overlay mode.
-        "-webkit-app-region": "drag",
-      } as JSX.CSSProperties & { "-webkit-app-region": string }}
+        cursor: "default",
+      }}
     >
       <span
         style={{
           "font-size": "13px",
           color: "var(--text-secondary)",
           "font-weight": "400",
-          // Prevent the text itself from being draggable
-          "-webkit-app-region": "no-drag",
           "pointer-events": "none",
-        } as JSX.CSSProperties & { "-webkit-app-region": string }}
+        }}
       >
         {projectState.projectName
           ? `Android IDE — ${projectState.projectName}`

@@ -58,16 +58,6 @@ a {
   text-decoration: none;
 }
 
-/* macOS window drag region (WebKit native drag) */
-[data-tauri-drag-region] {
-  -webkit-app-region: drag;
-  cursor: default;
-}
-[data-tauri-drag-region] button,
-[data-tauri-drag-region] input,
-[data-tauri-drag-region] a {
-  -webkit-app-region: no-drag;
-}
 
 .visually-hidden {
   position: absolute;

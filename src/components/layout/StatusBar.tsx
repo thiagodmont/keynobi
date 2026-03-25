@@ -1,27 +1,45 @@
 import { type JSX } from "solid-js";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { editorState } from "@/stores/editor.store";
 import { projectState } from "@/stores/project.store";
+
+async function startDrag(e: MouseEvent) {
+  if (e.button !== 0) return;
+  e.preventDefault();
+  try {
+    await getCurrentWindow().startDragging();
+  } catch {
+    // ignore — mouse already released
+  }
+}
 
 export function StatusBar(): JSX.Element {
   return (
     <div
-      data-tauri-drag-region
+      onMouseDown={startDrag}
       style={{
         height: "var(--statusbar-height)",
         background: "var(--accent)",
         display: "flex",
         "align-items": "center",
         "justify-content": "space-between",
-        "padding": "0 8px",
+        padding: "0 8px",
         "flex-shrink": "0",
         "font-size": "11px",
         color: "#ffffff",
         "user-select": "none",
-        "-webkit-app-region": "drag",
-      } as JSX.CSSProperties & { "-webkit-app-region": string }}
+        cursor: "default",
+      }}
     >
       {/* Left side */}
-      <div style={{ display: "flex", gap: "12px", "align-items": "center" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "12px",
+          "align-items": "center",
+          "pointer-events": "none",
+        }}
+      >
         <span>
           {projectState.projectName
             ? `📁 ${projectState.projectName}`
@@ -30,7 +48,14 @@ export function StatusBar(): JSX.Element {
       </div>
 
       {/* Right side */}
-      <div style={{ display: "flex", gap: "12px", "align-items": "center" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "12px",
+          "align-items": "center",
+          "pointer-events": "none",
+        }}
+      >
         <span>
           {editorState.cursorLine !== null && editorState.cursorCol !== null
             ? `Ln ${editorState.cursorLine}, Col ${editorState.cursorCol}`
