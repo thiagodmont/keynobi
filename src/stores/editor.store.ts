@@ -1,11 +1,16 @@
 import { createStore, produce } from "solid-js/store";
 import type { EditorState } from "@codemirror/state";
+import { detectLanguage } from "@/lib/file-utils";
+
+// Re-export so existing imports from this module keep working.
+export { detectLanguage };
 
 export type Language = "kotlin" | "gradle" | "xml" | "json" | "text";
 
 export interface OpenFile {
   path: string;
   name: string;
+  /** Content that matches what is currently on disk. Used for dirty detection. */
   savedContent: string;
   dirty: boolean;
   editorState: EditorState | null;
@@ -14,8 +19,10 @@ export interface OpenFile {
 
 interface EditorStoreState {
   openFiles: Record<string, OpenFile>;
+  /** Ordered list of open file paths — drives the tab bar. */
   tabOrder: string[];
   activeFilePath: string | null;
+  /** Last 20 opened paths. Used by Cmd+P file picker (Phase 3). */
   recentFiles: string[];
   cursorLine: number | null;
   cursorCol: number | null;
@@ -34,14 +41,6 @@ const [editorState, setEditorState] = createStore<EditorStoreState>({
 
 export { editorState, setEditorState };
 
-export function detectLanguage(path: string): Language {
-  if (path.endsWith(".kt")) return "kotlin";
-  if (path.endsWith(".gradle.kts") || path.endsWith(".gradle")) return "gradle";
-  if (path.endsWith(".xml")) return "xml";
-  if (path.endsWith(".json")) return "json";
-  return "text";
-}
-
 export function isFileOpen(path: string): boolean {
   return path in editorState.openFiles;
 }
@@ -53,7 +52,6 @@ export function addOpenFile(file: OpenFile) {
       if (!s.tabOrder.includes(file.path)) {
         s.tabOrder.push(file.path);
       }
-      // Track in recent files
       s.recentFiles = [
         file.path,
         ...s.recentFiles.filter((p) => p !== file.path),
@@ -66,13 +64,16 @@ export function removeOpenFile(path: string) {
   setEditorState(
     produce((s) => {
       delete s.openFiles[path];
+
       const idx = s.tabOrder.indexOf(path);
-      s.tabOrder.splice(idx, 1);
+      // Guard: only splice if the path was actually in the list.
+      if (idx !== -1) {
+        s.tabOrder.splice(idx, 1);
+      }
+
       if (s.activeFilePath === path) {
-        // Activate nearest tab
-        const newActive =
-          s.tabOrder[idx] ?? s.tabOrder[idx - 1] ?? null;
-        s.activeFilePath = newActive;
+        // Prefer the tab to the right of the closed one, then left, then null.
+        s.activeFilePath = s.tabOrder[idx] ?? s.tabOrder[idx - 1] ?? null;
       }
     })
   );
@@ -82,9 +83,7 @@ export function setActiveFile(path: string | null) {
   setEditorState("activeFilePath", path);
   if (path) {
     const file = editorState.openFiles[path];
-    if (file) {
-      setEditorState("activeLanguage", file.language);
-    }
+    if (file) setEditorState("activeLanguage", file.language);
   } else {
     setEditorState("activeLanguage", null);
     setEditorState("cursorLine", null);
@@ -104,6 +103,10 @@ export function markClean(path: string) {
   }
 }
 
+/**
+ * Call this after a successful disk write. Updates savedContent and clears
+ * the dirty flag atomically.
+ */
 export function updateSavedContent(path: string, content: string) {
   if (editorState.openFiles[path]) {
     setEditorState("openFiles", path, "savedContent", content);
@@ -120,4 +123,28 @@ export function saveEditorState(path: string, state: EditorState) {
 export function updateCursor(line: number, col: number) {
   setEditorState("cursorLine", line);
   setEditorState("cursorCol", col);
+}
+
+/**
+ * Returns the current document text for a file.
+ * For the active tab this reads from the live EditorView; for background
+ * tabs it reads from the stored EditorState (which is kept in sync on tab
+ * switch). Falls back to savedContent when neither is available.
+ */
+export function getCurrentContent(
+  path: string,
+  activeView: import("@codemirror/view").EditorView | null
+): string {
+  const file = editorState.openFiles[path];
+  if (!file) return "";
+
+  if (editorState.activeFilePath === path && activeView) {
+    return activeView.state.doc.toString();
+  }
+
+  if (file.editorState) {
+    return file.editorState.doc.toString();
+  }
+
+  return file.savedContent;
 }

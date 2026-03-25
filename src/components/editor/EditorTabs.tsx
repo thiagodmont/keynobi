@@ -3,59 +3,58 @@ import {
   editorState,
   setActiveFile,
   removeOpenFile,
+  getCurrentContent,
 } from "@/stores/editor.store";
 import { getEditorView } from "./CodeEditor";
 import { saveEditorState as storeSaveEditorState } from "@/stores/editor.store";
+import { writeFile, formatError } from "@/lib/tauri-api";
+import { showToast } from "@/components/common/Toast";
+import { getFileTypeInfo } from "@/lib/file-utils";
+import type { Language } from "@/stores/editor.store";
 
-// Exported so it can be called from the store
+/**
+ * Ask the user whether to save a dirty file, then close the tab.
+ * Returns true if the tab was closed (save or discard), false if cancelled.
+ *
+ * IMPORTANT: we read the *current document content* (from the live EditorView
+ * for the active tab, or from the stored EditorState for background tabs)
+ * rather than savedContent, which reflects the last on-disk snapshot.
+ */
 export async function promptSaveAndClose(path: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const file = editorState.openFiles[path];
-    if (!file?.dirty) {
-      removeOpenFile(path);
-      resolve(true);
-      return;
-    }
+  const file = editorState.openFiles[path];
+  if (!file) return false;
 
-    // Use browser confirm for now (modal in 1.7)
-    const choice = window.confirm(
-      `Save changes to "${file.name}" before closing?`
-    );
-    if (choice) {
-      // Save then close
-      import("@/lib/tauri-api")
-        .then(({ writeFile }) =>
-          writeFile(path, file.savedContent)
-        )
-        .then(() => {
-          removeOpenFile(path);
-          resolve(true);
-        })
-        .catch(() => resolve(false));
-    } else {
+  if (!file.dirty) {
+    removeOpenFile(path);
+    return true;
+  }
+
+  const choice = window.confirm(
+    `Save changes to "${file.name}" before closing?`
+  );
+
+  if (choice) {
+    // Write the real current content, not the stale savedContent snapshot.
+    const content = getCurrentContent(path, getEditorView());
+    try {
+      await writeFile(path, content);
       removeOpenFile(path);
-      resolve(true);
+      return true;
+    } catch (err) {
+      showToast(`Failed to save "${file.name}": ${formatError(err)}`, "error");
+      return false;
     }
-  });
+  } else {
+    // Discard changes — close without saving.
+    removeOpenFile(path);
+    return true;
+  }
 }
 
-function FileIcon(props: { language: string }): JSX.Element {
-  const colors: Record<string, string> = {
-    kotlin: "#a97bff",
-    gradle: "#02b10a",
-    xml: "#f0883e",
-    json: "#e8c07d",
-    text: "#858585",
-  };
-  const labels: Record<string, string> = {
-    kotlin: "K",
-    gradle: "G",
-    xml: "X",
-    json: "J",
-    text: "T",
-  };
-  const color = colors[props.language] ?? "#858585";
-  const label = labels[props.language] ?? "?";
+// ── File type badge ─────────────────────────────────────────────────────────
+
+function FileIcon(props: { language: Language }): JSX.Element {
+  const info = () => getFileTypeInfo(props.language);
   return (
     <span
       style={{
@@ -66,21 +65,23 @@ function FileIcon(props: { language: string }): JSX.Element {
         height: "14px",
         "font-size": "9px",
         "font-weight": "700",
-        color,
+        color: info().color,
         "flex-shrink": "0",
       }}
     >
-      {label}
+      {info().label}
     </span>
   );
 }
+
+// ── Tab bar ─────────────────────────────────────────────────────────────────
 
 export function EditorTabs(): JSX.Element {
   function switchToTab(path: string) {
     const current = editorState.activeFilePath;
     if (current === path) return;
 
-    // Save current editor state before switching
+    // Persist current editor state before switching away.
     const view = getEditorView();
     if (view && current) {
       storeSaveEditorState(current, view.state);
@@ -94,7 +95,8 @@ export function EditorTabs(): JSX.Element {
     await promptSaveAndClose(path);
   }
 
-  function onMiddleClick(e: MouseEvent, path: string) {
+  function onMouseDown(e: MouseEvent, path: string) {
+    // Middle-click closes the tab.
     if (e.button === 1) {
       e.preventDefault();
       closeTab(e, path);
@@ -123,7 +125,7 @@ export function EditorTabs(): JSX.Element {
           return (
             <div
               onClick={() => switchToTab(path)}
-              onMouseDown={(e) => onMiddleClick(e, path)}
+              onMouseDown={(e) => onMouseDown(e, path)}
               style={{
                 display: "flex",
                 "align-items": "center",
@@ -144,6 +146,7 @@ export function EditorTabs(): JSX.Element {
               title={path}
             >
               <FileIcon language={file()?.language ?? "text"} />
+
               <span
                 style={{
                   flex: "1",
@@ -158,7 +161,7 @@ export function EditorTabs(): JSX.Element {
                 {file()?.name ?? ""}
               </span>
 
-              {/* Dirty indicator / close button */}
+              {/* Unsaved-changes dot / close button */}
               <button
                 onClick={(e) => closeTab(e, path)}
                 style={{
@@ -172,27 +175,19 @@ export function EditorTabs(): JSX.Element {
                   color: "var(--text-muted)",
                   cursor: "pointer",
                 }}
-                title={file()?.dirty ? "Unsaved changes" : "Close"}
+                title={file()?.dirty ? "Unsaved changes — click to close" : "Close tab"}
               >
                 <Show
                   when={file()?.dirty}
                   fallback={
-                    <svg
-                      viewBox="0 0 16 16"
-                      width="10"
-                      height="10"
-                      fill="currentColor"
-                    >
+                    /* × close icon */
+                    <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor">
                       <path d="M9.414 8l3.293-3.293a1 1 0 0 0-1.414-1.414L8 6.586 4.707 3.293a1 1 0 0 0-1.414 1.414L6.586 8l-3.293 3.293a1 1 0 1 0 1.414 1.414L8 9.414l3.293 3.293a1 1 0 0 0 1.414-1.414L9.414 8z" />
                     </svg>
                   }
                 >
-                  <svg
-                    viewBox="0 0 16 16"
-                    width="8"
-                    height="8"
-                    fill="var(--warning)"
-                  >
+                  {/* ● unsaved dot */}
+                  <svg viewBox="0 0 16 16" width="8" height="8" fill="var(--warning)">
                     <circle cx="8" cy="8" r="5" />
                   </svg>
                 </Show>

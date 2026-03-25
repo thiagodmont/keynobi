@@ -14,6 +14,7 @@ import { xml } from "@codemirror/lang-xml";
 import {
   editorState,
   markDirty,
+  markClean,
   saveEditorState,
   updateCursor,
   type Language,
@@ -58,8 +59,11 @@ export function createEditorState(
             if (file) {
               const currentContent = update.state.doc.toString();
               const isDirty = currentContent !== file.savedContent;
-              if (isDirty !== file.dirty) {
+              // Sync both directions: mark dirty on edit, mark clean on revert.
+              if (isDirty && !file.dirty) {
                 markDirty(activePath);
+              } else if (!isDirty && file.dirty) {
+                markClean(activePath);
               }
             }
           }

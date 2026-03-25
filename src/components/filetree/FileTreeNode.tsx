@@ -1,13 +1,9 @@
-import {
-  createSignal,
-  For,
-  Show,
-  type JSX,
-} from "solid-js";
+import { createSignal, For, Show, type JSX } from "solid-js";
 import type { FileNode } from "@/stores/project.store";
 import { editorState } from "@/stores/editor.store";
 import { Icon } from "@/components/common/Icon";
 import { getDirectoryChildren } from "@/lib/tauri-api";
+import { showToast } from "@/components/common/Toast";
 
 interface FileTreeNodeProps {
   node: FileNode;
@@ -18,92 +14,76 @@ interface FileTreeNodeProps {
   onContextMenu: (e: MouseEvent, node: FileNode) => void;
 }
 
-function getFileIconColor(extension?: string): string {
+/**
+ * Returns icon color for file extensions not covered by the language map
+ * (images, markdown, properties, etc.).
+ */
+function getExtensionColor(extension?: string): string {
   switch (extension) {
     case "kt":
-      return "#a97bff";
-    case "kts":
-      return "#a97bff";
-    case "xml":
-      return "#f0883e";
-    case "json":
-      return "#e8c07d";
-    case "md":
-      return "#519aba";
-    case "gradle":
-      return "#02b10a";
-    case "properties":
-      return "#858585";
+    case "kts":   return "#a97bff";
+    case "gradle": return "#02b10a";
+    case "xml":    return "#f0883e";
+    case "json":   return "#e8c07d";
+    case "md":     return "#519aba";
+    case "properties": return "#858585";
     case "png":
     case "jpg":
     case "jpeg":
     case "webp":
-    case "svg":
-      return "#26a7de";
-    default:
-      return "#7f8fa4";
+    case "svg":    return "#26a7de";
+    default:       return "#7f8fa4";
   }
 }
 
-function getFileIconLabel(extension?: string, name?: string): string {
+function getExtensionLabel(extension?: string, name?: string): string {
   if (name?.endsWith(".gradle.kts")) return "G";
   switch (extension) {
-    case "kt":
-      return "K";
-    case "xml":
-      return "X";
-    case "json":
-      return "J";
-    case "md":
-      return "M";
-    case "gradle":
-      return "G";
-    default:
-      return "·";
+    case "kt":      return "K";
+    case "xml":     return "X";
+    case "json":    return "J";
+    case "md":      return "M";
+    case "gradle":  return "G";
+    case "properties": return "P";
+    default:        return "·";
   }
 }
 
 export function FileTreeNode(props: FileTreeNodeProps): JSX.Element {
-  const isDir = () => props.node.kind === "directory";
+  const isDir      = () => props.node.kind === "directory";
   const isExpanded = () => props.expandedDirs().has(props.node.path);
-  const isActive = () => editorState.activeFilePath === props.node.path;
+  const isActive   = () => editorState.activeFilePath === props.node.path;
 
-  const [children, setChildren] = createSignal<FileNode[]>(
-    props.node.children ?? []
-  );
-  const [loading, setLoading] = createSignal(false);
-  const [renaming] = createSignal(false);
-  const [renameValue, setRenameValue] = createSignal("");
+  const [children, setChildren] = createSignal<FileNode[]>(props.node.children ?? []);
+  const [loading,  setLoading]  = createSignal(false);
 
   async function expand() {
     if (!isDir()) return;
 
+    // Lazy-load children on first expand.
     if (!isExpanded() && children().length === 0) {
       setLoading(true);
       try {
         const fetched = await getDirectoryChildren(props.node.path);
         setChildren(fetched);
-      } catch (e) {
-        console.error("Failed to load children:", e);
+      } catch (err) {
+        showToast(`Failed to load directory: ${String(err)}`, "error");
       } finally {
         setLoading(false);
       }
     }
+
     props.toggleDir(props.node.path);
   }
 
   function handleClick(e: MouseEvent) {
     e.stopPropagation();
-    if (isDir()) {
-      expand();
-    }
+    if (isDir()) expand();
   }
 
   function handleDblClick(e: MouseEvent) {
     e.stopPropagation();
-    if (!isDir()) {
-      props.onOpenFile(props.node.path);
-    }
+    if (!isDir()) props.onOpenFile(props.node.path);
   }
 
   function handleContextMenu(e: MouseEvent) {
@@ -112,7 +92,7 @@ export function FileTreeNode(props: FileTreeNodeProps): JSX.Element {
     props.onContextMenu(e, props.node);
   }
 
-  const indent = props.depth * 12;
+  const indent = () => props.depth * 12;
 
   return (
     <div>
@@ -124,14 +104,10 @@ export function FileTreeNode(props: FileTreeNodeProps): JSX.Element {
           display: "flex",
           "align-items": "center",
           gap: "4px",
-          padding: `2px 8px 2px ${indent + 8}px`,
+          padding: `2px 8px 2px ${indent() + 8}px`,
           cursor: isDir() ? "pointer" : "default",
-          background: isActive()
-            ? "var(--accent-bg)"
-            : "transparent",
-          "border-left": isActive()
-            ? "1px solid var(--accent)"
-            : "1px solid transparent",
+          background: isActive() ? "var(--accent-bg)" : "transparent",
+          "border-left": isActive() ? "1px solid var(--accent)" : "1px solid transparent",
           "user-select": "none",
           "font-size": "13px",
           color: "var(--text-primary)",
@@ -140,18 +116,15 @@ export function FileTreeNode(props: FileTreeNodeProps): JSX.Element {
           overflow: "hidden",
         }}
         onMouseEnter={(e) => {
-          if (!isActive())
-            (e.currentTarget as HTMLElement).style.background =
-              "var(--bg-hover)";
+          if (!isActive()) (e.currentTarget as HTMLElement).style.background = "var(--bg-hover)";
         }}
         onMouseLeave={(e) => {
-          if (!isActive())
-            (e.currentTarget as HTMLElement).style.background = "transparent";
+          if (!isActive()) (e.currentTarget as HTMLElement).style.background = "transparent";
         }}
         title={props.node.path}
       >
-        {/* Chevron for directories */}
-        <Show when={isDir()}>
+        {/* Chevron */}
+        <Show when={isDir()} fallback={<span style={{ width: "12px", "flex-shrink": "0" }} />}>
           <span
             style={{
               display: "inline-flex",
@@ -168,12 +141,7 @@ export function FileTreeNode(props: FileTreeNodeProps): JSX.Element {
           </span>
         </Show>
 
-        {/* File offset when not a dir */}
-        <Show when={!isDir()}>
-          <span style={{ width: "12px", "flex-shrink": "0" }} />
-        </Show>
-
-        {/* Icon */}
+        {/* Type icon */}
         <Show
           when={isDir()}
           fallback={
@@ -181,62 +149,30 @@ export function FileTreeNode(props: FileTreeNodeProps): JSX.Element {
               style={{
                 "font-size": "9px",
                 "font-weight": "700",
-                color: getFileIconColor(props.node.extension),
+                color: getExtensionColor(props.node.extension),
                 width: "12px",
                 "text-align": "center",
                 "flex-shrink": "0",
               }}
             >
-              {getFileIconLabel(props.node.extension, props.node.name)}
+              {getExtensionLabel(props.node.extension, props.node.name)}
             </span>
           }
         >
-          <Icon
-            name={isExpanded() ? "folder-open" : "folder"}
-            size={14}
-            color="#e8ab65"
-          />
+          <Icon name={isExpanded() ? "folder-open" : "folder"} size={14} color="#e8ab65" />
         </Show>
 
-        {/* Name */}
-        <Show
-          when={!renaming()}
-          fallback={
-            <input
-              value={renameValue()}
-              onInput={(e) => setRenameValue(e.currentTarget.value)}
-              onClick={(e) => e.stopPropagation()}
-              style={{
-                flex: "1",
-                background: "var(--bg-active)",
-                border: "1px solid var(--accent)",
-                color: "var(--text-primary)",
-                "font-size": "13px",
-                padding: "0 4px",
-                outline: "none",
-              }}
-            />
-          }
-        >
-          <span
-            style={{
-              flex: "1",
-              overflow: "hidden",
-              "text-overflow": "ellipsis",
-            }}
-          >
-            {props.node.name}
-          </span>
-        </Show>
+        {/* Filename */}
+        <span style={{ flex: "1", overflow: "hidden", "text-overflow": "ellipsis" }}>
+          {props.node.name}
+        </span>
 
         <Show when={loading()}>
-          <span style={{ color: "var(--text-muted)", "font-size": "10px" }}>
-            ...
-          </span>
+          <span style={{ color: "var(--text-muted)", "font-size": "10px" }}>…</span>
         </Show>
       </div>
 
-      {/* Children */}
+      {/* Recursive children */}
       <Show when={isDir() && isExpanded()}>
         <For each={children()}>
           {(child) => (

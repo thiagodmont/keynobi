@@ -11,6 +11,9 @@
     "tauri": "tauri",
     "lint": "eslint src --ext .ts,.tsx",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
     "build:dmg": "tauri build --target aarch64-apple-darwin --bundles dmg",
     "build:dmg:intel": "tauri build --target x86_64-apple-darwin --bundles dmg",
     "build:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg"
@@ -36,15 +39,19 @@
     "solid-js": "^1.9.3"
   },
   "devDependencies": {
+    "@solidjs/testing-library": "^0.8.10",
     "@tauri-apps/cli": "^2",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
+    "@vitest/ui": "^4.1.1",
     "eslint": "^9.0.0",
     "eslint-plugin-solid": "^0.14.0",
+    "jsdom": "^29.0.1",
     "path": "^0.12.7",
     "prettier": "^3.0.0",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
-    "vite-plugin-solid": "^2.11.0"
+    "vite-plugin-solid": "^2.11.0",
+    "vitest": "^4.1.1"
   }
 }
