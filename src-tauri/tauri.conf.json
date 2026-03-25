@@ -12,11 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "Android IDE",
+        "title": "",
         "width": 1400,
         "height": 900,
-        "decorations": false,
-        "transparent": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "resizable": true,
         "minWidth": 800,
         "minHeight": 600
       }
@@ -27,13 +28,22 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["dmg", "app"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "macOS": {
+      "dmg": {
+        "applicationFolderPosition": { "x": 480, "y": 180 },
+        "appPosition": { "x": 180, "y": 180 },
+        "windowSize": { "width": 660, "height": 400 },
+        "windowPosition": { "x": 400, "y": 100 }
+      },
+      "minimumSystemVersion": "12.0"
+    }
   }
 }

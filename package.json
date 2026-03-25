@@ -10,7 +10,10 @@
     "serve": "vite preview",
     "tauri": "tauri",
     "lint": "eslint src --ext .ts,.tsx",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
+    "build:dmg": "tauri build --target aarch64-apple-darwin --bundles dmg",
+    "build:dmg:intel": "tauri build --target x86_64-apple-darwin --bundles dmg",
+    "build:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg"
   },
   "license": "MIT",
   "dependencies": {

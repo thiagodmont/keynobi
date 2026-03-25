@@ -5,6 +5,7 @@ import { projectState } from "@/stores/project.store";
 export function StatusBar(): JSX.Element {
   return (
     <div
+      data-tauri-drag-region
       style={{
         height: "var(--statusbar-height)",
         background: "var(--accent)",
@@ -16,7 +17,8 @@ export function StatusBar(): JSX.Element {
         "font-size": "11px",
         color: "#ffffff",
         "user-select": "none",
-      }}
+        "-webkit-app-region": "drag",
+      } as JSX.CSSProperties & { "-webkit-app-region": string }}
     >
       {/* Left side */}
       <div style={{ display: "flex", gap: "12px", "align-items": "center" }}>
