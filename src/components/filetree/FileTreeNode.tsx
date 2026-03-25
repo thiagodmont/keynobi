@@ -160,18 +160,11 @@ export function FileTreeNode(props: FileTreeNodeProps): JSX.Element {
               height: "12px",
               color: "var(--text-muted)",
               "flex-shrink": "0",
-              transition: "transform 0.1s",
-              transform: isExpanded() ? "rotate(90deg)" : "none",
+              transition: "transform 0.15s ease",
+              transform: isExpanded() ? "rotate(90deg)" : "rotate(0deg)",
             }}
           >
-            <svg
-              viewBox="0 0 16 16"
-              width="10"
-              height="10"
-              fill="currentColor"
-            >
-              <path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" />
-            </svg>
+            <Icon name="chevron-right" size={12} />
           </span>
         </Show>
 
@@ -201,7 +194,7 @@ export function FileTreeNode(props: FileTreeNodeProps): JSX.Element {
           <Icon
             name={isExpanded() ? "folder-open" : "folder"}
             size={14}
-            style={{ color: "#e8ab65", "flex-shrink": "0" }}
+            color="#e8ab65"
           />
         </Show>
 
