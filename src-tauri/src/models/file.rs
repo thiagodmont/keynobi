@@ -27,6 +27,7 @@ pub struct FileEvent {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "lowercase")]
+#[allow(dead_code)]
 pub enum FileEventKind {
     Created,
     Modified,

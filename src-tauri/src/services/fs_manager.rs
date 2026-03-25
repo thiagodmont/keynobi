@@ -33,13 +33,6 @@ fn is_excluded(name: &str) -> bool {
     false
 }
 
-fn is_path_excluded(path: &Path) -> bool {
-    path.components().any(|c| {
-        let name = c.as_os_str().to_string_lossy();
-        is_excluded(name.as_ref())
-    })
-}
-
 pub fn build_file_tree(root: &Path) -> FileNode {
     let name = root
         .file_name()

@@ -1,6 +1,8 @@
 import { type JSX, Show, onMount } from "solid-js";
 import { uiState, setUIState, toggleSidebar, toggleBottomPanel, setSidebarWidth, setBottomPanelHeight } from "@/stores/ui.store";
-import { editorState } from "@/stores/editor.store";
+import { editorState, setActiveFile, removeOpenFile } from "@/stores/editor.store";
+import { getEditorView } from "@/components/editor/CodeEditor";
+import { saveEditorState as storeSaveEditorState } from "@/stores/editor.store";
 import TitleBar from "@/components/layout/TitleBar";
 import Sidebar from "@/components/layout/Sidebar";
 import StatusBar from "@/components/layout/StatusBar";
@@ -35,6 +37,66 @@ export function App(): JSX.Element {
       metaKey: true,
       action: toggleBottomPanel,
       description: "Toggle Bottom Panel",
+      context: "global",
+    });
+
+    registerKeybinding({
+      key: "w",
+      metaKey: true,
+      action: () => {
+        const path = editorState.activeFilePath;
+        if (!path) return;
+        const file = editorState.openFiles[path];
+        if (file?.dirty) {
+          const save = window.confirm(`Save changes to "${file.name}"?`);
+          if (save) {
+            import("@/lib/tauri-api").then(({ writeFile }) =>
+              writeFile(path, file.savedContent).then(() => removeOpenFile(path))
+            );
+            return;
+          }
+        }
+        removeOpenFile(path);
+      },
+      description: "Close Tab",
+      context: "global",
+    });
+
+    registerKeybinding({
+      key: "[",
+      metaKey: true,
+      shiftKey: true,
+      action: () => {
+        const idx = editorState.tabOrder.indexOf(editorState.activeFilePath ?? "");
+        const prev = editorState.tabOrder[idx - 1];
+        if (prev) {
+          const view = getEditorView();
+          if (view && editorState.activeFilePath) {
+            storeSaveEditorState(editorState.activeFilePath, view.state);
+          }
+          setActiveFile(prev);
+        }
+      },
+      description: "Previous Tab",
+      context: "global",
+    });
+
+    registerKeybinding({
+      key: "]",
+      metaKey: true,
+      shiftKey: true,
+      action: () => {
+        const idx = editorState.tabOrder.indexOf(editorState.activeFilePath ?? "");
+        const next = editorState.tabOrder[idx + 1];
+        if (next) {
+          const view = getEditorView();
+          if (view && editorState.activeFilePath) {
+            storeSaveEditorState(editorState.activeFilePath, view.state);
+          }
+          setActiveFile(next);
+        }
+      },
+      description: "Next Tab",
       context: "global",
     });
 
