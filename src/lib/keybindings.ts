@@ -25,9 +25,26 @@ export interface Keybinding {
 
 const registry: Keybinding[] = [];
 
+/**
+ * Compute a stable string key for a binding based on its key combo.
+ * This is the deduplication key — two bindings with the same combo overwrite
+ * each other regardless of their description.
+ */
+function comboKey(binding: Keybinding): string {
+  return [
+    binding.key.toLowerCase(),
+    binding.metaKey ? "meta" : "",
+    binding.ctrlKey ? "ctrl" : "",
+    binding.shiftKey ? "shift" : "",
+    binding.altKey ? "alt" : "",
+  ]
+    .filter(Boolean)
+    .join("+");
+}
+
 export function registerKeybinding(binding: Keybinding): void {
-  // Prevent duplicate registrations for the same description.
-  const existing = registry.findIndex((b) => b.description === binding.description);
+  const key = comboKey(binding);
+  const existing = registry.findIndex((b) => comboKey(b) === key);
   if (existing !== -1) {
     registry[existing] = binding;
   } else {
@@ -37,10 +54,10 @@ export function registerKeybinding(binding: Keybinding): void {
 
 function matchesBinding(e: KeyboardEvent, binding: Keybinding): boolean {
   if (e.key.toLowerCase() !== binding.key.toLowerCase()) return false;
-  if (!!binding.metaKey  !== e.metaKey)  return false;
-  if (!!binding.ctrlKey  !== e.ctrlKey)  return false;
+  if (!!binding.metaKey !== e.metaKey) return false;
+  if (!!binding.ctrlKey !== e.ctrlKey) return false;
   if (!!binding.shiftKey !== e.shiftKey) return false;
-  if (!!binding.altKey   !== e.altKey)   return false;
+  if (!!binding.altKey !== e.altKey) return false;
   return true;
 }
 

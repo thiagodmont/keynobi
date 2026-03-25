@@ -21,12 +21,27 @@ tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-# notify v6 + debouncer-mini v0.4 are compatible
+# File watching: notify v6 + full debouncer for proper Created/Modified/Deleted/Renamed events
 notify = { version = "6", features = ["macos_fsevent"] }
-notify-debouncer-mini = "0.4"
-walkdir = "2"
+notify-debouncer-full = "0.3"
+# .gitignore-aware directory traversal
 ignore = "0.4"
+# Move to Trash instead of permanent delete
 trash = "5"
+# Atomic writes and integration tests
 tempfile = "3"
+# Typed error handling
 thiserror = "2"
-log = "0.4"
+# Structured async-aware logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+# Auto-generate TypeScript interfaces from Rust types
+ts-rs = "12"
+
+[dev-dependencies]
+# Criterion for micro-benchmarks (file-tree, CRUD operations)
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "fs_benchmarks"
+harness = false

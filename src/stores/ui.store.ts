@@ -1,7 +1,7 @@
 import { createStore } from "solid-js/store";
 
 export type SidebarTab = "files" | "search" | "git";
-export type BottomPanelTab = "build" | "logcat" | "terminal" | "ai";
+export type BottomPanelTab = "build" | "logcat" | "terminal";
 
 interface UIState {
   sidebarVisible: boolean;

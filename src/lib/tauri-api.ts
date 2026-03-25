@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { FileNode } from "@/stores/project.store";
+import type { FileNode } from "@/bindings";
+import type { FileEvent } from "@/bindings";
 
 // ── File System ──────────────────────────────────────────────────────────────
 
@@ -60,11 +61,7 @@ export async function getProjectRoot(): Promise<string | null> {
 
 // ── File Events ───────────────────────────────────────────────────────────────
 
-export interface FileEvent {
-  kind: "created" | "modified" | "deleted" | "renamed";
-  path: string;
-  newPath?: string;
-}
+export type { FileEvent };
 
 export function onFileChanged(
   callback: (event: FileEvent) => void

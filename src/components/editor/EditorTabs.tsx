@@ -9,16 +9,49 @@ import { getEditorView } from "./CodeEditor";
 import { saveEditorState as storeSaveEditorState } from "@/stores/editor.store";
 import { writeFile, formatError } from "@/lib/tauri-api";
 import { showToast } from "@/components/common/Toast";
+import { showSaveDialog } from "@/components/common/Dialog";
 import { getFileTypeInfo } from "@/lib/file-utils";
 import type { Language } from "@/stores/editor.store";
+
+// ── Static style constants ────────────────────────────────────────────────────
+
+const TAB_BAR_STYLE = {
+  display: "flex",
+  "flex-direction": "row",
+  height: "var(--tab-height)",
+  background: "var(--bg-tertiary)",
+  "border-bottom": "1px solid var(--border)",
+  "overflow-x": "auto",
+  "overflow-y": "hidden",
+  "flex-shrink": "0",
+  "scrollbar-width": "none",
+} as const;
+
+const FILENAME_STYLE = {
+  flex: "1",
+  overflow: "hidden",
+  "text-overflow": "ellipsis",
+  "font-size": "12px",
+} as const;
+
+const CLOSE_BTN_STYLE = {
+  width: "16px",
+  height: "16px",
+  display: "flex",
+  "align-items": "center",
+  "justify-content": "center",
+  "border-radius": "3px",
+  "flex-shrink": "0",
+  color: "var(--text-muted)",
+  cursor: "pointer",
+} as const;
 
 /**
  * Ask the user whether to save a dirty file, then close the tab.
  * Returns true if the tab was closed (save or discard), false if cancelled.
  *
- * IMPORTANT: we read the *current document content* (from the live EditorView
- * for the active tab, or from the stored EditorState for background tabs)
- * rather than savedContent, which reflects the last on-disk snapshot.
+ * Uses the proper three-option dialog (Save / Don't Save / Cancel) so the user
+ * can always abort the close and keep editing.
  */
 export async function promptSaveAndClose(path: string): Promise<boolean> {
   const file = editorState.openFiles[path];
@@ -29,12 +62,9 @@ export async function promptSaveAndClose(path: string): Promise<boolean> {
     return true;
   }
 
-  const choice = window.confirm(
-    `Save changes to "${file.name}" before closing?`
-  );
+  const result = await showSaveDialog(file.name);
 
-  if (choice) {
-    // Write the real current content, not the stale savedContent snapshot.
+  if (result === "save") {
     const content = getCurrentContent(path, getEditorView());
     try {
       await writeFile(path, content);
@@ -44,14 +74,16 @@ export async function promptSaveAndClose(path: string): Promise<boolean> {
       showToast(`Failed to save "${file.name}": ${formatError(err)}`, "error");
       return false;
     }
-  } else {
-    // Discard changes — close without saving.
+  } else if (result === "discard") {
     removeOpenFile(path);
     return true;
+  } else {
+    // "cancel" — abort the close operation
+    return false;
   }
 }
 
-// ── File type badge ─────────────────────────────────────────────────────────
+// ── File type badge ───────────────────────────────────────────────────────────
 
 function FileIcon(props: { language: Language }): JSX.Element {
   const info = () => getFileTypeInfo(props.language);
@@ -74,14 +106,13 @@ function FileIcon(props: { language: Language }): JSX.Element {
   );
 }
 
-// ── Tab bar ─────────────────────────────────────────────────────────────────
+// ── Tab bar ───────────────────────────────────────────────────────────────────
 
 export function EditorTabs(): JSX.Element {
   function switchToTab(path: string) {
     const current = editorState.activeFilePath;
     if (current === path) return;
 
-    // Persist current editor state before switching away.
     const view = getEditorView();
     if (view && current) {
       storeSaveEditorState(current, view.state);
@@ -96,7 +127,6 @@ export function EditorTabs(): JSX.Element {
   }
 
   function onMouseDown(e: MouseEvent, path: string) {
-    // Middle-click closes the tab.
     if (e.button === 1) {
       e.preventDefault();
       closeTab(e, path);
@@ -104,19 +134,7 @@ export function EditorTabs(): JSX.Element {
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        "flex-direction": "row",
-        height: "var(--tab-height)",
-        background: "var(--bg-tertiary)",
-        "border-bottom": "1px solid var(--border)",
-        "overflow-x": "auto",
-        "overflow-y": "hidden",
-        "flex-shrink": "0",
-        "scrollbar-width": "none",
-      }}
-    >
+    <div style={TAB_BAR_STYLE}>
       <For each={editorState.tabOrder}>
         {(path) => {
           const file = () => editorState.openFiles[path];
@@ -149,13 +167,8 @@ export function EditorTabs(): JSX.Element {
 
               <span
                 style={{
-                  flex: "1",
-                  overflow: "hidden",
-                  "text-overflow": "ellipsis",
-                  "font-size": "12px",
-                  color: isActive()
-                    ? "var(--text-primary)"
-                    : "var(--text-secondary)",
+                  ...FILENAME_STYLE,
+                  color: isActive() ? "var(--text-primary)" : "var(--text-secondary)",
                 }}
               >
                 {file()?.name ?? ""}
@@ -164,29 +177,17 @@ export function EditorTabs(): JSX.Element {
               {/* Unsaved-changes dot / close button */}
               <button
                 onClick={(e) => closeTab(e, path)}
-                style={{
-                  width: "16px",
-                  height: "16px",
-                  display: "flex",
-                  "align-items": "center",
-                  "justify-content": "center",
-                  "border-radius": "3px",
-                  "flex-shrink": "0",
-                  color: "var(--text-muted)",
-                  cursor: "pointer",
-                }}
+                style={CLOSE_BTN_STYLE}
                 title={file()?.dirty ? "Unsaved changes — click to close" : "Close tab"}
               >
                 <Show
                   when={file()?.dirty}
                   fallback={
-                    /* × close icon */
                     <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor">
                       <path d="M9.414 8l3.293-3.293a1 1 0 0 0-1.414-1.414L8 6.586 4.707 3.293a1 1 0 0 0-1.414 1.414L6.586 8l-3.293 3.293a1 1 0 1 0 1.414 1.414L8 9.414l3.293 3.293a1 1 0 0 0 1.414-1.414L9.414 8z" />
                     </svg>
                   }
                 >
-                  {/* ● unsaved dot */}
                   <svg viewBox="0 0 16 16" width="8" height="8" fill="var(--warning)">
                     <circle cx="8" cy="8" r="5" />
                   </svg>

@@ -1,12 +1,7 @@
 import { createStore } from "solid-js/store";
+import type { FileNode } from "@/bindings";
 
-export interface FileNode {
-  name: string;
-  path: string;
-  kind: "file" | "directory";
-  children?: FileNode[];
-  extension?: string;
-}
+export type { FileNode };
 
 interface ProjectState {
   projectRoot: string | null;

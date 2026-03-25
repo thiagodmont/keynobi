@@ -55,7 +55,7 @@
   - `fs:default` — file system access (read/write project files)
   - `fs:allow-read` and `fs:allow-write` scoped to user-selected directories
   - `dialog:default` — native open-folder dialog
-  - `shell:default` — spawn child processes (needed in Phase 2 for Gradle, but set up now)
+  - `shell:default` — spawn child processes (needed in Phase 3 for Gradle, but set up now)
 
   Without these, Tauri 2.0's security model will block IPC calls at runtime.
 
@@ -130,7 +130,7 @@
 - [ ] **Implement `PanelContainer.tsx`** — Bottom panel zone for Build, Logcat, Terminal, AI Chat:
   - Tab bar at the top of the panel zone with panel names
   - Only one panel visible at a time (tab switching)
-  - For Phase 1, show placeholder "Build", "Logcat", "Terminal" tabs with empty content and a "Coming in Phase 2/4" label
+  - For Phase 1, show placeholder "Build", "Logcat", "Terminal" tabs with empty content and a "Coming in Phase 3/4" label
   - Entire container collapses (height → 0 with animation) when `bottomPanelVisible` is false
   - Minimum height: 100px. Default height: 250px. Maximum: 60% of window height.
 
@@ -515,7 +515,7 @@
 
 ### 1.8 — Integration & Verification
 
-> Bring everything together and verify Phase 1 works end-to-end with a real Android project. Fix bugs, polish rough edges, and ensure the foundation is solid for Phase 2.
+> Bring everything together and verify Phase 1 works end-to-end with a real Android project. Fix bugs, polish rough edges, and ensure the foundation is solid for Phase 3.
 
 - [ ] **End-to-end test with a real project** — Clone Google's Sunflower sample app (`git clone https://github.com/android/sunflower.git`) and open it in the IDE:
   - [ ] File tree loads correctly — `build/`, `.gradle/`, `.idea/` are hidden
@@ -543,96 +543,7 @@
 
 ---
 
-## Phase 2 — Build System + Devices
-**Goal:** Complete build-deploy-run cycle from the IDE.
-
-### Process Manager (Rust)
-- [ ] Implement `process_manager.rs`:
-  - [ ] `spawn_process(cmd, args, cwd, env) -> ProcessHandle` using `tokio::process::Command`
-  - [ ] Stream stdout and stderr line-by-line via Tauri Channel
-  - [ ] Support cancellation: send SIGTERM, track child PID
-  - [ ] Track running processes: `HashMap<ProcessId, ChildProcess>`
-  - [ ] Emit process exit event with exit code
-
-### Build Runner (Rust)
-- [ ] Implement `build_runner.rs`:
-  - [ ] `run_gradle_task(project_root, task, variant?) -> BuildProcess`
-  - [ ] Detect `gradlew` in project root and parent directories
-  - [ ] Set `JAVA_HOME` environment variable if configured
-  - [ ] Stream build output via Channel as `BuildLine { kind: Output|Error|Warning|Progress, content, file?, line?, col? }`
-  - [ ] Parse Kotlin compiler errors: regex for `e: file:///path:line:col: message`
-  - [ ] Parse Kotlin warnings: `w: file:///path:line:col: message`
-  - [ ] Parse Gradle task progress: `:app:compileDebugKotlin`, task success/failure
-  - [ ] Detect build success (`BUILD SUCCESSFUL`) and failure (`BUILD FAILED`)
-  - [ ] Maintain build history: last 10 builds with full logs
-  - [ ] Support cancellation via process manager
-- [ ] Register commands: `run_gradle_task`, `cancel_build`, `get_build_history`
-
-### Build Panel (Frontend)
-- [ ] Implement `build.store.ts`: build state (idle/running/success/failed), log lines, structured errors, history
-- [ ] Implement `BuildLogViewer.tsx`:
-  - [ ] Virtualized streaming log with auto-scroll (pause on manual scroll)
-  - [ ] ANSI escape code color rendering
-  - [ ] Filter toggle: show all / errors only / warnings only
-  - [ ] Line count indicator
-- [ ] Implement `BuildPanel.tsx`:
-  - [ ] Two view modes: Raw Log and Problems List
-  - [ ] Build toolbar: Run, Cancel, Clear, view toggle
-  - [ ] Problems list: grouped by file, clickable to jump to file:line in editor
-  - [ ] Build summary: success/failure badge, duration, error count
-  - [ ] Build history dropdown
-- [ ] Jump to error on click: open file in editor, scroll to error line, highlight
-
-### Variant Manager (Rust)
-- [ ] Implement `variant_manager.rs`:
-  - [ ] Parse `app/build.gradle.kts` and `build.gradle.kts` using Tree-sitter Kotlin grammar
-  - [ ] Extract `buildTypes` block entries (debug, release, custom)
-  - [ ] Extract `productFlavors` block entries and `flavorDimensions`
-  - [ ] Compute all variant combinations as `Vec<Variant { name, build_type, flavors, gradle_task }>`
-  - [ ] Fallback: run `./gradlew tasks --all` and parse task names to infer variants
-  - [ ] Cache variants per project, invalidate on `build.gradle.kts` change
-- [ ] Register commands: `get_build_variants`, `set_active_variant`
-
-### Variant Selector (Frontend)
-- [ ] Implement `VariantSelector.tsx`: searchable dropdown showing all variants, current variant highlighted
-- [ ] Show active variant in status bar
-- [ ] Keyboard shortcut to open variant picker (Cmd+Shift+V)
-- [ ] Persist last-used variant per project
-
-### ADB Manager (Rust)
-- [ ] Add `adb_client` crate dependency
-- [ ] Implement `adb_manager.rs`:
-  - [ ] `list_devices() -> Vec<Device { serial, name, type: Physical|Emulator, state, api_level, model }`
-  - [ ] Start polling for devices every 2 seconds, emit `device:connected` / `device:disconnected` events
-  - [ ] `install_apk(device_serial, apk_path)` — `adb -s <serial> install -r <apk>`
-  - [ ] `launch_app(device_serial, package, activity)` — `adb shell am start -n <package>/<activity>`
-  - [ ] `get_device_properties(serial)` — `adb shell getprop`
-- [ ] Register commands: `list_devices`, `install_apk`, `launch_app`
-
-### Device Panel (Frontend)
-- [ ] Implement `device.store.ts`: connected devices list, selected device, AVD list, emulator state
-- [ ] Implement `DevicePanel.tsx`:
-  - [ ] List connected physical devices and running emulators with model/API level
-  - [ ] List available AVDs (from `~/.android/avd/`)
-  - [ ] Launch emulator button per AVD
-  - [ ] Select active device (for build/deploy target)
-  - [ ] Refresh button
-  - [ ] Device selector in toolbar/status bar
-
-### Run Button
-- [ ] Implement "Run" toolbar button and Cmd+R shortcut:
-  1. Check active variant is set
-  2. Check active device is selected
-  3. Run `assembleDebug` (or active variant task)
-  4. On success: run `install_apk` + `launch_app`
-  5. Show progress in status bar and build panel
-- [ ] Implement "Stop" button to kill app on device
-
-**Phase 2 Done When:** Can build any Android project, switch build variants, deploy to an emulator, and see streaming build errors with file links.
-
----
-
-## Phase 3 — Code Intelligence
+## Phase 2 — Code Intelligence
 **Goal:** Full Kotlin code intelligence via LSP — completions, diagnostics, navigation.
 
 ### Tree-sitter (Rust)
@@ -723,7 +634,96 @@
 - [ ] Subscribe to LSP `textDocument/documentSymbol` on active file change
 - [ ] Clicking symbol scrolls editor to its location
 
-**Phase 3 Done When:** Go-to-definition, completions, hover docs, find-references, and project search all work reliably on a real Kotlin Android project.
+**Phase 2 Done When:** Go-to-definition, completions, hover docs, find-references, and project search all work reliably on a real Kotlin Android project.
+
+---
+
+## Phase 3 — Build System + Devices
+**Goal:** Complete build-deploy-run cycle from the IDE.
+
+### Process Manager (Rust)
+- [ ] Implement `process_manager.rs`:
+  - [ ] `spawn_process(cmd, args, cwd, env) -> ProcessHandle` using `tokio::process::Command`
+  - [ ] Stream stdout and stderr line-by-line via Tauri Channel
+  - [ ] Support cancellation: send SIGTERM, track child PID
+  - [ ] Track running processes: `HashMap<ProcessId, ChildProcess>`
+  - [ ] Emit process exit event with exit code
+
+### Build Runner (Rust)
+- [ ] Implement `build_runner.rs`:
+  - [ ] `run_gradle_task(project_root, task, variant?) -> BuildProcess`
+  - [ ] Detect `gradlew` in project root and parent directories
+  - [ ] Set `JAVA_HOME` environment variable if configured
+  - [ ] Stream build output via Channel as `BuildLine { kind: Output|Error|Warning|Progress, content, file?, line?, col? }`
+  - [ ] Parse Kotlin compiler errors: regex for `e: file:///path:line:col: message`
+  - [ ] Parse Kotlin warnings: `w: file:///path:line:col: message`
+  - [ ] Parse Gradle task progress: `:app:compileDebugKotlin`, task success/failure
+  - [ ] Detect build success (`BUILD SUCCESSFUL`) and failure (`BUILD FAILED`)
+  - [ ] Maintain build history: last 10 builds with full logs
+  - [ ] Support cancellation via process manager
+- [ ] Register commands: `run_gradle_task`, `cancel_build`, `get_build_history`
+
+### Build Panel (Frontend)
+- [ ] Implement `build.store.ts`: build state (idle/running/success/failed), log lines, structured errors, history
+- [ ] Implement `BuildLogViewer.tsx`:
+  - [ ] Virtualized streaming log with auto-scroll (pause on manual scroll)
+  - [ ] ANSI escape code color rendering
+  - [ ] Filter toggle: show all / errors only / warnings only
+  - [ ] Line count indicator
+- [ ] Implement `BuildPanel.tsx`:
+  - [ ] Two view modes: Raw Log and Problems List
+  - [ ] Build toolbar: Run, Cancel, Clear, view toggle
+  - [ ] Problems list: grouped by file, clickable to jump to file:line in editor
+  - [ ] Build summary: success/failure badge, duration, error count
+  - [ ] Build history dropdown
+- [ ] Jump to error on click: open file in editor, scroll to error line, highlight
+
+### Variant Manager (Rust)
+- [ ] Implement `variant_manager.rs`:
+  - [ ] Parse `app/build.gradle.kts` and `build.gradle.kts` using Tree-sitter Kotlin grammar
+  - [ ] Extract `buildTypes` block entries (debug, release, custom)
+  - [ ] Extract `productFlavors` block entries and `flavorDimensions`
+  - [ ] Compute all variant combinations as `Vec<Variant { name, build_type, flavors, gradle_task }>`
+  - [ ] Fallback: run `./gradlew tasks --all` and parse task names to infer variants
+  - [ ] Cache variants per project, invalidate on `build.gradle.kts` change
+- [ ] Register commands: `get_build_variants`, `set_active_variant`
+
+### Variant Selector (Frontend)
+- [ ] Implement `VariantSelector.tsx`: searchable dropdown showing all variants, current variant highlighted
+- [ ] Show active variant in status bar
+- [ ] Keyboard shortcut to open variant picker (Cmd+Shift+V)
+- [ ] Persist last-used variant per project
+
+### ADB Manager (Rust)
+- [ ] Add `adb_client` crate dependency
+- [ ] Implement `adb_manager.rs`:
+  - [ ] `list_devices() -> Vec<Device { serial, name, type: Physical|Emulator, state, api_level, model }`
+  - [ ] Start polling for devices every 2 seconds, emit `device:connected` / `device:disconnected` events
+  - [ ] `install_apk(device_serial, apk_path)` — `adb -s <serial> install -r <apk>`
+  - [ ] `launch_app(device_serial, package, activity)` — `adb shell am start -n <package>/<activity>`
+  - [ ] `get_device_properties(serial)` — `adb shell getprop`
+- [ ] Register commands: `list_devices`, `install_apk`, `launch_app`
+
+### Device Panel (Frontend)
+- [ ] Implement `device.store.ts`: connected devices list, selected device, AVD list, emulator state
+- [ ] Implement `DevicePanel.tsx`:
+  - [ ] List connected physical devices and running emulators with model/API level
+  - [ ] List available AVDs (from `~/.android/avd/`)
+  - [ ] Launch emulator button per AVD
+  - [ ] Select active device (for build/deploy target)
+  - [ ] Refresh button
+  - [ ] Device selector in toolbar/status bar
+
+### Run Button
+- [ ] Implement "Run" toolbar button and Cmd+R shortcut:
+  1. Check active variant is set
+  2. Check active device is selected
+  3. Run `assembleDebug` (or active variant task)
+  4. On success: run `install_apk` + `launch_app`
+  5. Show progress in status bar and build panel
+- [ ] Implement "Stop" button to kill app on device
+
+**Phase 3 Done When:** Can build any Android project, switch build variants, deploy to an emulator, and see streaming build errors with file links.
 
 ---
 

@@ -1,9 +1,4 @@
-import {
-  createEffect,
-  onMount,
-  onCleanup,
-  type JSX,
-} from "solid-js";
+import { createEffect, onMount, onCleanup, type JSX } from "solid-js";
 import { EditorView, keymap } from "@codemirror/view";
 import { EditorState } from "@codemirror/state";
 import { baseExtensions } from "@/lib/codemirror/setup";
@@ -17,11 +12,11 @@ import {
   markClean,
   saveEditorState,
   updateCursor,
+  updateSavedContent,
   type Language,
 } from "@/stores/editor.store";
 import { writeFile, formatError } from "@/lib/tauri-api";
 import { showToast } from "@/components/common/Toast";
-import { updateSavedContent } from "@/stores/editor.store";
 
 let editorView: EditorView | null = null;
 
@@ -48,9 +43,11 @@ export function createEditorState(
   return EditorState.create({
     doc: content,
     extensions: [
-      ...baseExtensions,
+      // Pass baseExtensions as a nested array — CM6 flattens extension arrays
+      // at creation time, so we avoid copying the ~15-item array on every open.
+      baseExtensions,
       getLanguageExtension(language),
-      // Cursor position tracking
+      // Cursor position tracking and dirty detection
       EditorView.updateListener.of((update) => {
         if (update.docChanged && editorView) {
           const activePath = editorState.activeFilePath;
@@ -59,7 +56,6 @@ export function createEditorState(
             if (file) {
               const currentContent = update.state.doc.toString();
               const isDirty = currentContent !== file.savedContent;
-              // Sync both directions: mark dirty on edit, mark clean on revert.
               if (isDirty && !file.dirty) {
                 markDirty(activePath);
               } else if (!isDirty && file.dirty) {
@@ -77,7 +73,7 @@ export function createEditorState(
           }
         }
       }),
-      // Cmd+S save
+      // Cmd+S save (handled inside CM6 so it only fires when editor is focused)
       keymap.of([
         {
           key: "Mod-s",
@@ -117,11 +113,11 @@ export function CodeEditor(props: CodeEditorProps): JSX.Element {
       parent: containerRef,
       state: EditorState.create({
         doc: "",
-        extensions: [...baseExtensions],
+        extensions: [baseExtensions],
       }),
     });
 
-    // If there's already an active file, load it
+    // If there's already an active file, load it immediately.
     const activePath = editorState.activeFilePath;
     if (activePath) {
       const file = editorState.openFiles[activePath];
@@ -138,7 +134,7 @@ export function CodeEditor(props: CodeEditorProps): JSX.Element {
     }
   });
 
-  // React to active file changes
+  // React to active file changes — swap EditorState without recreating the DOM.
   createEffect(() => {
     const activePath = editorState.activeFilePath;
     if (!editorView) return;
@@ -147,7 +143,7 @@ export function CodeEditor(props: CodeEditorProps): JSX.Element {
       editorView.setState(
         EditorState.create({
           doc: "",
-          extensions: [...baseExtensions],
+          extensions: [baseExtensions],
         })
       );
       return;
@@ -159,16 +155,12 @@ export function CodeEditor(props: CodeEditorProps): JSX.Element {
     if (file.editorState) {
       editorView.setState(file.editorState);
     } else {
-      const newState = createEditorState(
-        file.savedContent,
-        file.language,
-        activePath
-      );
+      const newState = createEditorState(file.savedContent, file.language, activePath);
       saveEditorState(activePath, newState);
       editorView.setState(newState);
     }
 
-    // Focus the editor after switching
+    // Ensure editor has focus after tab switch.
     setTimeout(() => editorView?.focus(), 0);
   });
 
