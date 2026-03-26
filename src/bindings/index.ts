@@ -48,3 +48,10 @@ export type { SearchMatch } from "./SearchMatch";
 export type { SearchResult } from "./SearchResult";
 export type { SearchProgress } from "./SearchProgress";
 export type { ReplacePreview } from "./ReplacePreview";
+
+// Logs
+export type { LogEntry } from "./LogEntry";
+export type { LogLevel } from "./LogLevel";
+
+// Health
+export type { SystemHealthReport } from "./SystemHealthReport";

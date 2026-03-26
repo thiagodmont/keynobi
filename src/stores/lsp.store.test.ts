@@ -8,6 +8,10 @@ import {
   getDiagnosticsForFile,
   getDiagnosticCounts,
   resetLspState,
+  setServerCapabilities,
+  hasCapability,
+  setIndexingProgress,
+  setIndexingJustCompleted,
   type Diagnostic,
 } from "./lsp.store";
 
@@ -136,9 +140,129 @@ describe("lsp.store", () => {
     setLspStatus("ready");
     updateDiagnostics("/project/Main.kt", [makeDiag("/project/Main.kt")]);
     setDownloadProgress({ downloadedBytes: 100, totalBytes: 200, percent: 50 });
+    setIndexingProgress(42);
+    setIndexingJustCompleted("success");
     resetLspState();
     expect(lspState.status.state).toBe("stopped");
     expect(Object.keys(lspState.diagnostics)).toHaveLength(0);
     expect(lspState.downloadProgress).toBeNull();
+    expect(lspState.indexingProgress).toBeNull();
+    expect(lspState.indexingJustCompleted).toBeNull();
+  });
+});
+
+// ── hasCapability ─────────────────────────────────────────────────────────────
+
+describe("hasCapability", () => {
+  beforeEach(() => {
+    resetLspState();
+  });
+
+  it("returns true (optimistic) when capabilities are null — not yet received", () => {
+    expect(lspState.serverCapabilities).toBeNull();
+    expect(hasCapability("documentHighlightProvider")).toBe(true);
+    expect(hasCapability("completionProvider")).toBe(true);
+  });
+
+  it("returns true when the capability is a truthy object (e.g. {} or { resolveProvider: true })", () => {
+    setServerCapabilities({
+      completionProvider: {},
+      definitionProvider: true,
+      hoverProvider: { workDoneProgress: false },
+    });
+    expect(hasCapability("completionProvider")).toBe(true);
+    expect(hasCapability("definitionProvider")).toBe(true);
+    expect(hasCapability("hoverProvider")).toBe(true);
+  });
+
+  it("returns false when the capability is explicitly false", () => {
+    setServerCapabilities({ documentHighlightProvider: false });
+    expect(hasCapability("documentHighlightProvider")).toBe(false);
+  });
+
+  it("returns false when the capability is absent from the server response", () => {
+    // Server that only advertises completion — nothing else
+    setServerCapabilities({ completionProvider: {} });
+    expect(hasCapability("documentHighlightProvider")).toBe(false);
+    expect(hasCapability("referencesProvider")).toBe(false);
+  });
+
+  it("returns false when capabilities object is empty (server supports nothing explicitly)", () => {
+    setServerCapabilities({});
+    expect(hasCapability("documentHighlightProvider")).toBe(false);
+    expect(hasCapability("hoverProvider")).toBe(false);
+  });
+
+  it("correctly identifies that Kotlin LSP does NOT support documentHighlight", () => {
+    // Simulate the real Kotlin LSP 262 capabilities (documentHighlight absent)
+    setServerCapabilities({
+      completionProvider: { resolveProvider: true },
+      hoverProvider: true,
+      signatureHelpProvider: { triggerCharacters: ["(", ","] },
+      definitionProvider: true,
+      referencesProvider: true,
+      implementationProvider: true,
+      documentSymbolProvider: true,
+      codeActionProvider: true,
+      // documentHighlightProvider intentionally absent
+    });
+    expect(hasCapability("definitionProvider")).toBe(true);
+    expect(hasCapability("referencesProvider")).toBe(true);
+    // This is the exact case that was causing ERROR spam in the Output panel
+    expect(hasCapability("documentHighlightProvider")).toBe(false);
+  });
+
+  it("resets serverCapabilities on resetLspState", () => {
+    setServerCapabilities({ completionProvider: {} });
+    resetLspState();
+    expect(lspState.serverCapabilities).toBeNull();
+  });
+});
+
+// ── Indexing progress state ───────────────────────────────────────────────────
+
+describe("indexingProgress and indexingJustCompleted", () => {
+  beforeEach(() => {
+    resetLspState();
+  });
+
+  it("starts as null", () => {
+    expect(lspState.indexingProgress).toBeNull();
+    expect(lspState.indexingJustCompleted).toBeNull();
+  });
+
+  it("setIndexingProgress stores a percentage", () => {
+    setIndexingProgress(55);
+    expect(lspState.indexingProgress).toBe(55);
+  });
+
+  it("setIndexingProgress accepts null for indeterminate", () => {
+    setIndexingProgress(80);
+    setIndexingProgress(null);
+    expect(lspState.indexingProgress).toBeNull();
+  });
+
+  it("setIndexingJustCompleted stores success", () => {
+    setIndexingJustCompleted("success");
+    expect(lspState.indexingJustCompleted).toBe("success");
+  });
+
+  it("setIndexingJustCompleted stores error", () => {
+    setIndexingJustCompleted("error");
+    expect(lspState.indexingJustCompleted).toBe("error");
+  });
+
+  it("setIndexingJustCompleted can be cleared to null", () => {
+    setIndexingJustCompleted("success");
+    setIndexingJustCompleted(null);
+    expect(lspState.indexingJustCompleted).toBeNull();
+  });
+
+  it("resetLspState zeros out indexing fields", () => {
+    setIndexingProgress(75);
+    setIndexingJustCompleted("success");
+    resetLspState();
+    expect(lspState.indexingProgress).toBeNull();
+    expect(lspState.indexingJustCompleted).toBeNull();
   });
 });

@@ -8,10 +8,12 @@ import { getDiagnosticCounts } from "@/stores/lsp.store";
 import { referencesState } from "@/stores/references.store";
 import { ProblemsPanel } from "@/components/layout/ProblemsPanel";
 import { ReferencesPanel } from "@/components/editor/ReferencesPanel";
+import { LspLogsPanel } from "@/components/layout/LspLogsPanel";
 
 const TABS: { id: BottomPanelTab; label: string }[] = [
   { id: "problems", label: "Problems" },
   { id: "references", label: "References" },
+  { id: "output", label: "Output" },
   { id: "build", label: "Build" },
   { id: "logcat", label: "Logcat" },
   { id: "terminal", label: "Terminal" },
@@ -128,6 +130,9 @@ export function PanelContainer(props: PanelContainerProps): JSX.Element {
           </Match>
           <Match when={uiState.activeBottomTab === "references"}>
             <ReferencesPanel />
+          </Match>
+          <Match when={uiState.activeBottomTab === "output"}>
+            <LspLogsPanel />
           </Match>
           <Match when={uiState.activeBottomTab === "build"}>
             <PanelPlaceholder text="Build — Available in Phase 3" />

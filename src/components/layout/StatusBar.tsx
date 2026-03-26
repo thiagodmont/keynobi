@@ -4,6 +4,9 @@ import { editorState } from "@/stores/editor.store";
 import { projectState } from "@/stores/project.store";
 import { lspState, getDiagnosticCounts } from "@/stores/lsp.store";
 import { openSettings } from "@/components/settings/SettingsPanel";
+import { openOutputPanel } from "@/stores/ui.store";
+import { openHealthPanel } from "@/components/health/HealthPanel";
+import { overallHealth, healthSummary } from "@/stores/health.store";
 import Icon from "@/components/common/Icon";
 
 async function startDrag(e: MouseEvent) {
@@ -55,7 +58,7 @@ function getLspInfo(): {
         color: "#fbbf24",
         dotColor: "#fbbf24",
         indicator: "pulse",
-        tooltip: "Kotlin Language Server is starting up.",
+        tooltip: "Kotlin Language Server is starting — click to watch server logs.",
       };
     case "indexing":
       return {
@@ -64,25 +67,45 @@ function getLspInfo(): {
         color: "#60a5fa",
         dotColor: "#60a5fa",
         indicator: "spinner",
-        tooltip: "Kotlin Language Server is indexing your project.",
+        tooltip: "Kotlin Language Server is indexing your project — click to watch server logs.",
       };
     case "ready":
+      if (lspState.indexingJustCompleted === "success") {
+        return {
+          label: "Kotlin LSP",
+          sublabel: "Indexed",
+          color: "#4ade80",
+          dotColor: "#4ade80",
+          indicator: "dot",
+          tooltip: "Project indexing complete — Cmd+click and completions are ready.",
+        };
+      }
       return {
         label: "Kotlin LSP",
         sublabel: "Running",
         color: "#ffffff",
         dotColor: "#4ade80",
         indicator: "dot",
-        tooltip: "Kotlin Language Server is active. Click to open Settings → Tools.",
+        tooltip: "Kotlin Language Server is active — click to open server logs.",
       };
     case "error":
+      if (lspState.indexingJustCompleted === "error") {
+        return {
+          label: "Kotlin LSP",
+          sublabel: "Index failed",
+          color: "#f87171",
+          dotColor: "#f87171",
+          indicator: "dot",
+          tooltip: `Indexing error${msg ? `: ${msg}` : ""} — click to see server logs.`,
+        };
+      }
       return {
         label: "Kotlin LSP",
         sublabel: msg ?? "Error",
         color: "#f87171",
         dotColor: "#f87171",
         indicator: "dot",
-        tooltip: `Kotlin Language Server encountered an error${msg ? `: ${msg}` : ""}. Click to open Settings → Tools.`,
+        tooltip: `Kotlin Language Server error${msg ? `: ${msg}` : ""} — click to open server logs.`,
       };
     case "stopped":
     default:
@@ -101,9 +124,19 @@ function LspStatusIndicator(): JSX.Element {
   const info = createMemo(() => getLspInfo());
   const counts = createMemo(() => getDiagnosticCounts());
 
+  /** Navigate to logs when LSP is active; open Settings when it's not set up. */
+  function handleClick() {
+    const state = lspState.status.state;
+    if (state === "notInstalled" || state === "stopped") {
+      openSettings();
+    } else {
+      openOutputPanel();
+    }
+  }
+
   return (
     <button
-      onClick={() => openSettings()}
+      onClick={handleClick}
       onMouseDown={(e) => e.stopPropagation()}
       title={info().tooltip}
       style={{
@@ -191,6 +224,72 @@ function LspStatusIndicator(): JSX.Element {
   );
 }
 
+// ── Health indicator ──────────────────────────────────────────────────────────
+
+function HealthIndicator(): JSX.Element {
+  const overall = () => overallHealth();
+  const summary = () => healthSummary();
+
+  const dotColor = () => {
+    switch (overall()) {
+      case "ok":      return "#4ade80";
+      case "warning": return "#fbbf24";
+      case "error":   return "#f87171";
+      default:        return "rgba(255,255,255,0.4)";
+    }
+  };
+
+  const tooltip = () => {
+    const s = overall();
+    const { ok, total } = summary();
+    if (s === "loading") return "Running health checks…";
+    if (s === "ok")      return `IDE Health: all ${total} checks passing — click for details`;
+    return `IDE Health: ${ok}/${total} checks passing — click to see issues`;
+  };
+
+  return (
+    <button
+      onClick={openHealthPanel}
+      onMouseDown={(e) => e.stopPropagation()}
+      title={tooltip()}
+      style={{
+        display: "flex",
+        "align-items": "center",
+        gap: "4px",
+        padding: "0 6px",
+        height: "18px",
+        background: "rgba(255,255,255,0.08)",
+        border: "1px solid rgba(255,255,255,0.12)",
+        "border-radius": "3px",
+        cursor: "pointer",
+        "flex-shrink": "0",
+        transition: "background 0.1s",
+      }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.15)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)"; }}
+    >
+      <span
+        style={{
+          width: "6px",
+          height: "6px",
+          "border-radius": "50%",
+          background: dotColor(),
+          "flex-shrink": "0",
+          display: "inline-block",
+        }}
+      />
+      <span style={{ color: "#ffffff", "font-size": "11px", "line-height": "1", "white-space": "nowrap" }}>
+        Health
+      </span>
+      <Show when={overall() !== "ok" && overall() !== "loading"}>
+        <span style={{ color: dotColor(), "font-size": "10px", "line-height": "1", "white-space": "nowrap" }}>
+          {summary().ok}/{summary().total}
+        </span>
+      </Show>
+    </button>
+  );
+}
+
 // ── StatusBar ─────────────────────────────────────────────────────────────────
 
 export function StatusBar(): JSX.Element {
@@ -210,6 +309,7 @@ export function StatusBar(): JSX.Element {
         "user-select": "none",
         cursor: "default",
         gap: "6px",
+        position: "relative",
       }}
     >
       {/* Left side */}
@@ -259,6 +359,9 @@ export function StatusBar(): JSX.Element {
         {/* LSP Status pill — always visible */}
         <LspStatusIndicator />
 
+        {/* Health indicator */}
+        <HealthIndicator />
+
         {/* Standalone diagnostic counts when NOT ready (e.g. error state) */}
         <Show when={lspState.status.state !== "ready"}>
           <Show when={getDiagnosticCounts().errors > 0 || getDiagnosticCounts().warnings > 0}>
@@ -303,6 +406,53 @@ export function StatusBar(): JSX.Element {
         </Show>
         <span>UTF-8</span>
       </div>
+
+      {/* ── Indexing progress bar ── */}
+      {/* Thin 2px line at the bottom edge of the status bar that appears
+          during LSP project indexing. Shows a determinate fill when the
+          server reports a percentage, or an indeterminate sweep otherwise. */}
+      <Show when={lspState.status.state === "indexing"}>
+        <div
+          style={{
+            position: "absolute",
+            bottom: "0",
+            left: "0",
+            right: "0",
+            height: "2px",
+            background: "rgba(96,165,250,0.25)",
+            overflow: "hidden",
+          }}
+        >
+          <Show
+            when={lspState.indexingProgress !== null}
+            fallback={<div class="lsp-progress-indeterminate" />}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${lspState.indexingProgress}%`,
+                background: "#60a5fa",
+                transition: "width 0.3s ease",
+              }}
+            />
+          </Show>
+        </div>
+      </Show>
+
+      {/* Brief green flash bar when indexing completes successfully */}
+      <Show when={lspState.indexingJustCompleted === "success"}>
+        <div
+          style={{
+            position: "absolute",
+            bottom: "0",
+            left: "0",
+            right: "0",
+            height: "2px",
+            background: "#4ade80",
+            animation: "lsp-progress-done 3s ease forwards",
+          }}
+        />
+      </Show>
     </div>
   );
 }

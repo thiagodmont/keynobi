@@ -26,7 +26,7 @@ function makeTree(): FileNode {
 }
 
 function resetState() {
-  setProjectState({ projectRoot: null, projectName: null, fileTree: null, loading: false });
+  setProjectState({ projectRoot: null, gradleRoot: null, projectName: null, fileTree: null, loading: false });
 }
 
 // ── setProject ────────────────────────────────────────────────────────────────
@@ -52,6 +52,23 @@ describe("setProject", () => {
     setProject("/my-project", makeTree());
     expect(projectState.projectName).toBe("my-project");
   });
+
+  it("stores gradleRoot when provided", () => {
+    const tree = makeTree();
+    setProject("/projects/the-crazy-project/the-crazy-app", tree, "/projects/the-crazy-project");
+    expect(projectState.projectRoot).toBe("/projects/the-crazy-project/the-crazy-app");
+    expect(projectState.gradleRoot).toBe("/projects/the-crazy-project");
+  });
+
+  it("sets gradleRoot to null when not provided", () => {
+    setProject("/projects/my-app", makeTree());
+    expect(projectState.gradleRoot).toBeNull();
+  });
+
+  it("sets gradleRoot to null when explicitly null", () => {
+    setProject("/projects/my-app", makeTree(), null);
+    expect(projectState.gradleRoot).toBeNull();
+  });
 });
 
 // ── clearProject ──────────────────────────────────────────────────────────────
@@ -60,9 +77,10 @@ describe("clearProject", () => {
   beforeEach(resetState);
 
   it("resets all project state to null/false", () => {
-    setProject("/projects/my-app", makeTree());
+    setProject("/projects/my-app", makeTree(), "/projects");
     clearProject();
     expect(projectState.projectRoot).toBeNull();
+    expect(projectState.gradleRoot).toBeNull();
     expect(projectState.projectName).toBeNull();
     expect(projectState.fileTree).toBeNull();
     expect(projectState.loading).toBe(false);

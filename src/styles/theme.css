@@ -135,3 +135,25 @@
   display: inline-block;
   border-radius: 50%;
 }
+
+/* ── LSP indexing progress bar ─────────────────────────────────────────────── */
+
+@keyframes lsp-progress-sweep {
+  0%   { transform: translateX(-150%); }
+  50%  { transform: translateX(100%);  }
+  100% { transform: translateX(100%);  }
+}
+
+.lsp-progress-indeterminate {
+  height: 100%;
+  width: 45%;
+  background: #60a5fa;
+  animation: lsp-progress-sweep 1.4s ease-in-out infinite;
+}
+
+/* Full-width green bar that fades out on indexing success */
+@keyframes lsp-progress-done {
+  0%   { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { opacity: 0; }
+}

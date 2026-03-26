@@ -117,7 +117,9 @@ pub async fn read_file(path: String) -> Result<String, String> {
 
 ### 4. Path Security — Always Canonicalize
 
-Any command that accepts a path from the frontend must validate it against the project root using canonicalization before passing it to a service.
+Any command that accepts a path from the frontend must validate it against the **effective project root** using canonicalization before passing it to a service.
+
+The effective root is `gradle_root` (detected Gradle project root) when available, otherwise `project_root` (ADR-15). This allows go-to-definition navigation to reach files in sibling Gradle modules.
 
 ```rust
 async fn ensure_path_in_project(
@@ -125,7 +127,10 @@ async fn ensure_path_in_project(
     fs_state: &tauri::State<'_, FsState>,
 ) -> Result<(), String> {
     let fs = fs_state.0.lock().await;
-    let canonical_root = fs.project_root.as_ref().ok_or("No project open")?
+    let root = fs.gradle_root.as_ref()
+        .or(fs.project_root.as_ref())
+        .ok_or("No project open")?;
+    let canonical_root = root
         .canonicalize().map_err(|e| format!("Failed to resolve root: {e}"))?;
     drop(fs);
 

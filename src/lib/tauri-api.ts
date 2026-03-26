@@ -59,6 +59,10 @@ export async function getProjectRoot(): Promise<string | null> {
   return invoke<string | null>("get_project_root");
 }
 
+export async function getGradleRoot(): Promise<string | null> {
+  return invoke<string | null>("get_gradle_root");
+}
+
 // ── File Events ───────────────────────────────────────────────────────────────
 
 export type { FileEvent };
@@ -276,6 +280,83 @@ export async function lspCodeAction(
 /** Convert a file:// URI to a local path */
 export function uriToPath(uri: string): string {
   return uri.replace(/^file:\/\//, "");
+}
+
+// ── Log viewer ────────────────────────────────────────────────────────────────
+
+import type { LogEntry, LspStatus, DownloadProgress } from "@/bindings";
+
+/**
+ * Subscribe to `lsp:status` events so the frontend store stays in sync with
+ * the actual server lifecycle.  Returns the unlisten function.
+ */
+export function listenLspStatus(
+  cb: (status: LspStatus) => void
+): Promise<UnlistenFn> {
+  return listen<LspStatus>("lsp:status", (event) => cb(event.payload));
+}
+
+/**
+ * Subscribe to `lsp:capabilities` events emitted once after the LSP
+ * `initialize` handshake.  Use this to know which methods are supported
+ * before making requests.
+ */
+export function listenLspCapabilities(
+  cb: (capabilities: Record<string, unknown>) => void
+): Promise<UnlistenFn> {
+  return listen<Record<string, unknown>>("lsp:capabilities", (event) =>
+    cb(event.payload)
+  );
+}
+
+/**
+ * Subscribe to raw `lsp:progress` events.  The payload is the LSP
+ * WorkDoneProgress params which may include `value.percentage` (0–100).
+ * Returns the unlisten function.
+ */
+export function listenLspProgress(
+  cb: (params: unknown) => void
+): Promise<UnlistenFn> {
+  return listen("lsp:progress", (event) => cb(event.payload));
+}
+
+/**
+ * Subscribe to `lsp:download_progress` events during LSP sidecar download.
+ * Returns the unlisten function.
+ */
+export function listenLspDownloadProgress(
+  cb: (progress: DownloadProgress) => void
+): Promise<UnlistenFn> {
+  return listen<DownloadProgress>("lsp:download_progress", (event) =>
+    cb(event.payload)
+  );
+}
+
+/**
+ * Subscribe to real-time `lsp:log` events emitted by the Rust notification
+ * task.  Returns the unlisten function — call it in `onCleanup`.
+ */
+export function listenLspLog(
+  cb: (entry: LogEntry) => void
+): Promise<UnlistenFn> {
+  return listen<LogEntry>("lsp:log", (event) => cb(event.payload));
+}
+
+/**
+ * Fetch the buffered log entries for the initial panel load (entries that
+ * arrived before the panel was mounted).
+ */
+export async function lspGetLogs(): Promise<LogEntry[]> {
+  return invoke<LogEntry[]>("lsp_get_logs");
+}
+
+// ── Health checks ─────────────────────────────────────────────────────────────
+
+import type { SystemHealthReport } from "@/bindings";
+
+/** Run system-level health probes (Java, SDK, Gradle, disk). */
+export async function runHealthChecks(): Promise<SystemHealthReport> {
+  return invoke<SystemHealthReport>("run_health_checks");
 }
 
 // ── Error helpers ─────────────────────────────────────────────────────────────

@@ -206,3 +206,21 @@
   - (+) OOM crash from hostile/buggy LSP is prevented
   - (+) Reasonable cap: real LSP messages are typically < 1 MB even for large files
   - (-) If a legitimate future use case requires messages > 64 MB, the constant must be adjusted
+
+---
+
+### ADR-15: Gradle Root Auto-Detection for LSP Workspace Root
+
+- **Date**: Phase 2
+- **Status**: Active
+- **Context**: When a user opens a Gradle module subfolder (e.g. `the-crazy-project/the-crazy-app`), the Kotlin LSP needs the Gradle project root (where `settings.gradle(.kts)` and `gradlew` live) to function correctly. Without it: (a) the LSP reports "Package directive does not match the file location" because it calculates package paths relative to the wrong root, (b) `gradlew` is not found so Gradle sync fails, and (c) go-to-definition cannot resolve symbols across modules.
+- **Decision**: On `open_project`, walk upward from the opened directory (max 10 levels) to find the nearest ancestor containing `settings.gradle` or `settings.gradle.kts`. Store this as `gradle_root` in `FsStateInner` alongside the user-opened `project_root`. Use `gradle_root` for:
+  1. LSP `rootUri`, `workspaceFolders`, and process `current_dir`
+  2. Path security boundary (`ensure_path_in_project`, `validate_path`) so go-to-definition targets in sibling modules pass validation
+  3. Health check `gradlew` probe
+- **Consequences**:
+  - (+) Package directive errors resolved — LSP sees the full Gradle project structure
+  - (+) `gradlew` found — Gradle sync works for dependency resolution and classpath
+  - (+) Go-to-definition works across Gradle modules — security checks use the broader Gradle root scope
+  - (+) No UX change when user opens the actual Gradle root — `gradle_root` equals `project_root`
+  - (-) Security boundary is broader than the user-opened folder — paths anywhere in the Gradle tree are accessible for read/write. This is standard IDE behaviour (Android Studio works the same way).

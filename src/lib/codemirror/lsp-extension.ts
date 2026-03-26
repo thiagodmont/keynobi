@@ -7,8 +7,9 @@ import {
   type CompletionResult,
 } from "@codemirror/autocomplete";
 import { invoke } from "@tauri-apps/api/core";
-import { updateDiagnostics, type Diagnostic } from "@/stores/lsp.store";
+import { updateDiagnostics, type Diagnostic, hasCapability } from "@/stores/lsp.store";
 import { uriToPath, type LspHighlight } from "@/lib/tauri-api";
+import { navLog } from "@/lib/navigation-logger";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -33,25 +34,52 @@ function lspPosToOffset(
 }
 
 /** Navigate to an LSP definition/implementation result from the response. */
-async function navigateToLspLocations(locations: unknown): Promise<void> {
+async function navigateToLspLocations(
+  locations: unknown,
+  context: string,
+): Promise<void> {
   const { openFileAtLocation } = await import("@/services/project.service");
+
+  // Log the raw response at trace level — invaluable when the server returns
+  // null or an unexpected shape without any error.
+  navLog(
+    "debug",
+    `${context} raw response: ${JSON.stringify(locations) ?? "null"}`
+  );
+
   const list = Array.isArray(locations)
     ? locations
     : locations
     ? [locations]
     : [];
 
-  if (list.length === 0) return;
+  if (list.length === 0) {
+    const { lspState } = await import("@/stores/lsp.store");
+    const { showToast } = await import("@/components/common/Toast");
+    const lspStatus = lspState.status.state;
+    if (lspStatus === "indexing") {
+      showToast("LSP is still loading the project — try again in a moment", "info");
+    } else {
+      showToast("No definition found at this position", "info");
+    }
+    navLog("warn", `${context} → no location returned by server (LSP state: ${lspStatus})`);
+    return;
+  }
 
   const first = list[0] as any;
   const uri = first.uri ?? first.targetUri;
   const range = first.range ?? first.targetSelectionRange ?? first.targetRange;
-  if (!uri || !range) return;
+  if (!uri || !range) {
+    navLog("warn", `${context} → server response missing uri/range`);
+    return;
+  }
 
   const targetPath = uriToPath(uri);
   const targetLine = (range.start?.line ?? 0) + 1;
   const targetCol = range.start?.character ?? 0;
+  navLog("info", `${context} → ${targetPath}:${targetLine}:${targetCol}`);
   await openFileAtLocation(targetPath, targetLine, targetCol);
+  navLog("debug", `${context} → navigation complete`);
 }
 
 // ── Definition link (Cmd+hover underline) ────────────────────────────────────
@@ -137,9 +165,15 @@ function lspDefinitionLinkExtension(path: string): Extension[] {
         event.preventDefault();
         event.stopPropagation();
 
+        navLog("debug", `Cmd+click → requesting definition ${path}:${lspLine}:${lspCol}`);
+
         invoke("lsp_definition", { path, line: lspLine, col: lspCol })
-          .then((result) => navigateToLspLocations(result))
-          .catch(() => {});
+          .then((result) =>
+            navigateToLspLocations(result, `definition ${path}:${lspLine}:${lspCol}`)
+          )
+          .catch((err) => {
+            navLog("warn", `Cmd+click definition failed: ${err}`);
+          });
 
         clearLink(view);
         return true;
@@ -179,13 +213,24 @@ const documentHighlightField = StateField.define<DecorationSet>({
 
 function lspDocumentHighlightExtension(path: string): Extension[] {
   let highlightTimer: ReturnType<typeof setTimeout> | undefined;
+  // Set to true once we know the server doesn't support this method.
+  // Prevents spamming the server and stops ERROR noise in the Output panel.
+  let unsupported = false;
 
   return [
     documentHighlightField,
     EditorView.updateListener.of((update) => {
-      if (!update.selectionSet) return;
+      if (!update.selectionSet || unsupported) return;
       if (highlightTimer) clearTimeout(highlightTimer);
       highlightTimer = setTimeout(async () => {
+        // Check the capability gate populated from the initialize response.
+        // If the server omitted documentHighlightProvider, stop immediately.
+        if (!hasCapability("documentHighlightProvider")) {
+          unsupported = true;
+          update.view.dispatch({ effects: setDocumentHighlights.of([]) });
+          return;
+        }
+
         const pos = update.state.selection.main.head;
         const line = update.state.doc.lineAt(pos);
         const lspLine = line.number - 1;
@@ -201,8 +246,20 @@ function lspDocumentHighlightExtension(path: string): Extension[] {
         try {
           const result = await invoke<LspHighlight[] | null>("lsp_document_highlight", { path, line: lspLine, col: lspCol });
           update.view.dispatch({ effects: setDocumentHighlights.of(result ?? []) });
-        } catch {
-          // LSP not ready
+        } catch (err) {
+          // If the server returns "no handler" or any method-not-found error,
+          // permanently disable highlighting for this session so it stops
+          // generating ERROR noise in the Output panel.
+          const msg = String(err).toLowerCase();
+          if (
+            msg.includes("no handler") ||
+            msg.includes("not supported") ||
+            msg.includes("method not found") ||
+            msg.includes("-32601") // JSON-RPC MethodNotFound code
+          ) {
+            unsupported = true;
+          }
+          update.view.dispatch({ effects: setDocumentHighlights.of([]) });
         }
       }, 250);
     }),
@@ -310,9 +367,14 @@ function lspNavigationKeymaps(path: string): Extension {
         run(view) {
           const pos = view.state.selection.main.head;
           const line = view.state.doc.lineAt(pos);
-          invoke("lsp_definition", { path, line: line.number - 1, col: pos - line.from })
-            .then((result) => navigateToLspLocations(result))
-            .catch(() => {});
+          const lspLine = line.number - 1;
+          const lspCol = pos - line.from;
+          navLog("debug", `F12 → requesting definition ${path}:${lspLine}:${lspCol}`);
+          invoke("lsp_definition", { path, line: lspLine, col: lspCol })
+            .then((result) =>
+              navigateToLspLocations(result, `definition ${path}:${lspLine}:${lspCol}`)
+            )
+            .catch((err) => navLog("warn", `F12 definition failed: ${err}`));
           return true;
         },
       },
@@ -321,19 +383,26 @@ function lspNavigationKeymaps(path: string): Extension {
         async run(view) {
           const pos = view.state.selection.main.head;
           const line = view.state.doc.lineAt(pos);
+          const lspLine = line.number - 1;
+          const lspCol = pos - line.from;
+          navLog("debug", `Shift+F12 → requesting references ${path}:${lspLine}:${lspCol}`);
           try {
             const result = await invoke<any[]>("lsp_references", {
               path,
-              line: line.number - 1,
-              col: pos - line.from,
+              line: lspLine,
+              col: lspCol,
             });
-            if (!result?.length) return true;
+            if (!result?.length) {
+              navLog("warn", `Shift+F12 → no references found`);
+              return true;
+            }
+            navLog("info", `Shift+F12 → ${result.length} reference(s) found`);
             const { showReferences } = await import("@/stores/references.store");
             const word = view.state.wordAt(pos);
             const query = word ? view.state.sliceDoc(word.from, word.to) : "references";
             showReferences(query, result);
-          } catch {
-            // LSP not ready
+          } catch (err) {
+            navLog("warn", `Shift+F12 references failed: ${err}`);
           }
           return true;
         },
@@ -343,9 +412,14 @@ function lspNavigationKeymaps(path: string): Extension {
         run(view) {
           const pos = view.state.selection.main.head;
           const line = view.state.doc.lineAt(pos);
-          invoke("lsp_implementation", { path, line: line.number - 1, col: pos - line.from })
-            .then((result) => navigateToLspLocations(result))
-            .catch(() => {});
+          const lspLine = line.number - 1;
+          const lspCol = pos - line.from;
+          navLog("debug", `Cmd+F12 → requesting implementation ${path}:${lspLine}:${lspCol}`);
+          invoke("lsp_implementation", { path, line: lspLine, col: lspCol })
+            .then((result) =>
+              navigateToLspLocations(result, `implementation ${path}:${lspLine}:${lspCol}`)
+            )
+            .catch((err) => navLog("warn", `Cmd+F12 implementation failed: ${err}`));
           return true;
         },
       },

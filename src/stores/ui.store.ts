@@ -1,7 +1,7 @@
 import { createStore } from "solid-js/store";
 
 export type SidebarTab = "files" | "search" | "git" | "symbols";
-export type BottomPanelTab = "build" | "logcat" | "terminal" | "problems" | "references";
+export type BottomPanelTab = "build" | "logcat" | "terminal" | "problems" | "references" | "output";
 
 interface UIState {
   sidebarVisible: boolean;
@@ -47,4 +47,13 @@ export function setActiveSidebarTab(tab: SidebarTab) {
 
 export function setActiveBottomTab(tab: BottomPanelTab) {
   setUIState("activeBottomTab", tab);
+}
+
+/**
+ * Open the bottom panel and switch to the Output tab.
+ * Use this from the status bar, command palette, and any "show logs" action.
+ */
+export function openOutputPanel() {
+  setUIState("bottomPanelVisible", true);
+  setUIState("activeBottomTab", "output");
 }

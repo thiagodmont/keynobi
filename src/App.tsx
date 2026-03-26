@@ -7,6 +7,7 @@ import {
   setSidebarWidth,
   setBottomPanelHeight,
   setActiveSidebarTab,
+  openOutputPanel,
 } from "@/stores/ui.store";
 import {
   editorState,
@@ -34,10 +35,13 @@ import { registerKeybinding, initKeybindings } from "@/lib/keybindings";
 import { registerAction, type ActionCategory } from "@/lib/action-registry";
 import { CommandPalette, openPalette } from "@/components/common/CommandPalette";
 import { SettingsPanel, openSettings } from "@/components/settings/SettingsPanel";
+import { HealthPanel, openHealthPanel } from "@/components/health/HealthPanel";
 import { loadSettings } from "@/stores/settings.store";
+import { setLspStatus, setDownloadProgress, setServerCapabilities, setIndexingProgress, setIndexingJustCompleted } from "@/stores/lsp.store";
 import { navigateBack, navigateForward } from "@/lib/navigation-history";
-import { writeFile, formatError } from "@/lib/tauri-api";
+import { writeFile, formatError, listenLspStatus, listenLspDownloadProgress, listenLspCapabilities, listenLspProgress } from "@/lib/tauri-api";
 import { openProjectFolder } from "@/services/project.service";
+import { registerOpenFilesWithLsp } from "@/services/lsp.service";
 import { basename } from "@/lib/file-utils";
 
 function formatShortcut(opts: { key: string; metaKey?: boolean; shiftKey?: boolean; altKey?: boolean }): string {
@@ -79,10 +83,75 @@ function registerKeyAndAction(opts: {
 
 export function App(): JSX.Element {
   let unlistenClose: (() => void) | undefined;
+  let unlistenLspStatus: (() => void) | undefined;
+  let unlistenLspDownload: (() => void) | undefined;
+  let unlistenLspCaps: (() => void) | undefined;
+  let unlistenLspProgress: (() => void) | undefined;
+  // Track previous LSP state to detect indexing→ready/error transitions.
+  let prevLspStatusState: string = "stopped";
 
   onMount(async () => {
     initKeybindings();
     loadSettings();
+
+    // ── LSP event bridge ──────────────────────────────────────────────────────
+    // Wire Tauri events to the lsp store so the status bar and settings panel
+    // always reflect the real server state.
+    unlistenLspStatus = await listenLspStatus((status) => {
+      const wasIndexing = prevLspStatusState === "indexing";
+      setLspStatus(status.state, status.message ?? undefined);
+
+      // Detect the indexing → ready/error transition to trigger the
+      // completion flash in the status bar.
+      if (wasIndexing && status.state === "ready") {
+        setIndexingProgress(null);
+        setIndexingJustCompleted("success");
+        setTimeout(() => setIndexingJustCompleted(null), 3000);
+      } else if (wasIndexing && status.state === "error") {
+        setIndexingProgress(null);
+        setIndexingJustCompleted("error");
+      } else if (status.state === "indexing") {
+        // Clear any stale completion flash from a previous cycle.
+        setIndexingJustCompleted(null);
+      }
+
+      prevLspStatusState = status.state;
+
+      // When the server becomes ready, re-register all files that were already
+      // open in the editor.  Without this, any file opened while the server was
+      // still starting will be invisible to the LSP, causing Cmd+click, hover,
+      // completions, and diagnostics to silently return nothing.
+      if (status.state === "ready") {
+        registerOpenFilesWithLsp().catch(() => {});
+      }
+      // Auto-open the Output panel when the LSP starts or hits an error so
+      // the developer can see what's happening without manually navigating.
+      if (status.state === "starting" || status.state === "error") {
+        openOutputPanel();
+      }
+    });
+
+    // Extract percentage from raw progress events and update the progress bar.
+    unlistenLspProgress = await listenLspProgress((params: any) => {
+      const pct = params?.value?.percentage;
+      if (typeof pct === "number") {
+        setIndexingProgress(Math.min(100, Math.max(0, pct)));
+      }
+    });
+
+    unlistenLspDownload = await listenLspDownloadProgress((progress) => {
+      setDownloadProgress({
+        downloadedBytes: Number(progress.downloadedBytes),
+        totalBytes: progress.totalBytes !== null ? Number(progress.totalBytes) : null,
+        percent: progress.percent,
+      });
+      setLspStatus("downloading");
+    });
+
+    // Store server capabilities so the editor can skip unsupported requests.
+    unlistenLspCaps = await listenLspCapabilities((caps) => {
+      setServerCapabilities(caps as any);
+    });
 
     // ── Settings ─────────────────────────────────────────────────────────────
     registerKeyAndAction({ id: "general.settings", key: ",", metaKey: true, label: "Open Settings", category: "General", action: () => openSettings() });
@@ -90,6 +159,8 @@ export function App(): JSX.Element {
     // ── Layout ──────────────────────────────────────────────────────────────
     registerKeyAndAction({ id: "view.toggleSidebar", key: "b", metaKey: true, label: "Toggle Sidebar", category: "View", action: toggleSidebar });
     registerKeyAndAction({ id: "view.toggleBottomPanel", key: "j", metaKey: true, label: "Toggle Bottom Panel", category: "View", action: toggleBottomPanel });
+    registerKeyAndAction({ id: "view.openOutput", key: "u", metaKey: true, shiftKey: true, label: "Open Output Panel", category: "View", action: openOutputPanel });
+    registerKeyAndAction({ id: "view.healthCenter", key: "h", metaKey: true, shiftKey: true, label: "Open Health Center", category: "View", action: openHealthPanel });
 
     // ── File ────────────────────────────────────────────────────────────────
     registerKeyAndAction({ id: "file.openFolder", key: "o", metaKey: true, label: "Open Folder", category: "File", action: () => { openProjectFolder(); } });
@@ -188,7 +259,13 @@ export function App(): JSX.Element {
           const loc = Array.isArray(result) ? result[0] : result;
           if (loc?.uri) {
             openFileAtLocation(uriToPath(loc.uri), (loc.range?.start?.line ?? 0) + 1, loc.range?.start?.character ?? 0);
+          } else {
+            const { lspState } = await import("@/stores/lsp.store");
+            showToast(lspState.status.state === "indexing" ? "LSP is still loading the project — try again in a moment" : "No definition found at this position", "info");
           }
+        } else {
+          const { lspState } = await import("@/stores/lsp.store");
+          showToast(lspState.status.state === "indexing" ? "LSP is still loading the project — try again in a moment" : "No definition found at this position", "info");
         }
       },
     });
@@ -284,6 +361,10 @@ export function App(): JSX.Element {
 
   onCleanup(() => {
     unlistenClose?.();
+    unlistenLspStatus?.();
+    unlistenLspDownload?.();
+    unlistenLspCaps?.();
+    unlistenLspProgress?.();
   });
 
   function switchTab(direction: -1 | 1) {
@@ -382,6 +463,7 @@ export function App(): JSX.Element {
       <ToastContainer />
       <CommandPalette />
       <SettingsPanel />
+      <HealthPanel />
       <DialogHost />
     </div>
   );

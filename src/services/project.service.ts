@@ -5,7 +5,7 @@
  * between App.tsx (Cmd+O keybinding) and FileTree.tsx (sidebar button).
  */
 
-import { openFolderDialog, openProject, readFile, formatError, lspDidOpen } from "@/lib/tauri-api";
+import { openFolderDialog, openProject, readFile, formatError, lspDidOpen, getGradleRoot } from "@/lib/tauri-api";
 import { setProject, setLoading } from "@/stores/project.store";
 import {
   editorState,
@@ -18,6 +18,8 @@ import { showToast } from "@/components/common/Toast";
 import { detectLanguage } from "@/lib/file-utils";
 import { pushNavigation } from "@/lib/navigation-history";
 import type { FileNode } from "@/stores/project.store";
+import { ensureLspReady } from "@/services/lsp.service";
+import { navLog } from "@/lib/navigation-logger";
 
 export interface OpenProjectResult {
   root: string;
@@ -39,11 +41,18 @@ export async function openProjectFolder(): Promise<OpenProjectResult | null> {
   setLoading(true);
   try {
     const tree = await openProject(path);
-    setProject(path, tree);
+
+    // Query the detected Gradle root (set during open_project on the Rust side).
+    const gradleRoot = await getGradleRoot().catch(() => null);
+    setProject(path, tree, gradleRoot);
 
     const rootDirs = (tree.children ?? [])
       .filter((c) => c.kind === "directory")
       .map((c) => c.path);
+
+    // Kick off the LSP lifecycle in the background — check, download if needed,
+    // then start.  Fire-and-forget: errors surface as toasts + status bar.
+    ensureLspReady(path).catch(() => {});
 
     return { root: path, tree, rootDirs };
   } catch (err) {
@@ -88,9 +97,18 @@ export async function openFileAtLocation(
       };
       addOpenFile(file);
 
-      // Notify LSP about the newly opened file so it can provide navigation
+      // Notify LSP about the newly opened file so it can provide navigation.
+      // If LSP is still starting (the common case on first launch), this will
+      // fail — registerOpenFilesWithLsp() will retry when the server is ready.
       if (language === "kotlin" || language === "gradle") {
-        lspDidOpen(path, content, "kotlin").catch(() => {});
+        const name = file.name;
+        navLog("debug", `Opening ${name} — sending lsp_did_open`);
+        lspDidOpen(path, content, "kotlin").catch((err) => {
+          navLog(
+            "debug",
+            `lsp_did_open deferred for ${name}: ${formatError(err)} (will retry on LSP ready)`
+          );
+        });
       }
     }
     setActiveFile(path);

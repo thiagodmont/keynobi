@@ -3,12 +3,16 @@ pub mod models;
 pub mod services;
 
 use commands::file_system::*;
+use commands::health::run_health_checks;
 use commands::lsp::*;
 use commands::search::{search_in_file, search_project};
 use commands::settings::*;
 use commands::treesitter::{get_document_symbols, get_symbol_at_position, TreeSitterState};
+use models::log_entry::LogEntry;
 use services::fs_manager::FsWatcher;
+use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 // ── Per-concern state ─────────────────────────────────────────────────────────
@@ -31,6 +35,10 @@ pub struct FsState(pub Mutex<FsStateInner>);
 
 pub struct FsStateInner {
     pub project_root: Option<PathBuf>,
+    /// The detected Gradle project root (ancestor with `settings.gradle(.kts)`).
+    /// Used as the LSP workspace root and as the security boundary for file
+    /// operations.  Falls back to `project_root` when no Gradle root is found.
+    pub gradle_root: Option<PathBuf>,
     pub watcher: Option<FsWatcher>,
 }
 
@@ -38,6 +46,7 @@ impl FsState {
     pub fn new() -> Self {
         FsState(Mutex::new(FsStateInner {
             project_root: None,
+            gradle_root: None,
             watcher: None,
         }))
     }
@@ -48,6 +57,15 @@ impl Default for FsState {
         Self::new()
     }
 }
+
+/// Bounded ring-buffer of structured log entries shared across all log sources
+/// (LSP server, Logcat, build output).  Protected by a `tokio::sync::Mutex`
+/// so it can be safely written from async notification tasks and read from
+/// Tauri commands without holding the lock across any I/O.
+pub type LogBuffer = Arc<Mutex<VecDeque<LogEntry>>>;
+
+/// Maximum entries kept in [`LogBuffer`] before the oldest is evicted.
+pub const MAX_LOG_ENTRIES: usize = 2000;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -67,6 +85,7 @@ pub fn run() {
         .manage(FsState::new())
         .manage(TreeSitterState::new())
         .manage(LspState::new())
+        .manage(Arc::new(Mutex::new(VecDeque::<LogEntry>::new())) as LogBuffer)
         .invoke_handler(tauri::generate_handler![
             // File system
             open_project,
@@ -79,6 +98,7 @@ pub fn run() {
             delete_path,
             rename_path,
             get_project_root,
+            get_gradle_root,
             // Tree-sitter
             get_document_symbols,
             get_symbol_at_position,
@@ -108,6 +128,9 @@ pub fn run() {
             lsp_pull_diagnostics,
             lsp_document_highlight,
             lsp_signature_help,
+            lsp_get_logs,
+            lsp_get_capabilities,
+            lsp_append_client_log,
             // Settings
             get_settings,
             save_settings,
@@ -115,6 +138,8 @@ pub fn run() {
             reset_settings,
             detect_sdk_path,
             detect_java_path,
+            // Health
+            run_health_checks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

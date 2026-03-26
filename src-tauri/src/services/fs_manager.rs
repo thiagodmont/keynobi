@@ -51,6 +51,34 @@ fn is_path_excluded(path: &Path) -> bool {
         .any(|c| is_excluded(c.as_os_str().to_string_lossy().as_ref()))
 }
 
+// ── Gradle root detection ─────────────────────────────────────────────────────
+
+/// Walk upward from `start` looking for the nearest ancestor that contains
+/// `settings.gradle` or `settings.gradle.kts` — the canonical marker for a
+/// Gradle project root.  Returns `None` if no Gradle root is found within
+/// `MAX_GRADLE_SEARCH_DEPTH` levels.
+const MAX_GRADLE_SEARCH_DEPTH: usize = 10;
+
+pub fn find_gradle_root(start: &Path) -> Option<PathBuf> {
+    let mut current = if start.is_absolute() {
+        start.to_path_buf()
+    } else {
+        std::env::current_dir().ok()?.join(start)
+    };
+
+    for _ in 0..MAX_GRADLE_SEARCH_DEPTH {
+        if current.join("settings.gradle").is_file()
+            || current.join("settings.gradle.kts").is_file()
+        {
+            return Some(current);
+        }
+        if !current.pop() {
+            break;
+        }
+    }
+    None
+}
+
 // ── File tree ─────────────────────────────────────────────────────────────────
 
 /// Build a one-level-deep `FileNode` tree rooted at `root`.
@@ -597,5 +625,88 @@ mod tests {
         fs::write(&dst, "b").unwrap();
         let err = rename_path(&src, &dst).unwrap_err();
         assert!(matches!(err, FsError::AlreadyExists(_)), "{err}");
+    }
+
+    // ── find_gradle_root ──────────────────────────────────────────────────
+
+    #[test]
+    fn finds_gradle_root_with_settings_gradle_kts() {
+        let dir = make_temp_project(); // has settings.gradle.kts at root
+        let result = find_gradle_root(dir.path());
+        assert_eq!(result, Some(dir.path().to_path_buf()));
+    }
+
+    #[test]
+    fn finds_gradle_root_with_settings_gradle() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("settings.gradle"), "rootProject.name = \"test\"").unwrap();
+        let result = find_gradle_root(dir.path());
+        assert_eq!(result, Some(dir.path().to_path_buf()));
+    }
+
+    #[test]
+    fn finds_gradle_root_from_subfolder() {
+        let dir = make_temp_project();
+        let module = dir.path().join("app");
+        let result = find_gradle_root(&module);
+        assert_eq!(
+            result,
+            Some(dir.path().to_path_buf()),
+            "should walk up from app/ to find settings.gradle.kts at root"
+        );
+    }
+
+    #[test]
+    fn finds_gradle_root_from_deeply_nested_subfolder() {
+        let dir = make_temp_project();
+        let deep = dir.path().join("app/src/main/kotlin/com/example");
+        let result = find_gradle_root(&deep);
+        assert_eq!(
+            result,
+            Some(dir.path().to_path_buf()),
+            "should walk up from deeply nested path"
+        );
+    }
+
+    #[test]
+    fn returns_none_for_non_gradle_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("src")).unwrap();
+        let result = find_gradle_root(dir.path());
+        assert_eq!(result, None, "no settings.gradle means no Gradle root");
+    }
+
+    #[test]
+    fn returns_none_when_depth_limit_exceeded() {
+        let dir = tempfile::tempdir().unwrap();
+        // Create a deeply nested path (>10 levels below a Gradle root)
+        let mut nested = dir.path().to_path_buf();
+        for i in 0..12 {
+            nested = nested.join(format!("level{i}"));
+        }
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(dir.path().join("settings.gradle.kts"), "").unwrap();
+        let result = find_gradle_root(&nested);
+        assert_eq!(result, None, "should not find root beyond depth limit");
+    }
+
+    #[test]
+    fn finds_nearest_gradle_root_not_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        // Outer Gradle project
+        fs::write(dir.path().join("settings.gradle.kts"), "outer").unwrap();
+        // Inner Gradle project (e.g. composite build)
+        let inner = dir.path().join("inner");
+        fs::create_dir_all(&inner).unwrap();
+        fs::write(inner.join("settings.gradle.kts"), "inner").unwrap();
+        let module = inner.join("app");
+        fs::create_dir_all(&module).unwrap();
+
+        let result = find_gradle_root(&module);
+        assert_eq!(
+            result,
+            Some(inner.clone()),
+            "should find the nearest (inner) Gradle root, not the outer one"
+        );
     }
 }

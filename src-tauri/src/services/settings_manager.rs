@@ -57,6 +57,8 @@ pub fn reset_settings() -> Result<AppSettings, String> {
 }
 
 /// Try to find the Android SDK on this machine.
+/// Checks process environment first (fast), then falls back to the macOS
+/// default Android Studio location.
 pub fn detect_android_sdk() -> Option<String> {
     if let Ok(sdk) = std::env::var("ANDROID_HOME") {
         let p = PathBuf::from(&sdk);
@@ -78,7 +80,42 @@ pub fn detect_android_sdk() -> Option<String> {
     None
 }
 
+/// Spawn a login shell to read `ANDROID_HOME` / `ANDROID_SDK_ROOT` from the
+/// user's profile (`.zshrc`, `.bash_profile`, etc.).
+///
+/// On macOS, GUI apps launched from Finder or the Dock do **not** inherit
+/// the user's shell environment, so `std::env::var` returns nothing for
+/// variables set only in shell config files.  Spawning a login shell is the
+/// standard workaround.
+pub async fn detect_android_sdk_from_shell() -> Option<String> {
+    #[cfg(unix)]
+    {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+        for var in &["ANDROID_HOME", "ANDROID_SDK_ROOT"] {
+            let cmd = format!("echo ${var}");
+            let result = tokio::time::timeout(
+                std::time::Duration::from_secs(4),
+                tokio::process::Command::new(&shell)
+                    .args(["-l", "-c", &cmd])
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::null())
+                    .output(),
+            )
+            .await;
+
+            if let Ok(Ok(out)) = result {
+                let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !path.is_empty() && PathBuf::from(&path).is_dir() {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Try to find a JDK installation on this machine.
+/// Checks process environment first, then macOS `/Library/Java/`.
 pub fn detect_java_home() -> Option<String> {
     if let Ok(java) = std::env::var("JAVA_HOME") {
         let p = PathBuf::from(&java);
@@ -94,6 +131,32 @@ pub fn detect_java_home() -> Option<String> {
                 if home.is_dir() {
                     return Some(home.to_string_lossy().to_string());
                 }
+            }
+        }
+    }
+    None
+}
+
+/// Spawn a login shell to read `JAVA_HOME` from the user's profile.
+/// Same rationale as `detect_android_sdk_from_shell`.
+pub async fn detect_java_home_from_shell() -> Option<String> {
+    #[cfg(unix)]
+    {
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(4),
+            tokio::process::Command::new(&shell)
+                .args(["-l", "-c", "echo $JAVA_HOME"])
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .output(),
+        )
+        .await;
+
+        if let Ok(Ok(out)) = result {
+            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !path.is_empty() && PathBuf::from(&path).is_dir() {
+                return Some(path);
             }
         }
     }

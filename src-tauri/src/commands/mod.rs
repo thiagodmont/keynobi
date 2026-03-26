@@ -1,4 +1,5 @@
 pub mod file_system;
+pub mod health;
 pub mod lsp;
 pub mod search;
 pub mod settings;

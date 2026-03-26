@@ -16,6 +16,19 @@ pub enum LspClientState {
     Error(String),
 }
 
+/// Environment variables forwarded to the LSP server process.
+/// All fields are optional; only those present are set on the child process.
+#[derive(Debug, Default)]
+pub struct LspEnv {
+    /// Path to the Android SDK root (`ANDROID_HOME` / `ANDROID_SDK_ROOT`).
+    /// Required for Gradle to resolve Android dependencies and source roots.
+    pub android_sdk_path: Option<String>,
+    /// Path to the JDK home (`JAVA_HOME`).
+    /// The bundled JBR handles running the LSP itself, but Gradle tasks may
+    /// need a separate JDK for compilation.
+    pub java_home: Option<String>,
+}
+
 pub struct LspClient {
     writer: Arc<Mutex<tokio::process::ChildStdin>>,
     pending: Arc<Mutex<HashMap<i64, oneshot::Sender<Value>>>>,
@@ -25,22 +38,42 @@ pub struct LspClient {
     reader_handle: Option<tokio::task::JoinHandle<()>>,
     #[allow(dead_code)] // Kept alive to prevent the notification channel from closing
     notification_tx: mpsc::UnboundedSender<(String, Value)>,
+    /// Server capabilities returned by the `initialize` response.
+    /// Used by callers to check whether a given LSP method is supported before
+    /// sending a request, preventing unnecessary round-trips and noisy errors.
+    server_capabilities: Arc<Mutex<Value>>,
 }
 
 impl LspClient {
     pub async fn start(
         launch_script: &Path,
         workspace_root: &Path,
-        cache_dir: &Path,
+        system_dir: &Path,
+        env: LspEnv,
         notification_tx: mpsc::UnboundedSender<(String, Value)>,
     ) -> Result<Self, String> {
         let mut cmd = Command::new(launch_script);
         cmd.arg("--stdio");
         cmd.arg(format!(
             "--system-path={}",
-            cache_dir.to_string_lossy()
+            system_dir.to_string_lossy()
         ));
         cmd.arg("--log-level=INFO");
+
+        // Run from the workspace root so Gradle can discover `gradlew` and
+        // all module `build.gradle` / `settings.gradle` files.
+        cmd.current_dir(workspace_root);
+
+        // On macOS the app's environment doesn't inherit shell variables like
+        // ANDROID_HOME.  Pass them explicitly so Gradle can find the SDK.
+        if let Some(ref sdk) = env.android_sdk_path {
+            cmd.env("ANDROID_HOME", sdk);
+            cmd.env("ANDROID_SDK_ROOT", sdk); // legacy alias still used by some tools
+        }
+        if let Some(ref java) = env.java_home {
+            cmd.env("JAVA_HOME", java);
+        }
+
         cmd.stdin(std::process::Stdio::piped());
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
@@ -84,11 +117,17 @@ impl LspClient {
         });
 
         if let Some(stderr) = stderr {
+            let notif_tx_stderr = notification_tx.clone();
             tokio::spawn(async move {
                 let mut reader = BufReader::new(stderr);
                 let mut line = String::new();
                 while reader.read_line(&mut line).await.unwrap_or(0) > 0 {
-                    tracing::debug!(target: "lsp_stderr", "{}", line.trim_end());
+                    let trimmed = line.trim_end().to_owned();
+                    tracing::debug!(target: "lsp_stderr", "{}", trimmed);
+                    let _ = notif_tx_stderr.send((
+                        "kotlin/stderr".into(),
+                        serde_json::json!({ "message": trimmed }),
+                    ));
                     line.clear();
                 }
             });
@@ -102,6 +141,7 @@ impl LspClient {
             state: Arc::new(Mutex::new(LspClientState::Starting)),
             reader_handle: Some(reader_handle),
             notification_tx,
+            server_capabilities: Arc::new(Mutex::new(Value::Null)),
         };
 
         client.initialize(workspace_root).await?;
@@ -178,7 +218,21 @@ impl LspClient {
             }]
         });
 
-        let result = self.request("initialize", params).await?;
+        let result = self
+            .request_with_timeout(
+                "initialize",
+                params,
+                // JVM cold-start on first run can take 60-90 seconds.
+                // Give it a full 3 minutes before giving up.
+                std::time::Duration::from_secs(180),
+            )
+            .await?;
+
+        // Store server capabilities so callers can check feature support without
+        // making a round-trip on every use.
+        let caps = result.get("capabilities").cloned().unwrap_or(Value::Null);
+        *self.server_capabilities.lock().await = caps;
+
         tracing::info!("LSP initialized: {:?}", result.get("serverInfo"));
 
         self.notify("initialized", json!({})).await?;
@@ -187,7 +241,23 @@ impl LspClient {
         Ok(())
     }
 
+    /// Return a clone of the server capabilities reported in the `initialize`
+    /// response.  Returns `Value::Null` before initialization completes.
+    pub async fn server_capabilities(&self) -> Value {
+        self.server_capabilities.lock().await.clone()
+    }
+
     pub async fn request(&self, method: &str, params: Value) -> Result<Value, String> {
+        self.request_with_timeout(method, params, std::time::Duration::from_secs(30))
+            .await
+    }
+
+    async fn request_with_timeout(
+        &self,
+        method: &str,
+        params: Value,
+        timeout: std::time::Duration,
+    ) -> Result<Value, String> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
 
         let msg = json!({
@@ -204,7 +274,7 @@ impl LspClient {
 
         tracing::debug!("LSP request [{}] {}", id, method);
 
-        let result = tokio::time::timeout(std::time::Duration::from_secs(30), rx)
+        let result = tokio::time::timeout(timeout, rx)
             .await
             .map_err(|_| format!("LSP request timed out: {method}"))?
             .map_err(|_| format!("LSP response channel closed for: {method}"))?;
@@ -613,7 +683,34 @@ async fn handle_message(
                     json!({ "jsonrpc": "2.0", "id": id, "result": null })
                 }
                 "workspace/configuration" => {
-                    json!({ "jsonrpc": "2.0", "id": id, "result": [] })
+                    // The LSP spec requires one result element per requested item.
+                    // Returning [] when N items are requested is malformed and
+                    // causes the server to disable features like Gradle support.
+                    let items = msg
+                        .get("params")
+                        .and_then(|p| p.get("items"))
+                        .and_then(|i| i.as_array());
+
+                    // Forward what the server requested to the Output panel so
+                    // the developer can see if configuration is needed.
+                    if let Some(items) = items {
+                        let sections: Vec<&str> = items
+                            .iter()
+                            .filter_map(|i| i.get("section").and_then(|s| s.as_str()))
+                            .collect();
+                        if !sections.is_empty() {
+                            let msg_text = format!(
+                                "workspace/configuration requested: [{}]",
+                                sections.join(", ")
+                            );
+                            let _ = notif_tx.send(("kotlin/client-debug".into(), json!({ "message": msg_text })));
+                        }
+                        // Return null for each requested item — correct per LSP spec.
+                        let nulls: Vec<Value> = (0..items.len()).map(|_| Value::Null).collect();
+                        json!({ "jsonrpc": "2.0", "id": id, "result": nulls })
+                    } else {
+                        json!({ "jsonrpc": "2.0", "id": id, "result": [] })
+                    }
                 }
                 _ => {
                     json!({
@@ -722,5 +819,24 @@ mod tests {
         let result = read_message(&mut reader).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("JSON parse error"));
+    }
+
+    // ── LspEnv ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn lsp_env_default_has_no_fields_set() {
+        let env = LspEnv::default();
+        assert!(env.android_sdk_path.is_none());
+        assert!(env.java_home.is_none());
+    }
+
+    #[test]
+    fn lsp_env_stores_sdk_and_java_home() {
+        let env = LspEnv {
+            android_sdk_path: Some("/Library/Android/sdk".into()),
+            java_home: Some("/opt/homebrew/opt/openjdk@17".into()),
+        };
+        assert_eq!(env.android_sdk_path.as_deref(), Some("/Library/Android/sdk"));
+        assert_eq!(env.java_home.as_deref(), Some("/opt/homebrew/opt/openjdk@17"));
     }
 }
