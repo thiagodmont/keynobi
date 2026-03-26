@@ -1,7 +1,7 @@
 # Android IDE -- User Manual
 
 > AI-First Android Development Environment  
-> Version 0.1.0 (Phase 2 -- Code Intelligence)
+> Version 0.2.0 (Phase 3 — Build System + Devices)
 
 ---
 
@@ -69,7 +69,7 @@ The left sidebar has four tabs, accessible by clicking the icons:
 Toggle with **Cmd+J**. Contains tabs for:
 
 - **Problems** -- All diagnostics (errors/warnings) across open files
-- **Build** -- Build output (coming in Phase 3)
+- **Build** -- Streaming Gradle build output + structured error list (Phase 3)
 - **Logcat** -- Android log viewer (coming in Phase 4)
 - **Terminal** -- Integrated terminal (coming in Phase 6)
 
@@ -80,6 +80,9 @@ The bottom bar shows:
 - **Project name** (left)
 - **LSP status** -- "Kotlin LSP: Starting...", "Ready", "Error" (left)
 - **Diagnostic counts** -- Error count (red) and warning count (yellow) (left)
+- **Build status** -- "Building: assembleDebug", "Build: OK", "Build: Failed" (left) — click to open Build panel
+- **Variant selector** -- Active build variant (e.g. `debug`) — click to open picker (Cmd+Shift+V)
+- **Device selector** -- Connected device name (e.g. `Pixel 7`) or "No Device" — click to open device panel
 - **Cursor position** -- `Ln X, Col Y` (right)
 - **Encoding** -- UTF-8 (right)
 - **Language** -- Kotlin, Gradle, XML, etc. (right)
@@ -170,6 +173,60 @@ Supported languages:
 | Fold code block | **Cmd+Shift+[** |
 | Unfold code block | **Cmd+Shift+]** |
 | Trigger completion | **Ctrl+Space** |
+
+---
+
+## Build System
+
+### Running a Build
+
+Press **Cmd+R** or click the green play button in the toolbar to run a full build-install-launch cycle:
+
+1. The IDE assembles the active build variant with Gradle.
+2. On success, installs the APK on the selected device.
+3. The app is launched via `adb shell am start`.
+
+Press **Cmd+Shift+R** to build without deploying (assemble only).
+
+### Build Panel
+
+The Build tab in the bottom panel (Cmd+J, then "Build") shows:
+
+- **Log view** — Streaming Gradle output with ANSI color codes stripped, filterable by level and searchable.
+- **Problems view** — Structured list of Kotlin compiler errors and warnings, grouped by file and clickable to jump to the error location in the editor.
+- **Build summary** — Success/failure badge, duration, error/warning counts.
+
+### Build Variants
+
+Android projects have multiple build variants (combinations of build types like `debug`/`release` and product flavors).
+
+- Click the **variant pill** in the status bar to open the variant picker.
+- Press **Cmd+Shift+V** to open the variant picker from anywhere.
+- The IDE auto-discovers variants by parsing `app/build.gradle.kts` with Tree-sitter.
+
+### Devices
+
+- Click the **device pill** in the status bar to open the device panel.
+- The device panel shows connected physical devices, running emulators, and available AVDs.
+- Click a device to select it as the deploy target.
+- Click "Launch" next to an AVD to start that emulator.
+
+---
+
+## Devices
+
+### Connecting a Physical Device
+
+1. Enable USB debugging in your Android device's Developer Options.
+2. Connect the device via USB.
+3. Accept the "Allow USB debugging" prompt on the device.
+4. The device appears in the device panel with status "online".
+
+### Emulators
+
+- Click "Launch" in the device panel next to any available AVD.
+- The IDE waits for the emulator to boot (up to 60 seconds).
+- Once online, the emulator appears in the device list and can be selected for deployment.
 
 ---
 
@@ -284,6 +341,13 @@ All commands shown in the command palette:
 | Go to Symbol in Workspace | Cmd+T | Navigate |
 | Navigate Back | Cmd+- | Navigate |
 | Navigate Forward | Cmd+Shift+- | Navigate |
+| Run App | Cmd+R | Build |
+| Build Only (no deploy) | Cmd+Shift+R | Build |
+| Cancel Build | — | Build |
+| Clean Project | — | Build |
+| Select Build Variant | Cmd+Shift+V | Build |
+| Select Device | — | Build |
+| Open Build Panel | — | View |
 
 ---
 
@@ -382,6 +446,9 @@ The Problems panel (in the bottom panel, toggle with **Cmd+J**) shows all diagno
 | **Cmd+Shift+]** | Next tab |
 | **Cmd+-** | Navigate back |
 | **Cmd+Shift+-** | Navigate forward |
+| **Cmd+R** | Run App (build + install + launch) |
+| **Cmd+Shift+R** | Build Only (assemble, no deploy) |
+| **Cmd+Shift+V** | Select Build Variant |
 
 ### Editor Shortcuts
 

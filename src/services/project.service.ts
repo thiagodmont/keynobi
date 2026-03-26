@@ -5,7 +5,7 @@
  * between App.tsx (Cmd+O keybinding) and FileTree.tsx (sidebar button).
  */
 
-import { openFolderDialog, openProject, readFile, formatError, lspDidOpen, getGradleRoot } from "@/lib/tauri-api";
+import { openFolderDialog, openProject, readFile, formatError, lspDidOpen, getGradleRoot, parseLspUri, lspDecompile, lspReadArchiveEntry } from "@/lib/tauri-api";
 import { setProject, setLoading } from "@/stores/project.store";
 import {
   editorState,
@@ -131,4 +131,96 @@ export async function openFileAtLocation(
   } catch (err) {
     showToast(`Failed to open file: ${formatError(err)}`, "error");
   }
+}
+
+/**
+ * Open a decompiled or archive-extracted file in a read-only editor tab.
+ *
+ * Called by navigation (go-to-definition / implementation) when the LSP
+ * returns a `jar:`, `jrt:`, or archive-path (`!/`) URI pointing to library
+ * source that is not on disk as a regular file.
+ *
+ * Strategy:
+ *   1. Try the LSP `decompile` command first (works for `.class` files and
+ *      gives nicely formatted Kotlin/Java source from the Fernflower decompiler
+ *      built into IntelliJ).
+ *   2. Fall back to reading the raw text from the ZIP/JAR archive on disk (for
+ *      source JARs like `kotlin-stdlib-sources.jar` or the JDK `src.zip`).
+ */
+export async function openVirtualFile(
+  uri: string,
+  line: number,
+  col: number
+): Promise<void> {
+  // Use the full URI as the "path" key so each unique decompiled file gets
+  // its own tab and the tab can be identified unambiguously.
+  const virtualPath = uri;
+
+  // Push current navigation before jumping.
+  const currentPath = editorState.activeFilePath;
+  if (currentPath) {
+    pushNavigation({
+      path: currentPath,
+      line: editorState.cursorLine ?? 1,
+      col: editorState.cursorCol ?? 0,
+    });
+  }
+
+  if (!isFileOpen(virtualPath)) {
+    navLog("debug", `Opening virtual file: ${uri}`);
+
+    // Determine a display name from the URI (last path component).
+    const displayName = uri.split(/[/!]/).filter(Boolean).pop() ?? uri;
+    const language = detectLanguage(displayName);
+
+    let content = "";
+
+    // Step 1: Try LSP decompile command.
+    const decompiled = await lspDecompile(uri);
+    if (decompiled?.code) {
+      navLog("debug", `Decompiled ${displayName} via LSP (${decompiled.language})`);
+      content = decompiled.code;
+    } else {
+      // Step 2: Try reading from archive directly (for source JARs).
+      const parsed = parseLspUri(uri);
+      if (parsed.kind === "jar" && parsed.archivePath && parsed.entryPath) {
+        navLog("debug", `Extracting ${displayName} from archive ${parsed.archivePath}`);
+        const extracted = await lspReadArchiveEntry(parsed.archivePath, parsed.entryPath);
+        if (extracted !== null) {
+          content = extracted;
+        }
+      }
+
+      if (!content) {
+        navLog("warn", `Could not retrieve content for ${uri} — showing empty placeholder`);
+        content = `// Cannot decompile or extract: ${uri}\n// Try installing source JARs via Gradle.`;
+      }
+    }
+
+    const file: OpenFile = {
+      path: virtualPath,
+      name: `[decompiled] ${displayName}`,
+      savedContent: content,
+      dirty: false,
+      editorState: null,
+      language,
+      virtual: true,
+    };
+    addOpenFile(file);
+  }
+
+  setActiveFile(virtualPath);
+
+  setTimeout(async () => {
+    const { getEditorView } = await import("@/components/editor/CodeEditor");
+    const view = getEditorView();
+    if (view) {
+      const safeLines = view.state.doc.lines;
+      const targetLine = Math.max(1, Math.min(line, safeLines));
+      const lineInfo = view.state.doc.line(targetLine);
+      const pos = lineInfo.from + Math.max(0, col);
+      view.dispatch({ selection: { anchor: pos }, scrollIntoView: true });
+      view.focus();
+    }
+  }, 50);
 }

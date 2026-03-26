@@ -110,6 +110,45 @@
   white-space: pre-wrap;
 }
 
+/* ── LSP Semantic Token Highlighting ──────────────────────────────────────── */
+/* These classes are added by the semantic highlight CodeMirror extension and  */
+/* are applied on top of Tree-sitter syntax highlighting.                      */
+
+/* Types: classes, interfaces, enums, structs, type parameters */
+.cm-semantic-class,
+.cm-semantic-enum,
+.cm-semantic-interface,
+.cm-semantic-struct,
+.cm-semantic-type { color: #4ec9b0; }
+
+/* Type parameters (generics: T, K, V) */
+.cm-semantic-typeParameter { color: #4ec9b0; font-style: italic; }
+
+/* Functions and methods */
+.cm-semantic-function,
+.cm-semantic-method { color: #dcdcaa; }
+
+/* Namespaces and packages */
+.cm-semantic-namespace { color: #9cdcfe; }
+
+/* Properties */
+.cm-semantic-property { color: #9cdcfe; }
+
+/* Variables */
+.cm-semantic-variable { color: #9cdcfe; }
+
+/* Parameters */
+.cm-semantic-parameter { color: #9cdcfe; }
+
+/* Enum members / constants */
+.cm-semantic-enumMember { color: #4fc1ff; }
+
+/* Modifiers: deprecated strikethrough */
+.cm-semantic-deprecated { text-decoration: line-through; opacity: 0.65; }
+
+/* Static members: slightly muted */
+.cm-semantic-static { opacity: 0.90; }
+
 /* Breadcrumbs scrollbar hidden */
 
 /* ── LSP status indicator ──────────────────────────────────────────────────── */

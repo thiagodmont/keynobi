@@ -399,3 +399,75 @@ Performance-critical services have Criterion benchmarks in `src-tauri/benches/`.
 | Component tests | `{name}.test.ts(x)` | `filetree.test.ts` |
 | Services | `{domain}.service.ts` | `project.service.ts` |
 | Bindings | Auto-generated — do not create manually | `FileNode.ts`, `Diagnostic.ts` |
+
+---
+
+## Build / Device Patterns (Phase 3)
+
+### Channel Streaming (Build Output)
+
+For high-throughput line-by-line streaming from Rust to frontend, use Tauri Channels (not events). The channel reference is passed as a command parameter:
+
+```rust
+// Rust command — accepts a Channel<BuildLine>
+#[tauri::command]
+pub async fn run_gradle_task(
+    task: String,
+    on_line: Channel<BuildLine>,   // <-- channel parameter
+    ...
+) -> Result<u32, String> {
+    // ...
+    let _ = on_line.send(line);   // fires on each output line
+}
+```
+
+```typescript
+// TypeScript — create a Channel and pass it to invoke
+const channel = new Channel<BuildLine>();
+channel.onmessage = (line) => addBuildLine(line);
+await invoke<number>("run_gradle_task", { task, onLine: channel });
+```
+
+Use Tauri **events** (`emit`/`listen`) for fire-and-forget lifecycle notifications (build complete, device list changed). Use **channels** for high-frequency streaming data (build output).
+
+### Build State Pattern
+
+Build state follows the per-concern Mutex pattern (ADR-4). `BuildState` holds only the in-flight process ID, current status, errors, and bounded history. No Tauri types in `build_runner.rs`.
+
+```rust
+pub struct BuildState(pub Mutex<BuildStateInner>);
+pub struct BuildStateInner {
+    pub current_build: Option<ProcessId>,
+    pub status: BuildStatus,
+    pub history: VecDeque<BuildRecord>,   // bounded: MAX_HISTORY = 10
+    pub current_errors: Vec<BuildError>,
+    next_id: u32,
+}
+```
+
+### Device State Pattern
+
+Same per-concern pattern for ADB device state:
+
+```rust
+pub struct DeviceState(pub Mutex<DeviceStateInner>);
+pub struct DeviceStateInner {
+    pub devices: Vec<Device>,
+    pub selected_serial: Option<String>,
+    pub polling: bool,            // guards against double-starting the poll task
+}
+```
+
+Device polling runs as a detached `tokio::spawn` task. When the device list changes, it emits `device:list_changed` via `AppHandle::emit`. The frontend listens and calls `setDevices()` in the store.
+
+### Build Service Pattern
+
+A `build.service.ts` coordinates multiple IPC calls into a user-visible action:
+
+```
+runBuild() → runGradleTask (IPC) → addBuildLine (per line) → finalizeBuild (on complete)
+runAndDeploy() → runBuild → findApkPath → installApkOnDevice → launchAppOnDevice
+```
+
+Build errors accumulate in the frontend service and are passed to `finalizeBuild` for persistence in the Rust build history.
+

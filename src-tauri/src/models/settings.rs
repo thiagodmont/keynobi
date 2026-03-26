@@ -16,6 +16,7 @@ pub struct AppSettings {
     pub lsp: LspSettings,
     pub java: JavaSettings,
     pub advanced: AdvancedSettings,
+    pub build: BuildSettings,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
@@ -94,6 +95,25 @@ pub struct AdvancedSettings {
     pub recent_files_limit: u32,
 }
 
+/// Build system settings: Gradle flags, auto-deploy behaviour, last-used selections.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct BuildSettings {
+    /// Extra JVM arguments passed to the Gradle daemon (e.g. `"-Xmx4g"`).
+    pub gradle_jvm_args: Option<String>,
+    /// Pass `--parallel` to Gradle for faster multi-module builds.
+    pub gradle_parallel: bool,
+    /// Pass `--offline` to Gradle to skip dependency downloads.
+    pub gradle_offline: bool,
+    /// Automatically install and launch the app after a successful build.
+    pub auto_install_on_build: bool,
+    /// Last-used build variant name, persisted across sessions.
+    pub build_variant: Option<String>,
+    /// Last-used ADB device serial, persisted across sessions.
+    pub selected_device: Option<String>,
+}
+
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
 impl Default for AppSettings {
@@ -107,6 +127,7 @@ impl Default for AppSettings {
             lsp: LspSettings::default(),
             java: JavaSettings::default(),
             advanced: AdvancedSettings::default(),
+            build: BuildSettings::default(),
         }
     }
 }
@@ -196,6 +217,19 @@ impl Default for AdvancedSettings {
             hover_delay_ms: 500,
             navigation_history_depth: 50,
             recent_files_limit: 20,
+        }
+    }
+}
+
+impl Default for BuildSettings {
+    fn default() -> Self {
+        Self {
+            gradle_jvm_args: None,
+            gradle_parallel: true,
+            gradle_offline: false,
+            auto_install_on_build: true,
+            build_variant: None,
+            selected_device: None,
         }
     }
 }

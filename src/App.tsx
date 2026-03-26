@@ -8,6 +8,7 @@ import {
   setBottomPanelHeight,
   setActiveSidebarTab,
   openOutputPanel,
+  setActiveBottomTab,
 } from "@/stores/ui.store";
 import {
   editorState,
@@ -43,6 +44,11 @@ import { writeFile, formatError, listenLspStatus, listenLspDownloadProgress, lis
 import { openProjectFolder } from "@/services/project.service";
 import { registerOpenFilesWithLsp } from "@/services/lsp.service";
 import { basename } from "@/lib/file-utils";
+// Phase 3: Build + Device initialization
+import { initBuildService, runBuild, runAndDeploy, cancelBuild } from "@/services/build.service";
+import { initDevices } from "@/stores/device.store";
+import { openVariantPicker } from "@/components/build/VariantSelector";
+import { CodeActionsPopup } from "@/components/editor/CodeActionsPopup";
 
 function formatShortcut(opts: { key: string; metaKey?: boolean; shiftKey?: boolean; altKey?: boolean }): string {
   const parts: string[] = [];
@@ -93,6 +99,10 @@ export function App(): JSX.Element {
   onMount(async () => {
     initKeybindings();
     loadSettings();
+
+    // Phase 3: Initialize build service and device polling.
+    initBuildService().catch(console.error);
+    initDevices().catch(console.error);
 
     // ── LSP event bridge ──────────────────────────────────────────────────────
     // Wire Tauri events to the lsp store so the status bar and settings panel
@@ -161,6 +171,51 @@ export function App(): JSX.Element {
     registerKeyAndAction({ id: "view.toggleBottomPanel", key: "j", metaKey: true, label: "Toggle Bottom Panel", category: "View", action: toggleBottomPanel });
     registerKeyAndAction({ id: "view.openOutput", key: "u", metaKey: true, shiftKey: true, label: "Open Output Panel", category: "View", action: openOutputPanel });
     registerKeyAndAction({ id: "view.healthCenter", key: "h", metaKey: true, shiftKey: true, label: "Open Health Center", category: "View", action: openHealthPanel });
+
+    // ── LSP / Developer Tools ───────────────────────────────────────────────
+    registerAction({
+      id: "lsp.exportWorkspace",
+      label: "Fix Package Errors — Generate Workspace JSON",
+      category: "Developer" as ActionCategory,
+      action: async () => {
+        const { lspExportWorkspace } = await import("@/lib/tauri-api");
+        try {
+          showToast("Scanning project modules and generating workspace.json…", "info");
+          const path = await lspExportWorkspace();
+          showToast(
+            `workspace.json generated at ${path}. Restart the LSP for it to take effect.`,
+            "info"
+          );
+          openOutputPanel();
+        } catch (err) {
+          showToast(
+            `Could not generate workspace.json: ${formatError(err)}. Make sure a project is open.`,
+            "error"
+          );
+        }
+      },
+    });
+    registerAction({
+      id: "lsp.restartLsp",
+      label: "Restart Kotlin LSP",
+      category: "Developer" as ActionCategory,
+      action: async () => {
+        const { invoke: inv } = await import("@tauri-apps/api/core");
+        const projectRoot = (await import("@/stores/project.store")).projectState.projectRoot;
+        if (!projectRoot) { showToast("No project open", "info"); return; }
+        try {
+          await inv("lsp_stop");
+          showToast("LSP stopped — restarting…", "info");
+        } catch {
+          // ignore stop errors (already stopped)
+        }
+        try {
+          await inv("lsp_start", { projectRoot });
+        } catch (err) {
+          showToast(`Failed to restart LSP: ${formatError(err)}`, "error");
+        }
+      },
+    });
 
     // ── File ────────────────────────────────────────────────────────────────
     registerKeyAndAction({ id: "file.openFolder", key: "o", metaKey: true, label: "Open Folder", category: "File", action: () => { openProjectFolder(); } });
@@ -254,11 +309,20 @@ export function App(): JSX.Element {
         const { invoke } = await import("@tauri-apps/api/core");
         const result = await invoke("lsp_definition", { path, line: line.number - 1, col: pos - line.from }).catch(() => null);
         if (result) {
-          const { uriToPath } = await import("@/lib/tauri-api");
-          const { openFileAtLocation } = await import("@/services/project.service");
-          const loc = Array.isArray(result) ? result[0] : result;
+          const { parseLspUri } = await import("@/lib/tauri-api");
+          const { openFileAtLocation, openVirtualFile } = await import("@/services/project.service");
+          const loc = Array.isArray(result) ? result[0] : result as any;
           if (loc?.uri) {
-            openFileAtLocation(uriToPath(loc.uri), (loc.range?.start?.line ?? 0) + 1, loc.range?.start?.character ?? 0);
+            const parsed = parseLspUri(loc.uri);
+            const targetLine = (loc.range?.start?.line ?? 0) + 1;
+            const targetCol = loc.range?.start?.character ?? 0;
+            if (parsed.kind === "file") {
+              openFileAtLocation(parsed.path, targetLine, targetCol);
+            } else if (parsed.kind === "jar" || parsed.kind === "jrt") {
+              openVirtualFile(loc.uri, targetLine, targetCol);
+            } else {
+              openFileAtLocation(loc.uri, targetLine, targetCol);
+            }
           } else {
             const { lspState } = await import("@/stores/lsp.store");
             showToast(lspState.status.state === "indexing" ? "LSP is still loading the project — try again in a moment" : "No definition found at this position", "info");
@@ -304,13 +368,122 @@ export function App(): JSX.Element {
         const { invoke } = await import("@tauri-apps/api/core");
         const result = await invoke("lsp_implementation", { path, line: line.number - 1, col: pos - line.from }).catch(() => null);
         if (result) {
-          const { uriToPath } = await import("@/lib/tauri-api");
-          const { openFileAtLocation } = await import("@/services/project.service");
-          const loc = Array.isArray(result) ? result[0] : result;
+          const { parseLspUri } = await import("@/lib/tauri-api");
+          const { openFileAtLocation, openVirtualFile } = await import("@/services/project.service");
+          const loc = Array.isArray(result) ? result[0] : result as any;
           if (loc?.uri) {
-            openFileAtLocation(uriToPath(loc.uri), (loc.range?.start?.line ?? 0) + 1, loc.range?.start?.character ?? 0);
+            const parsed = parseLspUri(loc.uri);
+            const targetLine = (loc.range?.start?.line ?? 0) + 1;
+            const targetCol = loc.range?.start?.character ?? 0;
+            if (parsed.kind === "file") {
+              openFileAtLocation(parsed.path, targetLine, targetCol);
+            } else if (parsed.kind === "jar" || parsed.kind === "jrt") {
+              openVirtualFile(loc.uri, targetLine, targetCol);
+            } else {
+              openFileAtLocation(loc.uri, targetLine, targetCol);
+            }
           }
         }
+      },
+    });
+
+    registerKeyAndAction({
+      id: "editor.organizeImports",
+      key: "o",
+      metaKey: true,
+      shiftKey: true,
+      label: "Organize Imports",
+      category: "Edit" as ActionCategory,
+      action: async () => {
+        const path = editorState.activeFilePath;
+        const view = getEditorView();
+        if (!path || !view) return;
+        const { lspCodeActionFiltered } = await import("@/lib/tauri-api");
+        const { applyWorkspaceEdit } = await import("@/lib/codemirror/lsp-extension");
+        try {
+          const actions = await lspCodeActionFiltered(
+            path, 0, 0, view.state.doc.lines - 1, 0,
+            ["source.organizeImports"]
+          );
+          if (!actions?.length) {
+            showToast("No imports to organize", "info");
+            return;
+          }
+          // Execute the first organize-imports action.
+          const action = actions[0] as any;
+          if (action?.edit) {
+            await applyWorkspaceEdit(action.edit);
+          } else if (action?.command) {
+            const { invoke } = await import("@tauri-apps/api/core");
+            await invoke("lsp_decompile", { uri: action.command.command }).catch(() => {});
+          }
+        } catch (err) {
+          showToast(`Organize imports failed: ${err}`, "error");
+        }
+      },
+    });
+
+    // ── Build & Run ────────────────────────────────────────────────────────────
+    registerKeyAndAction({
+      id: "build.run", key: "r", metaKey: true, label: "Run App", category: "Build" as ActionCategory,
+      action: async () => {
+        try {
+          await runAndDeploy();
+        } catch (e) {
+          showToast(typeof e === "string" ? e : (e as Error).message ?? "Run failed", "error");
+        }
+      },
+    });
+    registerKeyAndAction({
+      id: "build.runOnly", key: "r", metaKey: true, shiftKey: true, label: "Build Only (no deploy)", category: "Build" as ActionCategory,
+      action: async () => {
+        try {
+          await runBuild();
+        } catch (e) {
+          showToast(typeof e === "string" ? e : (e as Error).message ?? "Build failed", "error");
+        }
+      },
+    });
+    registerAction({
+      id: "build.cancel",
+      label: "Cancel Build",
+      category: "Build" as ActionCategory,
+      action: async () => {
+        await cancelBuild().catch(console.error);
+      },
+    });
+    registerAction({
+      id: "build.clean",
+      label: "Clean Project",
+      category: "Build" as ActionCategory,
+      action: async () => {
+        try {
+          await runBuild("clean");
+        } catch (e) {
+          showToast(typeof e === "string" ? e : (e as Error).message ?? "Clean failed", "error");
+        }
+      },
+    });
+    registerKeyAndAction({
+      id: "build.selectVariant", key: "v", metaKey: true, shiftKey: true, label: "Select Build Variant", category: "Build" as ActionCategory,
+      action: () => openVariantPicker(),
+    });
+    registerAction({
+      id: "build.selectDevice",
+      label: "Select Device",
+      category: "Build" as ActionCategory,
+      action: () => {
+        // Opens the status bar device panel (implemented in StatusBar).
+        document.getElementById("device-selector-btn")?.click();
+      },
+    });
+    registerAction({
+      id: "view.buildPanel",
+      label: "Open Build Panel",
+      category: "View",
+      action: () => {
+        setUIState("bottomPanelVisible", true);
+        setActiveBottomTab("build");
       },
     });
 
@@ -465,6 +638,7 @@ export function App(): JSX.Element {
       <SettingsPanel />
       <HealthPanel />
       <DialogHost />
+      <CodeActionsPopup />
     </div>
   );
 }

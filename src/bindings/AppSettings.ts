@@ -2,6 +2,7 @@
 import type { AdvancedSettings } from "./AdvancedSettings";
 import type { AndroidSettings } from "./AndroidSettings";
 import type { AppearanceSettings } from "./AppearanceSettings";
+import type { BuildSettings } from "./BuildSettings";
 import type { EditorSettings } from "./EditorSettings";
 import type { FilesSettings } from "./FilesSettings";
 import type { JavaSettings } from "./JavaSettings";
@@ -13,4 +14,4 @@ import type { SearchSettings } from "./SearchSettings";
  * Every field uses `#[serde(default)]` so the file is forward-compatible —
  * adding new settings never breaks existing config files.
  */
-export type AppSettings = { editor: EditorSettings, appearance: AppearanceSettings, search: SearchSettings, files: FilesSettings, android: AndroidSettings, lsp: LspSettings, java: JavaSettings, advanced: AdvancedSettings, };
+export type AppSettings = { editor: EditorSettings, appearance: AppearanceSettings, search: SearchSettings, files: FilesSettings, android: AndroidSettings, lsp: LspSettings, java: JavaSettings, advanced: AdvancedSettings, build: BuildSettings, };

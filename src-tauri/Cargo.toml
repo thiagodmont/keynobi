@@ -26,6 +26,8 @@ notify = { version = "6", features = ["macos_fsevent"] }
 notify-debouncer-full = "0.3"
 # .gitignore-aware directory traversal
 ignore = "0.4"
+# Recursive directory walking
+walkdir = "2"
 # Move to Trash instead of permanent delete
 trash = "5"
 # Atomic writes and integration tests
@@ -54,6 +56,10 @@ dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 # Async futures utilities
 futures-util = "0.3"
+# Unix signal (SIGTERM/SIGKILL) support for process cancellation
+libc = "0.2"
+# Regex for build output parsing
+regex = "1"
 
 [dev-dependencies]
 # Criterion for micro-benchmarks (file-tree, CRUD operations)

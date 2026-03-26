@@ -101,6 +101,57 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
       : undefined,
   });
 
+  // ── 2. ADB ──────────────────────────────────────────────────────────────────
+  const adbFound = report?.adbFound;
+  const adbVersion = report?.adbVersion;
+  checks.push({
+    id: "adb",
+    category: "environment",
+    name: "ADB (Android Debug Bridge)",
+    status: adbFound === undefined
+      ? "loading"
+      : adbFound
+      ? "ok"
+      : !sdkPath
+      ? "skip"
+      : "warning",
+    detail: adbFound === true
+      ? adbVersion ?? "Found in platform-tools"
+      : adbFound === false
+      ? "adb not found — device operations will not work"
+      : !sdkPath
+      ? "No SDK configured"
+      : "Checking…",
+    fix: adbFound === false
+      ? { label: "Open Settings", action: openSettingsAction }
+      : undefined,
+  });
+
+  // ── 2b. Emulator ─────────────────────────────────────────────────────────────
+  const emulatorFound = report?.emulatorFound;
+  checks.push({
+    id: "emulator",
+    category: "environment",
+    name: "Android Emulator",
+    status: emulatorFound === undefined
+      ? "loading"
+      : emulatorFound
+      ? "ok"
+      : !sdkPath
+      ? "skip"
+      : "warning",
+    detail: emulatorFound === true
+      ? "Found in $ANDROID_HOME/emulator/"
+      : emulatorFound === false
+      ? "Emulator binary not found — cannot launch AVDs"
+      : !sdkPath
+      ? "No SDK configured"
+      : "Checking…",
+    fix: emulatorFound === false
+      ? { label: "Open Settings", action: openSettingsAction }
+      : undefined,
+  });
+
   // ── 3. Java / JDK ──────────────────────────────────────────────────────────
   const javaHome = settingsState.java.home;
   const javaFound = report?.javaExecutableFound;

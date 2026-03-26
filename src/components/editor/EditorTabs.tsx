@@ -58,12 +58,15 @@ export async function promptSaveAndClose(path: string): Promise<boolean> {
   const file = editorState.openFiles[path];
   if (!file) return false;
 
-  if (!file.dirty) {
+  // Virtual (decompiled) files are never dirty and cannot be saved.
+  if (file.virtual || !file.dirty) {
     removeOpenFile(path);
-    // Notify LSP that the file is closed
-    const lang = file.language;
-    if (lang === "kotlin" || lang === "gradle") {
-      invoke("lsp_did_close", { path }).catch(() => {});
+    // Notify LSP that the file is closed — only for real files.
+    if (!file.virtual) {
+      const lang = file.language;
+      if (lang === "kotlin" || lang === "gradle") {
+        invoke("lsp_did_close", { path }).catch(() => {});
+      }
     }
     return true;
   }
@@ -181,10 +184,22 @@ export function EditorTabs(): JSX.Element {
                 style={{
                   ...FILENAME_STYLE,
                   color: isActive() ? "var(--text-primary)" : "var(--text-secondary)",
+                  "font-style": file()?.virtual ? "italic" : "normal",
+                  opacity: file()?.virtual ? "0.8" : "1",
                 }}
               >
                 {file()?.name ?? ""}
               </span>
+
+              {/* Read-only lock icon for virtual/decompiled files */}
+              <Show when={file()?.virtual}>
+                <span
+                  title="Read-only (decompiled)"
+                  style={{ color: "var(--text-muted)", "font-size": "10px", "flex-shrink": "0" }}
+                >
+                  🔒
+                </span>
+              </Show>
 
               {/* Unsaved-changes dot / close button */}
               <button

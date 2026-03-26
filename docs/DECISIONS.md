@@ -224,3 +224,61 @@
   - (+) Go-to-definition works across Gradle modules — security checks use the broader Gradle root scope
   - (+) No UX change when user opens the actual Gradle root — `gradle_root` equals `project_root`
   - (-) Security boundary is broader than the user-opened folder — paths anywhere in the Gradle tree are accessible for read/write. This is standard IDE behaviour (Android Studio works the same way).
+
+---
+
+### ADR-16: CLI-Based ADB over adb_client Crate
+
+- **Date**: Phase 3
+- **Status**: Active
+- **Context**: The original PLAN.md referenced the `adb_client` Rust crate for ADB operations. In practice, `adb_client` has limited maintenance, incomplete coverage of ADB commands, and no support for the newer ADB protocol version required by modern Android. Phase 3 operations (device listing, APK install, app launch, emulator kill) are request-response, not streaming — the subprocess overhead of calling the `adb` binary is negligible.
+- **Decision**: Implement `adb_manager.rs` using `tokio::process::Command` to invoke the `adb` binary from `$ANDROID_HOME/platform-tools/adb`. The path is resolved from `settings.android.sdk_path` with a fallback to `adb` on PATH.
+- **Consequences**:
+  - (+) Always compatible with whatever ADB version the developer has installed
+  - (+) Simpler implementation — no crate API to fight, just parse text output
+  - (+) `adb_client` dependency removed from Cargo.toml
+  - (-) Subprocess overhead per ADB call (~5–20ms) acceptable for Phase 3 use cases
+  - (-) Phase 4 logcat streaming will need re-evaluation — high-frequency streaming via subprocess is inefficient. Will investigate `adb_client` or direct ADB protocol again at that point.
+
+---
+
+### ADR-17: Generic Process Manager as Subprocess Foundation
+
+- **Date**: Phase 3
+- **Status**: Active
+- **Context**: Phase 3 needs to spawn and stream Gradle builds. Phase 6 needs to spawn a PTY for the integrated terminal. A single generic `process_manager.rs` service avoids duplicating spawn/cancel/stream logic.
+- **Decision**: Implement `ProcessManager` as a bounded `HashMap<ProcessId, ProcessRecord>` (max 10 concurrent) with `spawn()`, `cancel()`, and `remove()` functions. The `spawn` function takes async-compatible `on_line` and `on_exit` callbacks. `BuildRunner` uses it directly; the terminal will reuse it in Phase 6.
+- **Consequences**:
+  - (+) DRY — one spawn/stream/cancel implementation used across build and terminal
+  - (+) Bounded collection prevents unbounded process accumulation (enforces BEST_PRACTICES)
+  - (+) `cancel()` sends SIGTERM first then SIGKILL after 5s — graceful shutdown
+  - (-) Callbacks must be `Send + Sync + 'static` which rules out closures that capture `&mut` state; use `Arc<Mutex<_>>` accumulators or Tauri events for state updates
+
+---
+
+### ADR-18: Build Settings as an AppSettings Section
+
+- **Date**: Phase 3
+- **Status**: Active
+- **Context**: Build-time options (JVM args, parallel mode, offline mode, last-used variant/device) need to persist across sessions. Adding a separate `build_settings.json` would split configuration management.
+- **Decision**: Add a `build: BuildSettings` section to the existing `AppSettings` struct in `settings.rs`. It is persisted with the rest of settings to `~/.androidide/settings.json` and participates in the same `#[serde(default)]` forward-compatibility mechanism.
+- **Consequences**:
+  - (+) Single settings file, single load/save path
+  - (+) `build_variant` and `selected_device` persist across sessions automatically
+  - (+) Exposed in the Settings UI alongside LSP and Android settings
+  - (-) `AppSettings` grows slightly larger; negligible in practice
+
+---
+
+### ADR-19: Build Variant Discovery via Tree-sitter with Gradle Tasks Fallback
+
+- **Date**: Phase 3
+- **Status**: Active
+- **Context**: Android projects have varying levels of variant complexity. Simple projects have `debug`/`release` only; complex ones have multi-dimensional flavors. Two approaches: (1) parse `build.gradle.kts` with Tree-sitter, (2) run `./gradlew :app:tasks --all` and parse the output.
+- **Decision**: Use a two-phase strategy. Primary: Tree-sitter parsing of `app/build.gradle.kts` extracting `buildTypes` and `productFlavors` blocks plus `flavorDimensions()`. Fallback: if Tree-sitter yields no variants (empty file, non-standard location, syntax errors), run `./gradlew :app:tasks --all --console=plain` and extract `assemble*` / `install*` task names. The fallback is slower (~seconds) but works for any valid Gradle project.
+- **Consequences**:
+  - (+) Most projects get instant variant discovery (< 50ms Tree-sitter parse)
+  - (+) Covers edge cases (custom project structure, Groovy .gradle files) via the fallback
+  - (-) Multi-module projects: currently only checks `:app` module. A future enhancement will scan `settings.gradle.kts` for all modules.
+  - (-) Tree-sitter Kotlin grammar parses the DSL structurally but does not evaluate expressions — dynamic variant names (computed in code) are not discovered
+

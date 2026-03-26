@@ -9,6 +9,7 @@ import { referencesState } from "@/stores/references.store";
 import { ProblemsPanel } from "@/components/layout/ProblemsPanel";
 import { ReferencesPanel } from "@/components/editor/ReferencesPanel";
 import { LspLogsPanel } from "@/components/layout/LspLogsPanel";
+import { BuildPanel } from "@/components/build/BuildPanel";
 
 const TABS: { id: BottomPanelTab; label: string }[] = [
   { id: "problems", label: "Problems" },
@@ -135,7 +136,7 @@ export function PanelContainer(props: PanelContainerProps): JSX.Element {
             <LspLogsPanel />
           </Match>
           <Match when={uiState.activeBottomTab === "build"}>
-            <PanelPlaceholder text="Build — Available in Phase 3" />
+            <BuildPanel />
           </Match>
           <Match when={uiState.activeBottomTab === "logcat"}>
             <PanelPlaceholder text="Logcat — Available in Phase 4" />

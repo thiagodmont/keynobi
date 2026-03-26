@@ -282,6 +282,128 @@ export function uriToPath(uri: string): string {
   return uri.replace(/^file:\/\//, "");
 }
 
+/**
+ * Describe the kind of a URI returned by the LSP server.
+ *
+ * - `"file"` — a regular on-disk file (`file://` scheme).
+ * - `"jar"` — an entry inside a JAR/ZIP archive.  The `archivePath` and
+ *             `entryPath` fields are populated.
+ * - `"jrt"` — a Java runtime module entry (`jrt:` scheme — JDK 9+).
+ *             `archivePath` is the JDK home, `entryPath` is the module entry.
+ * - `"unknown"` — anything else; treat as opaque.
+ */
+export type LspUriKind =
+  | { kind: "file"; path: string }
+  | { kind: "jar"; uri: string; archivePath: string; entryPath: string }
+  | { kind: "jrt"; uri: string; archivePath: string; entryPath: string }
+  | { kind: "unknown"; uri: string };
+
+/**
+ * Parse an LSP URI into a structured representation.
+ *
+ * The kotlin-lsp returns several URI forms for library/binary navigation:
+ *   • `file:///path/to/file.kt`                 → regular file
+ *   • `jar:file:///path/to/lib.jar!/entry.kt`   → JAR entry
+ *   • `/path/to/src.zip!/java.base/UUID.java`   → archive path (no scheme)
+ *   • `jrt:///modules/java.base/UUID.class`     → JRT (JDK modules)
+ */
+export function parseLspUri(uri: string): LspUriKind {
+  // Standard file URI
+  if (uri.startsWith("file://")) {
+    return { kind: "file", path: uri.replace(/^file:\/\//, "") };
+  }
+
+  // jar:file:///path/to/archive.jar!/entry/path
+  const jarMatch = uri.match(/^jar:file:\/\/(\/[^!]+)!\/(.+)$/);
+  if (jarMatch) {
+    return {
+      kind: "jar",
+      uri,
+      archivePath: jarMatch[1],
+      entryPath: jarMatch[2],
+    };
+  }
+
+  // Bare filesystem path with !/ separator (e.g. /path/src.zip!/entry)
+  const archiveSepIdx = uri.indexOf("!/");
+  if (archiveSepIdx !== -1 && uri.startsWith("/")) {
+    return {
+      kind: "jar",
+      uri,
+      archivePath: uri.slice(0, archiveSepIdx),
+      entryPath: uri.slice(archiveSepIdx + 2),
+    };
+  }
+
+  // jrt: URI scheme (Java runtime modules, JDK 9+)
+  if (uri.startsWith("jrt:")) {
+    return { kind: "jrt", uri, archivePath: "", entryPath: uri };
+  }
+
+  return { kind: "unknown", uri };
+}
+
+/** Invoke the LSP's custom `decompile` command for a JAR/JRT URI. */
+export async function lspDecompile(uri: string): Promise<{ code: string; language: string } | null> {
+  try {
+    return await invoke<{ code: string; language: string } | null>("lsp_decompile", { uri });
+  } catch {
+    return null;
+  }
+}
+
+/** Read a text entry from a ZIP/JAR archive on disk. */
+export async function lspReadArchiveEntry(
+  archivePath: string,
+  entryPath: string
+): Promise<string | null> {
+  try {
+    return await invoke<string>("lsp_read_archive_entry", { archivePath, entryPath });
+  } catch {
+    return null;
+  }
+}
+
+/** Request full semantic tokens for a document from the LSP server. */
+export async function lspSemanticTokens(path: string): Promise<import("@tauri-apps/api/core").InvokeArgs | null> {
+  try {
+    return await invoke<unknown>("lsp_semantic_tokens", { path }) as import("@tauri-apps/api/core").InvokeArgs | null;
+  } catch {
+    return null;
+  }
+}
+
+/** Request code actions with a specific `only` filter. */
+export async function lspCodeActionFiltered(
+  path: string,
+  startLine: number,
+  startCol: number,
+  endLine: number,
+  endCol: number,
+  only: string[]
+): Promise<unknown[]> {
+  try {
+    const result = await invoke<unknown[] | null>("lsp_code_action_filtered", {
+      path, startLine, startCol, endLine, endCol, only,
+    });
+    return result ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Generate `workspace.json` in the workspace root by scanning the Gradle
+ * project structure from the filesystem.  This is the IDE-side fix for
+ * "Package directive does not match" false positives on Android multi-module
+ * projects using AGP convention plugins in a composite build.
+ *
+ * Returns the path to the generated file on success, or throws on failure.
+ */
+export async function lspExportWorkspace(): Promise<string> {
+  return invoke<string>("lsp_generate_workspace_json");
+}
+
 // ── Log viewer ────────────────────────────────────────────────────────────────
 
 import type { LogEntry, LspStatus, DownloadProgress } from "@/bindings";
@@ -365,4 +487,167 @@ export function formatError(err: unknown): string {
   if (typeof err === "string") return err;
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+// ── Build system ──────────────────────────────────────────────────────────────
+
+import type {
+  BuildLine,
+  BuildError,
+  BuildStatus,
+  BuildRecord,
+} from "@/bindings";
+import { Channel } from "@tauri-apps/api/core";
+
+export type { BuildLine, BuildError, BuildStatus, BuildRecord };
+
+/** Start a Gradle task and stream output via a Channel.
+ *  Returns a process ID that can be used to cancel. */
+export async function runGradleTask(
+  task: string,
+  onLine: (line: BuildLine) => void
+): Promise<number> {
+  const channel = new Channel<BuildLine>();
+  channel.onmessage = onLine;
+  return invoke<number>("run_gradle_task", { task, onLine: channel });
+}
+
+/** Persist the final build result into history after the Channel closes. */
+export async function finalizeBuild(opts: {
+  success: boolean;
+  durationMs: number;
+  errors: BuildError[];
+  task: string;
+  startedAt: string;
+}): Promise<void> {
+  return invoke<void>("finalize_build", {
+    success: opts.success,
+    durationMs: opts.durationMs,
+    errors: opts.errors,
+    task: opts.task,
+    startedAt: opts.startedAt,
+  });
+}
+
+export async function cancelBuild(): Promise<void> {
+  return invoke<void>("cancel_build");
+}
+
+export async function getBuildStatus(): Promise<BuildStatus> {
+  return invoke<BuildStatus>("get_build_status");
+}
+
+export async function getBuildErrors(): Promise<BuildError[]> {
+  return invoke<BuildError[]>("get_build_errors");
+}
+
+export async function getBuildHistory(): Promise<BuildRecord[]> {
+  return invoke<BuildRecord[]>("get_build_history");
+}
+
+export async function findApkPath(variant: string): Promise<string | null> {
+  return invoke<string | null>("find_apk_path", { variant });
+}
+
+export function listenBuildComplete(
+  cb: (e: {
+    success: boolean;
+    durationMs: number;
+    errorCount: number;
+    warningCount: number;
+    task: string;
+  }) => void
+): Promise<UnlistenFn> {
+  return listen<{
+    success: boolean;
+    durationMs: number;
+    errorCount: number;
+    warningCount: number;
+    task: string;
+  }>("build:complete", (event) => cb(event.payload));
+}
+
+// ── Variants ──────────────────────────────────────────────────────────────────
+
+import type { BuildVariant, VariantList } from "@/bindings";
+export type { BuildVariant, VariantList };
+
+export async function getBuildVariants(): Promise<VariantList> {
+  return invoke<VariantList>("get_build_variants");
+}
+
+export async function setActiveVariant(variant: string): Promise<void> {
+  return invoke<void>("set_active_variant", { variant });
+}
+
+// ── Devices ───────────────────────────────────────────────────────────────────
+
+import type { Device, AvdInfo } from "@/bindings";
+export type { Device, AvdInfo };
+
+export async function listAdbDevices(): Promise<Device[]> {
+  return invoke<Device[]>("list_adb_devices");
+}
+
+export async function refreshDevices(): Promise<Device[]> {
+  return invoke<Device[]>("refresh_devices");
+}
+
+export async function selectDevice(serial: string): Promise<void> {
+  return invoke<void>("select_device", { serial });
+}
+
+export async function getSelectedDevice(): Promise<string | null> {
+  return invoke<string | null>("get_selected_device");
+}
+
+export async function installApkOnDevice(
+  serial: string,
+  apkPath: string
+): Promise<string> {
+  return invoke<string>("install_apk_on_device", { serial, apkPath });
+}
+
+export async function launchAppOnDevice(
+  serial: string,
+  pkg: string,
+  activity?: string
+): Promise<void> {
+  return invoke<void>("launch_app_on_device", {
+    serial,
+    package: pkg,
+    activity: activity ?? null,
+  });
+}
+
+export async function stopAppOnDevice(serial: string, pkg: string): Promise<void> {
+  return invoke<void>("stop_app_on_device", { serial, package: pkg });
+}
+
+export async function listAvdDevices(): Promise<AvdInfo[]> {
+  return invoke<AvdInfo[]>("list_avd_devices");
+}
+
+export async function launchAvd(avdName: string): Promise<string> {
+  return invoke<string>("launch_avd", { avdName });
+}
+
+export async function stopAvd(serial: string): Promise<void> {
+  return invoke<void>("stop_avd", { serial });
+}
+
+export async function startDevicePolling(): Promise<void> {
+  return invoke<void>("start_device_polling");
+}
+
+export async function stopDevicePolling(): Promise<void> {
+  return invoke<void>("stop_device_polling");
+}
+
+export function listenDeviceListChanged(
+  cb: (devices: Device[]) => void
+): Promise<UnlistenFn> {
+  return listen<{ devices: Device[] }>("device:list_changed", (event) =>
+    cb(event.payload.devices)
+  );
 }

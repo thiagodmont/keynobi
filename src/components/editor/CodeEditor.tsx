@@ -48,13 +48,15 @@ function getLanguageExtension(language: Language) {
 export function createEditorState(
   content: string,
   language: Language,
-  path: string
+  path: string,
+  readOnly = false
 ): EditorState {
   return EditorState.create({
     doc: content,
     extensions: [
       baseExtensions,
       getLanguageExtension(language),
+      ...(readOnly ? [EditorState.readOnly.of(true), EditorView.editable.of(false)] : []),
       ...createLspExtension(path, language),
       EditorView.updateListener.of((update) => {
         if (update.docChanged && editorView) {
@@ -166,7 +168,7 @@ export function CodeEditor(props: CodeEditorProps): JSX.Element {
     if (file.editorState) {
       editorView.setState(file.editorState);
     } else {
-      const newState = createEditorState(file.savedContent, file.language, activePath);
+      const newState = createEditorState(file.savedContent, file.language, activePath, file.virtual === true);
       saveEditorState(activePath, newState);
       editorView.setState(newState);
     }

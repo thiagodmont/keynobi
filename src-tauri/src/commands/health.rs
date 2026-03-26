@@ -71,6 +71,41 @@ pub async fn run_health_checks(
         })
         .unwrap_or(false);
 
+    // ── ADB probe ─────────────────────────────────────────────────────────────
+    let adb_bin = settings
+        .android
+        .sdk_path
+        .as_deref()
+        .map(|sdk| expand_tilde(sdk).join("platform-tools").join("adb"))
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from("adb"));
+
+    let adb_output = tokio::process::Command::new(&adb_bin)
+        .arg("version")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .await;
+
+    let (adb_found, adb_version) = match adb_output {
+        Ok(out) if out.status.success() => {
+            let ver = String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .find(|l| !l.trim().is_empty())
+                .map(str::to_owned);
+            (true, ver)
+        }
+        _ => (false, None),
+    };
+
+    // ── Emulator probe ────────────────────────────────────────────────────────
+    let emulator_found = settings
+        .android
+        .sdk_path
+        .as_deref()
+        .map(|sdk| expand_tilde(sdk).join("emulator").join("emulator").is_file())
+        .unwrap_or(false);
+
     // ── Gradle wrapper probe ──────────────────────────────────────────────────
     // Prefer the detected Gradle root (ancestor with settings.gradle) over
     // the user-opened folder, since `gradlew` lives at the Gradle project
@@ -99,6 +134,9 @@ pub async fn run_health_checks(
         java_version,
         java_bin_used,
         android_sdk_valid,
+        adb_found,
+        adb_version,
+        emulator_found,
         gradle_wrapper_found,
         lsp_system_dir_ok,
         disk_free_mb,

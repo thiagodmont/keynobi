@@ -55,3 +55,21 @@ export type { LogLevel } from "./LogLevel";
 
 // Health
 export type { SystemHealthReport } from "./SystemHealthReport";
+
+// Build system
+export type { BuildLine } from "./BuildLine";
+export type { BuildLineKind } from "./BuildLineKind";
+export type { BuildError } from "./BuildError";
+export type { BuildErrorSeverity } from "./BuildErrorSeverity";
+export type { BuildResult } from "./BuildResult";
+export type { BuildStatus } from "./BuildStatus";
+export type { BuildRecord } from "./BuildRecord";
+export type { BuildSettings } from "./BuildSettings";
+
+// Devices & variants
+export type { Device } from "./Device";
+export type { DeviceKind } from "./DeviceKind";
+export type { DeviceConnectionState } from "./DeviceConnectionState";
+export type { AvdInfo } from "./AvdInfo";
+export type { BuildVariant } from "./BuildVariant";
+export type { VariantList } from "./VariantList";

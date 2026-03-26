@@ -221,6 +221,7 @@ pub async fn lsp_start(
     let lsp_env = LspEnv {
         android_sdk_path: expand_tilde_str(settings.android.sdk_path.clone()),
         java_home: expand_tilde_str(settings.java.home.clone()),
+        jdk_for_resolution: expand_tilde_str(settings.java.home.clone()),
     };
 
     let (notif_tx, mut notif_rx) = mpsc::unbounded_channel::<(String, Value)>();
@@ -708,6 +709,170 @@ pub async fn lsp_append_client_log(
     // Re-emit so any panel that joined late can see the entry.
     let _ = app.emit("lsp:log", &entry);
     Ok(())
+}
+
+/// Decompile a class/source file from a JAR or JRT archive via the LSP
+/// server's custom `decompile` command.  The URI is a `jar:` or `jrt:` URI
+/// as returned by `textDocument/definition` when the target is in binary or
+/// standard-library code.
+///
+/// Returns `{ code: String, language: String }` on success, or an error
+/// string when the LSP can't decompile the file.
+#[tauri::command]
+pub async fn lsp_decompile(
+    uri: String,
+    lsp_state: tauri::State<'_, LspState>,
+) -> Result<Value, String> {
+    let state = lsp_state.0.lock().await;
+    let client = state.client.as_ref().ok_or("LSP not running")?;
+    client
+        .execute_command("decompile", vec![serde_json::Value::String(uri)])
+        .await
+}
+
+/// Extract raw text from a JAR/ZIP archive entry.  Used when the definition
+/// target is a source file inside an archive (e.g. `kotlin-stdlib-sources.jar`
+/// or the JDK `src.zip`).
+///
+/// The `archive_path` is the filesystem path to the zip/jar, and `entry_path`
+/// is the path of the entry within the archive (e.g.
+/// `java.base/java/util/UUID.java`).
+///
+/// Returns the text content of the entry, or an error.
+#[tauri::command]
+pub async fn lsp_read_archive_entry(
+    archive_path: String,
+    entry_path: String,
+) -> Result<String, String> {
+    // Validate the archive path exists and is a file.
+    let archive = std::path::Path::new(&archive_path);
+    if !archive.exists() {
+        return Err(format!("Archive not found: {archive_path}"));
+    }
+
+    // Do the ZIP extraction on a blocking thread to avoid holding the async
+    // executor while doing synchronous I/O.
+    let archive_path_buf = archive.to_path_buf();
+    let entry_name = entry_path.clone();
+    tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let file = std::fs::File::open(&archive_path_buf)
+            .map_err(|e| format!("Failed to open archive: {e}"))?;
+        let mut zip = zip::ZipArchive::new(file)
+            .map_err(|e| format!("Invalid archive: {e}"))?;
+
+        // Collect all entry names first to avoid borrow conflicts.
+        let entry_names: Vec<String> = (0..zip.len())
+            .filter_map(|i| zip.by_index(i).ok().map(|e| e.name().to_string()))
+            .collect();
+
+        // Find the matching entry index: exact match first, then suffix match.
+        let normalized_target = entry_name.replace('\\', "/");
+        let idx = entry_names
+            .iter()
+            .position(|n| n == &entry_name || n.replace('\\', "/") == normalized_target)
+            .or_else(|| {
+                entry_names.iter().position(|n| {
+                    n.ends_with(&entry_name)
+                        || n.replace('\\', "/").ends_with(&normalized_target)
+                })
+            })
+            .ok_or_else(|| format!("Entry '{entry_name}' not found in archive"))?;
+
+        let mut entry = zip
+            .by_index(idx)
+            .map_err(|e| format!("Failed to open entry: {e}"))?;
+        use std::io::Read;
+        let mut buf = String::new();
+        entry
+            .read_to_string(&mut buf)
+            .map_err(|e| format!("Failed to read entry: {e}"))?;
+        Ok(buf)
+    })
+    .await
+    .map_err(|e| format!("Task failed: {e}"))?
+}
+
+/// Request full semantic tokens for a document from the LSP server.
+/// Returns the raw LSP `SemanticTokens` response including the encoded `data`
+/// array and the `legend` from server capabilities.
+#[tauri::command]
+pub async fn lsp_semantic_tokens(
+    path: String,
+    lsp_state: tauri::State<'_, LspState>, fs_state: tauri::State<'_, FsState>,
+) -> Result<Value, String> {
+    ensure_path_in_project(&path, &fs_state).await?;
+    let state = lsp_state.0.lock().await;
+    let client = state.client.as_ref().ok_or("LSP not running")?;
+    client.semantic_tokens_full(std::path::Path::new(&path)).await
+}
+
+/// Generate `workspace.json` in the workspace root by scanning the project's
+/// Gradle module structure from the filesystem.
+///
+/// This is the **IDE-side** fix for the "Package directive does not match the
+/// file location" false-positive that appears on Android multi-module projects
+/// using AGP convention plugins in a composite build (`includeBuild`).
+///
+/// Root cause: The kotlin-lsp's `IdeaProjectMapper` relies on the Gradle IDEA
+/// model to discover source sets.  When AGP convention plugins come from a
+/// composite build, the IDEA model reports every module as having an empty set
+/// of source sets.  Without source roots, the LSP treats the module directory
+/// as the source root, causing package path mismatches for all files.
+///
+/// Fix: When `workspace.json` exists in the workspace root, the LSP's
+/// `JsonWorkspaceImporter` uses it **instead of** the Gradle import.  Our
+/// generated file tells the LSP exactly where each module's `src/main/java`
+/// (and `src/main/kotlin`, `src/test/java`, etc.) directories are.
+///
+/// The file is generated by:
+///   1. Parsing `settings.gradle(.kts)` to discover all included modules
+///   2. Converting each Gradle module path (`:features:home`) to a filesystem
+///      path (`features/home`) using Gradle's default naming convention
+///   3. Scanning each module directory for standard Android/Kotlin source dirs
+///   4. Writing the `workspace.json` schema understood by `JsonWorkspaceImporter`
+///
+/// After generating, restart the LSP for the changes to take effect.
+/// Returns the absolute path of the written file.
+#[tauri::command]
+pub async fn lsp_generate_workspace_json(
+    fs_state: tauri::State<'_, FsState>,
+) -> Result<String, String> {
+    use crate::services::workspace_json;
+
+    let fs = fs_state.0.lock().await;
+    let workspace_root = fs
+        .gradle_root
+        .as_ref()
+        .or(fs.project_root.as_ref())
+        .ok_or("No project open")?
+        .clone();
+    drop(fs);
+
+    let output_path = workspace_json::generate(&workspace_root)?;
+    Ok(output_path.to_string_lossy().to_string())
+}
+
+/// Request code actions with a specific `only` filter — used for targeted
+/// actions like "Organize Imports" (`source.organizeImports`).
+#[tauri::command]
+pub async fn lsp_code_action_filtered(
+    path: String,
+    start_line: u32, start_col: u32,
+    end_line: u32, end_col: u32,
+    only: Vec<String>,
+    lsp_state: tauri::State<'_, LspState>, fs_state: tauri::State<'_, FsState>,
+) -> Result<Value, String> {
+    ensure_path_in_project(&path, &fs_state).await?;
+    let state = lsp_state.0.lock().await;
+    let client = state.client.as_ref().ok_or("LSP not running")?;
+    client
+        .code_action_filtered(
+            std::path::Path::new(&path),
+            start_line, start_col,
+            end_line, end_col,
+            only,
+        )
+        .await
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

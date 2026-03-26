@@ -24,6 +24,18 @@ javaBinUsed: string,
  */
 androidSdkValid: boolean, 
 /**
+ * Whether `adb` was found in `$ANDROID_HOME/platform-tools/` or on PATH.
+ */
+adbFound: boolean, 
+/**
+ * First line of `adb version` output.
+ */
+adbVersion: string | null, 
+/**
+ * Whether the Android emulator binary was found in `$ANDROID_HOME/emulator/`.
+ */
+emulatorFound: boolean, 
+/**
  * Whether `gradlew` exists at the project root.
  */
 gradleWrapperFound: boolean, 

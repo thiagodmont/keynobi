@@ -1,7 +1,12 @@
+pub mod adb_manager;
+pub mod build_runner;
 pub mod fs_manager;
 pub mod lsp_client;
 pub mod lsp_downloader;
 pub mod lsp_log_file;
+pub mod process_manager;
 pub mod search_engine;
 pub mod settings_manager;
 pub mod treesitter;
+pub mod variant_manager;
+pub mod workspace_json;

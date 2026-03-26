@@ -46,9 +46,18 @@ pub fn check_installed() -> Option<LspInstallation> {
 /// extracted with a wrong prefix-stripping strategy and needs re-download.
 fn validate_installation(installation: &LspInstallation) -> bool {
     let script_path = Path::new(&installation.launch_script);
-    // The script lives at install_dir/kotlin-lsp.sh; lib/ is a sibling.
+    // The binary lives at install_dir/bin/languageServer or install_dir/kotlin-lsp.sh.
+    // In both cases, lib/ is a sibling of the bin/ dir (or of the script itself).
     let script_dir = script_path.parent().unwrap_or(Path::new("."));
-    script_dir.join("lib").is_dir()
+
+    // If the binary is in a bin/ subdir, lib/ is one level up from bin/.
+    let lib_in_parent = script_dir
+        .parent()
+        .map(|p| p.join("lib").is_dir())
+        .unwrap_or(false);
+    let lib_sibling = script_dir.join("lib").is_dir();
+
+    lib_sibling || lib_in_parent
 }
 
 pub fn get_download_url() -> String {
@@ -156,6 +165,22 @@ where
                 let mut perms = metadata.permissions();
                 perms.set_mode(0o755);
                 std::fs::set_permissions(&script, perms).ok();
+            }
+        }
+        // Also chmod the bin/ directory contents so all executables are runnable.
+        let bin_dir = install_dir.join("bin");
+        if bin_dir.is_dir() {
+            if let Ok(entries) = std::fs::read_dir(&bin_dir) {
+                for entry in entries.flatten() {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Ok(meta) = entry.metadata() {
+                        if meta.is_file() {
+                            let mut perms = meta.permissions();
+                            perms.set_mode(0o755);
+                            std::fs::set_permissions(entry.path(), perms).ok();
+                        }
+                    }
+                }
             }
         }
     }
@@ -325,25 +350,38 @@ fn extract_zip(zip_path: &Path, dest: &Path) -> Result<(), String> {
 }
 
 fn find_launch_script(dir: &Path) -> Option<PathBuf> {
-    let sh = dir.join("kotlin-lsp.sh");
-    if sh.exists() {
-        return Some(sh);
+    // Prefer the new binary entrypoint (non-deprecated, avoids shell wrapper overhead).
+    // On Windows the binary has a 64-bit specific name; on Unix just "languageServer".
+    #[cfg(windows)]
+    let bin_names: &[&str] = &["languageServer64.exe", "languageServer.exe", "kotlin-lsp.cmd"];
+    #[cfg(not(windows))]
+    let bin_names: &[&str] = &["languageServer", "kotlin-lsp.sh"];
+
+    for name in bin_names {
+        // Check bin/ subdirectory first (current layout).
+        let bin_dir = dir.join("bin").join(name);
+        if bin_dir.exists() {
+            return Some(bin_dir);
+        }
+        // Check directly in dir (legacy/flat layout).
+        let direct = dir.join(name);
+        if direct.exists() {
+            return Some(direct);
+        }
     }
-    let bin = dir.join("bin").join("kotlin-lsp.sh");
-    if bin.exists() {
-        return Some(bin);
-    }
-    // Also check for the script in a nested directory
+
+    // Also check for any of the above inside a nested directory (uncommon but
+    // occurs when a zip ships with a single top-level wrapper that we didn't strip).
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             if entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false) {
-                let nested = entry.path().join("kotlin-lsp.sh");
-                if nested.exists() {
-                    return Some(nested);
+                if let Some(script) = find_launch_script(&entry.path()) {
+                    return Some(script);
                 }
             }
         }
     }
+
     None
 }
 

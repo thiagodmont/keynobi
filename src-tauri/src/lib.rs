@@ -2,14 +2,27 @@ mod commands;
 pub mod models;
 pub mod services;
 
+use commands::build::{
+    cancel_build, find_apk_path, finalize_build, get_build_errors, get_build_history,
+    get_build_status, run_gradle_task,
+};
+use commands::device::{
+    get_selected_device, install_apk_on_device, launch_app_on_device, launch_avd,
+    list_adb_devices, list_avd_devices, refresh_devices, select_device, start_device_polling,
+    stop_app_on_device, stop_avd, stop_device_polling,
+};
 use commands::file_system::*;
 use commands::health::run_health_checks;
 use commands::lsp::*;
 use commands::search::{search_in_file, search_project};
 use commands::settings::*;
 use commands::treesitter::{get_document_symbols, get_symbol_at_position, TreeSitterState};
+use commands::variant::{get_build_variants, set_active_variant};
 use models::log_entry::LogEntry;
+use services::adb_manager::DeviceState;
+use services::build_runner::BuildState;
 use services::fs_manager::FsWatcher;
+use services::process_manager::ProcessManager;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -85,6 +98,9 @@ pub fn run() {
         .manage(FsState::new())
         .manage(TreeSitterState::new())
         .manage(LspState::new())
+        .manage(BuildState::new())
+        .manage(ProcessManager::new())
+        .manage(DeviceState::new())
         .manage(Arc::new(Mutex::new(VecDeque::<LogEntry>::new())) as LogBuffer)
         .invoke_handler(tauri::generate_handler![
             // File system
@@ -131,6 +147,11 @@ pub fn run() {
             lsp_get_logs,
             lsp_get_capabilities,
             lsp_append_client_log,
+            lsp_decompile,
+            lsp_read_archive_entry,
+            lsp_semantic_tokens,
+            lsp_code_action_filtered,
+            lsp_generate_workspace_json,
             // Settings
             get_settings,
             save_settings,
@@ -140,6 +161,30 @@ pub fn run() {
             detect_java_path,
             // Health
             run_health_checks,
+            // Build
+            run_gradle_task,
+            cancel_build,
+            finalize_build,
+            get_build_status,
+            get_build_errors,
+            get_build_history,
+            find_apk_path,
+            // Variants
+            get_build_variants,
+            set_active_variant,
+            // Devices
+            list_adb_devices,
+            refresh_devices,
+            select_device,
+            get_selected_device,
+            install_apk_on_device,
+            launch_app_on_device,
+            stop_app_on_device,
+            list_avd_devices,
+            launch_avd,
+            stop_avd,
+            start_device_polling,
+            stop_device_polling,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -97,6 +97,9 @@ The performance targets for this project:
 | Completion popup | < 200ms |
 | Go-to-definition | < 300ms |
 | Command palette open | < 50ms |
+| Build variant discovery (Tree-sitter) | < 100ms |
+| Device list refresh | < 2 seconds |
+| ADB install feedback appears | < 1 second after command |
 
 Run `npm run perf:collect` after changes to track regression against these targets.
 

@@ -17,6 +17,12 @@ pub struct SystemHealthReport {
     pub java_bin_used: String,
     /// Whether the Android SDK path has recognisable SDK structure.
     pub android_sdk_valid: bool,
+    /// Whether `adb` was found in `$ANDROID_HOME/platform-tools/` or on PATH.
+    pub adb_found: bool,
+    /// First line of `adb version` output.
+    pub adb_version: Option<String>,
+    /// Whether the Android emulator binary was found in `$ANDROID_HOME/emulator/`.
+    pub emulator_found: bool,
     /// Whether `gradlew` exists at the project root.
     pub gradle_wrapper_found: bool,
     /// Whether the LSP system directory (`~/.androidide/lsp-system/`) is writable.
@@ -37,6 +43,9 @@ mod tests {
             java_version: Some("openjdk 17.0.8".into()),
             java_bin_used: "/usr/bin/java".into(),
             android_sdk_valid: true,
+            adb_found: true,
+            adb_version: Some("Android Debug Bridge version 1.0.41".into()),
+            emulator_found: true,
             gradle_wrapper_found: true,
             lsp_system_dir_ok: true,
             disk_free_mb: Some(5120),
@@ -44,5 +53,6 @@ mod tests {
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("javaExecutableFound"));
         assert!(json.contains("openjdk 17.0.8"));
+        assert!(json.contains("adbFound"));
     }
 }

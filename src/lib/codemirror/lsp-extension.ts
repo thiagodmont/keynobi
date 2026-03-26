@@ -8,7 +8,7 @@ import {
 } from "@codemirror/autocomplete";
 import { invoke } from "@tauri-apps/api/core";
 import { updateDiagnostics, type Diagnostic, hasCapability } from "@/stores/lsp.store";
-import { uriToPath, type LspHighlight } from "@/lib/tauri-api";
+import { type LspHighlight } from "@/lib/tauri-api";
 import { navLog } from "@/lib/navigation-logger";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -38,7 +38,8 @@ async function navigateToLspLocations(
   locations: unknown,
   context: string,
 ): Promise<void> {
-  const { openFileAtLocation } = await import("@/services/project.service");
+  const { openFileAtLocation, openVirtualFile } = await import("@/services/project.service");
+  const { parseLspUri } = await import("@/lib/tauri-api");
 
   // Log the raw response at trace level — invaluable when the server returns
   // null or an unexpected shape without any error.
@@ -74,11 +75,22 @@ async function navigateToLspLocations(
     return;
   }
 
-  const targetPath = uriToPath(uri);
   const targetLine = (range.start?.line ?? 0) + 1;
   const targetCol = range.start?.character ?? 0;
-  navLog("info", `${context} → ${targetPath}:${targetLine}:${targetCol}`);
-  await openFileAtLocation(targetPath, targetLine, targetCol);
+
+  const parsed = parseLspUri(uri);
+  navLog("info", `${context} → ${uri} kind=${parsed.kind} line=${targetLine} col=${targetCol}`);
+
+  if (parsed.kind === "file") {
+    await openFileAtLocation(parsed.path, targetLine, targetCol);
+  } else if (parsed.kind === "jar" || parsed.kind === "jrt") {
+    await openVirtualFile(uri, targetLine, targetCol);
+  } else {
+    // Unknown URI — attempt as a plain path (best-effort fallback).
+    navLog("warn", `${context} → unknown URI scheme, trying as plain path`);
+    await openFileAtLocation(uri, targetLine, targetCol);
+  }
+
   navLog("debug", `${context} → navigation complete`);
 }
 
@@ -194,16 +206,15 @@ const documentHighlightField = StateField.define<DecorationSet>({
       if (e.is(setDocumentHighlights)) {
         if (e.value.length === 0) return Decoration.none;
         const marks = e.value
-          .map((h) => {
+          .flatMap((h) => {
             const cls = h.kind === 3 ? "cm-highlight-write" : h.kind === 2 ? "cm-highlight-read" : "cm-highlight-text";
             const from = lspPosToOffset(tr.state.doc, h.range.start.line, h.range.start.character);
             const to = lspPosToOffset(tr.state.doc, h.range.end.line, h.range.end.character);
-            if (from >= to) return null;
-            return Decoration.mark({ class: cls }).range(from, to);
+            if (from >= to) return [];
+            return [Decoration.mark({ class: cls }).range(from, to)];
           })
-          .filter((m): m is ReturnType<typeof Decoration.mark> & { from: number; to: number } => m !== null)
           .sort((a, b) => a.from - b.from);
-        return marks.length > 0 ? RangeSet.of(marks) : Decoration.none;
+        return marks.length > 0 ? Decoration.set(marks) : Decoration.none;
       }
     }
     return deco;
@@ -291,7 +302,7 @@ function lspSignatureHelpExtension(path: string): Extension[] {
 
       // Check if the last inserted character is ( or ,
       let triggerChar = "";
-      update.changes.iterChanges((_fromA, _toA, _fromB, toB, inserted) => {
+      update.changes.iterChanges((_fromA, _toA, _fromB, _toB, inserted) => {
         const text = inserted.toString();
         const last = text[text.length - 1];
         if (last === "(" || last === ",") triggerChar = last;
@@ -380,30 +391,25 @@ function lspNavigationKeymaps(path: string): Extension {
       },
       {
         key: "Shift-F12",
-        async run(view) {
+        run(view) {
           const pos = view.state.selection.main.head;
           const line = view.state.doc.lineAt(pos);
           const lspLine = line.number - 1;
           const lspCol = pos - line.from;
           navLog("debug", `Shift+F12 → requesting references ${path}:${lspLine}:${lspCol}`);
-          try {
-            const result = await invoke<any[]>("lsp_references", {
-              path,
-              line: lspLine,
-              col: lspCol,
-            });
-            if (!result?.length) {
-              navLog("warn", `Shift+F12 → no references found`);
-              return true;
-            }
-            navLog("info", `Shift+F12 → ${result.length} reference(s) found`);
-            const { showReferences } = await import("@/stores/references.store");
-            const word = view.state.wordAt(pos);
-            const query = word ? view.state.sliceDoc(word.from, word.to) : "references";
-            showReferences(query, result);
-          } catch (err) {
-            navLog("warn", `Shift+F12 references failed: ${err}`);
-          }
+          invoke<any[]>("lsp_references", { path, line: lspLine, col: lspCol })
+            .then(async (result) => {
+              if (!result?.length) {
+                navLog("warn", `Shift+F12 → no references found`);
+                return;
+              }
+              navLog("info", `Shift+F12 → ${result.length} reference(s) found`);
+              const { showReferences } = await import("@/stores/references.store");
+              const word = view.state.wordAt(pos);
+              const query = word ? view.state.sliceDoc(word.from, word.to) : "references";
+              showReferences(query, result);
+            })
+            .catch((err) => navLog("warn", `Shift+F12 references failed: ${err}`));
           return true;
         },
       },
@@ -425,27 +431,25 @@ function lspNavigationKeymaps(path: string): Extension {
       },
       {
         key: "Mod-.",
-        async run(view) {
+        run(view) {
           const pos = view.state.selection.main.head;
-          const line = view.state.doc.lineAt(pos);
           const selFrom = view.state.selection.main.from;
           const selTo = view.state.selection.main.to;
           const selLine = view.state.doc.lineAt(selFrom);
           const selEndLine = view.state.doc.lineAt(selTo);
-          try {
-            const actions = await invoke<any[]>("lsp_code_action", {
-              path,
-              startLine: selLine.number - 1,
-              startCol: selFrom - selLine.from,
-              endLine: selEndLine.number - 1,
-              endCol: selTo - selEndLine.from,
-            });
-            if (!actions?.length) return true;
-            const { showCodeActions } = await import("@/stores/references.store");
-            showCodeActions(actions, pos);
-          } catch {
-            // LSP not ready
-          }
+          invoke<any[]>("lsp_code_action", {
+            path,
+            startLine: selLine.number - 1,
+            startCol: selFrom - selLine.from,
+            endLine: selEndLine.number - 1,
+            endCol: selTo - selEndLine.from,
+          })
+            .then(async (actions) => {
+              if (!actions?.length) return;
+              const { showCodeActions } = await import("@/stores/references.store");
+              showCodeActions(actions, pos);
+            })
+            .catch(() => { /* LSP not ready */ });
           return true;
         },
       },
@@ -453,7 +457,293 @@ function lspNavigationKeymaps(path: string): Extension {
   );
 }
 
+// ── Semantic Highlighting ─────────────────────────────────────────────────────
+
+/**
+ * LSP semantic token types (index matches the server's legend order).
+ * We map each index to a CSS class applied as a CodeMirror decoration.
+ *
+ * The mapping follows the standard LSP token type names we declared in the
+ * `initialize` capabilities, so the server's legend always matches this list.
+ */
+const SEMANTIC_TOKEN_TYPES = [
+  "namespace",    // 0
+  "type",         // 1
+  "class",        // 2
+  "enum",         // 3
+  "interface",    // 4
+  "struct",       // 5
+  "typeParameter",// 6
+  "parameter",    // 7
+  "variable",     // 8
+  "property",     // 9
+  "enumMember",   // 10
+  "event",        // 11
+  "function",     // 12
+  "method",       // 13
+  "macro",        // 14
+  "keyword",      // 15
+  "modifier",     // 16
+  "comment",      // 17
+  "string",       // 18
+  "number",       // 19
+  "regexp",       // 20
+  "operator",     // 21
+  "decorator",    // 22
+];
+
+const SEMANTIC_TOKEN_MODIFIERS = [
+  "declaration",   // bit 0
+  "definition",    // bit 1
+  "readonly",      // bit 2
+  "static",        // bit 3
+  "deprecated",    // bit 4
+  "abstract",      // bit 5
+  "async",         // bit 6
+  "modification",  // bit 7
+  "documentation", // bit 8
+  "defaultLibrary",// bit 9
+];
+
+/**
+ * Build a list of CSS class names for a single semantic token.
+ * The base class is `cm-semantic-<tokenType>` (e.g. `cm-semantic-class`).
+ * Active modifiers add extra classes (e.g. `cm-semantic-deprecated`).
+ */
+function semanticTokenClasses(
+  tokenType: number,
+  modifiers: number,
+  serverLegendTypes?: string[],
+  serverLegendModifiers?: string[]
+): string[] {
+  const types = serverLegendTypes ?? SEMANTIC_TOKEN_TYPES;
+  const mods  = serverLegendModifiers ?? SEMANTIC_TOKEN_MODIFIERS;
+  const classes: string[] = [];
+
+  const typeName = types[tokenType];
+  if (typeName) classes.push(`cm-semantic-${typeName}`);
+
+  for (let i = 0; i < mods.length; i++) {
+    if (modifiers & (1 << i)) {
+      classes.push(`cm-semantic-${mods[i]}`);
+    }
+  }
+
+  return classes;
+}
+
+const setSemanticDecorations = StateEffect.define<DecorationSet>();
+
+const semanticDecorationField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    deco = deco.map(tr.changes);
+    for (const e of tr.effects) {
+      if (e.is(setSemanticDecorations)) return e.value;
+    }
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+/**
+ * Decode the LSP relative-encoded semantic token data into decoration ranges.
+ *
+ * LSP encodes tokens as a flat array of 5-tuples:
+ *   [deltaLine, deltaStartChar, length, tokenType, tokenModifiers]
+ * Each position is relative to the previous token (hence "relative").
+ */
+function decodeSemanticTokens(
+  data: number[],
+  doc: EditorView["state"]["doc"],
+  serverLegendTypes?: string[],
+  serverLegendModifiers?: string[]
+): import("@codemirror/state").Range<Decoration>[] {
+  const marks: import("@codemirror/state").Range<Decoration>[] = [];
+
+  let line = 0;
+  let startChar = 0;
+
+  for (let i = 0; i + 4 < data.length; i += 5) {
+    const deltaLine      = data[i];
+    const deltaStartChar = data[i + 1];
+    const length         = data[i + 2];
+    const tokenType      = data[i + 3];
+    const tokenMods      = data[i + 4];
+
+    if (deltaLine > 0) {
+      line += deltaLine;
+      startChar = deltaStartChar;
+    } else {
+      startChar += deltaStartChar;
+    }
+
+    const classes = semanticTokenClasses(tokenType, tokenMods, serverLegendTypes, serverLegendModifiers);
+    if (classes.length === 0) continue;
+
+    // Map LSP 0-based line/col to CodeMirror offset.
+    const cmLine = Math.min(line + 1, doc.lines);
+    const docLine = doc.line(cmLine);
+    const from = docLine.from + Math.min(startChar, docLine.length);
+    const to   = Math.min(from + length, docLine.to);
+    if (from >= to) continue;
+
+    marks.push(Decoration.mark({ class: classes.join(" ") }).range(from, to));
+  }
+
+  return marks.sort((a, b) => a.from - b.from);
+}
+
+function lspSemanticHighlightExtension(path: string): Extension[] {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  // Set true when the server reports it doesn't support semantic tokens so we
+  // stop making requests for the lifetime of the editor session.
+  let unsupported = false;
+
+  return [
+    semanticDecorationField,
+    EditorView.updateListener.of((update) => {
+      if (!update.docChanged && !update.transactions.some((t) => t.isUserEvent("input"))) {
+        // Only refresh after document changes.
+        return;
+      }
+      if (unsupported) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(async () => {
+        if (unsupported) return;
+        try {
+          const result = await invoke<any>("lsp_semantic_tokens", { path });
+          if (!result) return;
+
+          const data: number[] = result.data ?? [];
+          if (!Array.isArray(data) || data.length === 0) return;
+
+          // Use server legend if available; fall back to our declared order.
+          const { lspState } = await import("@/stores/lsp.store");
+          const caps = lspState.serverCapabilities as any;
+          const legend = caps?.semanticTokensProvider?.legend;
+          const types = legend?.tokenTypes as string[] | undefined;
+          const mods  = legend?.tokenModifiers as string[] | undefined;
+
+          const doc = update.view.state.doc;
+          const marks = decodeSemanticTokens(data, doc, types, mods);
+          const decoSet: DecorationSet = marks.length > 0
+            ? Decoration.set(marks)
+            : Decoration.none;
+
+          update.view.dispatch({
+            effects: setSemanticDecorations.of(decoSet),
+          });
+        } catch (err) {
+          const msg = String(err).toLowerCase();
+          if (
+            msg.includes("method not found") ||
+            msg.includes("-32601") ||
+            msg.includes("not supported") ||
+            msg.includes("not running")
+          ) {
+            unsupported = true;
+          }
+        }
+      }, 500);
+    }),
+  ];
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
+
+/**
+ * Apply an LSP `WorkspaceEdit` to the open editor files.
+ *
+ * A `WorkspaceEdit` maps file URIs to arrays of `TextEdit` objects.
+ * This function applies each edit to the corresponding file.  If the file
+ * is currently open in the editor, the edit is applied via a CodeMirror
+ * transaction so the user can undo it.  For background files, the content
+ * is written to disk directly.
+ */
+export async function applyWorkspaceEdit(workspaceEdit: any): Promise<void> {
+  const changes: Record<string, any[]> = workspaceEdit.changes ?? {};
+  const documentChanges: any[] = workspaceEdit.documentChanges ?? [];
+
+  // Normalize to a map of uri → TextEdit[].
+  const edits = new Map<string, any[]>();
+
+  for (const [uri, textEdits] of Object.entries(changes)) {
+    edits.set(uri, textEdits as any[]);
+  }
+  for (const dc of documentChanges) {
+    if (dc.textDocument?.uri && dc.edits) {
+      edits.set(dc.textDocument.uri, dc.edits);
+    }
+  }
+
+  const { parseLspUri } = await import("@/lib/tauri-api");
+  const { writeFile } = await import("@/lib/tauri-api");
+  const { editorState, saveEditorState } = await import("@/stores/editor.store");
+  const { getEditorView } = await import("@/components/editor/CodeEditor");
+
+  for (const [uri, textEdits] of edits) {
+    const parsed = parseLspUri(uri);
+    if (parsed.kind !== "file") continue;
+    const filePath = parsed.path;
+
+    // Apply to the active editor view if this file is currently active.
+    const activeView = getEditorView();
+    if (editorState.activeFilePath === filePath && activeView) {
+      const doc = activeView.state.doc;
+      // Convert LSP TextEdits to CodeMirror changes.
+      // Sort in reverse order so offsets don't shift during application.
+      const sortedEdits = [...textEdits].sort((a: any, b: any) => {
+        const aLine = a.range.start.line;
+        const bLine = b.range.start.line;
+        if (aLine !== bLine) return bLine - aLine;
+        return b.range.start.character - a.range.start.character;
+      });
+
+      const changes = sortedEdits.map((te: any) => {
+        const fromLine = doc.line(Math.min(te.range.start.line + 1, doc.lines));
+        const toLine   = doc.line(Math.min(te.range.end.line + 1, doc.lines));
+        const from = fromLine.from + Math.min(te.range.start.character, fromLine.length);
+        const to   = toLine.from   + Math.min(te.range.end.character, toLine.length);
+        return { from, to, insert: te.newText ?? "" };
+      });
+
+      activeView.dispatch({ changes });
+      saveEditorState(filePath, activeView.state);
+    } else {
+      // Background file: read, apply edits, write back.
+      try {
+        const { readFile } = await import("@/lib/tauri-api");
+        const content = await readFile(filePath);
+        const lines = content.split("\n");
+        const sortedEdits = [...textEdits].sort((a: any, b: any) => {
+          if (a.range.start.line !== b.range.start.line) {
+            return b.range.start.line - a.range.start.line;
+          }
+          return b.range.start.character - a.range.start.character;
+        });
+        // Simple line-based apply (good enough for organize imports).
+        let result = content;
+        for (const te of sortedEdits as any[]) {
+          const startLine = te.range.start.line;
+          const endLine   = te.range.end.line;
+          const startChar = te.range.start.character;
+          const endChar   = te.range.end.character;
+          const before = lines.slice(0, startLine).join("\n") +
+            (startLine > 0 ? "\n" : "") +
+            lines[startLine].slice(0, startChar);
+          const after  = lines[endLine].slice(endChar) +
+            (endLine < lines.length - 1 ? "\n" : "") +
+            lines.slice(endLine + 1).join("\n");
+          result = before + (te.newText ?? "") + after;
+        }
+        await writeFile(filePath, result);
+      } catch {
+        // Best-effort; if we can't read/write, skip silently.
+      }
+    }
+  }
+}
 
 export function createLspExtension(path: string, language: string): Extension[] {
   const langId = lspLanguageId(language);
@@ -469,6 +759,7 @@ export function createLspExtension(path: string, language: string): Extension[] 
     ...lspDefinitionLinkExtension(path),
     ...lspDocumentHighlightExtension(path),
     ...lspSignatureHelpExtension(path),
+    ...lspSemanticHighlightExtension(path),
     lspNavigationKeymaps(path),
   ];
 }

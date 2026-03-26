@@ -15,6 +15,12 @@ export interface OpenFile {
   dirty: boolean;
   editorState: EditorState | null;
   language: Language;
+  /**
+   * When true, this file was opened from a JAR/archive or via decompilation
+   * and has no on-disk representation.  It is read-only and should not be
+   * saved or modified.
+   */
+  virtual?: boolean;
 }
 
 interface EditorStoreState {
