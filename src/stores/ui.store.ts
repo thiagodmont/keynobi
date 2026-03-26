@@ -1,7 +1,7 @@
 import { createStore } from "solid-js/store";
 
-export type SidebarTab = "files" | "search" | "git";
-export type BottomPanelTab = "build" | "logcat" | "terminal";
+export type SidebarTab = "files" | "search" | "git" | "symbols";
+export type BottomPanelTab = "build" | "logcat" | "terminal" | "problems" | "references";
 
 interface UIState {
   sidebarVisible: boolean;
@@ -18,7 +18,7 @@ const [uiState, setUIState] = createStore<UIState>({
   bottomPanelVisible: false,
   bottomPanelHeight: 250,
   activeSidebarTab: "files",
-  activeBottomTab: "build",
+  activeBottomTab: "problems",
 });
 
 export { uiState, setUIState };

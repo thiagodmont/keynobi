@@ -5,9 +5,18 @@
  * between App.tsx (Cmd+O keybinding) and FileTree.tsx (sidebar button).
  */
 
-import { openFolderDialog, openProject, formatError } from "@/lib/tauri-api";
+import { openFolderDialog, openProject, readFile, formatError, lspDidOpen } from "@/lib/tauri-api";
 import { setProject, setLoading } from "@/stores/project.store";
+import {
+  editorState,
+  isFileOpen,
+  addOpenFile,
+  setActiveFile,
+  type OpenFile,
+} from "@/stores/editor.store";
 import { showToast } from "@/components/common/Toast";
+import { detectLanguage } from "@/lib/file-utils";
+import { pushNavigation } from "@/lib/navigation-history";
 import type { FileNode } from "@/stores/project.store";
 
 export interface OpenProjectResult {
@@ -42,5 +51,66 @@ export async function openProjectFolder(): Promise<OpenProjectResult | null> {
     return null;
   } finally {
     setLoading(false);
+  }
+}
+
+/**
+ * Open a file at a specific location in the editor. Used by search results,
+ * go-to-definition, symbol clicks, etc.
+ */
+export async function openFileAtLocation(
+  path: string,
+  line: number,
+  col: number
+): Promise<void> {
+  try {
+    // Push current position to navigation history before jumping
+    const currentPath = editorState.activeFilePath;
+    if (currentPath) {
+      pushNavigation({
+        path: currentPath,
+        line: editorState.cursorLine ?? 1,
+        col: editorState.cursorCol ?? 0,
+      });
+    }
+
+    if (!isFileOpen(path)) {
+      const content = await readFile(path);
+      const name = path.split("/").pop() ?? path;
+      const language = detectLanguage(path);
+      const file: OpenFile = {
+        path,
+        name,
+        savedContent: content,
+        dirty: false,
+        editorState: null,
+        language,
+      };
+      addOpenFile(file);
+
+      // Notify LSP about the newly opened file so it can provide navigation
+      if (language === "kotlin" || language === "gradle") {
+        lspDidOpen(path, content, "kotlin").catch(() => {});
+      }
+    }
+    setActiveFile(path);
+
+    // Scroll to line after the editor has switched. EditorView is swapped
+    // inside a SolidJS effect triggered by setActiveFile, so we wait a tick.
+    setTimeout(async () => {
+      const { getEditorView } = await import("@/components/editor/CodeEditor");
+      const view = getEditorView();
+      if (view) {
+        const lineInfo = view.state.doc.line(Math.max(1, line));
+        const pos = lineInfo.from + Math.max(0, col);
+        view.dispatch({
+          selection: { anchor: pos },
+          scrollIntoView: true,
+        });
+        view.focus();
+      }
+    }, 50);
+  } catch (err) {
+    showToast(`Failed to open file: ${formatError(err)}`, "error");
   }
 }

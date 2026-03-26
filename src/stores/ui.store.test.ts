@@ -18,7 +18,7 @@ function resetUIState() {
     bottomPanelVisible: false,
     bottomPanelHeight: 250,
     activeSidebarTab: "files",
-    activeBottomTab: "build",
+    activeBottomTab: "problems",
   });
 }
 
@@ -136,6 +136,11 @@ describe("setActiveSidebarTab", () => {
     setActiveSidebarTab("files");
     expect(uiState.activeSidebarTab).toBe("files");
   });
+
+  it("sets the active sidebar tab to symbols", () => {
+    setActiveSidebarTab("symbols");
+    expect(uiState.activeSidebarTab).toBe("symbols");
+  });
 });
 
 // ── setActiveBottomTab ────────────────────────────────────────────────────────
@@ -152,5 +157,10 @@ describe("setActiveBottomTab", () => {
     setActiveBottomTab("terminal");
     setActiveBottomTab("build");
     expect(uiState.activeBottomTab).toBe("build");
+  });
+
+  it("sets the active bottom tab to problems", () => {
+    setActiveBottomTab("problems");
+    expect(uiState.activeBottomTab).toBe("problems");
   });
 });

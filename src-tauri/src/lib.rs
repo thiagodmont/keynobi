@@ -3,6 +3,10 @@ pub mod models;
 pub mod services;
 
 use commands::file_system::*;
+use commands::lsp::*;
+use commands::search::{search_in_file, search_project};
+use commands::settings::*;
+use commands::treesitter::{get_document_symbols, get_symbol_at_position, TreeSitterState};
 use services::fs_manager::FsWatcher;
 use std::path::PathBuf;
 use tokio::sync::Mutex;
@@ -60,11 +64,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
-        // Each concern gets its own managed state. Phase 2 will add:
-        //   .manage(BuildState::new())
-        //   .manage(DeviceState::new())
         .manage(FsState::new())
+        .manage(TreeSitterState::new())
+        .manage(LspState::new())
         .invoke_handler(tauri::generate_handler![
+            // File system
             open_project,
             get_file_tree,
             get_directory_children,
@@ -75,6 +79,42 @@ pub fn run() {
             delete_path,
             rename_path,
             get_project_root,
+            // Tree-sitter
+            get_document_symbols,
+            get_symbol_at_position,
+            // Search
+            search_project,
+            search_in_file,
+            // LSP
+            lsp_check_installed,
+            lsp_download,
+            lsp_start,
+            lsp_stop,
+            lsp_status,
+            lsp_did_open,
+            lsp_did_change,
+            lsp_did_save,
+            lsp_did_close,
+            lsp_complete,
+            lsp_hover,
+            lsp_definition,
+            lsp_references,
+            lsp_implementation,
+            lsp_document_symbols,
+            lsp_workspace_symbols,
+            lsp_code_action,
+            lsp_rename,
+            lsp_format,
+            lsp_pull_diagnostics,
+            lsp_document_highlight,
+            lsp_signature_help,
+            // Settings
+            get_settings,
+            save_settings,
+            get_default_settings,
+            reset_settings,
+            detect_sdk_path,
+            detect_java_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

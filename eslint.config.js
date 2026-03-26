@@ -29,14 +29,17 @@ export default [
         requestAnimationFrame: "readonly",
         cancelAnimationFrame: "readonly",
         HTMLElement: "readonly",
+        HTMLInputElement: "readonly",
+        HTMLDivElement: "readonly",
         MouseEvent: "readonly",
         KeyboardEvent: "readonly",
+        structuredClone: "readonly",
       },
     },
     rules: {
       // TypeScript
       ...tsPlugin.configs.recommended.rules,
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
 

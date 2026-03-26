@@ -4,14 +4,15 @@ import {
   setActiveFile,
   removeOpenFile,
   getCurrentContent,
+  saveEditorState as storeSaveEditorState,
+  type Language,
 } from "@/stores/editor.store";
-import { getEditorView } from "./CodeEditor";
-import { saveEditorState as storeSaveEditorState } from "@/stores/editor.store";
+import { getEditorView } from "@/components/editor/CodeEditor";
 import { writeFile, formatError } from "@/lib/tauri-api";
 import { showToast } from "@/components/common/Toast";
 import { showSaveDialog } from "@/components/common/Dialog";
 import { getFileTypeInfo } from "@/lib/file-utils";
-import type { Language } from "@/stores/editor.store";
+import { invoke } from "@tauri-apps/api/core";
 
 // ── Static style constants ────────────────────────────────────────────────────
 
@@ -59,6 +60,11 @@ export async function promptSaveAndClose(path: string): Promise<boolean> {
 
   if (!file.dirty) {
     removeOpenFile(path);
+    // Notify LSP that the file is closed
+    const lang = file.language;
+    if (lang === "kotlin" || lang === "gradle") {
+      invoke("lsp_did_close", { path }).catch(() => {});
+    }
     return true;
   }
 
@@ -69,6 +75,9 @@ export async function promptSaveAndClose(path: string): Promise<boolean> {
     try {
       await writeFile(path, content);
       removeOpenFile(path);
+      if (file.language === "kotlin" || file.language === "gradle") {
+        invoke("lsp_did_close", { path }).catch(() => {});
+      }
       return true;
     } catch (err) {
       showToast(`Failed to save "${file.name}": ${formatError(err)}`, "error");
@@ -76,6 +85,9 @@ export async function promptSaveAndClose(path: string): Promise<boolean> {
     }
   } else if (result === "discard") {
     removeOpenFile(path);
+    if (file.language === "kotlin" || file.language === "gradle") {
+      invoke("lsp_did_close", { path }).catch(() => {});
+    }
     return true;
   } else {
     // "cancel" — abort the close operation

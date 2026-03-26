@@ -75,6 +75,7 @@ export function Sidebar(props: SidebarProps): JSX.Element {
       >
         <SidebarIcon tab="files" iconName="folder" tooltip="Explorer" />
         <SidebarIcon tab="search" iconName="search" tooltip="Search" />
+        <SidebarIcon tab="symbols" iconName="list" tooltip="Outline" />
         <SidebarIcon tab="git" iconName="git-branch" tooltip="Source Control" />
       </div>
 

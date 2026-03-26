@@ -17,6 +17,8 @@ import {
 } from "@/stores/editor.store";
 import { writeFile, formatError } from "@/lib/tauri-api";
 import { showToast } from "@/components/common/Toast";
+import { createLspExtension } from "@/lib/codemirror/lsp-extension";
+import { invoke } from "@tauri-apps/api/core";
 
 let editorView: EditorView | null = null;
 
@@ -53,6 +55,7 @@ export function createEditorState(
     extensions: [
       baseExtensions,
       getLanguageExtension(language),
+      ...createLspExtension(path, language),
       EditorView.updateListener.of((update) => {
         if (update.docChanged && editorView) {
           const activePath = editorState.activeFilePath;
@@ -97,6 +100,11 @@ export function createEditorState(
               writeFile(activePath, content)
                 .then(() => {
                   updateSavedContent(activePath, content);
+                  // Notify LSP so it can re-analyze the saved file
+                  const lang = editorState.openFiles[activePath]?.language;
+                  if (lang === "kotlin" || lang === "gradle") {
+                    invoke("lsp_did_save", { path: activePath, content }).catch(() => {});
+                  }
                 })
                 .catch((err) => {
                   showToast(`Failed to save: ${formatError(err)}`, "error");

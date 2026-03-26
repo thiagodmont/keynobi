@@ -2,6 +2,9 @@
  * Shared file-type utilities used by the editor tab bar, file tree, and
  * language detection. Centralising here prevents colour/label drift between
  * the three places that previously duplicated this logic.
+ *
+ * Path utilities assume POSIX-style '/' separators (macOS target).
+ * If Windows support is added, these must be updated to handle '\'.
  */
 
 import type { Language } from "@/stores/editor.store";

@@ -37,6 +37,21 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # Auto-generate TypeScript interfaces from Rust types
 ts-rs = "12"
+# Tree-sitter for incremental Kotlin parsing, symbol extraction, fallback navigation
+tree-sitter = "0.24"
+tree-sitter-kotlin-ng = "1.1"
+# ripgrep library crates for fast project-wide text search
+grep-regex = "0.1"
+grep-searcher = "0.1"
+grep-matcher = "0.1"
+# HTTP client for downloading Kotlin LSP sidecar
+reqwest = { version = "0.12", features = ["stream"] }
+# ZIP extraction for LSP sidecar
+zip = "2"
+# Home directory resolution
+dirs = "6"
+# Async futures utilities
+futures-util = "0.3"
 
 [dev-dependencies]
 # Criterion for micro-benchmarks (file-tree, CRUD operations)
@@ -44,4 +59,8 @@ criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
 name = "fs_benchmarks"
+harness = false
+
+[[bench]]
+name = "phase2_benchmarks"
 harness = false

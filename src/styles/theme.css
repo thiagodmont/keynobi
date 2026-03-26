@@ -66,3 +66,72 @@
 ::-webkit-scrollbar-corner {
   background: transparent;
 }
+
+/* ── Code navigation decorations ─────────────────────────────────────────── */
+
+/* Cmd+hover link underline */
+.cm-definition-link {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  color: var(--accent) !important;
+}
+
+/* Document highlight: symbol occurrences */
+.cm-highlight-text {
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 2px;
+  outline: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.cm-highlight-read {
+  background: rgba(99, 179, 237, 0.12);
+  border-radius: 2px;
+  outline: 1px solid rgba(99, 179, 237, 0.25);
+}
+
+.cm-highlight-write {
+  background: rgba(104, 211, 145, 0.12);
+  border-radius: 2px;
+  outline: 1px solid rgba(104, 211, 145, 0.3);
+}
+
+/* Signature help tooltip */
+.cm-sig-help {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 4px 8px;
+  max-width: 600px;
+  white-space: pre-wrap;
+}
+
+/* Breadcrumbs scrollbar hidden */
+
+/* ── LSP status indicator ──────────────────────────────────────────────────── */
+
+@keyframes lsp-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.lsp-spinner {
+  animation: lsp-spin 1s linear infinite;
+  display: inline-block;
+  line-height: 0;
+}
+
+@keyframes lsp-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.lsp-dot-pulse {
+  animation: lsp-pulse 1.4s ease-in-out infinite;
+  display: inline-block;
+  border-radius: 50%;
+}
