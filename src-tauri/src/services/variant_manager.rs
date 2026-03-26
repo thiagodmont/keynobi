@@ -1,5 +1,4 @@
 use crate::models::variant::{BuildVariant, VariantList};
-use crate::services::treesitter::TreeSitterService;
 use std::path::Path;
 
 /// Compute the capitalized variant name from build type + flavors.
@@ -48,17 +47,15 @@ fn task_name(prefix: &str, flavors: &[&str], build_type: &str) -> String {
     name
 }
 
-/// Parse `build.gradle.kts` content with Tree-sitter and extract variants.
+/// Parse `build.gradle.kts` content and extract variants.
 ///
-/// Returns `None` if the grammar is unavailable or the file cannot be parsed;
+/// Returns `None` if the content cannot yield any variants;
 /// the caller must fall back to the Gradle tasks list in that case.
 pub fn parse_variants_from_gradle(
-    treesitter: &mut TreeSitterService,
     file_path: &Path,
     content: &str,
 ) -> Option<VariantList> {
-    // Parse the file and cache.
-    treesitter.parse_file(file_path, content)?;
+    let _ = file_path; // path kept for logging / future use
 
     let build_types = extract_block_names(content, "buildTypes");
     let (flavor_dimensions, flavors_map) = extract_flavors(content);

@@ -1,5 +1,5 @@
 use crate::models::health::SystemHealthReport;
-use crate::services::{lsp_downloader, settings_manager};
+use crate::services::settings_manager;
 use crate::FsState;
 use std::path::{Path, PathBuf};
 
@@ -116,18 +116,16 @@ pub async fn run_health_checks(
         .map(|root| root.join("gradlew").is_file() || root.join("gradlew.bat").is_file())
         .unwrap_or(false);
 
-    // ── LSP system directory ──────────────────────────────────────────────────
-    let lsp_system_dir = lsp_downloader::get_lsp_system_dir();
-    let lsp_system_dir_ok = tokio::fs::create_dir_all(&lsp_system_dir)
+    // ── App directory probe ──────────────────────────────────────────────────
+    let app_dir = dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".androidide");
+    let lsp_system_dir_ok = tokio::fs::create_dir_all(app_dir.clone())
         .await
         .is_ok();
 
     // ── Disk space (Unix only) ────────────────────────────────────────────────
-    let disk_free_mb = get_disk_free_mb(
-        lsp_system_dir
-            .parent()
-            .unwrap_or(&lsp_system_dir),
-    );
+    let disk_free_mb = get_disk_free_mb(&app_dir);
 
     Ok(SystemHealthReport {
         java_executable_found,

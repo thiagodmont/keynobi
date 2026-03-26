@@ -163,6 +163,25 @@ pub fn find_gradlew(gradle_root: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Walk a directory up to `max_depth` levels, returning all matching files.
+fn walk_dir_for_apk(base: &Path, max_depth: u32) -> Vec<PathBuf> {
+    let mut results = Vec::new();
+    if max_depth == 0 || !base.is_dir() {
+        return results;
+    }
+    if let Ok(entries) = std::fs::read_dir(base) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                results.extend(walk_dir_for_apk(&path, max_depth - 1));
+            } else {
+                results.push(path);
+            }
+        }
+    }
+    results
+}
+
 /// Resolve the APK output path for a given variant.
 ///
 /// Standard AGP layout:
@@ -174,15 +193,15 @@ pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf
     if !base.is_dir() {
         return None;
     }
-    // Walk two levels looking for an *.apk that is NOT unsigned.
-    for entry in walkdir::WalkDir::new(&base).max_depth(3).into_iter().flatten() {
-        let path = entry.path();
+    let all_files = walk_dir_for_apk(&base, 3);
+
+    // First pass: prefer APK whose parent dir matches variant.
+    for path in &all_files {
         if path.extension().and_then(|e| e.to_str()) == Some("apk") {
             let name = path.file_name()?.to_str()?.to_lowercase();
             if name.contains("unsigned") || name.contains("unaligned") {
                 continue;
             }
-            // Prefer an APK whose parent directory name matches the variant.
             let parent_name = path
                 .parent()
                 .and_then(|p| p.file_name())
@@ -195,8 +214,7 @@ pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf
         }
     }
     // Second pass: return first APK regardless of directory match.
-    for entry in walkdir::WalkDir::new(&base).max_depth(3).into_iter().flatten() {
-        let path = entry.path();
+    for path in &all_files {
         if path.extension().and_then(|e| e.to_str()) == Some("apk") {
             let name = path.file_name()?.to_str()?.to_lowercase();
             if !name.contains("unsigned") && !name.contains("unaligned") {

@@ -12,7 +12,7 @@ import {
   SettingSelect,
   SettingTagList,
 } from "@/components/settings/SettingRow";
-import { AndroidSdkStatus, KotlinLspStatus, JavaStatus } from "@/components/settings/ToolStatus";
+import { AndroidSdkStatus, JavaStatus } from "@/components/settings/ToolStatus";
 import Icon from "@/components/common/Icon";
 
 type Category = "user" | "tools" | "advanced";
@@ -402,34 +402,9 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
         </SettingRow>
       </Show>
 
-      <Show when={m("Kotlin Language Server", "Kotlin LSP")}>
-        <SectionHeader title="Kotlin Language Server" />
-        <SettingRow label="Status" description="JetBrains Kotlin LSP for code intelligence">
-          <KotlinLspStatus />
-        </SettingRow>
-      </Show>
-      <Show when={m("LSP Log Level", "Log verbosity for LSP server")}>
-        <SettingRow label="Log Level" description="Log verbosity for the Kotlin LSP server">
-          <SettingSelect
-            value={settingsState.lsp.logLevel}
-            options={["OFF", "ERROR", "WARN", "INFO", "DEBUG"]}
-            onChange={(v) => updateSetting("lsp", "logLevel", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={m("LSP Request Timeout", "Seconds before an LSP request times out")}>
-        <SettingRow label="Request Timeout (sec)" description="Seconds before an LSP request times out">
-          <SettingNumberInput
-            value={settingsState.lsp.requestTimeoutSec}
-            min={5} max={120}
-            onChange={(v) => updateSetting("lsp", "requestTimeoutSec", v)}
-          />
-        </SettingRow>
-      </Show>
-
       <Show when={m("Java JDK", "JAVA_HOME")}>
         <SectionHeader title="Java / JDK" />
-        <SettingRow label="JAVA_HOME" description="Path to the JDK (for future build system integration)">
+        <SettingRow label="JAVA_HOME" description="Path to the JDK (required for Gradle builds)">
           <JavaStatus />
         </SettingRow>
       </Show>
@@ -444,81 +419,40 @@ function AdvancedSettings(props: { matchesSearch: (l: string, d?: string) => boo
   return (
     <>
       <div style={{ "font-size": "11px", color: "var(--text-muted)", padding: "8px 0 12px", "border-bottom": "1px solid var(--border)" }}>
-        These settings control internal limits and timing. Changes may affect performance and stability. Most users should leave these at their default values.
+        These settings control internal limits and timing. Most users should leave these at their default values.
       </div>
 
-      <SectionHeader title="Performance" />
-      <Show when={m("Tree-sitter Cache Size", "Number of parsed trees kept in memory")}>
-        <SettingRow label="Tree-sitter Cache Size" description="Number of parsed syntax trees kept in memory (LRU)">
-          <SettingNumberInput
-            value={settingsState.advanced.treeSitterCacheSize}
-            min={10} max={200}
-            onChange={(v) => updateSetting("advanced", "treeSitterCacheSize", v)}
+      <SectionHeader title="Build" />
+      <Show when={m("Gradle Parallel Builds", "Run Gradle tasks in parallel")}>
+        <SettingRow label="Parallel Builds" description="Pass --parallel to Gradle for faster multi-module builds">
+          <SettingToggle
+            checked={settingsState.build.gradleParallel}
+            onChange={(v) => updateSetting("build", "gradleParallel", v)}
           />
         </SettingRow>
       </Show>
-      <Show when={m("LSP Message Size Limit", "Maximum size of a single LSP message")}>
-        <SettingRow label="LSP Message Size Limit (MB)" description="Maximum size of a single LSP JSON-RPC message">
-          <SettingNumberInput
-            value={settingsState.advanced.lspMaxMessageSizeMb}
-            min={16} max={256}
-            onChange={(v) => updateSetting("advanced", "lspMaxMessageSizeMb", v)}
+      <Show when={m("Gradle Offline Mode", "Prevent Gradle from accessing the network")}>
+        <SettingRow label="Offline Mode" description="Pass --offline to Gradle to skip dependency downloads">
+          <SettingToggle
+            checked={settingsState.build.gradleOffline}
+            onChange={(v) => updateSetting("build", "gradleOffline", v)}
           />
         </SettingRow>
       </Show>
-      <Show when={m("Navigation History Depth", "Maximum positions remembered for back/forward")}>
-        <SettingRow label="Navigation History Depth" description="Maximum positions remembered for back/forward navigation">
-          <SettingNumberInput
-            value={settingsState.advanced.navigationHistoryDepth}
-            min={10} max={200}
-            onChange={(v) => updateSetting("advanced", "navigationHistoryDepth", v)}
+      <Show when={m("Gradle JVM Args", "Extra JVM arguments for the Gradle daemon")}>
+        <SettingRow label="Gradle JVM Args" description='Extra JVM arguments passed to the Gradle daemon (e.g. "-Xmx4g")'>
+          <SettingTextInput
+            value={settingsState.build.gradleJvmArgs ?? ""}
+            placeholder="-Xmx4g"
+            onChange={(v) => updateSetting("build", "gradleJvmArgs", v || null)}
           />
         </SettingRow>
       </Show>
-      <Show when={m("Recent Files Limit", "Number of recently opened files remembered")}>
-        <SettingRow label="Recent Files Limit" description="Number of recently opened files shown in Quick Open">
-          <SettingNumberInput
-            value={settingsState.advanced.recentFilesLimit}
-            min={5} max={50}
-            onChange={(v) => updateSetting("advanced", "recentFilesLimit", v)}
-          />
-        </SettingRow>
-      </Show>
-
-      <SectionHeader title="Timing" />
-      <Show when={m("File Watcher Debounce", "Milliseconds to wait before processing file changes")}>
-        <SettingRow label="File Watcher Debounce (ms)" description="Delay before processing external file changes">
-          <SettingNumberInput
-            value={settingsState.advanced.watcherDebounceMs}
-            min={50} max={1000} step={50}
-            onChange={(v) => updateSetting("advanced", "watcherDebounceMs", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={m("LSP didChange Debounce", "Delay before sending editor changes to LSP")}>
-        <SettingRow label="LSP didChange Debounce (ms)" description="Delay before sending editor changes to the language server">
-          <SettingNumberInput
-            value={settingsState.advanced.lspDidChangeDebounceMs}
-            min={100} max={2000} step={50}
-            onChange={(v) => updateSetting("advanced", "lspDidChangeDebounceMs", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={m("Diagnostics Pull Delay", "Delay before pulling diagnostics after edit")}>
-        <SettingRow label="Diagnostics Pull Delay (ms)" description="Delay before requesting diagnostics after a document change">
-          <SettingNumberInput
-            value={settingsState.advanced.diagnosticsPullDelayMs}
-            min={200} max={5000} step={100}
-            onChange={(v) => updateSetting("advanced", "diagnosticsPullDelayMs", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={m("Hover Tooltip Delay", "Delay before showing hover information")}>
-        <SettingRow label="Hover Tooltip Delay (ms)" description="Delay before showing type/documentation hover tooltip">
-          <SettingNumberInput
-            value={settingsState.advanced.hoverDelayMs}
-            min={100} max={2000} step={50}
-            onChange={(v) => updateSetting("advanced", "hoverDelayMs", v)}
+      <Show when={m("Auto Install on Build", "Automatically install APK after a successful build")}>
+        <SettingRow label="Auto Install on Build" description="Automatically install and launch the app after a successful build">
+          <SettingToggle
+            checked={settingsState.build.autoInstallOnBuild}
+            onChange={(v) => updateSetting("build", "autoInstallOnBuild", v)}
           />
         </SettingRow>
       </Show>

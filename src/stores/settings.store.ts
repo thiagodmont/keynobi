@@ -42,6 +42,14 @@ const DEFAULT_SETTINGS: AppSettings = {
     navigationHistoryDepth: 50,
     recentFilesLimit: 20,
   },
+  build: {
+    gradleJvmArgs: null,
+    gradleParallel: true,
+    gradleOffline: false,
+    autoInstallOnBuild: true,
+    buildVariant: null,
+    selectedDevice: null,
+  },
 };
 
 const [settingsState, setSettingsState] = createStore<AppSettings>(

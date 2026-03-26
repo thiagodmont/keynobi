@@ -237,35 +237,23 @@ registerKeyAndAction({
 registerKeybinding({ key: "s", metaKey: true, action: () => { /* ... */ } });
 ```
 
-### 4. Navigation — Always Use `openFileAtLocation`
-
-Any action that jumps the editor to a specific file and position must call `openFileAtLocation(path, line, col)` from `services/project.service.ts`. This ensures navigation history is populated.
-
-```typescript
-// CORRECT — history is pushed automatically
-await openFileAtLocation(result.path, result.line, result.col);
-
-// WRONG — bypasses navigation history
-setActiveFile(result.path);
-```
-
-### 5. Reactive Computations — Use `createMemo`
+### 4. Reactive Computations — Use `createMemo`
 
 Values derived from reactive state that are used in multiple places (or in render paths) must be wrapped in `createMemo` to avoid redundant recomputation.
 
 ```typescript
 // CORRECT
-const lspLabel = createMemo(() => lspStatusLabel());
-const counts = createMemo(() => getDiagnosticCounts());
+const buildLabel = createMemo(() => getBuildStatusLabel());
+const summary = createMemo(() => healthSummary());
 
 // WRONG — called multiple times per render, recomputes on every access
-const label = lspStatusLabel(); // inside JSX expression
+const label = getBuildStatusLabel(); // inside JSX expression
 ```
 
-### 6. SolidJS Reactivity Rules
+### 5. SolidJS Reactivity Rules
 
-- **Never destructure stores**: `const { status } = lspState` breaks reactivity. Always access as `lspState.status`.
-- **Signals in JSX must be called**: `{lspLabel()}` not `{lspLabel}`.
+- **Never destructure stores**: `const { status } = buildState` breaks reactivity. Always access as `buildState.status`.
+- **Signals in JSX must be called**: `{buildLabel()}` not `{buildLabel}`.
 - **`onCleanup` for timers**: Any `setTimeout` set in a component must be cleared in `onCleanup`.
 
 ```typescript
@@ -275,16 +263,16 @@ onCleanup(() => { if (timer) clearTimeout(timer); });
 timer = setTimeout(() => { /* ... */ }, 300);
 ```
 
-### 7. TypeScript Types — Import from `@/bindings`
+### 6. TypeScript Types — Import from `@/bindings`
 
 Types that originate from Rust models must be imported from `@/bindings`, not redefined locally.
 
 ```typescript
 // CORRECT
-import type { FileNode, Diagnostic, SymbolInfo } from "@/bindings";
+import type { BuildError, Device, SystemHealthReport } from "@/bindings";
 
 // WRONG — creates a parallel definition that can drift from the Rust model
-interface Diagnostic { path: string; line: number; /* ... */ }
+interface BuildError { message: string; file: string; /* ... */ }
 ```
 
 For store types that need additional computed fields beyond the binding shape, extend the binding type:

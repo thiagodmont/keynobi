@@ -58,7 +58,6 @@ const STATUS_BG: Record<CheckStatus, string> = {
 const CATEGORY_LABEL: Record<string, string> = {
   project: "Project",
   environment: "Environment",
-  lsp: "Language Server",
   system: "System",
 };
 
@@ -214,7 +213,6 @@ export function HealthPanel(): JSX.Element {
     const order: HealthCheck["category"][] = [
       "project",
       "environment",
-      "lsp",
       "system",
     ];
     return order
@@ -478,7 +476,7 @@ export function HealthPanel(): JSX.Element {
                 "border-radius": "3px",
               }}
             >
-              ~/.androidide/logs/lsp/
+              ~/.androidide/
             </code>
           </div>
         </div>

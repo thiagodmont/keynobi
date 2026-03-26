@@ -21,17 +21,6 @@ tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-# File watching: notify v6 + full debouncer for proper Created/Modified/Deleted/Renamed events
-notify = { version = "6", features = ["macos_fsevent"] }
-notify-debouncer-full = "0.3"
-# .gitignore-aware directory traversal
-ignore = "0.4"
-# Recursive directory walking
-walkdir = "2"
-# Move to Trash instead of permanent delete
-trash = "5"
-# Atomic writes and integration tests
-tempfile = "3"
 # Typed error handling
 thiserror = "2"
 # Structured async-aware logging
@@ -39,20 +28,9 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 # Auto-generate TypeScript interfaces from Rust types
 ts-rs = "12"
-# Tree-sitter for incremental Kotlin parsing, symbol extraction, fallback navigation
-tree-sitter = "0.24"
-tree-sitter-kotlin-ng = "1.1"
-# ripgrep library crates for fast project-wide text search
-grep-regex = "0.1"
-grep-searcher = "0.1"
-grep-matcher = "0.1"
-# HTTP client for downloading Kotlin LSP sidecar
-reqwest = { version = "0.12", features = ["stream"] }
-# ZIP extraction for LSP sidecar
-zip = "2"
-# Home directory resolution
+# Home directory resolution (settings, ADB paths)
 dirs = "6"
-# Timestamps for log entries
+# Timestamps for log entries and build records
 chrono = { version = "0.4", features = ["serde"] }
 # Async futures utilities
 futures-util = "0.3"
@@ -62,13 +40,11 @@ libc = "0.2"
 regex = "1"
 
 [dev-dependencies]
-# Criterion for micro-benchmarks (file-tree, CRUD operations)
+# Atomic writes in tests
+tempfile = "3"
+# Criterion for micro-benchmarks
 criterion = { version = "0.5", features = ["html_reports"] }
 
 [[bench]]
 name = "fs_benchmarks"
-harness = false
-
-[[bench]]
-name = "phase2_benchmarks"
 harness = false

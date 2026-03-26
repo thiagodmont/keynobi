@@ -1,10 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { FileNode } from "@/bindings";
-import type { FileEvent } from "@/bindings";
 
-// ── File System ──────────────────────────────────────────────────────────────
+// ── Project ────────────────────────────────────────────────────────────────────
 
 export async function openFolderDialog(): Promise<string | null> {
   const result = await open({
@@ -16,43 +14,9 @@ export async function openFolderDialog(): Promise<string | null> {
   return result as string | null;
 }
 
-export async function openProject(path: string): Promise<FileNode> {
-  return invoke<FileNode>("open_project", { path });
-}
-
-export async function getFileTree(): Promise<FileNode> {
-  return invoke<FileNode>("get_file_tree");
-}
-
-export async function getDirectoryChildren(path: string): Promise<FileNode[]> {
-  return invoke<FileNode[]>("get_directory_children", { path });
-}
-
-export async function readFile(path: string): Promise<string> {
-  return invoke<string>("read_file", { path });
-}
-
-export async function writeFile(path: string, content: string): Promise<void> {
-  return invoke<void>("write_file", { path, content });
-}
-
-export async function createFile(path: string): Promise<void> {
-  return invoke<void>("create_file", { path });
-}
-
-export async function createDirectory(path: string): Promise<void> {
-  return invoke<void>("create_directory", { path });
-}
-
-export async function deletePath(path: string): Promise<void> {
-  return invoke<void>("delete_path", { path });
-}
-
-export async function renamePath(
-  oldPath: string,
-  newPath: string
-): Promise<void> {
-  return invoke<void>("rename_path", { oldPath, newPath });
+/** Open an Android project folder. Returns the project name on success. */
+export async function openProject(path: string): Promise<string> {
+  return invoke<string>("open_project", { path });
 }
 
 export async function getProjectRoot(): Promise<string | null> {
@@ -61,77 +25,6 @@ export async function getProjectRoot(): Promise<string | null> {
 
 export async function getGradleRoot(): Promise<string | null> {
   return invoke<string | null>("get_gradle_root");
-}
-
-// ── File Events ───────────────────────────────────────────────────────────────
-
-export type { FileEvent };
-
-export function onFileChanged(
-  callback: (event: FileEvent) => void
-): Promise<UnlistenFn> {
-  return listen<FileEvent>("file:changed", (e) => callback(e.payload));
-}
-
-// ── Search ────────────────────────────────────────────────────────────────────
-
-export interface SearchOptions {
-  regex: boolean;
-  caseSensitive: boolean;
-  wholeWord: boolean;
-  includePattern: string | null;
-  excludePattern: string | null;
-}
-
-export interface SearchMatch {
-  line: number;
-  col: number;
-  endCol: number;
-  lineContent: string;
-  contextBefore: string[];
-  contextAfter: string[];
-}
-
-export interface SearchResult {
-  path: string;
-  matches: SearchMatch[];
-}
-
-export async function searchProject(
-  query: string,
-  options: SearchOptions
-): Promise<SearchResult[]> {
-  return invoke<SearchResult[]>("search_project", { query, options });
-}
-
-export async function searchInFile(
-  path: string,
-  query: string,
-  options: SearchOptions
-): Promise<SearchResult[]> {
-  return invoke<SearchResult[]>("search_in_file", { path, query, options });
-}
-
-// ── Tree-sitter ───────────────────────────────────────────────────────────────
-
-export interface SymbolInfo {
-  name: string;
-  kind: string;
-  range: { startLine: number; startCol: number; endLine: number; endCol: number };
-  selectionRange: { startLine: number; startCol: number; endLine: number; endCol: number };
-  children: SymbolInfo[] | null;
-}
-
-export async function getDocumentSymbols(path: string): Promise<SymbolInfo[]> {
-  return invoke<SymbolInfo[]>("get_document_symbols", { path });
-}
-
-export async function getSymbolAtPosition(
-  path: string,
-  line: number,
-  col: number
-): Promise<string | null> {
-  return invoke<string | null>("get_symbol_at_position", { path, line, col });
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -164,6 +57,14 @@ export interface AppSettings {
     navigationHistoryDepth: number;
     recentFilesLimit: number;
   };
+  build: {
+    gradleJvmArgs: string | null;
+    gradleParallel: boolean;
+    gradleOffline: boolean;
+    autoInstallOnBuild: boolean;
+    buildVariant: string | null;
+    selectedDevice: string | null;
+  };
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -188,288 +89,6 @@ export async function detectSdkPath(): Promise<string | null> {
 
 export async function detectJavaPath(): Promise<string | null> {
   return invoke<string | null>("detect_java_path");
-}
-
-// ── LSP Navigation ───────────────────────────────────────────────────────────
-
-export interface LspLocation {
-  uri: string;
-  range: {
-    start: { line: number; character: number };
-    end: { line: number; character: number };
-  };
-}
-
-export interface LspHighlight {
-  range: {
-    start: { line: number; character: number };
-    end: { line: number; character: number };
-  };
-  /** 1=Text, 2=Read, 3=Write */
-  kind?: number;
-}
-
-export interface LspSignatureHelp {
-  signatures: Array<{
-    label: string;
-    documentation?: string;
-    parameters?: Array<{ label: string | [number, number]; documentation?: string }>;
-  }>;
-  activeSignature?: number;
-  activeParameter?: number;
-}
-
-export interface LspCodeAction {
-  title: string;
-  kind?: string;
-  edit?: {
-    changes?: Record<string, Array<{ range: LspLocation["range"]; newText: string }>>;
-    documentChanges?: unknown[];
-  };
-}
-
-export async function lspDidOpen(path: string, content: string, language: string): Promise<void> {
-  return invoke<void>("lsp_did_open", { path, content, language });
-}
-
-export async function lspDidClose(path: string): Promise<void> {
-  return invoke<void>("lsp_did_close", { path });
-}
-
-export async function lspDidSave(path: string, content: string): Promise<void> {
-  return invoke<void>("lsp_did_save", { path, content });
-}
-
-export async function lspDefinition(path: string, line: number, col: number): Promise<LspLocation[]> {
-  const result = await invoke<LspLocation | LspLocation[] | null>("lsp_definition", { path, line, col });
-  if (!result) return [];
-  return Array.isArray(result) ? result : [result];
-}
-
-export async function lspReferences(path: string, line: number, col: number): Promise<LspLocation[]> {
-  const result = await invoke<LspLocation[] | null>("lsp_references", { path, line, col });
-  return result ?? [];
-}
-
-export async function lspImplementation(path: string, line: number, col: number): Promise<LspLocation[]> {
-  const result = await invoke<LspLocation | LspLocation[] | null>("lsp_implementation", { path, line, col });
-  if (!result) return [];
-  return Array.isArray(result) ? result : [result];
-}
-
-export async function lspDocumentHighlight(path: string, line: number, col: number): Promise<LspHighlight[]> {
-  const result = await invoke<LspHighlight[] | null>("lsp_document_highlight", { path, line, col });
-  return result ?? [];
-}
-
-export async function lspSignatureHelp(path: string, line: number, col: number): Promise<LspSignatureHelp | null> {
-  return invoke<LspSignatureHelp | null>("lsp_signature_help", { path, line, col });
-}
-
-export async function lspCodeAction(
-  path: string,
-  startLine: number,
-  startCol: number,
-  endLine: number,
-  endCol: number
-): Promise<LspCodeAction[]> {
-  const result = await invoke<LspCodeAction[] | null>("lsp_code_action", { path, startLine, startCol, endLine, endCol });
-  return result ?? [];
-}
-
-/** Convert a file:// URI to a local path */
-export function uriToPath(uri: string): string {
-  return uri.replace(/^file:\/\//, "");
-}
-
-/**
- * Describe the kind of a URI returned by the LSP server.
- *
- * - `"file"` — a regular on-disk file (`file://` scheme).
- * - `"jar"` — an entry inside a JAR/ZIP archive.  The `archivePath` and
- *             `entryPath` fields are populated.
- * - `"jrt"` — a Java runtime module entry (`jrt:` scheme — JDK 9+).
- *             `archivePath` is the JDK home, `entryPath` is the module entry.
- * - `"unknown"` — anything else; treat as opaque.
- */
-export type LspUriKind =
-  | { kind: "file"; path: string }
-  | { kind: "jar"; uri: string; archivePath: string; entryPath: string }
-  | { kind: "jrt"; uri: string; archivePath: string; entryPath: string }
-  | { kind: "unknown"; uri: string };
-
-/**
- * Parse an LSP URI into a structured representation.
- *
- * The kotlin-lsp returns several URI forms for library/binary navigation:
- *   • `file:///path/to/file.kt`                 → regular file
- *   • `jar:file:///path/to/lib.jar!/entry.kt`   → JAR entry
- *   • `/path/to/src.zip!/java.base/UUID.java`   → archive path (no scheme)
- *   • `jrt:///modules/java.base/UUID.class`     → JRT (JDK modules)
- */
-export function parseLspUri(uri: string): LspUriKind {
-  // Standard file URI
-  if (uri.startsWith("file://")) {
-    return { kind: "file", path: uri.replace(/^file:\/\//, "") };
-  }
-
-  // jar:file:///path/to/archive.jar!/entry/path
-  const jarMatch = uri.match(/^jar:file:\/\/(\/[^!]+)!\/(.+)$/);
-  if (jarMatch) {
-    return {
-      kind: "jar",
-      uri,
-      archivePath: jarMatch[1],
-      entryPath: jarMatch[2],
-    };
-  }
-
-  // Bare filesystem path with !/ separator (e.g. /path/src.zip!/entry)
-  const archiveSepIdx = uri.indexOf("!/");
-  if (archiveSepIdx !== -1 && uri.startsWith("/")) {
-    return {
-      kind: "jar",
-      uri,
-      archivePath: uri.slice(0, archiveSepIdx),
-      entryPath: uri.slice(archiveSepIdx + 2),
-    };
-  }
-
-  // jrt: URI scheme (Java runtime modules, JDK 9+)
-  if (uri.startsWith("jrt:")) {
-    return { kind: "jrt", uri, archivePath: "", entryPath: uri };
-  }
-
-  return { kind: "unknown", uri };
-}
-
-/** Invoke the LSP's custom `decompile` command for a JAR/JRT URI. */
-export async function lspDecompile(uri: string): Promise<{ code: string; language: string } | null> {
-  try {
-    return await invoke<{ code: string; language: string } | null>("lsp_decompile", { uri });
-  } catch {
-    return null;
-  }
-}
-
-/** Read a text entry from a ZIP/JAR archive on disk. */
-export async function lspReadArchiveEntry(
-  archivePath: string,
-  entryPath: string
-): Promise<string | null> {
-  try {
-    return await invoke<string>("lsp_read_archive_entry", { archivePath, entryPath });
-  } catch {
-    return null;
-  }
-}
-
-/** Request full semantic tokens for a document from the LSP server. */
-export async function lspSemanticTokens(path: string): Promise<import("@tauri-apps/api/core").InvokeArgs | null> {
-  try {
-    return await invoke<unknown>("lsp_semantic_tokens", { path }) as import("@tauri-apps/api/core").InvokeArgs | null;
-  } catch {
-    return null;
-  }
-}
-
-/** Request code actions with a specific `only` filter. */
-export async function lspCodeActionFiltered(
-  path: string,
-  startLine: number,
-  startCol: number,
-  endLine: number,
-  endCol: number,
-  only: string[]
-): Promise<unknown[]> {
-  try {
-    const result = await invoke<unknown[] | null>("lsp_code_action_filtered", {
-      path, startLine, startCol, endLine, endCol, only,
-    });
-    return result ?? [];
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Generate `workspace.json` in the workspace root by scanning the Gradle
- * project structure from the filesystem.  This is the IDE-side fix for
- * "Package directive does not match" false positives on Android multi-module
- * projects using AGP convention plugins in a composite build.
- *
- * Returns the path to the generated file on success, or throws on failure.
- */
-export async function lspExportWorkspace(): Promise<string> {
-  return invoke<string>("lsp_generate_workspace_json");
-}
-
-// ── Log viewer ────────────────────────────────────────────────────────────────
-
-import type { LogEntry, LspStatus, DownloadProgress } from "@/bindings";
-
-/**
- * Subscribe to `lsp:status` events so the frontend store stays in sync with
- * the actual server lifecycle.  Returns the unlisten function.
- */
-export function listenLspStatus(
-  cb: (status: LspStatus) => void
-): Promise<UnlistenFn> {
-  return listen<LspStatus>("lsp:status", (event) => cb(event.payload));
-}
-
-/**
- * Subscribe to `lsp:capabilities` events emitted once after the LSP
- * `initialize` handshake.  Use this to know which methods are supported
- * before making requests.
- */
-export function listenLspCapabilities(
-  cb: (capabilities: Record<string, unknown>) => void
-): Promise<UnlistenFn> {
-  return listen<Record<string, unknown>>("lsp:capabilities", (event) =>
-    cb(event.payload)
-  );
-}
-
-/**
- * Subscribe to raw `lsp:progress` events.  The payload is the LSP
- * WorkDoneProgress params which may include `value.percentage` (0–100).
- * Returns the unlisten function.
- */
-export function listenLspProgress(
-  cb: (params: unknown) => void
-): Promise<UnlistenFn> {
-  return listen("lsp:progress", (event) => cb(event.payload));
-}
-
-/**
- * Subscribe to `lsp:download_progress` events during LSP sidecar download.
- * Returns the unlisten function.
- */
-export function listenLspDownloadProgress(
-  cb: (progress: DownloadProgress) => void
-): Promise<UnlistenFn> {
-  return listen<DownloadProgress>("lsp:download_progress", (event) =>
-    cb(event.payload)
-  );
-}
-
-/**
- * Subscribe to real-time `lsp:log` events emitted by the Rust notification
- * task.  Returns the unlisten function — call it in `onCleanup`.
- */
-export function listenLspLog(
-  cb: (entry: LogEntry) => void
-): Promise<UnlistenFn> {
-  return listen<LogEntry>("lsp:log", (event) => cb(event.payload));
-}
-
-/**
- * Fetch the buffered log entries for the initial panel load (entries that
- * arrived before the panel was mounted).
- */
-export async function lspGetLogs(): Promise<LogEntry[]> {
-  return invoke<LogEntry[]>("lsp_get_logs");
 }
 
 // ── Health checks ─────────────────────────────────────────────────────────────
@@ -650,4 +269,66 @@ export function listenDeviceListChanged(
   return listen<{ devices: Device[] }>("device:list_changed", (event) =>
     cb(event.payload.devices)
   );
+}
+
+// ── Logcat ────────────────────────────────────────────────────────────────────
+
+export interface LogcatEntry {
+  id: number;
+  timestamp: string;
+  pid: number;
+  tid: number;
+  level: "verbose" | "debug" | "info" | "warn" | "error" | "fatal" | "unknown";
+  tag: string;
+  message: string;
+  isCrash: boolean;
+}
+
+export async function startLogcat(deviceSerial?: string): Promise<void> {
+  return invoke<void>("start_logcat", { deviceSerial: deviceSerial ?? null });
+}
+
+export async function stopLogcat(): Promise<void> {
+  return invoke<void>("stop_logcat");
+}
+
+export async function clearLogcat(): Promise<void> {
+  return invoke<void>("clear_logcat");
+}
+
+export async function getLogcatEntries(opts?: {
+  count?: number;
+  minLevel?: string;
+  tag?: string;
+  text?: string;
+  onlyCrashes?: boolean;
+}): Promise<LogcatEntry[]> {
+  return invoke<LogcatEntry[]>("get_logcat_entries", {
+    count: opts?.count ?? null,
+    minLevel: opts?.minLevel ?? null,
+    tag: opts?.tag ?? null,
+    text: opts?.text ?? null,
+    onlyCrashes: opts?.onlyCrashes ?? false,
+  });
+}
+
+export async function getLogcatStatus(): Promise<boolean> {
+  return invoke<boolean>("get_logcat_status");
+}
+
+export function listenLogcatEntries(
+  cb: (entries: LogcatEntry[]) => void
+): Promise<UnlistenFn> {
+  return listen<LogcatEntry[]>("logcat:entries", (e) => cb(e.payload));
+}
+
+export function listenLogcatCleared(cb: () => void): Promise<UnlistenFn> {
+  return listen("logcat:cleared", () => cb());
+}
+
+// ── MCP Server ─────────────────────────────────────────────────────────────────
+
+/** Start the MCP server on stdio. For use in MCP mode only. */
+export async function startMcpServer(): Promise<void> {
+  return invoke<void>("start_mcp_server");
 }

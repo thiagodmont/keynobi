@@ -5,28 +5,10 @@ import {
   setProject,
   clearProject,
   setLoading,
-  type FileNode,
 } from "./project.store";
 
-function makeTree(): FileNode {
-  return {
-    name: "my-app",
-    path: "/projects/my-app",
-    kind: "directory",
-    children: [
-      { name: "app", path: "/projects/my-app/app", kind: "directory", children: [] },
-      {
-        name: "settings.gradle.kts",
-        path: "/projects/my-app/settings.gradle.kts",
-        kind: "file",
-        extension: "kts",
-      },
-    ],
-  };
-}
-
 function resetState() {
-  setProjectState({ projectRoot: null, gradleRoot: null, projectName: null, fileTree: null, loading: false });
+  setProjectState({ projectRoot: null, gradleRoot: null, projectName: null, loading: false });
 }
 
 // ── setProject ────────────────────────────────────────────────────────────────
@@ -34,39 +16,26 @@ function resetState() {
 describe("setProject", () => {
   beforeEach(resetState);
 
-  it("sets the project root, name, and tree", () => {
-    const tree = makeTree();
-    setProject("/projects/my-app", tree);
+  it("sets the project root and name", () => {
+    setProject("/projects/my-app", "my-app");
     expect(projectState.projectRoot).toBe("/projects/my-app");
     expect(projectState.projectName).toBe("my-app");
-    expect(projectState.fileTree).toStrictEqual(tree);
     expect(projectState.loading).toBe(false);
   });
 
-  it("derives the project name from the last path segment", () => {
-    setProject("/home/user/code/cool-project", makeTree());
+  it("derives the project name from the last path segment when given an object", () => {
+    setProject("/home/user/code/cool-project", {});
     expect(projectState.projectName).toBe("cool-project");
   });
 
-  it("handles a root path gracefully", () => {
-    setProject("/my-project", makeTree());
-    expect(projectState.projectName).toBe("my-project");
-  });
-
   it("stores gradleRoot when provided", () => {
-    const tree = makeTree();
-    setProject("/projects/the-crazy-project/the-crazy-app", tree, "/projects/the-crazy-project");
+    setProject("/projects/the-crazy-project/the-crazy-app", "the-crazy-app", "/projects/the-crazy-project");
     expect(projectState.projectRoot).toBe("/projects/the-crazy-project/the-crazy-app");
     expect(projectState.gradleRoot).toBe("/projects/the-crazy-project");
   });
 
   it("sets gradleRoot to null when not provided", () => {
-    setProject("/projects/my-app", makeTree());
-    expect(projectState.gradleRoot).toBeNull();
-  });
-
-  it("sets gradleRoot to null when explicitly null", () => {
-    setProject("/projects/my-app", makeTree(), null);
+    setProject("/projects/my-app", "my-app");
     expect(projectState.gradleRoot).toBeNull();
   });
 });
@@ -77,12 +46,11 @@ describe("clearProject", () => {
   beforeEach(resetState);
 
   it("resets all project state to null/false", () => {
-    setProject("/projects/my-app", makeTree(), "/projects");
+    setProject("/projects/my-app", "my-app", "/projects");
     clearProject();
     expect(projectState.projectRoot).toBeNull();
     expect(projectState.gradleRoot).toBeNull();
     expect(projectState.projectName).toBeNull();
-    expect(projectState.fileTree).toBeNull();
     expect(projectState.loading).toBe(false);
   });
 });

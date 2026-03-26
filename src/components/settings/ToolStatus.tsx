@@ -1,9 +1,6 @@
 import { type JSX, Show, createSignal, createEffect } from "solid-js";
-import { lspState } from "@/stores/lsp.store";
 import { settingsState, updateSetting } from "@/stores/settings.store";
 import { detectSdkPath, detectJavaPath, formatError } from "@/lib/tauri-api";
-import { invoke } from "@tauri-apps/api/core";
-import Icon from "@/components/common/Icon";
 import { showToast } from "@/components/common/Toast";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -220,112 +217,6 @@ export function AndroidSdkStatus(): JSX.Element {
           Tip: set <code style={{ background: "var(--bg-tertiary)", padding: "0 3px", "border-radius": "2px" }}>export ANDROID_HOME=/path/to/sdk</code> in your shell profile (~/.zshrc) or enter the path above.
         </span>
       </Show>
-    </div>
-  );
-}
-
-// ── Kotlin LSP ────────────────────────────────────────────────────────────────
-
-export function KotlinLspStatus(): JSX.Element {
-  const [downloading, setDownloading] = createSignal(false);
-
-  const badgeLabel = () => {
-    if (downloading()) return "Downloading…";
-    switch (lspState.status.state) {
-      case "ready":        return "Running";
-      case "starting":     return "Starting…";
-      case "indexing":     return "Indexing…";
-      case "downloading":  return "Downloading…";
-      case "error":        return "Error";
-      case "notInstalled": return "Not Installed";
-      default:             return "Stopped";
-    }
-  };
-
-  async function downloadLsp() {
-    setDownloading(true);
-    try {
-      await invoke("lsp_download");
-      showToast("Kotlin LSP downloaded successfully", "success");
-    } catch (err) {
-      showToast(`Download failed: ${formatError(err)}`, "error");
-    } finally {
-      setDownloading(false);
-    }
-  }
-
-  async function restartLsp() {
-    try {
-      await invoke("lsp_stop");
-      const { getProjectRoot } = await import("@/lib/tauri-api");
-      const root = await getProjectRoot();
-      if (root) {
-        await invoke("lsp_start", { projectRoot: root });
-        showToast("Kotlin LSP restarted", "success");
-      }
-    } catch (err) {
-      showToast(`Restart failed: ${formatError(err)}`, "error");
-    }
-  }
-
-  return (
-    <div style={{ display: "flex", "flex-direction": "column", gap: "8px" }}>
-      <div style={{ display: "flex", "align-items": "center", gap: "8px", "flex-wrap": "wrap" }}>
-        <StatusBadge
-          found={lspState.status.state === "ready"}
-          checking={
-            lspState.status.state === "starting" ||
-            lspState.status.state === "indexing" ||
-            lspState.status.state === "downloading" ||
-            downloading()
-          }
-        />
-        <span
-          style={{
-            "font-size": "11px",
-            "font-weight": "500",
-            color: "var(--text-primary)",
-          }}
-        >
-          {badgeLabel()}
-        </span>
-        <Show when={lspState.status.state === "notInstalled" || lspState.status.state === "stopped"}>
-          <button
-            onClick={downloadLsp}
-            disabled={downloading()}
-            style={{
-              background: "var(--accent)",
-              border: "none",
-              color: "#fff",
-              padding: "3px 10px",
-              "border-radius": "4px",
-              cursor: "pointer",
-              "font-size": "11px",
-            }}
-          >
-            <Icon name="download" size={12} /> Download
-          </button>
-        </Show>
-        <Show when={lspState.status.state === "ready" || lspState.status.state === "error"}>
-          <button
-            onClick={restartLsp}
-            style={{
-              background: "none",
-              border: "1px solid var(--border)",
-              color: "var(--text-secondary)",
-              padding: "2px 8px",
-              "border-radius": "4px",
-              cursor: "pointer",
-              "font-size": "11px",
-            }}
-          >
-            Restart LSP
-          </button>
-        </Show>
-      </div>
-      <span style={{ "font-size": "11px", color: "var(--text-muted)" }}>
-        JetBrains Kotlin LSP 262.2310.0 · Installed at ~/.androidide/kotlin-lsp/
-      </span>
     </div>
   );
 }

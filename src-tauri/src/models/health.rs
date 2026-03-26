@@ -25,7 +25,7 @@ pub struct SystemHealthReport {
     pub emulator_found: bool,
     /// Whether `gradlew` exists at the project root.
     pub gradle_wrapper_found: bool,
-    /// Whether the LSP system directory (`~/.androidide/lsp-system/`) is writable.
+    /// Whether the `.androidide` app directory is writable.
     pub lsp_system_dir_ok: bool,
     /// Free disk space in the `~/.androidide` directory, in megabytes.
     /// `None` when the measurement is unavailable on this platform.

@@ -40,7 +40,7 @@ emulatorFound: boolean,
  */
 gradleWrapperFound: boolean, 
 /**
- * Whether the LSP system directory (`~/.androidide/lsp-system/`) is writable.
+ * Whether the `.androidide` app directory is writable.
  */
 lspSystemDirOk: boolean, 
 /**

@@ -282,3 +282,49 @@
   - (-) Multi-module projects: currently only checks `:app` module. A future enhancement will scan `settings.gradle.kts` for all modules.
   - (-) Tree-sitter Kotlin grammar parses the DSL structurally but does not evaluate expressions — dynamic variant names (computed in code) are not discovered
 
+---
+
+### ADR-20: Pivot from IDE to Android Dev Companion
+
+- **Date**: 2026-03-26
+- **Status**: Active
+- **Context**: Building a full Android IDE (code editor, file tree, LSP, search, git) would take months and couldn't match Android Studio's code intelligence quality. The unique value is in build/logcat/device tooling — areas where Android Studio's UX is poor — plus MCP integration to let Claude Code drive the full Android development workflow.
+- **Decision**: Pivot the project from "Android IDE" to "Android Dev Companion":
+  - Remove all editor code (CodeMirror, LSP client/server, file tree, search, source control)
+  - Remove Tree-sitter and ripgrep dependencies
+  - Redesign layout as a panel-centric app: Build | Logcat | Devices tabs always visible
+  - Implement production-quality logcat streaming (50K ring buffer, server-side filtering, crash detection)
+  - Plan an MCP server to expose build/logcat/device tools to Claude Code
+- **Consequences**:
+  - (+) Dramatically reduced scope → achievable in a fraction of the time
+  - (+) Unique value: best-in-class log experience + AI agent integration via MCP
+  - (+) Works alongside Android Studio (coding) + Claude Code (AI assistance)
+  - (+) Clean codebase — no dead code from partially-implemented editor features
+  - (-) No code editing, file browsing, or git integration (use Android Studio for these)
+  - (-) Users must install Claude Code separately to use MCP integration
+
+### ADR-21: Variant Discovery Without Tree-sitter
+
+- **Date**: 2026-03-26
+- **Status**: Active [supersedes part of ADR-19]
+- **Context**: After removing Tree-sitter (ADR-20), variant discovery no longer has a fast primary path.
+- **Decision**: Use regex-based text extraction directly on `build.gradle.kts` content for `buildTypes` and `productFlavors` blocks. The Tree-sitter call was only used for caching/parsing — the actual extraction was already regex-based. Remove the `TreeSitterService` dependency from `parse_variants_from_gradle`. Fallback to `./gradlew :app:tasks --all` remains unchanged.
+- **Consequences**:
+  - (+) No Tree-sitter dependency
+  - (+) Variant discovery still works correctly for standard Gradle DSL
+  - (-) No AST-aware extraction (same limitation as before, just explicit now)
+
+### ADR-22: Logcat via adb Process (Not adb_client Crate)
+
+- **Date**: 2026-03-26
+- **Status**: Active
+- **Context**: The `adb_client` Rust crate provides a native ADB protocol implementation. The alternative is spawning `adb logcat` as a subprocess and reading its stdout.
+- **Decision**: Use `adb logcat -v threadtime` as a subprocess (via `tokio::process::Command`) rather than the `adb_client` crate. The existing `adb_manager.rs` already uses CLI fallback for device operations. Subprocess approach is simpler, more reliable across ADB versions, and consistent with how `build_runner.rs` handles Gradle.
+- **Consequences**:
+  - (+) Simpler implementation — reuses the same process spawning pattern as build runner
+  - (+) Works with any ADB version; no protocol compatibility concerns
+  - (+) Easy to add custom adb flags (device serial, filters)
+  - (-) Process startup overhead (~100ms) compared to native protocol
+  - (-) Must locate `adb` binary from SDK path setting or PATH
+
+

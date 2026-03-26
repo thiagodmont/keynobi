@@ -1,526 +1,276 @@
-# Android IDE -- User Manual
+# Android Dev Companion — User Manual
 
-> AI-First Android Development Environment  
-> Version 0.2.0 (Phase 3 — Build System + Devices)
+> A focused Android development companion for build logs, logcat, and device management.  
+> Works alongside Android Studio and Claude Code.
 
 ---
 
 ## Table of Contents
 
-1. [Getting Started](#getting-started)
-2. [IDE Layout](#ide-layout)
-3. [File Management](#file-management)
-4. [Code Editor](#code-editor)
-5. [Code Intelligence (LSP)](#code-intelligence-lsp)
-6. [Project-Wide Search](#project-wide-search)
-7. [Command Palette](#command-palette)
-8. [Symbols & Outline](#symbols--outline)
-9. [Navigation](#navigation)
-10. [Problems Panel](#problems-panel)
-11. [Keyboard Shortcuts Reference](#keyboard-shortcuts-reference)
+1. [Getting Started](#1-getting-started)
+2. [Layout Overview](#2-layout-overview)
+3. [Build Panel](#3-build-panel)
+4. [Logcat Panel](#4-logcat-panel)
+5. [Devices Panel](#5-devices-panel)
+6. [Status Bar](#6-status-bar)
+7. [Settings](#7-settings)
+8. [Health Center](#8-health-center)
+9. [Keyboard Shortcuts](#9-keyboard-shortcuts)
+10. [Claude Code Integration](#10-claude-code-integration)
 
 ---
 
-## Getting Started
+## 1. Getting Started
 
-### Opening a Project
+### Requirements
+- macOS (Apple Silicon or Intel)
+- Android SDK with platform-tools (for ADB)
+- Java 11+ (for Gradle builds)
+- Android project with a `gradlew` wrapper
 
-1. Launch the app -- the IDE opens with an empty editor area.
-2. Press **Cmd+O** or click the "Open Folder" button in the sidebar to select an Android project directory.
-3. The file tree loads in the sidebar, respecting `.gitignore` patterns. Build artifacts (`build/`, `.gradle/`, `.idea/`) are automatically hidden.
+### First Launch
 
-### First-Time LSP Setup
-
-On first project open, the IDE checks for the JetBrains Kotlin LSP installation. If not found, a prompt offers to download it (~400MB). The LSP provides code completions, diagnostics, go-to-definition, and other intelligence features. You can skip the download -- the editor still works with syntax highlighting and Tree-sitter-based symbols.
+1. Launch **Android Dev Companion**
+2. Press **Cmd+O** or click the title bar "Open" area to select your Android project folder
+3. The app detects your Gradle root and initializes build variants
+4. Open **Settings** (Cmd+,) and configure:
+   - **Android SDK Path** — path to `$ANDROID_HOME` (e.g. `~/Library/Android/sdk`)
+   - **Java Home** — path to JDK (e.g. `/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home`)
 
 ---
 
-## IDE Layout
+## 2. Layout Overview
 
 ```
-+------------------------------------------------------+
-|  Title Bar (drag to move window)                     |
-+--------+---------------------------------------------+
-|Sidebar |                                             |
-|(icons) |         Editor Area (tabs + editor)         |
-|        |                                             |
-| Files  |                                             |
-| Search |---------------------------------------------+
-| Outline|         Bottom Panel (Problems/Build/etc)   |
-| Git    |         (collapsible)                       |
-+--------+---------------------------------------------+
-|  Status Bar (LSP status, diagnostics, cursor pos)    |
-+------------------------------------------------------+
+┌──────────────────────────────────────────────────────┐
+│  TitleBar (project name)                              │
+├──[Build]──[Logcat]──[Devices]─────────────────────────│
+│                                                       │
+│  Active Panel Content                                 │
+│  (fills all available space)                          │
+│                                                       │
+├──────────────────────────────────────────────────────┤
+│  StatusBar: Health | Build Status | Variant | Device  │
+└──────────────────────────────────────────────────────┘
 ```
 
-### Sidebar
-
-The left sidebar has four tabs, accessible by clicking the icons:
-
-| Icon | Tab | Description |
-|------|-----|-------------|
-| Folder | **Explorer** | Project file tree with CRUD operations |
-| Search | **Search** | Project-wide text search |
-| List | **Outline** | Document symbols for the active file |
-| Branch | **Source Control** | Git integration (coming in Phase 6) |
-
-### Bottom Panel
-
-Toggle with **Cmd+J**. Contains tabs for:
-
-- **Problems** -- All diagnostics (errors/warnings) across open files
-- **Build** -- Streaming Gradle build output + structured error list (Phase 3)
-- **Logcat** -- Android log viewer (coming in Phase 4)
-- **Terminal** -- Integrated terminal (coming in Phase 6)
-
-### Status Bar
-
-The bottom bar shows:
-
-- **Project name** (left)
-- **LSP status** -- "Kotlin LSP: Starting...", "Ready", "Error" (left)
-- **Diagnostic counts** -- Error count (red) and warning count (yellow) (left)
-- **Build status** -- "Building: assembleDebug", "Build: OK", "Build: Failed" (left) — click to open Build panel
-- **Variant selector** -- Active build variant (e.g. `debug`) — click to open picker (Cmd+Shift+V)
-- **Device selector** -- Connected device name (e.g. `Pixel 7`) or "No Device" — click to open device panel
-- **Cursor position** -- `Ln X, Col Y` (right)
-- **Encoding** -- UTF-8 (right)
-- **Language** -- Kotlin, Gradle, XML, etc. (right)
+Three main panels — always accessible, no toggling required:
+- **Build** — Gradle build output and error list
+- **Logcat** — Android device log streaming
+- **Devices** — Connected devices and emulator management
 
 ---
 
-## File Management
+## 3. Build Panel
 
-### File Tree
-
-- **Expand/collapse** directories by clicking or pressing Right/Left arrow keys
-- **Open a file** by double-clicking it in the tree
-- **Keyboard navigation**: Up/Down arrows to move, Enter to open, Left to collapse, Right to expand
-
-### Context Menu (Right-click)
-
-Right-click a file or directory for:
-
-- **New File** -- Creates a new file (type the name inline)
-- **New Folder** -- Creates a new directory
-- **Rename** -- Inline rename editor
-- **Delete** -- Moves to Trash (not permanent delete)
-- **Copy Path** -- Copies the absolute path to clipboard
-- **Copy Relative Path** -- Copies the path relative to project root
-
-### Tabs
-
-- Open files appear as tabs above the editor
-- A **dot indicator** on a tab means the file has unsaved changes
-- **Middle-click** a tab to close it
-- Closing a dirty tab prompts: Save / Don't Save / Cancel
-- Closing the app window with unsaved changes prompts: Save All / Discard All / Cancel
-
-### Saving
-
-| Action | Shortcut |
-|--------|----------|
-| Save active file | **Cmd+S** |
-| Save all files | **Cmd+Opt+S** |
-
-The editor also saves via the CodeMirror keymap (Cmd+S when the editor is focused).
-
----
-
-## Code Editor
-
-The editor is powered by CodeMirror 6 with the following features:
-
-### Syntax Highlighting
-
-Supported languages:
-- **Kotlin** (`.kt`) -- Keywords, strings, comments, annotations, types
-- **Gradle/Kotlin Script** (`.gradle.kts`, `.gradle`) -- Kotlin DSL with Gradle-specific highlighting
-- **XML** (`.xml`) -- Android layouts, manifests, drawables
-- **JSON** (`.json`) -- Configuration files
-
-### Editor Features
-
-| Feature | Description |
-|---------|-------------|
-| **Line numbers** | Displayed in the left gutter |
-| **Active line highlight** | Subtle highlight on the current line |
-| **Bracket matching** | Matching brackets are highlighted |
-| **Auto-close brackets** | Typing `(`, `[`, `{`, `"`, `'` auto-inserts the closing pair |
-| **Code folding** | Collapse/expand code blocks via gutter arrows |
-| **Multiple cursors** | Hold Opt and click to add cursors; Opt+drag for rectangular selection |
-| **Find & Replace** | Cmd+F opens the in-file search bar |
-| **Selection highlighting** | Other occurrences of selected text are highlighted |
-| **Indent on input** | Auto-indentation as you type |
-
-### Editor Keyboard Shortcuts (CodeMirror)
-
-| Action | Shortcut |
-|--------|----------|
-| Undo | **Cmd+Z** |
-| Redo | **Cmd+Shift+Z** |
-| Find in file | **Cmd+F** |
-| Find and replace | **Cmd+H** |
-| Find next | **Cmd+G** |
-| Find previous | **Cmd+Shift+G** |
-| Select all | **Cmd+A** |
-| Indent line | **Tab** |
-| Outdent line | **Shift+Tab** |
-| Move line up | **Opt+Up** |
-| Move line down | **Opt+Down** |
-| Copy line down | **Shift+Opt+Down** |
-| Toggle line comment | **Cmd+/** |
-| Fold code block | **Cmd+Shift+[** |
-| Unfold code block | **Cmd+Shift+]** |
-| Trigger completion | **Ctrl+Space** |
-
----
-
-## Build System
+The Build panel streams Gradle output in real time.
 
 ### Running a Build
 
-Press **Cmd+R** or click the green play button in the toolbar to run a full build-install-launch cycle:
+- **Cmd+R** — Build and deploy (assemble → install → launch app)
+- **Cmd+Shift+R** — Build only (no deploy)
+- Click **Run** in the Build panel toolbar
+- The active device and build variant are used automatically
 
-1. The IDE assembles the active build variant with Gradle.
-2. On success, installs the APK on the selected device.
-3. The app is launched via `adb shell am start`.
+### Build Panel Views
 
-Press **Cmd+Shift+R** to build without deploying (assemble only).
-
-### Build Panel
-
-The Build tab in the bottom panel (Cmd+J, then "Build") shows:
-
-- **Log view** — Streaming Gradle output with ANSI color codes stripped, filterable by level and searchable.
-- **Problems view** — Structured list of Kotlin compiler errors and warnings, grouped by file and clickable to jump to the error location in the editor.
-- **Build summary** — Success/failure badge, duration, error/warning counts.
+- **Log tab** — Raw streaming Gradle output with ANSI colors
+- **Problems tab** — Structured list of errors and warnings with file paths
 
 ### Build Variants
 
-Android projects have multiple build variants (combinations of build types like `debug`/`release` and product flavors).
+- Click the variant pill in the status bar (e.g. `debug`) to open the variant picker
+- **Cmd+Shift+V** — Open variant picker from keyboard
+- Variants are auto-discovered from `app/build.gradle.kts`
 
-- Click the **variant pill** in the status bar to open the variant picker.
-- Press **Cmd+Shift+V** to open the variant picker from anywhere.
-- The IDE auto-discovers variants by parsing `app/build.gradle.kts` with Tree-sitter.
+### Clean
 
-### Devices
-
-- Click the **device pill** in the status bar to open the device panel.
-- The device panel shows connected physical devices, running emulators, and available AVDs.
-- Click a device to select it as the deploy target.
-- Click "Launch" next to an AVD to start that emulator.
+Use the command palette (Cmd+Shift+P) → **Clean Project** to run `./gradlew clean`.
 
 ---
 
-## Devices
+## 4. Logcat Panel
 
-### Connecting a Physical Device
+The Logcat panel streams Android device log output in real time.
 
-1. Enable USB debugging in your Android device's Developer Options.
-2. Connect the device via USB.
-3. Accept the "Allow USB debugging" prompt on the device.
-4. The device appears in the device panel with status "online".
+### Starting Logcat
 
-### Emulators
+1. Connect an Android device or start an emulator (see Devices panel)
+2. Click **Start** in the Logcat toolbar, or the app will auto-connect to the selected device
+3. Log entries appear immediately as they arrive
 
-- Click "Launch" in the device panel next to any available AVD.
-- The IDE waits for the emulator to boot (up to 60 seconds).
-- Once online, the emulator appears in the device list and can be selected for deployment.
+### Log Levels
 
----
+Entries are color-coded by log level:
 
-## Code Intelligence (LSP)
+| Level | Color | Meaning |
+|-------|-------|---------|
+| V (Verbose) | Gray | Most verbose, all messages |
+| D (Debug) | Blue | Debug messages |
+| I (Info) | Green | Informational |
+| W (Warning) | Yellow | Potential issues |
+| E (Error) | Red | Error conditions |
+| F (Fatal) | Purple | Fatal errors / crashes |
 
-When the JetBrains Kotlin LSP is installed and ready, the following features are available for Kotlin and Gradle/Kotlin Script files:
+### Filtering
 
-### Completions
+- **Level filter** — Dropdown to show only entries at or above a minimum level
+- **Tag filter** — Type to filter by tag name (case-insensitive substring)
+- **Text filter** — Type to search in message text and tag
 
-- **Automatic**: Completions appear as you type after `.` (member access) or `:` (type annotation)
-- **Manual trigger**: Press **Ctrl+Space** to explicitly request completions
-- Completions include methods, fields, classes, keywords, and more
-- Each item shows its kind (method, field, class, etc.) and detail signature
+### Controls
 
-### Diagnostics
+- **Start / Stop** — Begin or end logcat streaming
+- **Pause / Resume** — Pause new entries (no data is lost, buffer continues)
+- **Clear** — Clear the display buffer and the in-memory ring buffer
 
-- **Inline squiggles**: Red underlines for errors, yellow for warnings
-- **Gutter markers**: Colored dots in the line number gutter
-- **Hover**: Move the mouse over a diagnostic to see the error message
-- Diagnostics are pulled after each edit (debounced) and after saving
+### Ring Buffer
 
-### Hover Information
+The logcat ring buffer holds up to **50,000 entries** in memory. The oldest entries are evicted when the buffer is full. All entries since starting are kept until you click Clear.
 
-- **Cmd+hover** or hover with a ~500ms delay over a symbol to see:
-  - Type information
-  - Documentation (KDoc)
-  - Function signatures
+### Crash Detection
 
-### Code Formatting
-
-The LSP supports IntelliJ-style code formatting via `textDocument/formatting`.
-
-### Code Actions & Quick Fixes
-
-- Available on diagnostic ranges (lightbulb icon or **Cmd+.**)
-- Includes: auto-import, "Add names to call arguments", "Specify type explicitly", IntelliJ inspections
+When a `FATAL EXCEPTION` or `AndroidRuntime` crash is detected, the entry is highlighted in red regardless of other filters.
 
 ---
 
-## Project-Wide Search
+## 5. Devices Panel
 
-Open with **Cmd+Shift+F** or click the Search icon in the sidebar.
+The Devices panel shows connected physical devices and available emulators.
 
-### Search Features
+### Physical Devices
 
-| Feature | Description |
-|---------|-------------|
-| **Text search** | Fast ripgrep-based search across all project files |
-| **Regex mode** | Toggle the `.*` button for regular expression patterns |
-| **Case sensitive** | Toggle the `Aa` button |
-| **Whole word** | Toggle the `ab` button |
-| **File filter** | Expandable input to filter by pattern (e.g., `*.kt`) |
-| **Replace** | Expandable replace input with Replace / Replace All |
-| **Streaming results** | Results appear grouped by file as they are found |
+- Devices connected via USB appear automatically (polled every 2 seconds)
+- The device serial, model name, API level, and connection state are shown
+- Click a device row to select it as the active deployment target
 
-### Search Results
+### Emulators (AVDs)
 
-- Results are grouped by file with match counts
-- Each match shows the line number and highlighted match in context
-- **Click a match** to open the file at that exact location
-- File groups can be collapsed/expanded by clicking the header
+- Available AVDs from `~/.android/avd/` are listed
+- **Launch** — Start an emulator from its AVD name
+- **Stop** — Terminate a running emulator
+- Emulators appear in both the AVD list and the physical device list once running
 
-### Performance
+### Device Selection
 
-- Search respects `.gitignore` and excludes `build/`, `.gradle/`, `.idea/`, `.git/`, `node_modules/`
-- Capped at 500 files / 10,000 matches to prevent UI overload
-- Results from superseded searches are automatically discarded
+The selected device is shown in the status bar. Builds use this device for install and launch operations.
 
 ---
 
-## Command Palette
+## 6. Status Bar
 
-The central hub for discovering and executing all IDE actions.
+The status bar at the bottom shows:
 
-### Modes
-
-| Shortcut | Mode | Description |
-|----------|------|-------------|
-| **Cmd+P** | File search | Fuzzy search over all project files. Recently opened files appear first. |
-| **Cmd+Shift+P** | Command search | Search all registered IDE commands/actions. Shows shortcut if available. |
-| **Cmd+Shift+O** | Document symbols | Jump to a symbol (class, function, property) in the current file. |
-| **Cmd+T** | Workspace symbols | Search symbols across the entire project (requires LSP). |
-
-### Usage
-
-1. Press the shortcut to open the palette
-2. Start typing to filter results
-3. Use **Up/Down** arrows to navigate
-4. Press **Enter** to select
-5. Press **Escape** to close
-
-In file mode, typing `>` switches to command mode automatically.
-
-### Available Commands
-
-All commands shown in the command palette:
-
-| Command | Shortcut | Category |
-|---------|----------|----------|
-| Toggle Sidebar | Cmd+B | View |
-| Toggle Bottom Panel | Cmd+J | View |
-| Open Folder | Cmd+O | File |
-| Close Active Tab | Cmd+W | File |
-| Save Active File | Cmd+S | File |
-| Save All Files | Cmd+Opt+S | File |
-| Previous Tab | Cmd+Shift+[ | View |
-| Next Tab | Cmd+Shift+] | View |
-| Search in Project | Cmd+Shift+F | Search |
-| Quick Open File | Cmd+P | Navigate |
-| Command Palette | Cmd+Shift+P | General |
-| Go to Symbol in File | Cmd+Shift+O | Navigate |
-| Go to Symbol in Workspace | Cmd+T | Navigate |
-| Navigate Back | Cmd+- | Navigate |
-| Navigate Forward | Cmd+Shift+- | Navigate |
-| Run App | Cmd+R | Build |
-| Build Only (no deploy) | Cmd+Shift+R | Build |
-| Cancel Build | — | Build |
-| Clean Project | — | Build |
-| Select Build Variant | Cmd+Shift+V | Build |
-| Select Device | — | Build |
-| Open Build Panel | — | View |
+| Item | Description |
+|------|-------------|
+| ⚙ | Settings gear — click to open settings |
+| Project name | Name of the open Android project |
+| Health | IDE health indicator — click to open Health Center |
+| Build status | Last build result — click to switch to Build panel |
+| Variant pill | Active build variant — click to change |
+| Device pill | Selected device — click to open device selector |
 
 ---
 
-## Symbols & Outline
+## 7. Settings
 
-Click the **Outline** icon (list icon) in the sidebar to see the document structure of the active file.
+Open Settings with **Cmd+,** or the gear icon in the status bar.
 
-### Features
+### Android SDK
 
-- **Hierarchical view**: Classes contain their methods and properties
-- **Symbol icons**: Color-coded badges for each symbol kind:
-  - **C** (gold) -- Class
-  - **I** (teal) -- Interface
-  - **f** (purple) -- Function
-  - **m** (purple) -- Method
-  - **p** (blue) -- Property
-  - **F** (blue) -- Field
-  - **v** (blue) -- Variable
-  - **E** (gold) -- Enum
-  - **K** (blue) -- Constant
-- **Click to navigate**: Click any symbol to scroll the editor to its location
-- **Expand/collapse**: Click the chevron to expand or collapse nested symbols
-- **Auto-refresh**: Updates when you switch files or edit the current file (debounced)
+Set the path to your Android SDK installation. This is required for:
+- ADB device communication
+- Emulator launching
+- Health checks
 
-### Symbol Source
+Use **Auto-detect** to find the SDK from your shell environment.
 
-- When the Kotlin LSP is ready, symbols come from the LSP (most accurate)
-- When LSP is not available, Tree-sitter provides instant fallback symbols
+### Java / JDK
 
----
+Set the path to your JDK installation. Required for Gradle builds.
 
-## Navigation
+Use **Auto-detect** to find Java from your shell environment.
 
-### Navigation History
+### Build Settings (persisted automatically)
 
-The IDE tracks your navigation positions. Every time you jump to a new location (via search result, symbol click, or go-to-definition), your previous position is saved.
-
-| Action | Shortcut |
-|--------|----------|
-| Navigate back | **Cmd+-** |
-| Navigate forward | **Cmd+Shift+-** |
-
-The history stack holds up to 50 entries and deduplicates consecutive identical positions.
-
-### Go-to-definition
-
-When the LSP is ready:
-- **Cmd+Click** on a symbol to jump to its definition
-- If the definition is in another file, it opens in a new tab
-
-### Find References
-
-- **Shift+F12** on a symbol shows all references (requires LSP)
-
-### Tab Navigation
-
-| Action | Shortcut |
-|--------|----------|
-| Previous tab | **Cmd+Shift+[** |
-| Next tab | **Cmd+Shift+]** |
+- **Last-used variant** — restored on next launch
+- **Last-used device serial** — restored on next launch
+- **Gradle JVM args** — passed to the Gradle daemon
+- **Parallel builds** — `--parallel` flag
+- **Offline mode** — `--offline` flag
 
 ---
 
-## Problems Panel
+## 8. Health Center
 
-The Problems panel (in the bottom panel, toggle with **Cmd+J**) shows all diagnostics across open files.
+Open the Health Center with **Cmd+Shift+H** or by clicking the Health indicator in the status bar.
 
-### Features
+The Health Center checks:
 
-- Diagnostics grouped by file, sorted by severity (errors first)
-- Each entry shows: severity icon, message, file location (line:col)
-- **Click** any entry to jump to that location in the editor
-- Badge on the "Problems" tab shows the total count
-- Error count (red) and warning count (yellow) also shown in the status bar
+| Check | What it verifies |
+|-------|-----------------|
+| Android SDK | Path exists and contains `platforms/` or `platform-tools/` |
+| ADB | Found in `$ANDROID_HOME/platform-tools/` or PATH |
+| Emulator | Found in `$ANDROID_HOME/emulator/` |
+| Java / JDK | `java -version` exits successfully |
+| Gradle Wrapper | `gradlew` exists at the project root |
+| Disk Space | Free space in `~/.androidide/` |
+| App Directory | `~/.androidide/` is writable |
+
+Click **Refresh** to re-run all checks.
 
 ---
 
-## Keyboard Shortcuts Reference
-
-### Global Shortcuts
+## 9. Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
-| **Cmd+O** | Open project folder |
-| **Cmd+S** | Save active file |
-| **Cmd+Opt+S** | Save all files |
-| **Cmd+W** | Close active tab |
-| **Cmd+B** | Toggle sidebar |
-| **Cmd+J** | Toggle bottom panel |
-| **Cmd+P** | Quick open file |
-| **Cmd+Shift+P** | Command palette |
-| **Cmd+Shift+F** | Search in project |
-| **Cmd+Shift+O** | Go to symbol in file |
-| **Cmd+T** | Go to symbol in workspace |
-| **Cmd+Shift+[** | Previous tab |
-| **Cmd+Shift+]** | Next tab |
-| **Cmd+-** | Navigate back |
-| **Cmd+Shift+-** | Navigate forward |
-| **Cmd+R** | Run App (build + install + launch) |
-| **Cmd+Shift+R** | Build Only (assemble, no deploy) |
+| **Cmd+O** | Open Android project folder |
+| **Cmd+R** | Run App (build → install → launch) |
+| **Cmd+Shift+R** | Build Only (no deploy) |
 | **Cmd+Shift+V** | Select Build Variant |
-
-### Editor Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| **Cmd+Z** | Undo |
-| **Cmd+Shift+Z** | Redo |
-| **Cmd+F** | Find in file |
-| **Cmd+H** | Find and replace in file |
-| **Cmd+G** | Find next match |
-| **Cmd+Shift+G** | Find previous match |
-| **Cmd+A** | Select all |
-| **Cmd+/** | Toggle line comment |
-| **Ctrl+Space** | Trigger code completion |
-| **Tab** | Indent / accept completion |
-| **Shift+Tab** | Outdent |
-| **Opt+Up** | Move line up |
-| **Opt+Down** | Move line down |
-| **Shift+Opt+Down** | Copy line down |
-| **Cmd+Shift+[** | Fold code block |
-| **Cmd+Shift+]** | Unfold code block |
-| **Escape** | Close find bar / completion popup |
-
-### File Tree Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| **Up/Down** | Move selection |
-| **Right** | Expand directory / move to first child |
-| **Left** | Collapse directory / move to parent |
-| **Enter** | Open selected file |
-| **Delete** | Delete selected item (with confirmation) |
-
-### Search Panel
-
-| Shortcut | Action |
-|----------|--------|
-| **Enter** | Execute search |
-| **Escape** | Clear search |
+| **Cmd+1** | Switch to Build panel |
+| **Cmd+2** | Switch to Logcat panel |
+| **Cmd+3** | Switch to Devices panel |
+| **Cmd+,** | Open Settings |
+| **Cmd+Shift+H** | Open Health Center |
+| **Cmd+Shift+P** | Command Palette |
 
 ---
 
-## Supported File Types
+## 10. Claude Code Integration
 
-| Extension | Language | Syntax Highlighting | LSP Intelligence |
-|-----------|----------|--------------------|-----------------| 
-| `.kt` | Kotlin | Yes | Yes (completions, diagnostics, navigation) |
-| `.gradle.kts` | Gradle/Kotlin Script | Yes | Yes |
-| `.gradle` | Gradle/Groovy | Yes (Kotlin fallback) | Partial |
-| `.xml` | XML | Yes | No |
-| `.json` | JSON | Yes | No |
-| Other | Plain text | No | No |
+Android Dev Companion exposes an **MCP server** that Claude Code can connect to. This lets Claude Code:
+- Trigger builds and read errors
+- Read logcat entries and crash logs
+- Manage devices and install APKs
+- Query build variants
 
----
+### Setup (coming in Phase 4)
 
-## Troubleshooting
+```bash
+claude mcp add android-companion --command "/path/to/android-dev-companion --mcp"
+```
 
-### LSP Not Starting
+### Available MCP Tools
 
-- Check the status bar for the LSP status indicator
-- If it shows "Not Installed", use the download prompt or download manually
-- The LSP bundles its own JRE -- no external Java installation is needed
-- LSP automatically restarts on crash (up to 5 attempts with exponential backoff)
+Once connected, Claude Code can use:
 
-### Slow File Tree Loading
+- `run_gradle_task` — trigger any Gradle task
+- `get_build_status` / `get_build_errors` — check build results
+- `get_logcat_entries` — read recent device logs
+- `get_crash_logs` — get recent crash stack traces
+- `list_devices` — see connected devices
+- `install_apk` / `launch_app` — deploy and run
+- `list_build_variants` / `set_active_variant`
 
-- Large projects (1000+ files) may take a moment to load initially
-- `.gitignore` patterns are respected to reduce the tree size
-- Build directories (`build/`, `.gradle/`) are automatically excluded
+### Workflow Example
 
-### Search Not Finding Results
-
-- Ensure the search respects your file filter pattern
-- Check if the file is in a `.gitignore`-excluded directory
-- Binary files and non-UTF-8 files are automatically skipped
+1. Write code in Android Studio
+2. Ask Claude Code: *"Build the app and show me any errors"*
+3. Claude calls `run_gradle_task("assembleDebug")`
+4. Build panel shows live output
+5. Claude calls `get_build_errors()` and explains the issues
+6. Fix in Android Studio
+7. Ask Claude: *"Run it on the connected emulator"*
+8. Claude calls `run_gradle_task`, `install_apk`, `launch_app`

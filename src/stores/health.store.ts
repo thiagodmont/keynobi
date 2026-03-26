@@ -2,7 +2,7 @@
  * health.store.ts
  *
  * Computes IDE health checks from two sources:
- *  1. Reactive: derived live from existing stores (project, lsp, settings, editor).
+ *  1. Reactive: derived live from existing stores (project, settings).
  *  2. Active:   results from the `run_health_checks` Tauri command (Java version,
  *               disk space, Gradle wrapper, etc.).
  *
@@ -12,10 +12,8 @@
 
 import { createStore } from "solid-js/store";
 import { createMemo } from "solid-js";
-import { lspState } from "@/stores/lsp.store";
 import { projectState } from "@/stores/project.store";
 import { settingsState } from "@/stores/settings.store";
-import { editorState } from "@/stores/editor.store";
 import type { SystemHealthReport } from "@/bindings";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -24,7 +22,7 @@ export type CheckStatus = "ok" | "warning" | "error" | "loading" | "skip";
 
 export interface HealthCheck {
   id: string;
-  category: "project" | "environment" | "lsp" | "system";
+  category: "project" | "environment" | "system";
   name: string;
   status: CheckStatus;
   detail: string;
@@ -70,9 +68,6 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
   const report = healthState.systemReport;
   const checks: HealthCheck[] = [];
 
-  // "Project Open" is not a health check — it's just context.
-  // The project state is used by other checks (Gradle wrapper) but isn't
-  // listed as a separate item.
   const projectRoot = projectState.projectRoot as string | null;
 
   // ── 1. Android SDK ──────────────────────────────────────────────────────────
@@ -127,7 +122,7 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
       : undefined,
   });
 
-  // ── 2b. Emulator ─────────────────────────────────────────────────────────────
+  // ── 3. Emulator ─────────────────────────────────────────────────────────────
   const emulatorFound = report?.emulatorFound;
   checks.push({
     id: "emulator",
@@ -152,7 +147,7 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
       : undefined,
   });
 
-  // ── 3. Java / JDK ──────────────────────────────────────────────────────────
+  // ── 4. Java / JDK ──────────────────────────────────────────────────────────
   const javaHome = settingsState.java.home;
   const javaFound = report?.javaExecutableFound;
   const javaVersion = report?.javaVersion;
@@ -179,108 +174,7 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
       : undefined,
   });
 
-  // ── 4. Kotlin LSP ───────────────────────────────────────────────────────────
-  const lspStatusState = lspState.status.state;
-  const lspMsg = lspState.status.message;
-
-  // "stopped" is only an error when a project IS open — the LSP should have
-  // auto-started.  With no project open it's expected/idle, not an error.
-  const lspStatus = (): CheckStatus => {
-    switch (lspStatusState) {
-      case "ready":       return "ok";
-      case "indexing":
-      case "starting":
-      case "downloading": return "warning";
-      case "error":       return "error";
-      case "notInstalled":return projectRoot ? "error" : "warning";
-      case "stopped":     return projectRoot ? "error" : "skip";
-      default:            return "warning";
-    }
-  };
-
-  const lspDetail: Record<string, string> = {
-    ready: "Running — language intelligence active",
-    indexing: lspMsg ?? "Indexing project…",
-    starting: "Starting server…",
-    downloading: "Downloading Kotlin Language Server…",
-    error: lspMsg ?? "Server error — check Output panel for details",
-    stopped: projectRoot
-      ? "Not started — open a project to auto-start"
-      : "Waiting for a project to be opened",
-    notInstalled: projectRoot
-      ? "Kotlin Language Server not installed"
-      : "Not installed — will be downloaded when you open a project",
-  };
-  checks.push({
-    id: "kotlin-lsp",
-    category: "lsp",
-    name: "Kotlin LSP",
-    status: lspStatus(),
-    detail: lspDetail[lspStatusState] ?? lspStatusState,
-    // Only show a fix action when there's actually something actionable.
-    fix: lspStatusState === "error"
-      ? { label: "Open Settings → Tools", action: openSettingsAction }
-      : lspStatusState === "notInstalled" && !!projectRoot
-      ? { label: "Open Settings → Tools", action: openSettingsAction }
-      : undefined,
-  });
-
-  // ── 5. Code Navigation ──────────────────────────────────────────────────────
-  const caps = lspState.serverCapabilities;
-  const hasDefinition = caps?.definitionProvider;
-  const hasReferences = caps?.referencesProvider;
-  const hasHover = caps?.hoverProvider;
-  const navFeatures = [
-    hasDefinition ? "Definition" : null,
-    hasReferences ? "References" : null,
-    hasHover ? "Hover" : null,
-  ].filter(Boolean);
-  checks.push({
-    id: "lsp-navigation",
-    category: "lsp",
-    name: "Code Navigation",
-    status:
-      lspStatusState !== "ready"
-        ? "skip"
-        : caps === null
-        ? "loading"
-        : !hasDefinition
-        ? "warning"
-        : "ok",
-    detail:
-      lspStatusState !== "ready"
-        ? "Waiting for LSP server to be ready"
-        : caps === null
-        ? "Waiting for server capabilities…"
-        : navFeatures.length === 0
-        ? "No navigation capabilities reported by server"
-        : `${navFeatures.join(" · ")} available`,
-  });
-
-  // ── 6. File Registration ────────────────────────────────────────────────────
-  const openKotlinFiles = Object.values(editorState.openFiles).filter(
-    (f) => f.language === "kotlin" || f.language === "gradle"
-  );
-  const lspReady = lspStatusState === "ready";
-  checks.push({
-    id: "file-registration",
-    category: "lsp",
-    name: "File Registration",
-    status:
-      openKotlinFiles.length === 0
-        ? "skip"
-        : !lspReady
-        ? "warning"
-        : "ok",
-    detail:
-      openKotlinFiles.length === 0
-        ? "No Kotlin files open"
-        : !lspReady
-        ? `${openKotlinFiles.length} file(s) waiting — will register once LSP is ready`
-        : `${openKotlinFiles.length} file(s) registered with LSP server`,
-  });
-
-  // ── 7. Gradle Wrapper ───────────────────────────────────────────────────────
+  // ── 5. Gradle Wrapper ───────────────────────────────────────────────────────
   const gradleFound = report?.gradleWrapperFound;
   checks.push({
     id: "gradle-wrapper",
@@ -302,7 +196,7 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
       : "gradlew not found at project root — Gradle may not run",
   });
 
-  // ── 8. Disk Space ───────────────────────────────────────────────────────────
+  // ── 6. Disk Space ───────────────────────────────────────────────────────────
   const diskMb = report?.diskFreeMb;
   const diskStatus: CheckStatus =
     diskMb === undefined || diskMb === null
@@ -321,26 +215,26 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
       diskMb == null
         ? "Checking available space in ~/.androidide…"
         : diskMb < 200
-        ? `Only ${diskMb} MB free — LSP indices may fail to write`
+        ? `Only ${diskMb} MB free — build artifacts may fail to write`
         : diskMb < 1024
         ? `${diskMb} MB free — sufficient but getting low`
         : `${diskMb} MB free — plenty of space`,
   });
 
-  // ── 9. LSP System Directory ─────────────────────────────────────────────────
-  const lspDirOk = report?.lspSystemDirOk;
+  // ── 7. App Directory ────────────────────────────────────────────────────────
+  const appDirOk = report?.lspSystemDirOk;
   checks.push({
-    id: "lsp-system-dir",
+    id: "app-dir",
     category: "system",
-    name: "LSP Data Directory",
+    name: "App Data Directory",
     status:
-      lspDirOk === undefined ? "loading" : lspDirOk ? "ok" : "error",
+      appDirOk === undefined ? "loading" : appDirOk ? "ok" : "error",
     detail:
-      lspDirOk === undefined
-        ? "Checking ~/.androidide/lsp-system/…"
-        : lspDirOk
-        ? "~/.androidide/lsp-system/ is writable"
-        : "Cannot create ~/.androidide/lsp-system/ — check file permissions",
+      appDirOk === undefined
+        ? "Checking ~/.androidide/…"
+        : appDirOk
+        ? "~/.androidide/ is writable"
+        : "Cannot create ~/.androidide/ — check file permissions",
   });
 
   return checks;

@@ -66,7 +66,6 @@ describe("device.store", () => {
     setDevices(mockDevices);
     // Simulate user selecting the second device.
     deviceState.selectedSerial; // force read
-    import("@/stores/device.store").then(({ deviceState: ds }) => {});
     // setDevices again with a new list
     setDevices([...mockDevices].reverse());
     // Selection should remain if the device is still present in the list.

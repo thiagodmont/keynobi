@@ -18,8 +18,7 @@ import {
 } from "@/stores/build.store";
 import { variantState } from "@/stores/variant.store";
 import { deviceState } from "@/stores/device.store";
-import { openFileAtLocation } from "@/services/project.service";
-import { setActiveBottomTab, setUIState } from "@/stores/ui.store";
+import { setActiveTab } from "@/stores/ui.store";
 import type { BuildError } from "@/bindings";
 
 let buildCompleteUnlisten: (() => void) | null = null;
@@ -56,9 +55,8 @@ export async function runBuild(task?: string): Promise<void> {
 
   startBuild(effectiveTask);
 
-  // Open bottom panel and switch to Build tab.
-  setUIState("bottomPanelVisible", true);
-  setActiveBottomTab("build");
+  // Switch to Build tab.
+  setActiveTab("build");
 
   const startedAt = new Date().toISOString();
   const accumulatedErrors: BuildError[] = [];
@@ -150,12 +148,12 @@ export async function cancelBuild(): Promise<void> {
 }
 
 /**
- * Jump to a build error location in the editor.
- *
- * Uses `openFileAtLocation` to push the location onto the navigation history.
+ * Jump to a build error location.
+ * Shows the error path in a toast notification since we don't have a code editor.
  */
 export async function jumpToBuildError(error: BuildError): Promise<void> {
-  await openFileAtLocation(error.file, error.line - 1, (error.col ?? 1) - 1);
+  const { showToast } = await import("@/components/common/Toast");
+  showToast(`${error.file}:${error.line}${error.col ? `:${error.col}` : ""} — ${error.message}`, "info");
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

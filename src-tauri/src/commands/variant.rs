@@ -1,18 +1,16 @@
 use crate::models::variant::VariantList;
 use crate::services::{settings_manager, variant_manager};
 use crate::FsState;
-use crate::commands::treesitter::TreeSitterState;
 use std::path::PathBuf;
 use tauri::State;
 
 /// Return the list of build variants discovered for the current project.
 ///
-/// Uses Tree-sitter to parse `build.gradle.kts`; falls back to running
-/// `./gradlew :app:tasks --all` if parsing yields no results.
+/// Parses `build.gradle.kts` using regex-based extraction; falls back to
+/// running `./gradlew :app:tasks --all` if parsing yields no results.
 #[tauri::command]
 pub async fn get_build_variants(
     fs_state: State<'_, FsState>,
-    ts_state: State<'_, TreeSitterState>,
 ) -> Result<VariantList, String> {
     let gradle_root: PathBuf = {
         let fs = fs_state.0.lock().await;
@@ -40,9 +38,7 @@ pub async fn get_build_variants(
             Err(_) => continue,
         };
 
-        let mut ts = ts_state.0.lock().await;
-        let list = variant_manager::parse_variants_from_gradle(&mut ts, path, &content);
-        drop(ts);
+        let list = variant_manager::parse_variants_from_gradle(path, &content);
 
         if let Some(l) = list {
             if !l.variants.is_empty() {

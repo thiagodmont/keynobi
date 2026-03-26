@@ -24,7 +24,7 @@ Update this document when foundational architecture or design decisions change.
 
 ### 1. Correctness Before Optimization
 
-Write correct code first. Measure, then optimize. Every optimization in this codebase that is not trivially obvious must have a benchmark proving it is necessary. The performance targets (< 50ms tree-sitter parse, < 500ms project search) exist to define "correct enough," not to encourage premature micro-optimization.
+Write correct code first. Measure, then optimize. Every optimization in this codebase that is not trivially obvious must have a benchmark proving it is necessary. The performance targets (< 100ms build variant discovery, < 2s device list refresh) exist to define "correct enough," not to encourage premature micro-optimization.
 
 ### 2. Explicit Over Implicit
 
@@ -32,14 +32,14 @@ Every non-obvious behavior must be explicit in code. If a function has a side ef
 
 ### 3. Fail Fast, Fail Visibly
 
-Security violations, path traversal attempts, and oversized LSP messages must fail immediately with a clear error message. Silent degradation is acceptable only when explicitly designed (e.g., LSP fallback to Tree-sitter). Unknown failures must surface to the user via toast notifications or the status bar.
+Security violations and path traversal attempts must fail immediately with a clear error message. Unknown failures must surface to the user via toast notifications or the status bar.
 
 ### 4. Single Source of Truth
 
 For any piece of data, there is exactly one authoritative source:
 - Rust models are the source of truth for IPC types (TypeScript bindings are generated from them)
 - The Tauri `FsState` is the source of truth for the open project root (no caching it elsewhere)
-- The `editor.store.ts` is the source of truth for open files and tab order
+- The `project.store.ts` is the source of truth for the open project root and name
 - The `action-registry.ts` is the source of truth for all discoverable IDE actions
 
 When something needs to be known in two places, derive it from the source — don't duplicate it.
@@ -58,21 +58,9 @@ Every path that enters the system from the frontend is untrusted. Before any fil
 
 Never skip step 1 and 2 and use raw string prefix matching — symlinks and `..` components bypass it.
 
-### Zip Slip Prevention
-
-When extracting archives (LSP download), always:
-1. Reject entries containing `..` in any path component
-2. Canonicalize the output path after constructing it
-3. Verify the canonicalized output is within the destination directory
-4. Enforce per-entry and total extraction size limits
-
-### Content-Length Validation
-
-The LSP JSON-RPC transport reads `Content-Length` and allocates that many bytes. Always enforce a maximum (64 MB in our implementation) before allocating. Without this cap, a buggy or hostile peer can cause an OOM crash.
-
 ### Principle of Least Privilege
 
-Tauri capabilities are scoped to what is actually needed. The LSP process is spawned directly from Rust — it does not need shell plugin capabilities. The frontend receives only what the Rust layer explicitly chooses to send via IPC.
+Tauri capabilities are scoped to what is actually needed. The frontend receives only what the Rust layer explicitly chooses to send via IPC.
 
 ### No Secrets in Frontend
 
@@ -88,18 +76,11 @@ The performance targets for this project:
 
 | Operation | Target |
 |-----------|--------|
-| File tree load (500 files) | < 1 second |
-| File tree FSEvent update | < 100ms |
-| Tree-sitter parse (2000 lines) | < 50ms |
-| Tree-sitter incremental re-parse | < 5ms |
-| Project-wide search (500 files) | < 500ms |
-| Editor tab switch | < 50ms |
-| Completion popup | < 200ms |
-| Go-to-definition | < 300ms |
-| Command palette open | < 50ms |
-| Build variant discovery (Tree-sitter) | < 100ms |
+| Build variant discovery | < 500ms |
 | Device list refresh | < 2 seconds |
 | ADB install feedback appears | < 1 second after command |
+| Logcat 60fps with 1000 lines/sec | smooth rendering |
+| Command palette open | < 50ms |
 
 Run `npm run perf:collect` after changes to track regression against these targets.
 
@@ -110,11 +91,9 @@ The UI runs on the frontend's single JavaScript thread. Any operation that could
 ### Bound All Collections
 
 Every in-memory collection that grows over time must have an explicit cap:
-- Navigation history: 50 entries
-- Tree-sitter cache: 50 parsed trees (LRU)
-- Search results: 10,000 matches / 500 files
-- LSP message size: 64 MB
-- Recent files list: 20 entries
+- Logcat ring buffer: 50K entries (drop oldest on overflow)
+- Build history: last 10 builds
+- Recent projects list: 10 entries
 
 Unbounded growth is a memory leak on a long-lived IDE process.
 
