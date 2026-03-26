@@ -408,6 +408,16 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
           <JavaStatus />
         </SettingRow>
       </Show>
+
+      <SectionHeader title="Logcat" />
+      <Show when={m("Auto-start Logcat", "Automatically start logcat when a device connects")}>
+        <SettingRow label="Auto-start on Connect" description="Automatically start logcat streaming when a device connects">
+          <SettingToggle
+            checked={(settingsState as any).logcat?.autoStart ?? true}
+            onChange={(v) => updateSetting("logcat" as any, "autoStart" as any, v)}
+          />
+        </SettingRow>
+      </Show>
     </>
   );
 }

@@ -11,11 +11,11 @@ use commands::device::{
     list_adb_devices, list_avd_devices, refresh_devices, select_device, start_device_polling,
     stop_app_on_device, stop_avd, stop_device_polling,
 };
-use commands::file_system::{get_gradle_root, get_project_root, open_project};
+use commands::file_system::{get_application_id, get_gradle_root, get_project_root, open_project};
 use commands::health::run_health_checks;
 use commands::logcat::{
-    clear_logcat, get_logcat_entries, get_logcat_status, new_logcat_state, start_logcat,
-    stop_logcat,
+    clear_logcat, get_logcat_entries, get_logcat_status, list_logcat_packages,
+    new_logcat_state, start_logcat, stop_logcat,
 };
 use commands::mcp::start_mcp_server;
 use commands::settings::*;
@@ -95,6 +95,7 @@ pub fn run() {
             open_project,
             get_project_root,
             get_gradle_root,
+            get_application_id,
             // Settings
             get_settings,
             save_settings,
@@ -134,6 +135,7 @@ pub fn run() {
             clear_logcat,
             get_logcat_entries,
             get_logcat_status,
+            list_logcat_packages,
             // MCP Server
             start_mcp_server,
         ])

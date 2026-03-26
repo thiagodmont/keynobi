@@ -50,6 +50,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     buildVariant: null,
     selectedDevice: null,
   },
+  logcat: {
+    autoStart: true,
+  },
 };
 
 const [settingsState, setSettingsState] = createStore<AppSettings>(

@@ -36,8 +36,7 @@ pub async fn start_logcat(
     Ok(())
 }
 
-/// Stop the logcat stream (by clearing the streaming flag; the background task
-/// will stop naturally when it detects the process ends or on next re-start).
+/// Stop the logcat stream.
 #[tauri::command]
 pub async fn stop_logcat(logcat_state: State<'_, LogcatState>) -> Result<(), String> {
     let mut state = logcat_state.lock().await;
@@ -54,28 +53,32 @@ pub async fn clear_logcat(
     use tauri::Emitter;
     let mut state = logcat_state.lock().await;
     state.buffer.clear();
+    // Also clear the pid→package map — PIDs from a previous run are stale.
+    state.pid_to_package.clear();
+    state.seen_packages.clear();
     let _ = app_handle.emit("logcat:cleared", ());
     Ok(())
 }
 
 /// Return recent logcat entries from the ring buffer.
-/// Optionally filter by minimum log level, tag substring, or text search.
+/// Optionally filter by minimum log level, tag, text, or package name.
 #[tauri::command]
 pub async fn get_logcat_entries(
     count: Option<usize>,
     min_level: Option<String>,
     tag: Option<String>,
     text: Option<String>,
+    package: Option<String>,
     only_crashes: bool,
     logcat_state: State<'_, LogcatState>,
 ) -> Result<Vec<LogcatEntry>, String> {
-    let filter = LogcatFilter {
-        min_level: min_level.as_deref().map(parse_level),
+    let filter = LogcatFilter::new(
+        min_level.as_deref().map(parse_level),
         tag,
         text,
+        package,
         only_crashes,
-        ..Default::default()
-    };
+    );
 
     let state = logcat_state.lock().await;
     let limit = count.unwrap_or(1000).min(10_000);
@@ -100,6 +103,15 @@ pub async fn get_logcat_entries(
 #[tauri::command]
 pub async fn get_logcat_status(logcat_state: State<'_, LogcatState>) -> Result<bool, String> {
     Ok(logcat_state.lock().await.streaming)
+}
+
+/// Return the sorted list of all known package names seen in this logcat session.
+/// Populated from ActivityManager "Start proc" lines.
+#[tauri::command]
+pub async fn list_logcat_packages(
+    logcat_state: State<'_, LogcatState>,
+) -> Result<Vec<String>, String> {
+    Ok(logcat_state.lock().await.known_packages())
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

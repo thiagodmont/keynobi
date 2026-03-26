@@ -17,6 +17,7 @@ pub struct AppSettings {
     pub java: JavaSettings,
     pub advanced: AdvancedSettings,
     pub build: BuildSettings,
+    pub logcat: LogcatSettings,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
@@ -114,6 +115,15 @@ pub struct BuildSettings {
     pub selected_device: Option<String>,
 }
 
+/// Logcat settings.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct LogcatSettings {
+    /// Automatically start logcat streaming when a device connects.
+    pub auto_start: bool,
+}
+
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
 impl Default for AppSettings {
@@ -128,6 +138,7 @@ impl Default for AppSettings {
             java: JavaSettings::default(),
             advanced: AdvancedSettings::default(),
             build: BuildSettings::default(),
+            logcat: LogcatSettings::default(),
         }
     }
 }
@@ -231,6 +242,12 @@ impl Default for BuildSettings {
             build_variant: None,
             selected_device: None,
         }
+    }
+}
+
+impl Default for LogcatSettings {
+    fn default() -> Self {
+        Self { auto_start: true }
     }
 }
 

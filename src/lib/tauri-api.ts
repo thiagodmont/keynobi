@@ -27,6 +27,11 @@ export async function getGradleRoot(): Promise<string | null> {
   return invoke<string | null>("get_gradle_root");
 }
 
+/** Reads applicationId from app/build.gradle(.kts) for `package:mine` resolution. */
+export async function getApplicationId(): Promise<string | null> {
+  return invoke<string | null>("get_application_id");
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 export interface AppSettings {
@@ -64,6 +69,9 @@ export interface AppSettings {
     autoInstallOnBuild: boolean;
     buildVariant: string | null;
     selectedDevice: string | null;
+  };
+  logcat: {
+    autoStart: boolean;
   };
 }
 
@@ -282,6 +290,10 @@ export interface LogcatEntry {
   tag: string;
   message: string;
   isCrash: boolean;
+  /** Package/process name resolved from the ActivityManager pid→package map. */
+  package: string | null;
+  /** Entry kind — normal log line vs process lifecycle separator. */
+  kind?: "normal" | "processDied" | "processStarted";
 }
 
 export async function startLogcat(deviceSerial?: string): Promise<void> {
@@ -301,6 +313,7 @@ export async function getLogcatEntries(opts?: {
   minLevel?: string;
   tag?: string;
   text?: string;
+  package?: string;
   onlyCrashes?: boolean;
 }): Promise<LogcatEntry[]> {
   return invoke<LogcatEntry[]>("get_logcat_entries", {
@@ -308,12 +321,17 @@ export async function getLogcatEntries(opts?: {
     minLevel: opts?.minLevel ?? null,
     tag: opts?.tag ?? null,
     text: opts?.text ?? null,
+    package: opts?.package ?? null,
     onlyCrashes: opts?.onlyCrashes ?? false,
   });
 }
 
 export async function getLogcatStatus(): Promise<boolean> {
   return invoke<boolean>("get_logcat_status");
+}
+
+export async function listLogcatPackages(): Promise<string[]> {
+  return invoke<string[]>("list_logcat_packages");
 }
 
 export function listenLogcatEntries(

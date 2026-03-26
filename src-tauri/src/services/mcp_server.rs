@@ -236,7 +236,7 @@ async fn tool_get_logcat_entries(app: &AppHandle, args: &Value) -> Result<Value,
     let text = args.get("text").and_then(Value::as_str).map(String::from);
     let only_crashes = args.get("only_crashes").and_then(Value::as_bool).unwrap_or(false);
 
-    let filter = LogcatFilter { min_level, tag, text, only_crashes, ..Default::default() };
+    let filter = LogcatFilter::new(min_level, tag, text, None, only_crashes);
     let logcat = app.state::<LogcatState>();
     let state = logcat.lock().await;
 

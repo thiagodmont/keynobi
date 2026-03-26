@@ -5,6 +5,8 @@ interface ProjectState {
   /** Detected Gradle project root (ancestor with settings.gradle). */
   gradleRoot: string | null;
   projectName: string | null;
+  /** Application ID read from build.gradle(.kts). Used for `package:mine`. */
+  applicationId: string | null;
   loading: boolean;
 }
 
@@ -12,6 +14,7 @@ const [projectState, setProjectState] = createStore<ProjectState>({
   projectRoot: null,
   gradleRoot: null,
   projectName: null,
+  applicationId: null,
   loading: false,
 });
 
@@ -29,11 +32,16 @@ export function setProject(root: string, projectNameOrTree: string | object, gra
   });
 }
 
+export function setApplicationId(id: string | null) {
+  setProjectState("applicationId", id);
+}
+
 export function clearProject() {
   setProjectState({
     projectRoot: null,
     gradleRoot: null,
     projectName: null,
+    applicationId: null,
     loading: false,
   });
 }
