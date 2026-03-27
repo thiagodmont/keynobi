@@ -218,10 +218,10 @@ async fn tool_get_build_errors(app: &AppHandle) -> Result<Value, McpError> {
     }
     let mut lines = vec![format!("{} error(s) from last build:", state.current_errors.len())];
     for err in &state.current_errors {
-        let loc = if err.line > 0 {
-            format!("{}:{}", err.file, err.line)
-        } else {
-            err.file.clone()
+        let loc = match (&err.file, err.line) {
+            (Some(file), Some(ln)) => format!("{}:{}", file, ln),
+            (Some(file), None) => file.clone(),
+            _ => String::new(),
         };
         lines.push(format!("[{}] {} — {}", format!("{:?}", err.severity).to_lowercase(), loc, err.message));
     }

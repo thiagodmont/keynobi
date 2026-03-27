@@ -6,6 +6,7 @@ import { createLogStore, type LogStore } from "@/stores/log.store";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type BuildPhase = "idle" | "running" | "success" | "failed" | "cancelled";
+export type DeployPhase = "building" | "installing" | "launching" | null;
 
 export interface BuildStoreState {
   phase: BuildPhase;
@@ -15,6 +16,7 @@ export interface BuildStoreState {
   errors: BuildError[];
   warnings: BuildError[];
   history: BuildRecord[];
+  deployPhase: DeployPhase;
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -27,6 +29,7 @@ const [buildState, setBuildState] = createStore<BuildStoreState>({
   errors: [],
   warnings: [],
   history: [],
+  deployPhase: null,
 });
 
 export { buildState };
@@ -47,6 +50,7 @@ export const buildDurationMs = createMemo(() => {
 export const hasErrors = createMemo(() => buildState.errors.length > 0);
 export const hasWarnings = createMemo(() => buildState.warnings.length > 0);
 export const isBuilding = createMemo(() => buildState.phase === "running");
+export const isDeploying = createMemo(() => buildState.deployPhase !== null);
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
@@ -58,8 +62,13 @@ export function startBuild(task: string): void {
     durationMs: null,
     errors: [],
     warnings: [],
+    deployPhase: null,
   });
   buildLogStore.clearEntries();
+}
+
+export function setDeployPhase(phase: DeployPhase): void {
+  setBuildState("deployPhase", phase);
 }
 
 // Counter for LogEntry IDs within the build log.
@@ -70,39 +79,41 @@ export function addBuildLine(line: BuildLine): void {
   const level: LogEntry["level"] =
     line.kind === "error" ? "error"
     : line.kind === "warning" ? "warn"
-    : line.kind === "summary" ? "info"
+    : line.kind === "summary" || line.kind === "info" ? "info"
     : "debug";
+
+  const message = line.file
+    ? `${line.file}:${line.line ?? "?"}:${line.col ?? "?"} — ${line.content}`
+    : line.content;
 
   buildLogStore.pushEntry({
     id: ++buildLogIdCounter,
     timestamp: new Date().toISOString(),
     level,
     source: "gradle",
-    message: line.file
-      ? `${line.file}:${line.line ?? "?"}:${line.col ?? "?"} — ${line.content}`
-      : line.content,
+    message,
   });
 
-  // Accumulate structured errors and warnings.
-  if (line.kind === "error" && line.file && line.line != null) {
+  // Accumulate structured errors and warnings (file location is optional).
+  if (line.kind === "error") {
     setBuildState(
       produce((s) => {
         s.errors.push({
           message: line.content,
-          file: line.file!,
-          line: line.line!,
+          file: line.file ?? null,
+          line: line.line ?? null,
           col: line.col ?? null,
           severity: "error",
         });
       })
     );
-  } else if (line.kind === "warning" && line.file && line.line != null) {
+  } else if (line.kind === "warning") {
     setBuildState(
       produce((s) => {
         s.warnings.push({
           message: line.content,
-          file: line.file!,
-          line: line.line!,
+          file: line.file ?? null,
+          line: line.line ?? null,
           col: line.col ?? null,
           severity: "warning",
         });
@@ -125,7 +136,7 @@ export function setBuildResult(opts: {
 }
 
 export function cancelBuildState(): void {
-  setBuildState({ phase: "cancelled", startedAt: null });
+  setBuildState({ phase: "cancelled", startedAt: null, deployPhase: null });
 }
 
 export function clearBuild(): void {
@@ -136,6 +147,7 @@ export function clearBuild(): void {
     durationMs: null,
     errors: [],
     warnings: [],
+    deployPhase: null,
   });
   buildLogStore.clearEntries();
 }

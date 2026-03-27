@@ -59,6 +59,70 @@ pub struct AvdInfo {
     pub path: String,
 }
 
+/// An installed Android system image available for AVD creation.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct SystemImageInfo {
+    /// SDK ID used with `avdmanager create avd -k "..."` (e.g. `"system-images;android-35;google_apis;arm64-v8a"`).
+    pub sdk_id: String,
+    /// Android API level.
+    pub api_level: u32,
+    /// Image variant (e.g. `"google_apis"`, `"google_apis_playstore"`, `"default"`).
+    pub variant: String,
+    /// CPU ABI (e.g. `"arm64-v8a"`, `"x86_64"`).
+    pub abi: String,
+    /// Human-friendly label (e.g. `"Android 15 (Google APIs) · arm64-v8a"`).
+    pub display_name: String,
+}
+
+/// A hardware device definition from `avdmanager list device`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DeviceDefinition {
+    /// Identifier used with `avdmanager create avd -d "..."` (e.g. `"pixel_7"`).
+    pub id: String,
+    /// Human-readable name (e.g. `"Pixel 7"`).
+    pub name: String,
+    /// Manufacturer name (e.g. `"Google"`).
+    pub manufacturer: String,
+}
+
+/// An Android system image available for download via `sdkmanager`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct AvailableSystemImage {
+    /// Full SDK package ID (e.g. `"system-images;android-35;google_apis;arm64-v8a"`).
+    pub sdk_id: String,
+    /// Android API level.
+    pub api_level: u32,
+    /// Image variant (e.g. `"google_apis"`, `"google_apis_playstore"`, `"default"`).
+    pub variant: String,
+    /// CPU ABI (e.g. `"arm64-v8a"`, `"x86_64"`).
+    pub abi: String,
+    /// Human-friendly label.
+    pub display_name: String,
+    /// Whether the image is already installed locally.
+    pub installed: bool,
+}
+
+/// A single line of progress from an `sdkmanager` download.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct SdkDownloadProgress {
+    /// Progress percentage 0–100, or `None` if indeterminate.
+    pub percent: Option<u32>,
+    /// Raw status line from sdkmanager (e.g. "Downloading...").
+    pub message: String,
+    /// Whether the download has finished (success or failure).
+    pub done: bool,
+    /// Whether the download ended in an error.
+    pub error: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

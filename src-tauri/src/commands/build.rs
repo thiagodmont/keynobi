@@ -9,10 +9,9 @@ use crate::FsState;
 use chrono::Utc;
 use serde::Serialize;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use tauri::{AppHandle, Emitter, State};
 use tauri::ipc::Channel;
-use tokio::sync::Mutex;
 
 // ── Event payloads ─────────────────────────────────────────────────────────────
 
@@ -67,10 +66,12 @@ pub async fn run_gradle_task(
     let env = build_env_vars(&settings, &gradle_root);
     let started_at = Utc::now().to_rfc3339();
 
-    // Shared buffers for accumulating build info across async line callbacks.
-    let errors_buf: Arc<Mutex<Vec<BuildError>>> = Arc::new(Mutex::new(vec![]));
-    let duration_ms: Arc<Mutex<u64>> = Arc::new(Mutex::new(0));
-    let success_flag: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+    // Use std::sync::Mutex (not tokio) for these accumulators — they are
+    // accessed only from sync callbacks (on_line / on_exit) and must never
+    // use blocking_lock on a tokio mutex inside an async task.
+    let errors_buf: Arc<StdMutex<Vec<BuildError>>> = Arc::new(StdMutex::new(vec![]));
+    let duration_ms: Arc<StdMutex<u64>> = Arc::new(StdMutex::new(0));
+    let success_flag: Arc<StdMutex<bool>> = Arc::new(StdMutex::new(false));
 
     let args_strs: Vec<String> = args;
     let args_refs: Vec<&str> = args_strs.iter().map(|s| s.as_str()).collect();
@@ -89,34 +90,32 @@ pub async fn run_gradle_task(
                 move |proc_line| {
                     let line = build_runner::parse_build_line(&proc_line.text);
 
-                    // Collect structured errors / warnings.
+                    // Collect structured errors / warnings (including those without file locations).
                     if matches!(line.kind, BuildLineKind::Error | BuildLineKind::Warning) {
-                        if let (Some(file), Some(ln)) = (line.file.clone(), line.line) {
-                            let severity = if line.kind == BuildLineKind::Error {
-                                BuildErrorSeverity::Error
-                            } else {
-                                BuildErrorSeverity::Warning
-                            };
-                            if let Ok(mut errs) = errors_buf.try_lock() {
-                                errs.push(BuildError {
-                                    message: line.content.clone(),
-                                    file,
-                                    line: ln,
-                                    col: line.col,
-                                    severity,
-                                });
-                            }
+                        let severity = if line.kind == BuildLineKind::Error {
+                            BuildErrorSeverity::Error
+                        } else {
+                            BuildErrorSeverity::Warning
+                        };
+                        if let Ok(mut errs) = errors_buf.lock() {
+                            errs.push(BuildError {
+                                message: line.content.clone(),
+                                file: line.file.clone(),
+                                line: line.line,
+                                col: line.col,
+                                severity,
+                            });
                         }
                     }
 
                     // Extract duration and success flag from the summary line.
                     if line.kind == BuildLineKind::Summary {
                         let dur = build_runner::parse_build_duration(&line.content);
-                        if let Ok(mut d) = duration_ms.try_lock() {
+                        if let Ok(mut d) = duration_ms.lock() {
                             *d = dur;
                         }
                         let is_success = line.content.contains("BUILD SUCCESSFUL");
-                        if let Ok(mut s) = success_flag.try_lock() {
+                        if let Ok(mut s) = success_flag.lock() {
                             *s = is_success;
                         }
                     }
@@ -128,9 +127,11 @@ pub async fn run_gradle_task(
                 let app = app_handle.clone();
                 let task_name = task.clone();
                 move |_pid, exit_code| {
-                    let errs = errors_buf.blocking_lock().clone();
-                    let dur = *duration_ms.blocking_lock();
-                    let success = *success_flag.blocking_lock() || exit_code == Some(0);
+                    // std::sync::Mutex::lock() — safe to call from any context.
+                    let errs = errors_buf.lock().map(|g| g.clone()).unwrap_or_default();
+                    let dur = duration_ms.lock().map(|g| *g).unwrap_or(0);
+                    let flag = success_flag.lock().map(|g| *g).unwrap_or(false);
+                    let success = flag || exit_code == Some(0);
 
                     let error_count = errs
                         .iter()

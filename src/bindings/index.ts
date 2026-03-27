@@ -34,6 +34,10 @@ export type { Device } from "./Device";
 export type { DeviceKind } from "./DeviceKind";
 export type { DeviceConnectionState } from "./DeviceConnectionState";
 export type { AvdInfo } from "./AvdInfo";
+export type { SystemImageInfo } from "./SystemImageInfo";
+export type { DeviceDefinition } from "./DeviceDefinition";
+export type { AvailableSystemImage } from "./AvailableSystemImage";
+export type { SdkDownloadProgress } from "./SdkDownloadProgress";
 export type { BuildVariant } from "./BuildVariant";
 export type { VariantList } from "./VariantList";
 

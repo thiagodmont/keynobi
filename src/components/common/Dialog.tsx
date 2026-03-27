@@ -34,7 +34,7 @@ interface PendingDialog {
 const [pendingDialog, setPendingDialog] = createSignal<PendingDialog | null>(null);
 
 /** Internal helper: show a dialog and return the button value the user chose. */
-function showDialog(dialog: Omit<PendingDialog, "resolve">): Promise<string> {
+export function showDialog(dialog: Omit<PendingDialog, "resolve">): Promise<string> {
   return new Promise((resolve) => {
     setPendingDialog({ ...dialog, resolve });
   });

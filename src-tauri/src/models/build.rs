@@ -12,6 +12,8 @@ pub enum BuildLineKind {
     Error,
     /// Compiler warning line with an optional file location.
     Warning,
+    /// Informational progress line (downloads, configuration, etc.).
+    Info,
     /// Gradle task progress line (e.g. `> Task :app:compileDebugKotlin`).
     TaskStart,
     /// Gradle task outcome line (e.g. `> Task :app:compileDebugKotlin FAILED`).
@@ -51,14 +53,16 @@ pub enum BuildErrorSeverity {
     Warning,
 }
 
-/// A structured build error or warning with a location reference.
+/// A structured build error or warning with an optional location reference.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct BuildError {
     pub message: String,
-    pub file: String,
-    pub line: u32,
+    /// Source file path, if known (None for dependency/configuration errors).
+    pub file: Option<String>,
+    /// 1-based line number, if known.
+    pub line: Option<u32>,
     pub col: Option<u32>,
     pub severity: BuildErrorSeverity,
 }

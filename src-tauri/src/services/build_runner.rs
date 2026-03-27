@@ -11,13 +11,44 @@ use tokio::sync::Mutex;
 /// Maximum number of build records kept in history (bounded collection).
 pub const MAX_HISTORY: usize = 10;
 
-// ── Regex patterns for parsing Gradle / Kotlin compiler output ────────────────
+// ── Regex patterns for parsing Gradle / Kotlin / Java / AAPT2 output ─────────
 //
 // Kotlin compiler error:  `e: file:///path/to/File.kt:10:5: error message`
 // Kotlin compiler warning: `w: file:///path/to/File.kt:10:5: warning message`
-// Also handle the format without `file://` prefix.
-const ERROR_PATTERN: &str =
+const KOTLIN_DIAG_PATTERN: &str =
     r"^[ew]: (?:file://)?(.+?):(\d+):(\d+): (.+)$";
+
+// Java compiler: `path/File.java:10: error: message` or `path/File.java:10: warning: message`
+const JAVA_DIAG_PATTERN: &str =
+    r"^(.+\.java):(\d+): (error|warning): (.+)$";
+
+// AAPT2 resource error: `path/file.xml:10: error: message`
+// Also matches `AAPT: error: message` (no file/line)
+const AAPT_FILE_PATTERN: &str =
+    r"^(.+\.(xml|png|webp|jpg|jpeg)):(\d+): error: (.+)$";
+const AAPT_BARE_PATTERN: &str =
+    r"^AAPT(?:2)?: (error|warning): (.+)$";
+
+// Android Gradle plugin resource error:
+// `ERROR: /path/file.xml:10: error message`
+const AGP_ERROR_PATTERN: &str =
+    r"^ERROR: (.+\.(xml|java|kt)):(\d+): (.+)$";
+
+// Gradle build exception header: `FAILURE: Build failed with an exception.`
+const GRADLE_FAILURE_PATTERN: &str =
+    r"^(FAILURE: .+|> Could not resolve .+|> Could not find .+|> Failed to resolve .+|> Configuration cache .+|Error while executing process .+|Caused by: .+)$";
+
+// Gradle "What went wrong" detail: `* What went wrong:` followed by explanation
+const WHAT_WENT_WRONG_PATTERN: &str =
+    r"^\* What went wrong:$";
+
+// General error keyword line (catch-all for unrecognised errors)
+const GENERIC_ERROR_PATTERN: &str =
+    r"^(?:error|Error): (.+)$";
+
+// Gradle download / progress lines (suppress as info)
+const DOWNLOAD_PATTERN: &str =
+    r"^(?:Download|Downloading) .+$";
 
 const TASK_START_PATTERN: &str = r"^> Task (:.+)$";
 const TASK_OUTCOME_PATTERN: &str = r"^> Task (:.+) (FAILED|UP-TO-DATE|SKIPPED|NO-SOURCE|FROM-CACHE)$";
@@ -62,32 +93,104 @@ impl Default for BuildState {
     }
 }
 
-/// Parse a single raw line from Gradle / Kotlin compiler output.
+/// Parse a single raw line from Gradle / Kotlin / Java / AAPT2 compiler output.
 ///
-/// The result carries structured information about errors and warnings so the
-/// frontend can render clickable file:line links.
+/// Returns a structured `BuildLine` that carries enough information for the
+/// frontend to display clickable file:line links and populate the Problems tab.
 pub fn parse_build_line(raw: &str) -> BuildLine {
-    // Lazily compile patterns once (thread-safe via OnceLock in std or just
-    // create here — the function is not on a hot-path; the bottleneck is I/O).
-    let error_re = Regex::new(ERROR_PATTERN).expect("static regex");
-    let task_start_re = Regex::new(TASK_START_PATTERN).expect("static regex");
+    // Compile patterns once per call. These are not on a hot-path; the
+    // bottleneck is I/O from the Gradle process.
+    let kotlin_re = Regex::new(KOTLIN_DIAG_PATTERN).expect("static regex");
+    let java_re = Regex::new(JAVA_DIAG_PATTERN).expect("static regex");
+    let aapt_file_re = Regex::new(AAPT_FILE_PATTERN).expect("static regex");
+    let aapt_bare_re = Regex::new(AAPT_BARE_PATTERN).expect("static regex");
+    let agp_re = Regex::new(AGP_ERROR_PATTERN).expect("static regex");
+    let gradle_fail_re = Regex::new(GRADLE_FAILURE_PATTERN).expect("static regex");
+    let what_went_wrong_re = Regex::new(WHAT_WENT_WRONG_PATTERN).expect("static regex");
+    let generic_err_re = Regex::new(GENERIC_ERROR_PATTERN).expect("static regex");
+    let download_re = Regex::new(DOWNLOAD_PATTERN).expect("static regex");
     let task_outcome_re = Regex::new(TASK_OUTCOME_PATTERN).expect("static regex");
+    let task_start_re = Regex::new(TASK_START_PATTERN).expect("static regex");
     let success_re = Regex::new(BUILD_SUCCESS_PATTERN).expect("static regex");
     let failed_re = Regex::new(BUILD_FAILED_PATTERN).expect("static regex");
 
     // ── Kotlin compiler error / warning ──────────────────────────────────────
-    if let Some(caps) = error_re.captures(raw) {
+    if let Some(caps) = kotlin_re.captures(raw) {
         let is_warning = raw.starts_with("w:");
-        let file = caps.get(1).map(|m| m.as_str().to_owned());
-        let line = caps.get(2).and_then(|m| m.as_str().parse().ok());
-        let col = caps.get(3).and_then(|m| m.as_str().parse().ok());
-        let msg = caps.get(4).map(|m| m.as_str().to_owned()).unwrap_or_default();
         return BuildLine {
             kind: if is_warning { BuildLineKind::Warning } else { BuildLineKind::Error },
-            content: msg,
-            file,
-            line,
-            col,
+            content: caps.get(4).map(|m| m.as_str().to_owned()).unwrap_or_default(),
+            file: caps.get(1).map(|m| m.as_str().to_owned()),
+            line: caps.get(2).and_then(|m| m.as_str().parse().ok()),
+            col: caps.get(3).and_then(|m| m.as_str().parse().ok()),
+        };
+    }
+
+    // ── Java compiler error / warning ─────────────────────────────────────────
+    if let Some(caps) = java_re.captures(raw) {
+        let is_warning = caps.get(3).map(|m| m.as_str()) == Some("warning");
+        return BuildLine {
+            kind: if is_warning { BuildLineKind::Warning } else { BuildLineKind::Error },
+            content: caps.get(4).map(|m| m.as_str().to_owned()).unwrap_or_default(),
+            file: caps.get(1).map(|m| m.as_str().to_owned()),
+            line: caps.get(2).and_then(|m| m.as_str().parse().ok()),
+            col: None,
+        };
+    }
+
+    // ── AAPT2 resource error with file location ───────────────────────────────
+    if let Some(caps) = aapt_file_re.captures(raw) {
+        return BuildLine {
+            kind: BuildLineKind::Error,
+            content: caps.get(4).map(|m| m.as_str().to_owned()).unwrap_or_default(),
+            file: caps.get(1).map(|m| m.as_str().to_owned()),
+            line: caps.get(3).and_then(|m| m.as_str().parse().ok()),
+            col: None,
+        };
+    }
+
+    // ── AAPT2 bare error / warning (no file location) ────────────────────────
+    if let Some(caps) = aapt_bare_re.captures(raw) {
+        let is_warning = caps.get(1).map(|m| m.as_str()) == Some("warning");
+        return BuildLine {
+            kind: if is_warning { BuildLineKind::Warning } else { BuildLineKind::Error },
+            content: format!("AAPT: {}", caps.get(2).map(|m| m.as_str()).unwrap_or(raw)),
+            file: None,
+            line: None,
+            col: None,
+        };
+    }
+
+    // ── AGP resource error with file:line ─────────────────────────────────────
+    if let Some(caps) = agp_re.captures(raw) {
+        return BuildLine {
+            kind: BuildLineKind::Error,
+            content: caps.get(4).map(|m| m.as_str().to_owned()).unwrap_or_default(),
+            file: caps.get(1).map(|m| m.as_str().to_owned()),
+            line: caps.get(3).and_then(|m| m.as_str().parse().ok()),
+            col: None,
+        };
+    }
+
+    // ── Gradle FAILURE / dependency resolution errors ─────────────────────────
+    if gradle_fail_re.is_match(raw) {
+        return BuildLine {
+            kind: BuildLineKind::Error,
+            content: raw.to_owned(),
+            file: None,
+            line: None,
+            col: None,
+        };
+    }
+
+    // ── "What went wrong" header ──────────────────────────────────────────────
+    if what_went_wrong_re.is_match(raw) {
+        return BuildLine {
+            kind: BuildLineKind::Error,
+            content: raw.to_owned(),
+            file: None,
+            line: None,
+            col: None,
         };
     }
 
@@ -121,6 +224,28 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
         return BuildLine {
             kind: BuildLineKind::Summary,
             content: raw.to_owned(),
+            file: None,
+            line: None,
+            col: None,
+        };
+    }
+
+    // ── Download / progress lines (show as info, not noise) ──────────────────
+    if download_re.is_match(raw) {
+        return BuildLine {
+            kind: BuildLineKind::Info,
+            content: raw.to_owned(),
+            file: None,
+            line: None,
+            col: None,
+        };
+    }
+
+    // ── Generic error keyword (catch-all) ─────────────────────────────────────
+    if let Some(caps) = generic_err_re.captures(raw) {
+        return BuildLine {
+            kind: BuildLineKind::Error,
+            content: caps.get(1).map(|m| m.as_str().to_owned()).unwrap_or_else(|| raw.to_owned()),
             file: None,
             line: None,
             col: None,
@@ -186,43 +311,85 @@ fn walk_dir_for_apk(base: &Path, max_depth: u32) -> Vec<PathBuf> {
 ///
 /// Standard AGP layout:
 ///   `{gradle_root}/app/build/outputs/apk/{buildType}/app-{buildType}.apk`
-///   or
+///   or with flavor:
 ///   `{gradle_root}/app/build/outputs/apk/{flavor}/{buildType}/app-{flavor}-{buildType}.apk`
+///
+/// Priority (highest first):
+///   1. Signed APK in a directory that matches the variant name.
+///   2. Unsigned APK in a directory that matches the variant name.
+///   3. Signed APK anywhere under the outputs/apk tree.
+///   4. Unsigned APK anywhere (last resort, excludes unaligned only).
+///
+/// `adb install` works fine with unsigned APKs for development builds.
+/// Only `-unaligned.apk` files are excluded (they are not zip-aligned and
+/// cannot be installed).
 pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf> {
     let base = gradle_root.join("app").join("build").join("outputs").join("apk");
     if !base.is_dir() {
         return None;
     }
-    let all_files = walk_dir_for_apk(&base, 3);
+    let all_files = walk_dir_for_apk(&base, 4);
 
-    // First pass: prefer APK whose parent dir matches variant.
-    for path in &all_files {
-        if path.extension().and_then(|e| e.to_str()) == Some("apk") {
-            let name = path.file_name()?.to_str()?.to_lowercase();
-            if name.contains("unsigned") || name.contains("unaligned") {
-                continue;
+    // Only exclude files that are genuinely not installable.
+    let is_usable = |name: &str| -> bool {
+        !name.ends_with("-unaligned.apk")
+    };
+    let is_signed = |name: &str| -> bool {
+        !name.contains("-unsigned")
+    };
+
+    let variant_lc = variant_name.to_lowercase();
+    let parent_matches = |path: &Path| -> bool {
+        if variant_name.is_empty() { return true; }
+        // Check both the immediate parent dir and the grandparent dir so both
+        // `apk/release/app-release.apk` and `apk/flavor/release/app-release.apk` match.
+        for ancestor in path.ancestors().skip(1).take(2) {
+            if ancestor
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| n.to_lowercase())
+                .as_deref()
+                == Some(variant_lc.as_str())
+            {
+                return true;
             }
-            let parent_name = path
-                .parent()
-                .and_then(|p| p.file_name())
+        }
+        false
+    };
+
+    let apks: Vec<&PathBuf> = all_files
+        .iter()
+        .filter(|p| {
+            let name = p.file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("")
                 .to_lowercase();
-            if parent_name == variant_name.to_lowercase() || variant_name.is_empty() {
-                return Some(path.to_owned());
-            }
+            p.extension().and_then(|e| e.to_str()) == Some("apk") && is_usable(&name)
+        })
+        .collect();
+
+    // Pass 1 — signed + variant dir match.
+    for p in &apks {
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+        if is_signed(&name) && parent_matches(p) {
+            return Some((*p).clone());
         }
     }
-    // Second pass: return first APK regardless of directory match.
-    for path in &all_files {
-        if path.extension().and_then(|e| e.to_str()) == Some("apk") {
-            let name = path.file_name()?.to_str()?.to_lowercase();
-            if !name.contains("unsigned") && !name.contains("unaligned") {
-                return Some(path.to_owned());
-            }
+    // Pass 2 — unsigned + variant dir match (e.g. app-release-unsigned.apk).
+    for p in &apks {
+        if parent_matches(p) {
+            return Some((*p).clone());
         }
     }
-    None
+    // Pass 3 — signed, any location.
+    for p in &apks {
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+        if is_signed(&name) {
+            return Some((*p).clone());
+        }
+    }
+    // Pass 4 — any usable APK (unsigned, any location).
+    apks.into_iter().next().cloned()
 }
 
 /// Cancel the currently running build.
@@ -339,6 +506,106 @@ mod tests {
     fn plain_output_has_output_kind() {
         let line = parse_build_line("Note: some informational line");
         assert_eq!(line.kind, BuildLineKind::Output);
+    }
+
+    #[test]
+    fn parses_java_compiler_error() {
+        let line = parse_build_line("src/main/java/com/example/Foo.java:23: error: cannot find symbol");
+        assert_eq!(line.kind, BuildLineKind::Error);
+        assert_eq!(line.line, Some(23));
+        assert!(line.file.as_deref().unwrap().contains("Foo.java"));
+    }
+
+    #[test]
+    fn parses_aapt_file_error() {
+        let line = parse_build_line("app/src/main/res/layout/activity_main.xml:10: error: attribute missing");
+        assert_eq!(line.kind, BuildLineKind::Error);
+        assert_eq!(line.line, Some(10));
+    }
+
+    #[test]
+    fn parses_aapt_bare_error() {
+        let line = parse_build_line("AAPT: error: failed to compile resources");
+        assert_eq!(line.kind, BuildLineKind::Error);
+        assert!(line.content.contains("failed to compile resources"));
+        assert!(line.file.is_none());
+    }
+
+    #[test]
+    fn parses_gradle_failure_header() {
+        let line = parse_build_line("FAILURE: Build failed with an exception.");
+        assert_eq!(line.kind, BuildLineKind::Error);
+        assert!(line.file.is_none());
+    }
+
+    #[test]
+    fn parses_could_not_resolve() {
+        let line = parse_build_line("> Could not resolve com.example:library:1.0.0");
+        assert_eq!(line.kind, BuildLineKind::Error);
+        assert!(line.file.is_none());
+    }
+
+    #[test]
+    fn parses_download_as_info() {
+        let line = parse_build_line("Download https://repo.example.com/file.jar");
+        assert_eq!(line.kind, BuildLineKind::Info);
+    }
+
+    // ── find_output_apk tests ──────────────────────────────────────────────────
+
+    #[test]
+    fn finds_signed_apk_in_variant_dir() {
+        let tmp = std::env::temp_dir().join("apk_test_signed");
+        let apk_dir = tmp.join("app").join("build").join("outputs").join("apk").join("release");
+        std::fs::create_dir_all(&apk_dir).unwrap();
+        let apk = apk_dir.join("app-release.apk");
+        std::fs::write(&apk, b"").unwrap();
+
+        let found = find_output_apk(&tmp, "release");
+        assert_eq!(found.unwrap(), apk);
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn finds_unsigned_apk_when_no_signed_exists() {
+        let tmp = std::env::temp_dir().join("apk_test_unsigned");
+        let apk_dir = tmp.join("app").join("build").join("outputs").join("apk").join("release");
+        std::fs::create_dir_all(&apk_dir).unwrap();
+        let apk = apk_dir.join("app-release-unsigned.apk");
+        std::fs::write(&apk, b"").unwrap();
+
+        let found = find_output_apk(&tmp, "release");
+        assert_eq!(found.unwrap(), apk, "should find unsigned APK");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn prefers_signed_over_unsigned_in_same_dir() {
+        let tmp = std::env::temp_dir().join("apk_test_prefer_signed");
+        let apk_dir = tmp.join("app").join("build").join("outputs").join("apk").join("release");
+        std::fs::create_dir_all(&apk_dir).unwrap();
+        let unsigned = apk_dir.join("app-release-unsigned.apk");
+        let signed = apk_dir.join("app-release.apk");
+        std::fs::write(&unsigned, b"").unwrap();
+        std::fs::write(&signed, b"").unwrap();
+
+        let found = find_output_apk(&tmp, "release");
+        assert_eq!(found.unwrap(), signed, "signed should take priority");
+        std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    #[test]
+    fn excludes_unaligned_apk() {
+        let tmp = std::env::temp_dir().join("apk_test_unaligned");
+        let apk_dir = tmp.join("app").join("build").join("outputs").join("apk").join("release");
+        std::fs::create_dir_all(&apk_dir).unwrap();
+        // Only file present is unaligned — should NOT be returned.
+        let unaligned = apk_dir.join("app-release-unaligned.apk");
+        std::fs::write(&unaligned, b"").unwrap();
+
+        let found = find_output_apk(&tmp, "release");
+        assert!(found.is_none(), "unaligned APK must be excluded");
+        std::fs::remove_dir_all(&tmp).ok();
     }
 
     // ── parse_build_duration tests ─────────────────────────────────────────────

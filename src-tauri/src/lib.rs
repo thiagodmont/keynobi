@@ -7,14 +7,16 @@ use commands::build::{
     get_build_status, run_gradle_task,
 };
 use commands::device::{
-    get_selected_device, install_apk_on_device, launch_app_on_device, launch_avd,
-    list_adb_devices, list_avd_devices, refresh_devices, select_device, start_device_polling,
-    stop_app_on_device, stop_avd, stop_device_polling,
+    create_avd_device, delete_avd_device, download_system_image_cmd, get_selected_device,
+    install_apk_on_device, launch_app_on_device, launch_avd, list_adb_devices, list_avd_devices,
+    list_available_system_images_cmd, list_device_definitions_cmd, list_system_images_cmd,
+    refresh_devices, select_device, start_device_polling, stop_app_on_device, stop_avd,
+    stop_device_polling, wipe_avd_data_cmd,
 };
 use commands::file_system::{
     get_application_id, get_gradle_root, get_last_active_project, get_project_app_info,
     get_project_root, list_projects, open_project, pin_project, remove_project,
-    save_project_app_info,
+    rename_project, save_project_app_info, update_project_meta,
 };
 use commands::health::run_health_checks;
 use commands::logcat::{
@@ -23,7 +25,7 @@ use commands::logcat::{
 };
 use commands::mcp::start_mcp_server;
 use commands::settings::*;
-use commands::variant::{get_build_variants, set_active_variant};
+use commands::variant::{get_variants_from_gradle, get_variants_preview, set_active_variant};
 use models::log_entry::LogEntry;
 use services::adb_manager::DeviceState;
 use services::build_runner::BuildState;
@@ -105,6 +107,8 @@ pub fn run() {
             remove_project,
             pin_project,
             get_last_active_project,
+            update_project_meta,
+            rename_project,
             // Project App Info
             get_project_app_info,
             save_project_app_info,
@@ -126,7 +130,8 @@ pub fn run() {
             get_build_history,
             find_apk_path,
             // Variants
-            get_build_variants,
+            get_variants_preview,
+            get_variants_from_gradle,
             set_active_variant,
             // Devices
             list_adb_devices,
@@ -141,6 +146,13 @@ pub fn run() {
             stop_avd,
             start_device_polling,
             stop_device_polling,
+            list_system_images_cmd,
+            list_device_definitions_cmd,
+            create_avd_device,
+            delete_avd_device,
+            wipe_avd_data_cmd,
+            list_available_system_images_cmd,
+            download_system_image_cmd,
             // Logcat
             start_logcat,
             stop_logcat,

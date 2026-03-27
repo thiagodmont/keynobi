@@ -42,9 +42,4 @@ gradleWrapperFound: boolean,
 /**
  * Whether the `.androidide` app directory is writable.
  */
-lspSystemDirOk: boolean, 
-/**
- * Free disk space in the `~/.androidide` directory, in megabytes.
- * `None` when the measurement is unavailable on this platform.
- */
-diskFreeMb: number | null, };
+lspSystemDirOk: boolean, };

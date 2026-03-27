@@ -3,4 +3,4 @@
 /**
  * Kind of a single line of build output.
  */
-export type BuildLineKind = "output" | "error" | "warning" | "taskStart" | "taskEnd" | "summary";
+export type BuildLineKind = "output" | "error" | "warning" | "info" | "taskStart" | "taskEnd" | "summary";

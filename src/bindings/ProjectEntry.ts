@@ -14,7 +14,7 @@ id: string,
  */
 path: string, 
 /**
- * Display name (the folder's base name).
+ * Display name — defaults to the folder base name but can be renamed.
  */
 name: string, 
 /**
@@ -29,4 +29,12 @@ lastOpened: string,
 /**
  * Whether the user has pinned this project (pinned entries sort first).
  */
-pinned: boolean, };
+pinned: boolean, 
+/**
+ * Last-used build variant for this project (e.g. `"debug"`).
+ */
+lastBuildVariant: string | null, 
+/**
+ * Last-used ADB device serial for this project.
+ */
+lastDevice: string | null, };

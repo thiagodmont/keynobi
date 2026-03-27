@@ -14,6 +14,7 @@ import { createStore } from "solid-js/store";
 import { createMemo } from "solid-js";
 import { projectState } from "@/stores/project.store";
 import { settingsState } from "@/stores/settings.store";
+import { runHealthChecks } from "@/lib/tauri-api";
 import type { SystemHealthReport } from "@/bindings";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -54,6 +55,22 @@ export function setSystemReport(report: SystemHealthReport) {
 
 export function setHealthChecking(running: boolean) {
   setHealthState("isRunning", running);
+}
+
+/**
+ * Run all system health checks and update the store.
+ * Safe to call concurrently — returns early if checks are already running.
+ * Fire-and-forget: callers do not need to await.
+ */
+export async function refreshHealthChecks(): Promise<void> {
+  if (healthState.isRunning) return;
+  setHealthChecking(true);
+  try {
+    const report = await runHealthChecks();
+    setSystemReport(report);
+  } catch {
+    setHealthChecking(false);
+  }
 }
 
 // ── Reactive checks (derived from stores) ────────────────────────────────────
@@ -196,32 +213,7 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
       : "gradlew not found at project root — Gradle may not run",
   });
 
-  // ── 6. Disk Space ───────────────────────────────────────────────────────────
-  const diskMb = report?.diskFreeMb;
-  const diskStatus: CheckStatus =
-    diskMb === undefined || diskMb === null
-      ? "loading"
-      : diskMb < 200
-      ? "error"
-      : diskMb < 1024
-      ? "warning"
-      : "ok";
-  checks.push({
-    id: "disk-space",
-    category: "system",
-    name: "Disk Space",
-    status: diskStatus,
-    detail:
-      diskMb == null
-        ? "Checking available space in ~/.androidide…"
-        : diskMb < 200
-        ? `Only ${diskMb} MB free — build artifacts may fail to write`
-        : diskMb < 1024
-        ? `${diskMb} MB free — sufficient but getting low`
-        : `${diskMb} MB free — plenty of space`,
-  });
-
-  // ── 7. App Directory ────────────────────────────────────────────────────────
+  // ── 6. App Directory ────────────────────────────────────────────────────────
   const appDirOk = report?.lspSystemDirOk;
   checks.push({
     id: "app-dir",

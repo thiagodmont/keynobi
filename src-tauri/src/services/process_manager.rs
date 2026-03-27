@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::{Child, Command};
+use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
@@ -21,9 +21,9 @@ pub struct ProcessLine {
 
 /// Internal tracking record for a running process.
 struct ProcessRecord {
-    /// Tokio process handle — kept to allow `kill()`.
-    child: Child,
-    /// Background task that streams output lines.
+    /// OS-level PID for sending signals. Captured before child is moved into reader task.
+    os_pid: Option<u32>,
+    /// Background task that streams output lines and waits for process exit.
     _reader_task: JoinHandle<()>,
 }
 
@@ -93,11 +93,15 @@ pub async fn spawn(
 
     let stdout = child.stdout.take().ok_or("No stdout")?;
     let stderr = child.stderr.take().ok_or("No stderr")?;
+    // Capture OS PID before we move child into the reader task.
+    let os_pid = child.id();
 
     let on_line = std::sync::Arc::new(options.on_line);
     let on_exit = std::sync::Arc::new(options.on_exit);
 
     // Spawn the reader task that merges stdout and stderr.
+    // We move `child` into this task so we can call child.wait() after both
+    // streams are fully drained — capturing the real exit code.
     let reader_task = {
         let on_line = on_line.clone();
         let on_exit = on_exit.clone();
@@ -108,37 +112,40 @@ pub async fn spawn(
 
             let mut stdout_lines = stdout_reader.lines();
             let mut stderr_lines = stderr_reader.lines();
+            let mut stdout_done = false;
+            let mut stderr_done = false;
 
+            // Read both streams concurrently until both are fully drained.
+            // When one stream closes we keep reading the other so no output is lost.
             loop {
+                if stdout_done && stderr_done {
+                    break;
+                }
                 tokio::select! {
-                    result = stdout_lines.next_line() => {
+                    result = stdout_lines.next_line(), if !stdout_done => {
                         match result {
                             Ok(Some(line)) => on_line(ProcessLine { pid: id, is_stderr: false, text: line }),
-                            _ => break,
+                            _ => stdout_done = true,
                         }
                     }
-                    result = stderr_lines.next_line() => {
+                    result = stderr_lines.next_line(), if !stderr_done => {
                         match result {
                             Ok(Some(line)) => on_line(ProcessLine { pid: id, is_stderr: true, text: line }),
-                            _ => break,
+                            _ => stderr_done = true,
                         }
                     }
                 }
             }
 
-            // Drain remaining stderr after stdout closes.
-            while let Ok(Some(line)) = stderr_lines.next_line().await {
-                on_line(ProcessLine { pid: id, is_stderr: true, text: line });
-            }
-
-            // We can't call wait() here because we don't own child here.
-            // Exit notification will be done by the cancel/wait task below.
-            on_exit(id, None);
+            // Both streams are exhausted — wait for the process to exit and
+            // capture its exit code so on_exit can report success/failure correctly.
+            let exit_code = child.wait().await.ok().and_then(|s| s.code());
+            on_exit(id, exit_code);
         })
     };
 
     let record = ProcessRecord {
-        child,
+        os_pid,
         _reader_task: reader_task,
     };
 
@@ -157,27 +164,20 @@ pub async fn spawn(
 /// No-op if the process ID is unknown (already exited or never created).
 pub async fn cancel(manager: &Mutex<ProcessManagerInner>, id: ProcessId) {
     let mut inner = manager.lock().await;
-    if let Some(record) = inner.processes.get_mut(&id) {
-        // Try graceful termination first.
-        if let Some(os_pid) = record.child.id() {
+    if let Some(record) = inner.processes.remove(&id) {
+        if let Some(os_pid) = record.os_pid {
+            // Try graceful termination first.
             #[cfg(unix)]
-            {
-                unsafe { libc::kill(os_pid as libc::pid_t, libc::SIGTERM) };
-            }
-        }
-        // Spawn a background task to force-kill if it doesn't die in 5s.
-        let child_id = record.child.id();
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            if let Some(os_pid) = child_id {
+            unsafe { libc::kill(os_pid as libc::pid_t, libc::SIGTERM) };
+
+            // Spawn a background task to force-kill if it doesn't die in 5s.
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 #[cfg(unix)]
-                unsafe {
-                    libc::kill(os_pid as libc::pid_t, libc::SIGKILL);
-                }
-            }
-        });
+                unsafe { libc::kill(os_pid as libc::pid_t, libc::SIGKILL) };
+            });
+        }
     }
-    inner.processes.remove(&id);
 }
 
 /// Remove a process record from the tracking map (called after natural exit).

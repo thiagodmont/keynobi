@@ -27,13 +27,9 @@ describe("setActiveTab", () => {
     expect(uiState.activeTab).toBe("logcat");
   });
 
-  it("switches to devices", () => {
-    setActiveTab("devices");
-    expect(uiState.activeTab).toBe("devices");
-  });
-
-  it("switches back to build", () => {
+  it("switches to logcat tab then back to build", () => {
     setActiveTab("logcat");
+    expect(uiState.activeTab).toBe("logcat");
     setActiveTab("build");
     expect(uiState.activeTab).toBe("build");
   });

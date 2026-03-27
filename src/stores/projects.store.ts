@@ -67,3 +67,30 @@ export function setPinned(id: string, pinned: boolean): void {
     })
   );
 }
+
+/** Update the display name in the in-memory list. */
+export function renameProjectInStore(id: string, newName: string): void {
+  setProjectsState(
+    produce((s) => {
+      const entry = s.projects.find((p) => p.id === id);
+      if (entry) entry.name = newName;
+    })
+  );
+}
+
+/** Update per-project meta (variant / device) in the in-memory list. */
+export function updateProjectMetaInStore(
+  id: string,
+  lastBuildVariant: string | null,
+  lastDevice: string | null
+): void {
+  setProjectsState(
+    produce((s) => {
+      const entry = s.projects.find((p) => p.id === id);
+      if (entry) {
+        entry.lastBuildVariant = lastBuildVariant;
+        entry.lastDevice = lastDevice;
+      }
+    })
+  );
+}

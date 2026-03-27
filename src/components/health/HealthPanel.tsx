@@ -10,12 +10,10 @@ import {
   healthState,
   healthSummary,
   overallHealth,
-  setHealthChecking,
-  setSystemReport,
+  refreshHealthChecks,
   type CheckStatus,
   type HealthCheck,
 } from "@/stores/health.store";
-import { runHealthChecks } from "@/lib/tauri-api";
 
 // ── Panel visibility signal (module-level, like SettingsPanel) ────────────────
 
@@ -60,16 +58,6 @@ const CATEGORY_LABEL: Record<string, string> = {
   environment: "Environment",
   system: "System",
 };
-
-async function refresh() {
-  setHealthChecking(true);
-  try {
-    const report = await runHealthChecks();
-    setSystemReport(report);
-  } catch {
-    setHealthChecking(false);
-  }
-}
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -204,7 +192,7 @@ export function HealthPanel(): JSX.Element {
     // Always re-run when the panel is opened — the last result may be stale
     // (e.g. the project wasn't open yet when checks first ran).
     if (!healthState.isRunning) {
-      refresh();
+      refreshHealthChecks();
     }
   });
 
@@ -362,7 +350,7 @@ export function HealthPanel(): JSX.Element {
           {/* Actions */}
           <div style={{ display: "flex", gap: "6px", "flex-shrink": "0" }}>
             <button
-              onClick={refresh}
+              onClick={refreshHealthChecks}
               disabled={healthState.isRunning}
               title="Re-run all checks"
               style={{

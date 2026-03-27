@@ -1,7 +1,7 @@
 use crate::models::health::SystemHealthReport;
 use crate::services::settings_manager;
 use crate::FsState;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 /// Expand a leading `~/` to the real home directory.
 /// Rust's `Path::new` does NOT interpret `~` — it's a shell shorthand only.
@@ -120,12 +120,9 @@ pub async fn run_health_checks(
     let app_dir = dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join(".androidide");
-    let lsp_system_dir_ok = tokio::fs::create_dir_all(app_dir.clone())
+    let lsp_system_dir_ok = tokio::fs::create_dir_all(&app_dir)
         .await
         .is_ok();
-
-    // ── Disk space (Unix only) ────────────────────────────────────────────────
-    let disk_free_mb = get_disk_free_mb(&app_dir);
 
     Ok(SystemHealthReport {
         java_executable_found,
@@ -137,51 +134,7 @@ pub async fn run_health_checks(
         emulator_found,
         gradle_wrapper_found,
         lsp_system_dir_ok,
-        disk_free_mb,
     })
-}
-
-// ── Disk space helper (Unix statvfs without extra deps) ───────────────────────
-
-#[cfg(unix)]
-fn get_disk_free_mb(path: &Path) -> Option<u32> {
-    use std::ffi::CString;
-    use std::os::unix::ffi::OsStrExt;
-
-    let c_path = CString::new(path.as_os_str().as_bytes()).ok()?;
-
-    #[repr(C)]
-    struct Statvfs {
-        f_bsize: u64,
-        f_frsize: u64,
-        f_blocks: u64,
-        f_bfree: u64,
-        f_bavail: u64,
-        _pad: [u8; 48], // enough padding for both macOS and Linux structs
-    }
-
-    // Use the actual statvfs syscall via the libc convention.
-    // On macOS the function is `statvfs`; on Linux it's also `statvfs`.
-    extern "C" {
-        fn statvfs(path: *const std::os::raw::c_char, buf: *mut Statvfs) -> std::os::raw::c_int;
-    }
-
-    let mut stat = Statvfs {
-        f_bsize: 0, f_frsize: 0, f_blocks: 0, f_bfree: 0, f_bavail: 0, _pad: [0; 48],
-    };
-
-    let rc = unsafe { statvfs(c_path.as_ptr(), &mut stat) };
-    if rc == 0 && stat.f_frsize > 0 {
-        let free_bytes = stat.f_bavail.saturating_mul(stat.f_frsize);
-        Some((free_bytes / (1024 * 1024)).min(u32::MAX as u64) as u32)
-    } else {
-        None
-    }
-}
-
-#[cfg(not(unix))]
-fn get_disk_free_mb(_path: &Path) -> Option<u32> {
-    None
 }
 
 #[cfg(test)]
@@ -248,16 +201,5 @@ mod tests {
         // But "~/" is expanded to the home directory itself.
         let result2 = expand_tilde("~/");
         assert_eq!(result2, home.join(""));
-    }
-
-    #[test]
-    fn disk_free_mb_returns_value_on_unix() {
-        #[cfg(unix)]
-        {
-            let result = get_disk_free_mb(Path::new("/tmp"));
-            // On any Unix system /tmp exists and has some free space.
-            assert!(result.is_some(), "statvfs on /tmp should succeed");
-            assert!(result.unwrap() > 0);
-        }
     }
 }

@@ -1,12 +1,16 @@
-use crate::models::device::{AvdInfo, Device};
+use crate::models::device::{AvailableSystemImage, AvdInfo, Device, DeviceDefinition, SdkDownloadProgress, SystemImageInfo};
 use crate::services::adb_manager::{
-    DeviceState, enrich_device_props, get_adb_path, get_emulator_path,
-    install_apk, launch_app, launch_emulator, list_avds, list_devices, stop_app, stop_emulator,
+    DeviceState, create_avd, delete_avd, download_system_image, enrich_device_props,
+    get_adb_path, get_avdmanager_path, get_emulator_path, get_sdkmanager_path,
+    install_apk, launch_app, launch_emulator, list_avds, list_available_system_images,
+    list_device_definitions, list_devices, list_system_images, stop_app, stop_emulator,
+    wipe_avd_data,
 };
 use crate::services::settings_manager;
 use serde::Serialize;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, State};
+use tauri::ipc::Channel;
 
 // ── Event payloads ─────────────────────────────────────────────────────────────
 
@@ -78,7 +82,7 @@ pub async fn launch_app_on_device(
     serial: String,
     package: String,
     activity: Option<String>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let settings = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     launch_app(&adb, &serial, &package, activity.as_deref()).await
@@ -195,4 +199,91 @@ pub async fn stop_device_polling(
     // stopping on the next iteration check. A full cancellation token is
     // left as a future enhancement (Phase 4 cleanup).
     Ok(())
+}
+
+// ── AVD management commands ────────────────────────────────────────────────────
+
+/// Return all installed system images from `$ANDROID_HOME/system-images/`.
+#[tauri::command]
+pub async fn list_system_images_cmd() -> Result<Vec<SystemImageInfo>, String> {
+    let settings = settings_manager::load_settings();
+    Ok(list_system_images(&settings))
+}
+
+/// Return hardware device definitions from `avdmanager list device -c`.
+#[tauri::command]
+pub async fn list_device_definitions_cmd() -> Result<Vec<DeviceDefinition>, String> {
+    let settings = settings_manager::load_settings();
+    let avdmanager = get_avdmanager_path(&settings);
+    Ok(list_device_definitions(&avdmanager).await)
+}
+
+/// Create a new AVD using avdmanager.
+#[tauri::command]
+pub async fn create_avd_device(
+    name: String,
+    system_image: String,
+    device: Option<String>,
+) -> Result<Vec<AvdInfo>, String> {
+    let settings = settings_manager::load_settings();
+    let avdmanager = get_avdmanager_path(&settings);
+    create_avd(&avdmanager, &name, &system_image, device.as_deref()).await?;
+    Ok(list_avds())
+}
+
+/// Delete an existing AVD using avdmanager.
+#[tauri::command]
+pub async fn delete_avd_device(name: String) -> Result<Vec<AvdInfo>, String> {
+    let settings = settings_manager::load_settings();
+    let avdmanager = get_avdmanager_path(&settings);
+    delete_avd(&avdmanager, &name).await?;
+    Ok(list_avds())
+}
+
+/// Wipe an AVD's user data by relaunching it with -wipe-data.
+#[tauri::command]
+pub async fn wipe_avd_data_cmd(name: String) -> Result<(), String> {
+    let settings = settings_manager::load_settings();
+    let emulator = get_emulator_path(&settings);
+    let adb = get_adb_path(&settings);
+    wipe_avd_data(&emulator, &adb, &name).await
+}
+
+/// List all system images available for download from the Android SDK (via sdkmanager).
+/// Cross-references installed images so the frontend can show installed/not-installed state.
+#[tauri::command]
+pub async fn list_available_system_images_cmd() -> Result<Vec<AvailableSystemImage>, String> {
+    let settings = settings_manager::load_settings();
+    let sdkmanager = get_sdkmanager_path(&settings);
+    Ok(list_available_system_images(&sdkmanager, &settings).await)
+}
+
+/// Download a system image package via sdkmanager, streaming progress to the frontend.
+#[tauri::command]
+pub async fn download_system_image_cmd(
+    sdk_id: String,
+    on_progress: Channel<SdkDownloadProgress>,
+) -> Result<(), String> {
+    let settings = settings_manager::load_settings();
+    let sdkmanager = get_sdkmanager_path(&settings);
+
+    let channel_clone = on_progress.clone();
+    let result = download_system_image(&sdkmanager, &sdk_id, &settings, move |progress| {
+        let _ = channel_clone.send(progress);
+    })
+    .await;
+
+    // Send a final "done" event regardless of success/failure.
+    let _ = on_progress.send(SdkDownloadProgress {
+        percent: if result.is_ok() { Some(100) } else { None },
+        message: if result.is_ok() {
+            "Download complete".to_owned()
+        } else {
+            result.as_ref().err().cloned().unwrap_or_default()
+        },
+        done: true,
+        error: result.is_err(),
+    });
+
+    result
 }

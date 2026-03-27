@@ -27,9 +27,6 @@ pub struct SystemHealthReport {
     pub gradle_wrapper_found: bool,
     /// Whether the `.androidide` app directory is writable.
     pub lsp_system_dir_ok: bool,
-    /// Free disk space in the `~/.androidide` directory, in megabytes.
-    /// `None` when the measurement is unavailable on this platform.
-    pub disk_free_mb: Option<u32>,
 }
 
 #[cfg(test)]
@@ -48,7 +45,6 @@ mod tests {
             emulator_found: true,
             gradle_wrapper_found: true,
             lsp_system_dir_ok: true,
-            disk_free_mb: Some(5120),
         };
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("javaExecutableFound"));

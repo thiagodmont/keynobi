@@ -1,13 +1,11 @@
-import { type JSX, Show, createMemo, createSignal } from "solid-js";
+import { type JSX, Show, createMemo } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { projectState } from "@/stores/project.store";
 import { openSettings } from "@/components/settings/SettingsPanel";
 import { openHealthPanel } from "@/components/health/HealthPanel";
 import { overallHealth, healthSummary } from "@/stores/health.store";
-import { buildState, isBuilding } from "@/stores/build.store";
-import { selectedDevice, deviceCount } from "@/stores/device.store";
+import { buildState, isBuilding, isDeploying } from "@/stores/build.store";
 import { VariantSelectorPill } from "@/components/build/VariantSelector";
-import { DevicePanel } from "@/components/device/DevicePanel";
 import { setActiveTab } from "@/stores/ui.store";
 import Icon from "@/components/common/Icon";
 
@@ -92,11 +90,15 @@ function HealthIndicator(): JSX.Element {
 function BuildStatusIndicator(): JSX.Element {
   const phase = () => buildState.phase;
   const task = () => buildState.currentTask;
+  const deployPhase = () => buildState.deployPhase;
 
   const label = createMemo(() => {
+    // Deploy phases take precedence over build phase labels.
+    if (deployPhase() === "installing") return "Installing…";
+    if (deployPhase() === "launching") return "Launching…";
     switch (phase()) {
       case "running":   return task() ? `Building: ${task()}` : "Building…";
-      case "success":   return "Build: OK";
+      case "success":   return deployPhase() ? null : "Build: OK";
       case "failed":    return "Build: Failed";
       case "cancelled": return "Build: Cancelled";
       default:          return null;
@@ -104,6 +106,7 @@ function BuildStatusIndicator(): JSX.Element {
   });
 
   const color = createMemo(() => {
+    if (deployPhase() === "installing" || deployPhase() === "launching") return "#60a5fa";
     switch (phase()) {
       case "running":  return "#fbbf24";
       case "success":  return "#4ade80";
@@ -112,14 +115,12 @@ function BuildStatusIndicator(): JSX.Element {
     }
   });
 
-  function handleClick() {
-    setActiveTab("build");
-  }
+  const spinning = () => isBuilding() || isDeploying();
 
   return (
     <Show when={label()}>
       <button
-        onClick={handleClick}
+        onClick={() => setActiveTab("build")}
         onMouseDown={(e) => e.stopPropagation()}
         title="Open build panel"
         style={{
@@ -138,12 +139,12 @@ function BuildStatusIndicator(): JSX.Element {
         onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.15)"; }}
         onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)"; }}
       >
-        <Show when={isBuilding()}>
+        <Show when={spinning()}>
           <span class="lsp-spinner" style={{ "line-height": "0", "flex-shrink": "0" }}>
             <Icon name="spinner" size={10} color={color()} />
           </span>
         </Show>
-        <Show when={!isBuilding()}>
+        <Show when={!spinning()}>
           <span
             style={{
               width: "6px", height: "6px",
@@ -159,88 +160,6 @@ function BuildStatusIndicator(): JSX.Element {
         </span>
       </button>
     </Show>
-  );
-}
-
-// ── Device selector ────────────────────────────────────────────────────────────
-
-function DeviceSelectorPill(): JSX.Element {
-  const [open, setOpen] = createSignal(false);
-  const device = () => selectedDevice();
-  const count = () => deviceCount();
-
-  const label = createMemo(() => {
-    const d = device();
-    if (d) return d.model ?? d.name;
-    return count() > 0 ? `${count()} device${count() !== 1 ? "s" : ""}` : "No Device";
-  });
-
-  const dotColor = createMemo(() => {
-    const d = device();
-    if (!d) return count() > 0 ? "#4ade80" : "rgba(255,255,255,0.3)";
-    return d.connectionState === "online" ? "#4ade80" : "#6b7280";
-  });
-
-  return (
-    <div style={{ position: "relative" }}>
-      <button
-        id="device-selector-btn"
-        onClick={() => setOpen((v) => !v)}
-        onMouseDown={(e) => e.stopPropagation()}
-        title={`Device: ${label()} — click to select`}
-        style={{
-          display: "flex",
-          "align-items": "center",
-          gap: "4px",
-          padding: "0 6px",
-          height: "18px",
-          background: "rgba(255,255,255,0.08)",
-          border: "1px solid rgba(255,255,255,0.12)",
-          "border-radius": "3px",
-          cursor: "pointer",
-          "flex-shrink": "0",
-          transition: "background 0.1s",
-        }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.15)"; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)"; }}
-      >
-        <span
-          style={{
-            width: "6px", height: "6px",
-            "border-radius": "50%",
-            background: dotColor(),
-            "flex-shrink": "0",
-            display: "inline-block",
-          }}
-        />
-        <span style={{ color: "#ffffff", "font-size": "11px", "line-height": "1", "white-space": "nowrap", "max-width": "120px", overflow: "hidden", "text-overflow": "ellipsis" }}>
-          {label()}
-        </span>
-      </button>
-
-      <Show when={open()}>
-        <div
-          style={{
-            position: "fixed",
-            bottom: "32px",
-            left: "auto",
-            right: "auto",
-            "z-index": "1000",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <DevicePanel onClose={() => setOpen(false)} />
-        </div>
-        <div
-          style={{
-            position: "fixed",
-            inset: "0",
-            "z-index": "999",
-          }}
-          onClick={() => setOpen(false)}
-        />
-      </Show>
-    </div>
   );
 }
 
@@ -318,11 +237,6 @@ export function StatusBar(): JSX.Element {
         {/* Variant selector */}
         <Show when={projectState.projectName}>
           <VariantSelectorPill />
-        </Show>
-
-        {/* Device selector */}
-        <Show when={projectState.projectName}>
-          <DeviceSelectorPill />
         </Show>
       </div>
 

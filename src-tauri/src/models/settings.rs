@@ -4,14 +4,14 @@ use ts_rs::TS;
 /// A known Android project entry in the project registry.
 /// Persisted inside `AppSettings.recent_projects`.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct ProjectEntry {
     /// Deterministic hex ID derived from the canonical project path.
     pub id: String,
     /// Absolute path to the project root folder.
     pub path: String,
-    /// Display name (the folder's base name).
+    /// Display name — defaults to the folder base name but can be renamed.
     pub name: String,
     /// Detected Gradle root (ancestor containing `settings.gradle(.kts)`),
     /// or `None` if not yet detected.
@@ -20,6 +20,27 @@ pub struct ProjectEntry {
     pub last_opened: String,
     /// Whether the user has pinned this project (pinned entries sort first).
     pub pinned: bool,
+    /// Last-used build variant for this project (e.g. `"debug"`).
+    #[serde(default)]
+    pub last_build_variant: Option<String>,
+    /// Last-used ADB device serial for this project.
+    #[serde(default)]
+    pub last_device: Option<String>,
+}
+
+impl Default for ProjectEntry {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            path: String::new(),
+            name: String::new(),
+            gradle_root: None,
+            last_opened: String::new(),
+            pinned: false,
+            last_build_variant: None,
+            last_device: None,
+        }
+    }
 }
 
 /// All IDE settings persisted to `~/.androidide/settings.json`.

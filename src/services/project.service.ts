@@ -16,6 +16,8 @@ import {
   removeProject as removeProjectApi,
   pinProject as pinProjectApi,
   getLastActiveProject,
+  updateProjectMeta,
+  renameProject as renameProjectApi,
 } from "@/lib/tauri-api";
 import { setProject, setLoading, setApplicationId } from "@/stores/project.store";
 import {
@@ -25,15 +27,31 @@ import {
   removeProjectFromStore,
   setPinned,
   setProjectsLoading,
+  renameProjectInStore,
+  updateProjectMetaInStore,
+  projectsState,
 } from "@/stores/projects.store";
 import { showToast } from "@/components/common/Toast";
 import { initBuildService } from "@/services/build.service";
 import { cancelBuild } from "@/services/build.service";
 import { clearBuild } from "@/stores/build.store";
-import { initDevices } from "@/stores/device.store";
+import { initDevices, pickDevice, onDeviceChange } from "@/stores/device.store";
 import { stopLogcat } from "@/lib/tauri-api";
 import { setMinePackage } from "@/lib/logcat-query";
+import { selectVariant, onVariantChange } from "@/stores/variant.store";
+import { variantState } from "@/stores/variant.store";
+import { deviceState } from "@/stores/device.store";
+import { refreshHealthChecks } from "@/stores/health.store";
 import type { ProjectEntry } from "@/bindings";
+
+// Register callbacks so stores can notify this service without circular imports.
+// This runs once when the module is first imported (hoisted function refs are safe here).
+onVariantChange((_variant) => {
+  saveActiveProjectMeta().catch(console.error);
+});
+onDeviceChange((_serial) => {
+  saveActiveProjectMeta().catch(console.error);
+});
 
 export interface OpenProjectResult {
   root: string;
@@ -58,6 +76,11 @@ async function doOpenProject(path: string): Promise<OpenProjectResult | null> {
     initBuildService().catch(console.error);
     initDevices().catch(console.error);
 
+    // Re-run health checks now that project_root and gradle_root are set in
+    // FsState — the Gradle wrapper probe was false at startup because the
+    // project wasn't loaded yet.
+    refreshHealthChecks().catch(console.error);
+
     return { root: path, projectName };
   } catch (err) {
     showToast(`Failed to open project: ${formatError(err)}`, "error");
@@ -81,7 +104,7 @@ export async function openProjectFolder(): Promise<OpenProjectResult | null> {
 
   const result = await doOpenProject(path);
   if (result) {
-    // Refresh the projects list so the new entry shows in the switcher.
+    // Refresh the projects list so the new entry shows in the sidebar.
     await refreshProjectsList().catch(console.error);
     // Mark this project as active in the registry store.
     const projects = (await listProjects().catch(() => [])) as ProjectEntry[];
@@ -95,34 +118,73 @@ export async function openProjectFolder(): Promise<OpenProjectResult | null> {
 }
 
 /**
- * Switch the active project to the given registry entry.
- * Gracefully cancels any running build, stops logcat, clears state,
- * then opens the new project.
+ * Select a project from the sidebar.
+ *
+ * Lighter than `switchProject` — only updates the build target.
+ * Logcat and device state are intentionally NOT touched.
+ *
+ * 1. Cancel any in-progress build (it belongs to the previous project)
+ * 2. Clear build state
+ * 3. Open the project (update FsState, reload variants + appId)
+ * 4. Restore per-project variant/device selections
  */
-export async function switchProject(entry: ProjectEntry): Promise<void> {
-  // Teardown current project state.
+export async function selectProject(entry: ProjectEntry): Promise<void> {
+  // Cancel build — it targets the old project's Gradle root.
   try {
     await cancelBuild();
   } catch {
     // Ignore — no build in progress.
   }
+  clearBuild();
+
+  const result = await doOpenProject(entry.path);
+  if (result) {
+    const projects = (await listProjects().catch(() => [])) as ProjectEntry[];
+    const fresh = projects.find((p) => p.id === entry.id) ?? entry;
+    upsertProject(fresh);
+    setActiveProjectId(fresh.id);
+    setProjects(projects);
+
+    // Restore per-project variant and device selections.
+    if (fresh.lastBuildVariant) {
+      selectVariant(fresh.lastBuildVariant).catch(console.error);
+    }
+    if (fresh.lastDevice) {
+      pickDevice(fresh.lastDevice).catch(console.error);
+    }
+  }
+}
+
+/**
+ * Switch the active project with full teardown (cancel build + stop logcat).
+ * Used internally for session restore. For user-initiated sidebar clicks use
+ * `selectProject` instead.
+ */
+export async function switchProject(entry: ProjectEntry): Promise<void> {
+  // Teardown current project state.
   try {
     await stopLogcat();
   } catch {
     // Ignore — logcat may not be running.
   }
-  clearBuild();
+  await selectProject(entry);
+}
 
-  const result = await doOpenProject(entry.path);
-  if (result) {
-    // Re-read the entry from backend so lastOpened is fresh.
-    const projects = (await listProjects().catch(() => [])) as ProjectEntry[];
-    const fresh = projects.find((p) => p.id === entry.id);
-    if (fresh) {
-      upsertProject(fresh);
-    }
-    setActiveProjectId(entry.id);
-    setProjects(projects);
+/**
+ * Persist the currently active variant and device serial back to the
+ * active project's registry entry.  Call after any user-initiated change.
+ */
+export async function saveActiveProjectMeta(): Promise<void> {
+  const id = projectsState.activeProjectId;
+  if (!id) return;
+  const variant = variantState.activeVariant ?? null;
+  const device = deviceState.selectedSerial ?? null;
+  try {
+    await updateProjectMeta(id, variant, device);
+    updateProjectMetaInStore(id, variant, device);
+  } catch (err) {
+    // Non-fatal — don't surface a toast for background persistence.
+    console.error("Failed to save project meta:", err);
   }
 }
 
@@ -157,6 +219,13 @@ export async function restoreLastProject(): Promise<boolean> {
       const entry = projects.find((p) => p.path === lastPath);
       if (entry) {
         setActiveProjectId(entry.id);
+        // Restore per-project variant/device from registry.
+        if (entry.lastBuildVariant) {
+          selectVariant(entry.lastBuildVariant).catch(console.error);
+        }
+        if (entry.lastDevice) {
+          pickDevice(entry.lastDevice).catch(console.error);
+        }
       }
       setProjects(projects);
       return true;
@@ -188,5 +257,17 @@ export async function togglePinProject(id: string, pinned: boolean): Promise<voi
     setPinned(id, pinned);
   } catch (err) {
     showToast(`Failed to pin project: ${formatError(err)}`, "error");
+  }
+}
+
+/**
+ * Rename a project's display name (does not rename the folder on disk).
+ */
+export async function renameProjectEntry(id: string, newName: string): Promise<void> {
+  try {
+    await renameProjectApi(id, newName);
+    renameProjectInStore(id, newName);
+  } catch (err) {
+    showToast(`Failed to rename project: ${formatError(err)}`, "error");
   }
 }

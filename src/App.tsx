@@ -2,6 +2,8 @@ import { type JSX, onMount, onCleanup } from "solid-js";
 import {
   uiState,
   setActiveTab,
+  toggleSidebar,
+  toggleDeviceSidebar,
   type MainTab,
 } from "@/stores/ui.store";
 import TitleBar from "@/components/layout/TitleBar";
@@ -13,9 +15,11 @@ import { CommandPalette, openPalette } from "@/components/common/CommandPalette"
 import { SettingsPanel, openSettings } from "@/components/settings/SettingsPanel";
 import { HealthPanel, openHealthPanel } from "@/components/health/HealthPanel";
 import { BuildPanel } from "@/components/build/BuildPanel";
-import { DevicePanel } from "@/components/device/DevicePanel";
 import { LogcatPanel } from "@/components/logcat/LogcatPanel";
 import { ProjectInfoEditor, openProjectInfoEditor } from "@/components/projects/ProjectInfoEditor";
+import { ProjectSidebar } from "@/components/projects/ProjectSidebar";
+import { DeviceSidebar } from "@/components/device/DeviceSidebar";
+import { DevicePickerDialog } from "@/components/device/DevicePickerDialog";
 import { registerKeybinding, initKeybindings } from "@/lib/keybindings";
 import { registerAction, type ActionCategory } from "@/lib/action-registry";
 import { loadSettings } from "@/stores/settings.store";
@@ -70,13 +74,12 @@ export function App(): JSX.Element {
     initKeybindings();
     loadSettings();
 
-    // Load project registry into the switcher store.
+    // Load project registry into the sidebar store.
     refreshProjectsList().catch(console.error);
 
     // Restore last-active project, then initialize build/devices.
     const restored = await restoreLastProject().catch(() => false);
     if (!restored) {
-      // No previous project — still init services so they're ready.
       initBuildService().catch(console.error);
       initDevices().catch(console.error);
     }
@@ -88,7 +91,8 @@ export function App(): JSX.Element {
     registerKeyAndAction({ id: "view.healthCenter", key: "h", metaKey: true, shiftKey: true, label: "Open Health Center", category: "View", action: openHealthPanel });
     registerKeyAndAction({ id: "view.buildPanel", key: "1", metaKey: true, label: "Open Build Panel", category: "View", action: () => setActiveTab("build") });
     registerKeyAndAction({ id: "view.logcatPanel", key: "2", metaKey: true, label: "Open Logcat Panel", category: "View", action: () => setActiveTab("logcat") });
-    registerKeyAndAction({ id: "view.devicesPanel", key: "3", metaKey: true, label: "Open Devices Panel", category: "View", action: () => setActiveTab("devices") });
+    registerKeyAndAction({ id: "view.devicesPanel", key: "3", metaKey: true, label: "Toggle Device Sidebar", category: "View", action: () => toggleDeviceSidebar() });
+    registerKeyAndAction({ id: "view.toggleSidebar", key: "b", metaKey: true, label: "Toggle Project Sidebar", category: "View", action: () => toggleSidebar() });
 
     // ── File ────────────────────────────────────────────────────────────────
     registerKeyAndAction({ id: "file.openFolder", key: "o", metaKey: true, label: "Open Folder", category: "File", action: () => { openProjectFolder(); } });
@@ -142,12 +146,10 @@ export function App(): JSX.Element {
       action: () => openVariantPicker(),
     });
     registerAction({
-      id: "build.selectDevice",
-      label: "Select Device",
+      id: "device.manage",
+      label: "Manage Virtual Devices",
       category: "Build" as ActionCategory,
-      action: () => {
-        document.getElementById("device-selector-btn")?.click();
-      },
+      action: () => toggleDeviceSidebar(),
     });
 
     // ── Project ───────────────────────────────────────────────────────────────
@@ -198,7 +200,6 @@ export function App(): JSX.Element {
   const tabs: { id: MainTab; label: string }[] = [
     { id: "build", label: "Build" },
     { id: "logcat", label: "Logcat" },
-    { id: "devices", label: "Devices" },
   ];
 
   return (
@@ -215,59 +216,69 @@ export function App(): JSX.Element {
       <TitleBar />
 
       <AppErrorBoundary>
-        {/* Main tab bar */}
-        <div
-          style={{
-            display: "flex",
-            "align-items": "center",
-            height: "36px",
-            background: "var(--bg-tertiary)",
-            "border-bottom": "1px solid var(--border)",
-            "padding-left": "12px",
-            "flex-shrink": "0",
-            gap: "2px",
-          }}
-        >
-          {tabs.map((tab) => {
-            const isActive = () => uiState.activeTab === tab.id;
-            return (
-              <button
-                onClick={() => setActiveTab(tab.id)}
-                style={{
-                  padding: "0 16px",
-                  height: "36px",
-                  "font-size": "12px",
-                  display: "flex",
-                  "align-items": "center",
-                  color: isActive() ? "var(--text-primary)" : "var(--text-muted)",
-                  background: isActive() ? "var(--bg-secondary)" : "none",
-                  "border-bottom": isActive() ? "2px solid var(--accent)" : "2px solid transparent",
-                  cursor: "pointer",
-                  border: "none",
-                  "border-top": "none",
-                  "border-left": "none",
-                  "border-right": "none",
-                  "font-weight": isActive() ? "500" : "normal",
-                  transition: "color 0.1s",
-                }}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
+        {/* Body: left sidebar + main column + right device sidebar */}
+        <div style={{ flex: "1", display: "flex", "flex-direction": "row", overflow: "hidden" }}>
 
-        {/* Main content area — fills all remaining space */}
-        <div style={{ flex: "1", overflow: "hidden", display: "flex", "flex-direction": "column" }}>
-          <div style={{ display: uiState.activeTab === "build" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
-            <BuildPanel />
+          {/* Left project sidebar */}
+          <ProjectSidebar />
+
+          {/* Main column: tab bar + panels */}
+          <div style={{ flex: "1", display: "flex", "flex-direction": "column", overflow: "hidden" }}>
+            {/* Tab bar */}
+            <div
+              style={{
+                display: "flex",
+                "align-items": "center",
+                height: "36px",
+                background: "var(--bg-tertiary)",
+                "border-bottom": "1px solid var(--border)",
+                "padding-left": "12px",
+                "flex-shrink": "0",
+                gap: "2px",
+              }}
+            >
+              {tabs.map((tab) => {
+                const isActive = () => uiState.activeTab === tab.id;
+                return (
+                  <button
+                    onClick={() => setActiveTab(tab.id)}
+                    style={{
+                      padding: "0 16px",
+                      height: "36px",
+                      "font-size": "12px",
+                      display: "flex",
+                      "align-items": "center",
+                      color: isActive() ? "var(--text-primary)" : "var(--text-muted)",
+                      background: isActive() ? "var(--bg-secondary)" : "none",
+                      "border-bottom": isActive() ? "2px solid var(--accent)" : "2px solid transparent",
+                      cursor: "pointer",
+                      border: "none",
+                      "border-top": "none",
+                      "border-left": "none",
+                      "border-right": "none",
+                      "font-weight": isActive() ? "500" : "normal",
+                      transition: "color 0.1s",
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Panel content area */}
+            <div style={{ flex: "1", overflow: "hidden", display: "flex", "flex-direction": "column" }}>
+              <div style={{ display: uiState.activeTab === "build" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
+                <BuildPanel />
+              </div>
+              <div style={{ display: uiState.activeTab === "logcat" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
+                <LogcatPanel />
+              </div>
+            </div>
           </div>
-          <div style={{ display: uiState.activeTab === "logcat" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
-            <LogcatPanel />
-          </div>
-          <div style={{ display: uiState.activeTab === "devices" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
-            <DevicePanel />
-          </div>
+
+          {/* Right device sidebar */}
+          <DeviceSidebar />
         </div>
       </AppErrorBoundary>
 
@@ -277,6 +288,7 @@ export function App(): JSX.Element {
       <SettingsPanel />
       <HealthPanel />
       <ProjectInfoEditor />
+      <DevicePickerDialog />
       <DialogHost />
     </div>
   );

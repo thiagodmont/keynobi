@@ -42,6 +42,8 @@ fn upsert_project(path: &std::path::Path, gradle_root: Option<&std::path::Path>)
             gradle_root: gradle_root_str,
             last_opened: now,
             pinned: false,
+            last_build_variant: None,
+            last_device: None,
         });
 
         // Evict oldest non-pinned entries when over the cap.
@@ -362,4 +364,52 @@ fn replace_version_code(content: &str, new_value: i64) -> String {
         format!("{}{}", &caps[1], new_value)
     })
     .to_string()
+}
+
+// ── Per-project meta persistence ──────────────────────────────────────────────
+
+/// Persist per-project variant and device selections back into the registry.
+/// Called from the frontend whenever the user changes variant or device.
+#[tauri::command]
+pub async fn update_project_meta(
+    id: String,
+    last_build_variant: Option<String>,
+    last_device: Option<String>,
+) -> Result<(), String> {
+    let mut settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+        .await
+        .map_err(|e| format!("Failed to load settings: {e}"))?;
+
+    if let Some(entry) = settings.recent_projects.iter_mut().find(|e| e.id == id) {
+        entry.last_build_variant = last_build_variant;
+        entry.last_device = last_device;
+    }
+
+    tokio::task::spawn_blocking(move || settings_manager::save_settings(&settings))
+        .await
+        .map_err(|e| format!("Failed to save settings: {e}"))?
+}
+
+/// Rename the display name of a project in the registry.
+/// Does NOT rename the directory on disk.
+#[tauri::command]
+pub async fn rename_project(id: String, new_name: String) -> Result<(), String> {
+    let new_name = new_name.trim().to_owned();
+    if new_name.is_empty() {
+        return Err("Project name cannot be empty".to_string());
+    }
+
+    let mut settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+        .await
+        .map_err(|e| format!("Failed to load settings: {e}"))?;
+
+    if let Some(entry) = settings.recent_projects.iter_mut().find(|e| e.id == id) {
+        entry.name = new_name;
+    } else {
+        return Err(format!("Project with id '{id}' not found"));
+    }
+
+    tokio::task::spawn_blocking(move || settings_manager::save_settings(&settings))
+        .await
+        .map_err(|e| format!("Failed to save settings: {e}"))?
 }

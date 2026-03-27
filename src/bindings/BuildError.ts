@@ -2,6 +2,14 @@
 import type { BuildErrorSeverity } from "./BuildErrorSeverity";
 
 /**
- * A structured build error or warning with a location reference.
+ * A structured build error or warning with an optional location reference.
  */
-export type BuildError = { message: string, file: string, line: number, col: number | null, severity: BuildErrorSeverity, };
+export type BuildError = { message: string, 
+/**
+ * Source file path, if known (None for dependency/configuration errors).
+ */
+file: string | null, 
+/**
+ * 1-based line number, if known.
+ */
+line: number | null, col: number | null, severity: BuildErrorSeverity, };

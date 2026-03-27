@@ -70,6 +70,20 @@ export async function saveProjectAppInfo(
   return invoke<void>("save_project_app_info", { versionName, versionCode });
 }
 
+/** Persist per-project variant and device selections into the registry. */
+export async function updateProjectMeta(
+  id: string,
+  lastBuildVariant: string | null,
+  lastDevice: string | null
+): Promise<void> {
+  return invoke<void>("update_project_meta", { id, lastBuildVariant, lastDevice });
+}
+
+/** Rename a project's display name in the registry (does not rename folder). */
+export async function renameProject(id: string, newName: string): Promise<void> {
+  return invoke<void>("rename_project", { id, newName });
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 export interface AppSettings {
@@ -237,8 +251,22 @@ export function listenBuildComplete(
 import type { BuildVariant, VariantList } from "@/bindings";
 export type { BuildVariant, VariantList };
 
-export async function getBuildVariants(): Promise<VariantList> {
-  return invoke<VariantList>("get_build_variants");
+/**
+ * Fast variant preview from static build.gradle parse.
+ * Returns only explicitly declared variants — resolves instantly.
+ * May return an empty list; use getVariantsFromGradle for the full picture.
+ */
+export async function getVariantsPreview(): Promise<VariantList> {
+  return invoke<VariantList>("get_variants_preview");
+}
+
+/**
+ * Authoritative variant list from `./gradlew tasks --group Build`.
+ * Discovers every variant the project actually exposes, regardless of
+ * how they are defined. Takes a few seconds on first run (daemon startup).
+ */
+export async function getVariantsFromGradle(): Promise<VariantList> {
+  return invoke<VariantList>("get_variants_from_gradle");
 }
 
 export async function setActiveVariant(variant: string): Promise<void> {
@@ -247,8 +275,8 @@ export async function setActiveVariant(variant: string): Promise<void> {
 
 // ── Devices ───────────────────────────────────────────────────────────────────
 
-import type { Device, AvdInfo } from "@/bindings";
-export type { Device, AvdInfo };
+import type { Device, AvdInfo, SystemImageInfo, DeviceDefinition, AvailableSystemImage, SdkDownloadProgress } from "@/bindings";
+export type { Device, AvdInfo, SystemImageInfo, DeviceDefinition, AvailableSystemImage, SdkDownloadProgress };
 
 export async function listAdbDevices(): Promise<Device[]> {
   return invoke<Device[]>("list_adb_devices");
@@ -277,8 +305,8 @@ export async function launchAppOnDevice(
   serial: string,
   pkg: string,
   activity?: string
-): Promise<void> {
-  return invoke<void>("launch_app_on_device", {
+): Promise<string> {
+  return invoke<string>("launch_app_on_device", {
     serial,
     package: pkg,
     activity: activity ?? null,
@@ -315,6 +343,47 @@ export function listenDeviceListChanged(
   return listen<{ devices: Device[] }>("device:list_changed", (event) =>
     cb(event.payload.devices)
   );
+}
+
+export async function listSystemImages(): Promise<SystemImageInfo[]> {
+  return invoke<SystemImageInfo[]>("list_system_images_cmd");
+}
+
+export async function listDeviceDefinitions(): Promise<DeviceDefinition[]> {
+  return invoke<DeviceDefinition[]>("list_device_definitions_cmd");
+}
+
+export async function createAvdDevice(
+  name: string,
+  systemImage: string,
+  device?: string
+): Promise<AvdInfo[]> {
+  return invoke<AvdInfo[]>("create_avd_device", {
+    name,
+    systemImage,
+    device: device ?? null,
+  });
+}
+
+export async function deleteAvdDevice(name: string): Promise<AvdInfo[]> {
+  return invoke<AvdInfo[]>("delete_avd_device", { name });
+}
+
+export async function wipeAvdData(name: string): Promise<void> {
+  return invoke<void>("wipe_avd_data_cmd", { name });
+}
+
+export async function listAvailableSystemImages(): Promise<AvailableSystemImage[]> {
+  return invoke<AvailableSystemImage[]>("list_available_system_images_cmd");
+}
+
+export function downloadSystemImage(
+  sdkId: string,
+  onProgress: (progress: SdkDownloadProgress) => void
+): Promise<void> {
+  const channel = new Channel<SdkDownloadProgress>();
+  channel.onmessage = onProgress;
+  return invoke<void>("download_system_image_cmd", { sdkId, onProgress: channel });
 }
 
 // ── Logcat ────────────────────────────────────────────────────────────────────
