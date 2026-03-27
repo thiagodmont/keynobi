@@ -88,6 +88,10 @@
   - [ ] `launch_avd(name)` → delegates to `adb_manager`
   - [ ] `stop_avd(serial)` → delegates to `adb_manager`
 
+- [ ] **Interaction tools**
+  A way to interact with the device, like click, scroll, select elements. Identify elements in the screen, by name initial. (could be looking at layout tree)
+
+
 ### Documentation
 - [ ] Add MCP server status indicator to status bar
 - [ ] Document setup in README: `claude mcp add android-companion`
@@ -112,6 +116,11 @@
 - [ ] Build time tracking in status bar
 
 ### Device Improvements
+- [x] Redesigned DevicePanel as full-width tab (panel mode) with toolbar and two sections
+- [x] Added "Virtual Devices" section with running status indicator, Launch/Stop actions
+- [x] Added AVD lifecycle: Create, Delete, Wipe Data via `avdmanager` CLI
+- [x] Added `CreateDeviceDialog` with device profile + system image pickers
+- [x] StatusBar device popover now uses compact mode with "Manage Devices" link
 - [ ] Emulator controls: GPS, network speed, battery level
 - [ ] Screenshot capture button
 - [ ] Screen recording

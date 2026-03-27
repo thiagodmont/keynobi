@@ -1,14 +1,15 @@
-# Android IDE
+# Android Dev Companion
 
-An AI-first Android development environment built with Tauri 2.0 + SolidJS. Lighter and more focused than Android Studio, designed so every feature — file browsing, code editing, builds, logcat, emulator — is readable and controllable by AI agents.
+A focused **Android development companion** built with Tauri 2.0 + SolidJS. Not a full IDE — designed to run *alongside* Android Studio and Claude Code, providing best-in-class build logs, logcat streaming, device management, and an MCP server so AI agents can trigger builds, read crash logs, and control devices directly.
 
-**Platform:** macOS only (v0.x beta)
-**Language support:** Kotlin + Gradle (initial scope)
+**Platform:** macOS only (v0.x beta)  
+**Language support:** Kotlin + Gradle projects
 
 ---
 
 ## Table of Contents
 
+- [What It Does](#what-it-does)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Development Workflow](#development-workflow)
@@ -21,21 +22,37 @@ An AI-first Android development environment built with Tauri 2.0 + SolidJS. Ligh
 
 ---
 
-## Prerequisites
+## What It Does
 
-You need four tools installed before anything else.
+| Feature | Status |
+|---|---|
+| Open Android/Gradle project, multi-project registry | ✅ |
+| Streaming Gradle builds with ANSI log + structured error list | ✅ |
+| Build variant selector (buildTypes × productFlavors) | ✅ |
+| One-click Run → Build → Install → Launch | ✅ |
+| Real-time logcat streaming (50K ring buffer, 100 ms batching) | ✅ |
+| Logcat filters: level, tag, text; crash detection | ✅ |
+| Connected device + AVD management; Create/Delete/Wipe AVDs | ✅ |
+| System health checks (Java, SDK, ADB, Gradle, disk) | ✅ |
+| Command palette (`Cmd+Shift+P`) with action registry | ✅ |
+| Project app info editor (versionName / versionCode) | ✅ |
+| MCP server — Claude Code integration | 🔜 Phase 4 |
+
+---
+
+## Prerequisites
 
 ### 1. Rust (stable toolchain)
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source "$HOME/.cargo/env"
-rustc --version  # should print rustc 1.94.0 or newer
+rustc --version  # rustc 1.78.0 or newer
 ```
 
 ### 2. Node.js 20+
 
-The recommended way is [Volta](https://volta.sh), which pins the version automatically:
+[Volta](https://volta.sh) pins the version automatically:
 
 ```bash
 curl https://get.volta.sh | bash
@@ -47,13 +64,9 @@ Or install directly from [nodejs.org](https://nodejs.org).
 
 ### 3. Xcode Command Line Tools
 
-Required by Tauri to compile and link against macOS system frameworks:
-
 ```bash
 xcode-select --install
 ```
-
-If Xcode is already installed, this is a no-op.
 
 ### 4. Tauri CLI (cargo plugin)
 
@@ -81,9 +94,9 @@ npm run tauri dev
 `npm run tauri dev` does three things in parallel:
 1. Starts the **Vite** dev server on `http://localhost:1420` (frontend hot-reload)
 2. Compiles the **Rust backend** with `cargo` (only on first run or when `.rs` files change)
-3. Opens a **native macOS window** with the IDE
+3. Opens a **native macOS window** with the app
 
-> **First run note:** The initial Rust compilation downloads and compiles ~400 crates and takes 3–8 minutes depending on your machine. Subsequent starts are typically under 5 seconds.
+> **First run note:** The initial Rust compilation downloads and compiles ~400 crates and takes 3–8 minutes. Subsequent starts are typically under 5 seconds.
 
 ---
 
@@ -96,7 +109,7 @@ npm run tauri dev
 ```
 
 - **Frontend changes** (`.tsx`, `.ts`, `.css`): hot-reloaded instantly, no restart needed.
-- **Rust backend changes** (`.rs` files or `tauri.conf.json`): Tauri automatically recompiles and relaunches the window.
+- **Rust backend changes** (`.rs` files): Tauri automatically recompiles and relaunches.
 
 ### Type-check the frontend
 
@@ -104,16 +117,11 @@ npm run tauri dev
 npx tsc --noEmit
 ```
 
-### Lint
+### Lint and format
 
 ```bash
 npm run lint
-```
-
-### Format
-
-```bash
-npm run format       # prettier on all src/**/*.{ts,tsx,css}
+npm run format       # prettier on src/**/*.{ts,tsx,css}
 cargo fmt            # rustfmt on all Rust source
 ```
 
@@ -121,15 +129,28 @@ cargo fmt            # rustfmt on all Rust source
 
 ```bash
 cd src-tauri
-cargo check          # fast type + borrow check, no binary output
+cargo check          # fast type + borrow check
 cargo clippy         # extended lint
+```
+
+### Run tests
+
+```bash
+npm run test         # Vitest frontend tests
+cd src-tauri && cargo test   # Rust unit tests
+```
+
+### Regenerate TypeScript bindings
+
+Run after any Rust model type change:
+
+```bash
+npm run generate:bindings
 ```
 
 ---
 
 ## Building a DMG for Distribution
-
-Use the build script for a one-command release build:
 
 ```bash
 # Apple Silicon Mac (M1/M2/M3) — default
@@ -150,26 +171,13 @@ npm run build:dmg:intel     # Intel x86_64
 npm run build:dmg:universal # Universal
 ```
 
-The script:
-- Installs the required Rust cross-compilation target automatically (via `rustup`)
-- Builds the frontend with Vite (`npm run build`)
-- Compiles the Rust backend in **release mode** (optimised, much faster at runtime)
-- Bundles everything into a `.dmg` installer
-- Opens Finder pointing at the output file when done
-
 Output location:
 
 ```
 src-tauri/target/<arch>/release/bundle/dmg/Android IDE_0.1.0_<arch>.dmg
 ```
 
-> **Unsigned builds:** The DMG is built without a Developer ID certificate (`APPLE_SIGNING_IDENTITY=-`). This is fine for internal testing. On first launch, testers must right-click the app → **Open** to bypass Gatekeeper. See [Apple's documentation](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac) for details.
-
-### Release build without DMG (just the `.app`)
-
-```bash
-npm run tauri build -- --target aarch64-apple-darwin --bundles app
-```
+> **Unsigned builds:** The DMG is built without a Developer ID certificate. On first launch, testers must right-click the app → **Open** to bypass Gatekeeper. See [Apple's documentation](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac) for details.
 
 ---
 
@@ -177,58 +185,89 @@ npm run tauri build -- --target aarch64-apple-darwin --bundles app
 
 ```
 android-ide/
-├── src/                          # Frontend — SolidJS + TypeScript
-│   ├── index.tsx                 # App entry point
-│   ├── App.tsx                   # Root layout (CSS Grid shell)
+├── src/                                # Frontend — SolidJS + TypeScript
+│   ├── App.tsx                         # Root layout + action/keybinding registry
 │   ├── stores/
-│   │   ├── ui.store.ts           # Panel visibility, sidebar state
-│   │   ├── project.store.ts      # Open project root, file tree
-│   │   └── editor.store.ts       # Open files, dirty state, cursor position
+│   │   ├── build.store.ts             # Build state, streaming logs, error list
+│   │   ├── device.store.ts            # Connected devices, AVD state
+│   │   ├── health.store.ts            # IDE health checks
+│   │   ├── project.store.ts           # Project root, name, Gradle root
+│   │   ├── projects.store.ts          # Multi-project registry
+│   │   ├── settings.store.ts          # App settings
+│   │   ├── ui.store.ts                # Active tab, panel visibility
+│   │   ├── variant.store.ts           # Build variants
+│   │   └── log.store.ts               # Generic log store factory
+│   ├── services/
+│   │   ├── build.service.ts           # Build orchestration
+│   │   └── project.service.ts         # Project open + navigation history
 │   ├── components/
+│   │   ├── build/
+│   │   │   ├── BuildPanel.tsx         # Streaming ANSI log + error list
+│   │   │   └── VariantSelector.tsx    # Build variant dropdown in status bar
+│   │   ├── device/
+│   │   │   └── DevicePanel.tsx        # Devices + AVD management (Create/Delete/Wipe)
+│   │   ├── logcat/
+│   │   │   └── LogcatPanel.tsx        # Real-time logcat, filters, crash detection
+│   │   ├── health/
+│   │   │   └── HealthPanel.tsx        # Java, SDK, ADB, Gradle, disk checks
+│   │   ├── settings/
+│   │   │   ├── SettingsPanel.tsx
+│   │   │   ├── SettingRow.tsx
+│   │   │   └── ToolStatus.tsx         # SDK/Java path pickers
 │   │   ├── layout/
-│   │   │   ├── TitleBar.tsx      # Custom macOS title bar (drag region)
-│   │   │   ├── Sidebar.tsx       # Icon bar + collapsible panel
-│   │   │   ├── PanelContainer.tsx# Bottom panel (Build/Logcat/Terminal tabs)
-│   │   │   └── StatusBar.tsx     # Ln/Col, language, project name
-│   │   ├── editor/
-│   │   │   ├── CodeEditor.tsx    # CodeMirror 6 wrapper (single EditorView)
-│   │   │   └── EditorTabs.tsx    # Tab bar with dirty indicators
-│   │   ├── filetree/
-│   │   │   ├── FileTree.tsx      # Project file tree with live updates
-│   │   │   └── FileTreeNode.tsx  # Individual tree node + context menu
+│   │   │   ├── TitleBar.tsx           # Custom macOS title bar + project switcher
+│   │   │   └── StatusBar.tsx          # Health, build status, variant, device
 │   │   └── common/
-│   │       ├── Resizable.tsx     # Drag-to-resize splitter
-│   │       ├── Toast.tsx         # Auto-dismiss notifications
-│   │       └── Icon.tsx          # Inline SVG icon library
+│   │       ├── CommandPalette.tsx     # Cmd+Shift+P action palette
+│   │       ├── LogViewer.tsx          # Shared ANSI log renderer
+│   │       ├── VirtualList.tsx        # Virtualized list for large buffers
+│   │       ├── Toast.tsx              # Auto-dismiss notifications
+│   │       ├── Dialog.tsx             # Modal dialogs
+│   │       ├── Resizable.tsx          # Drag-to-resize splitter
+│   │       └── Icon.tsx               # Inline SVG icon library
 │   ├── lib/
-│   │   ├── tauri-api.ts          # Typed wrappers for all Tauri IPC calls
-│   │   ├── keybindings.ts        # Global keyboard shortcut registry
-│   │   └── codemirror/
-│   │       ├── setup.ts          # Base CodeMirror 6 extensions
-│   │       ├── kotlin.ts         # Kotlin syntax highlighting
-│   │       ├── gradle.ts         # Gradle/Kotlin DSL highlighting
-│   │       └── theme.ts          # VS Code Dark+ token colours
-│   └── styles/
-│       ├── global.css            # Reset + drag region helpers
-│       └── theme.css             # CSS custom properties (colour palette)
+│   │   ├── tauri-api.ts              # Typed wrappers for all Tauri IPC calls
+│   │   ├── keybindings.ts            # Global keyboard shortcut registry
+│   │   ├── action-registry.ts        # Command palette action registry
+│   │   ├── fuzzy-match.ts            # Fuzzy matching utility
+│   │   ├── ansi-strip.ts             # ANSI escape code stripping
+│   │   └── file-utils.ts             # File type utilities
+│   └── bindings/                     # Auto-generated TypeScript types (ts-rs)
 │
-├── src-tauri/                    # Rust backend — Tauri 2.0
-│   ├── Cargo.toml                # Rust dependencies
-│   ├── tauri.conf.json           # App config (window, bundle, permissions)
+├── src-tauri/                         # Rust backend — Tauri 2.0
+│   ├── Cargo.toml
+│   ├── tauri.conf.json
 │   ├── capabilities/
-│   │   └── default.json          # Tauri 2.0 security permissions
+│   │   └── default.json              # Tauri 2.0 security permissions
 │   └── src/
-│       ├── main.rs               # Binary entry point
-│       ├── lib.rs                # Tauri builder, plugin registration, AppState
-│       ├── models/
-│       │   └── file.rs           # FileNode, FileEvent (serde types)
+│       ├── lib.rs                    # Tauri builder, state, command registration
+│       ├── commands/
+│       │   ├── build.rs              # Gradle task commands
+│       │   ├── device.rs             # ADB / AVD commands
+│       │   ├── file_system.rs        # Project open, Gradle root detection
+│       │   ├── health.rs             # Health check commands
+│       │   ├── logcat.rs             # Logcat streaming commands
+│       │   ├── settings.rs           # Settings persistence commands
+│       │   └── variant.rs            # Build variant commands
 │       ├── services/
-│       │   └── fs_manager.rs     # File tree, watching, atomic CRUD
-│       └── commands/
-│           └── file_system.rs    # #[tauri::command] IPC handlers
+│       │   ├── adb_manager.rs        # ADB device polling
+│       │   ├── build_runner.rs       # ./gradlew execution, output parsing
+│       │   ├── fs_manager.rs         # Gradle root detection
+│       │   ├── logcat.rs             # Parser, ring buffer (50K entries)
+│       │   ├── process_manager.rs    # Child process lifecycle + SIGTERM
+│       │   ├── settings_manager.rs   # ~/.androidide/settings.json
+│       │   └── variant_manager.rs    # buildTypes × productFlavors parsing
+│       └── models/
+│           ├── build.rs
+│           ├── device.rs
+│           ├── error.rs
+│           ├── health.rs
+│           ├── log_entry.rs
+│           ├── settings.rs
+│           └── variant.rs
 │
 ├── scripts/
-│   └── build-dmg.sh              # One-command DMG builder
+│   └── build-dmg.sh                  # One-command DMG builder
 ├── package.json
 ├── vite.config.ts
 └── tsconfig.json
@@ -239,36 +278,46 @@ android-ide/
 ## Architecture Overview
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                   macOS Window (Tauri 2.0)                   │
-│                                                              │
-│  ┌─────────────────────┐   ┌──────────────────────────────┐ │
-│  │  Frontend (WKWebView)│   │  Rust Backend (src-tauri)    │ │
-│  │                     │   │                              │ │
-│  │  SolidJS + TypeScript│   │  AppState (tokio::Mutex)     │ │
-│  │                     │   │  ├─ project_root             │ │
-│  │  ┌─────────────────┐│   │  └─ file watcher             │ │
-│  │  │ TitleBar        ││   │                              │ │
-│  │  │ Sidebar         ││   │  fs_manager.rs               │ │
-│  │  │  └─ FileTree    ││   │  ├─ build_file_tree()        │ │
-│  │  │ CodeEditor (CM6)││   │  │   (ignore::WalkBuilder)   │ │
-│  │  │ EditorTabs      ││   │  ├─ start_watching()         │ │
-│  │  │ StatusBar       ││   │  │   (notify + FSEvents)     │ │
-│  │  └─────────────────┘│   │  └─ read/write/create/delete │ │
-│  │                     │   │                              │ │
-│  └──────────┬──────────┘   └──────────────────────────────┘ │
-│             │                           ▲                    │
-│             │   Tauri IPC (invoke)       │                    │
-│             └───────────────────────────┘                    │
-│                  file:changed events (emit)                   │
-└──────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────┐
+│                  macOS Application (Tauri 2.0)                   │
+│                                                                  │
+│  ┌──────────────────────────┐  ┌──────────────────────────────┐  │
+│  │   Frontend (WKWebView)   │  │   Rust Backend (src-tauri)   │  │
+│  │  SolidJS + TypeScript    │  │                              │  │
+│  │                          │  │  Core Services               │  │
+│  │  ┌────────────────────┐  │  │   fs_manager (gradle root)   │  │
+│  │  │ BuildPanel         │  │  │   process_manager            │  │
+│  │  │  ANSI log          │  │  │   settings_manager           │  │
+│  │  │  Error list        │  │  │                              │  │
+│  │  ├────────────────────┤  │  │  Android Services            │  │
+│  │  │ LogcatPanel        │  │  │   build_runner (gradlew)     │  │
+│  │  │  50K ring buffer   │  │  │   variant_manager            │  │
+│  │  │  Level/tag filters │  │  │   adb_manager (poll 2s)      │  │
+│  │  ├────────────────────┤  │  │   logcat (ring buffer 50K)   │  │
+│  │  │ DevicePanel        │  │  │                              │  │
+│  │  │  Devices + AVDs    │  │  │  [Phase 4]                   │  │
+│  │  ├────────────────────┤  │  │   mcp_server (stdio + HTTP)  │  │
+│  │  │ HealthPanel        │  │  │                              │  │
+│  │  │ SettingsPanel      │  │  └──────────────────────────────┘  │
+│  │  │ CommandPalette     │  │                ▲                   │
+│  │  └────────────────────┘  │                │ Tauri IPC         │
+│  └────────────┬─────────────┘                │ (invoke/emit)     │
+│               └──────────────────────────────┘                   │
+└──────────────────────────────────────────────────────────────────┘
+         │                                    │
+         ▼                                    ▼
+Android Device / Emulator          Claude Code (Phase 4)
+adb logcat + build output          run_gradle_task, get_build_errors,
+                                   get_logcat_entries, list_devices…
 ```
 
 **Key design decisions:**
-- **Single `EditorView` instance** — CodeMirror state is swapped per-file, not recreated. Tab switching is instant (< 50 ms) with full cursor/scroll/undo history preserved per file.
-- **`ignore::WalkBuilder`** for file tree — reads `.gitignore` at every directory level. Android projects have massive `build/` directories; this keeps the tree fast and clean.
-- **Atomic file writes** — all saves go through write-to-temp → `rename()`. A crash mid-save cannot corrupt the original file.
-- **200 ms debounced file watcher** — editors fire multiple FS events per save; debouncing prevents flooding the frontend with redundant refreshes.
+
+- **Ring buffer, 50K entries** — Logcat entries are stored in Rust, never serialized to disk. The frontend only receives what's visible. This keeps memory flat regardless of session length.
+- **100 ms batch emit** — `adb logcat` fires events at very high frequency. Batching at the Rust layer prevents flooding the SolidJS store with thousands of individual signals.
+- **Atomic file writes** — project settings go through write-to-temp → `rename()`. A crash mid-save cannot corrupt state.
+- **Mutex discipline** — Rust state is locked, cloned, then the lock is dropped before any `await`. Nothing is ever held across an async boundary.
+- **`ts-rs` bindings** — every Rust model type derives `TS`. After changing a model, run `npm run generate:bindings` to keep the TypeScript side in sync.
 
 ---
 
@@ -276,17 +325,16 @@ android-ide/
 
 | Shortcut | Action |
 |---|---|
+| `Cmd+Shift+P` | Open command palette |
 | `Cmd+O` | Open project folder |
-| `Cmd+S` | Save current file |
-| `Cmd+Option+S` | Save all dirty files |
-| `Cmd+W` | Close current tab |
-| `Cmd+Shift+[` | Switch to previous tab |
-| `Cmd+Shift+]` | Switch to next tab |
-| `Cmd+B` | Toggle sidebar |
-| `Cmd+J` | Toggle bottom panel |
-| `Cmd+F` | Find in current file (CodeMirror) |
-| `Cmd+Z` | Undo |
-| `Cmd+Shift+Z` | Redo |
+| `Cmd+R` | Run (build → install → launch) |
+| `Cmd+Shift+R` | Run with variant picker |
+| `Cmd+.` | Cancel current build |
+| `Cmd+B` | Toggle Build panel |
+| `Cmd+L` | Toggle Logcat panel |
+| `Cmd+D` | Toggle Device panel |
+| `Cmd+H` | Toggle Health panel |
+| `Cmd+,` | Open Settings |
 
 ---
 
@@ -294,13 +342,13 @@ android-ide/
 
 ### `cargo: command not found` when running `npm run tauri dev`
 
-Rust is installed but not on your shell's `PATH`. Add this to your `~/.zshrc`:
+Rust is installed but not on your shell's `PATH`. Add this to `~/.zshrc`:
 
 ```bash
 source "$HOME/.cargo/env"
 ```
 
-Then restart your terminal and retry.
+Restart your terminal and retry.
 
 ### Port 1420 is already in use
 
@@ -310,41 +358,33 @@ Another instance of the dev server is running. Kill it:
 lsof -ti:1420 | xargs kill -9
 ```
 
-Then run `npm run tauri dev` again.
+### First `tauri dev` is very slow
 
-### First `cargo check` / `tauri dev` is very slow
+Expected — Rust compiles all dependencies from source on first run (~3–8 minutes). Subsequent builds only recompile changed crates (typically 2–5 seconds).
 
-Expected — Rust compiles all dependencies from source on first run. This is a one-time cost. Subsequent builds only recompile changed crates (usually just `android-ide` itself, taking 2–5 seconds).
+### ADB not found / devices not appearing
 
-### Opening a file shows no syntax highlighting
+Open **Settings** (`Cmd+,`) and set the Android SDK path. The Health panel (`Cmd+H`) will show which tools are missing and suggest fixes.
 
-The Kotlin and Gradle modes are loaded from `@codemirror/legacy-modes`. Make sure `npm install` completed without errors. Delete `node_modules/` and run `npm install` again if needed.
+### `App can't be opened because it is from an unidentified developer`
 
-### `App can't be opened because it is from an unidentified developer` (on shared DMG)
-
-The build is unsigned. Tell the recipient to:
-1. Right-click the app in Applications → **Open**
-2. Click **Open** in the dialog
-
-This only needs to be done once. After that, the app opens normally.
+The build is unsigned. Right-click the app in Applications → **Open**, then click **Open** in the dialog. This only needs to be done once.
 
 ### White flash on launch
 
-Ensure `index.html` has `background: #1e1e1e` on `body` (already set). If you see a flash in a future build, check that `global.css` is imported before any component renders.
+Ensure `index.html` has `background: #1e1e1e` on `body`. If you see a flash after a fresh build, verify `global.css` is imported before any component renders.
 
 ---
 
 ## Roadmap
 
-The project is built in phases. Phase 1 (this release) covers the foundational IDE shell.
-
 | Phase | Status | Scope |
 |---|---|---|
-| **1 — Foundation** | ✅ Complete | File tree, code editor, tabs, dark theme |
-| 2 — Build System | Planned | Gradle builds, ADB, deploy to device |
-| 3 — Code Intelligence | Planned | Kotlin LSP, completions, go-to-definition |
-| 4 — Logcat + Emulator | Planned | Streaming logcat, emulator controls |
-| 5 — AI Integration | Planned | AI chat, inline edits, MCP server |
-| 6 — Git + Terminal + Polish | Planned | Git panel, terminal, DMG signing, auto-update |
+| **1 — Foundation** | ✅ Complete | Project open, settings, health checks, command palette, toast system |
+| **2 — Build + Devices** | ✅ Complete | Gradle builds, build variants, ADB device management, Run cycle |
+| **3 — Logcat** | ✅ Complete | Real-time logcat streaming, filters, crash detection, ring buffer |
+| **4 — MCP Server** | 🔜 Next | `claude mcp add android-companion` — build, logcat, and device tools for Claude |
+| **5 — Polish + UX** | Planned | Logcat export, emulator controls (GPS/network/battery), screenshots, onboarding |
+| **6 — Multi-Project** | Partially done | Project registry, title-bar switcher, ProjectInfoEditor; per-project variant/device persistence pending |
 
 See [`PLAN.md`](PLAN.md) for the full architecture and [`TASK.md`](TASK.md) for the detailed task checklist.

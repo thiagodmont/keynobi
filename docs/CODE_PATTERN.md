@@ -448,14 +448,60 @@ pub struct DeviceStateInner {
 
 Device polling runs as a detached `tokio::spawn` task. When the device list changes, it emits `device:list_changed` via `AppHandle::emit`. The frontend listens and calls `setDevices()` in the store.
 
+### AVD Management Pattern
+
+AVD lifecycle (create/delete/wipe) goes through `avdmanager` CLI, resolved from `$ANDROID_HOME/cmdline-tools/`:
+
+```rust
+// Service layer (adb_manager.rs)
+pub fn get_avdmanager_path(settings: &AppSettings) -> PathBuf { /* tries latest/, versioned paths */ }
+pub fn list_system_images(settings: &AppSettings) -> Vec<SystemImageInfo> { /* scans system-images/ dir */ }
+pub async fn list_device_definitions(avdmanager: &Path) -> Vec<DeviceDefinition> { /* avdmanager list device -c */ }
+pub async fn create_avd(avdmanager, name, sdk_id, device_id) -> Result<(), String> { /* avdmanager create avd */ }
+pub async fn delete_avd(avdmanager, name) -> Result<(), String> { /* avdmanager delete avd */ }
+```
+
+Commands return the refreshed AVD list (`Vec<AvdInfo>`) so the frontend can update in one round-trip.
+
+### DevicePanel Mode Pattern
+
+`DevicePanel` accepts a `mode` prop for its two usage contexts:
+- `mode="panel"` (default): full-width tab content with toolbar, two sections, AVD lifecycle actions
+- `mode="popover"`: compact 280px dropdown for the StatusBar pill, with "Manage Devices" footer link
+
+```tsx
+// Tab (App.tsx)
+<DevicePanel />
+
+// StatusBar popover
+<DevicePanel mode="popover" onClose={() => setOpen(false)} />
+```
+
+`CreateDeviceDialog` is opened from the panel, loads system images and device definitions lazily (with store cache), and returns the refreshed AVD list via `onCreated` callback.
+
 ### Build Service Pattern
 
 A `build.service.ts` coordinates multiple IPC calls into a user-visible action:
 
 ```
-runBuild() → runGradleTask (IPC) → addBuildLine (per line) → finalizeBuild (on complete)
-runAndDeploy() → runBuild → findApkPath → installApkOnDevice → launchAppOnDevice
+runBuild() → runGradleTask (IPC, returns immediately after spawn)
+           → await build:complete event (one-shot Promise resolved by listener)
+           → finalizeBuild (with correct success/duration from event)
+
+runAndDeploy() → resolveDevice (pick dialog if no online device selected)
+              → setDeployPhase("building") → runBuild
+              → setDeployPhase("installing") → findApkPath → installApkOnDevice
+              → setDeployPhase("launching") → launchAppOnDevice (using applicationId)
+              → setDeployPhase(null)
 ```
 
-Build errors accumulate in the frontend service and are passed to `finalizeBuild` for persistence in the Rust build history.
+**Key invariants:**
+- `runBuild()` only resolves after `build:complete` fires — `buildState.phase` is always correct when it returns.
+- `_resolveBuildComplete` is a module-level one-shot resolver. It is set before `runGradleTask` and cleared by the `listenBuildComplete` handler.
+- If `cancelBuild()` is called mid-build, `_resolveBuildComplete` is nulled so the awaiting `buildComplete` promise is abandoned without hanging.
+- Build errors accumulate in `accumulatedErrors` (including those without file locations) and are passed to `finalizeBuild` for backend persistence.
+
+**Device resolution:** `resolveDevice()` checks if `deviceState.selectedSerial` is online; if not, it dynamically imports and shows `DevicePickerDialog`. The dialog is lazy-imported to avoid circular dependency between build service and device UI.
+
+**DeployPhase:** `buildState.deployPhase` drives the status bar during the install/launch steps after a successful build. Always cleared in the `finally` block.
 
