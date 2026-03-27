@@ -17,7 +17,6 @@
 
 1. Read `docs/BEST_PRACTICES.md` — architectural principles, security rules, performance targets, and the AI-first design philosophy.
 2. Read `docs/CODE_PATTERN.md` — concrete conventions: file naming, store patterns, IPC patterns, testing patterns.
-3. Read `docs/DECISIONS.md` — understand why key architectural decisions were made before challenging them.
 4. Read `docs/USER_MANUAL.md` — understand what the user sees and does, so new features integrate naturally.
 
 ## Key Rules
@@ -75,7 +74,6 @@ npm run generate:bindings
 
 At the end of every development session:
 
-- Record new architectural decisions in `docs/DECISIONS.md` (append-only, never delete).
 - Update `docs/CODE_PATTERN.md` when a new code pattern is established.
 - Update `docs/BEST_PRACTICES.md` if foundational architecture or principles change.
 - Update `docs/USER_MANUAL.md` when new user-visible features or keyboard shortcuts are added.

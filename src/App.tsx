@@ -15,14 +15,16 @@ import { HealthPanel, openHealthPanel } from "@/components/health/HealthPanel";
 import { BuildPanel } from "@/components/build/BuildPanel";
 import { DevicePanel } from "@/components/device/DevicePanel";
 import { LogcatPanel } from "@/components/logcat/LogcatPanel";
+import { ProjectInfoEditor, openProjectInfoEditor } from "@/components/projects/ProjectInfoEditor";
 import { registerKeybinding, initKeybindings } from "@/lib/keybindings";
 import { registerAction, type ActionCategory } from "@/lib/action-registry";
 import { loadSettings } from "@/stores/settings.store";
-import { openProjectFolder } from "@/services/project.service";
+import { openProjectFolder, refreshProjectsList, restoreLastProject } from "@/services/project.service";
 import { initBuildService, runBuild, runAndDeploy, cancelBuild } from "@/services/build.service";
 import { initDevices } from "@/stores/device.store";
 import { openVariantPicker } from "@/components/build/VariantSelector";
 import { formatError, startMcpServer } from "@/lib/tauri-api";
+import { projectState } from "@/stores/project.store";
 
 function formatShortcut(opts: { key: string; metaKey?: boolean; shiftKey?: boolean; altKey?: boolean }): string {
   const parts: string[] = [];
@@ -68,9 +70,16 @@ export function App(): JSX.Element {
     initKeybindings();
     loadSettings();
 
-    // Initialize build service and device polling.
-    initBuildService().catch(console.error);
-    initDevices().catch(console.error);
+    // Load project registry into the switcher store.
+    refreshProjectsList().catch(console.error);
+
+    // Restore last-active project, then initialize build/devices.
+    const restored = await restoreLastProject().catch(() => false);
+    if (!restored) {
+      // No previous project — still init services so they're ready.
+      initBuildService().catch(console.error);
+      initDevices().catch(console.error);
+    }
 
     // ── Settings ─────────────────────────────────────────────────────────────
     registerKeyAndAction({ id: "general.settings", key: ",", metaKey: true, label: "Open Settings", category: "General", action: () => openSettings() });
@@ -140,6 +149,21 @@ export function App(): JSX.Element {
         document.getElementById("device-selector-btn")?.click();
       },
     });
+
+    // ── Project ───────────────────────────────────────────────────────────────
+    registerAction({
+      id: "project.info",
+      label: "Project App Info",
+      category: "File" as ActionCategory,
+      action: () => {
+        if (!projectState.projectRoot) {
+          showToast("No project is open.", "error");
+          return;
+        }
+        openProjectInfoEditor();
+      },
+    });
+
     registerAction({
       id: "mcp.start",
       label: "Start MCP Server (for Claude Code)",
@@ -252,6 +276,7 @@ export function App(): JSX.Element {
       <CommandPalette />
       <SettingsPanel />
       <HealthPanel />
+      <ProjectInfoEditor />
       <DialogHost />
     </div>
   );

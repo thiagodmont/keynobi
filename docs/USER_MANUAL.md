@@ -31,11 +31,15 @@
 ### First Launch
 
 1. Launch **Android Dev Companion**
-2. Press **Cmd+O** or click the title bar "Open" area to select your Android project folder
-3. The app detects your Gradle root and initializes build variants
+2. Press **Cmd+O** or click the title bar to open the project switcher and select your Android project folder
+3. The app detects your Gradle root, saves the project to the registry, and initializes build variants
 4. Open **Settings** (Cmd+,) and configure:
    - **Android SDK Path** — path to `$ANDROID_HOME` (e.g. `~/Library/Android/sdk`)
    - **Java Home** — path to JDK (e.g. `/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home`)
+
+### Subsequent Launches
+
+The app automatically restores the last-active project. No need to re-open the folder each time.
 
 ---
 
@@ -58,6 +62,42 @@ Three main panels — always accessible, no toggling required:
 - **Build** — Gradle build output and error list
 - **Logcat** — Android device log streaming
 - **Devices** — Connected devices and emulator management
+
+---
+
+## 2a. Project Switcher
+
+The **title bar** doubles as a project switcher. Click the project name (or "Android IDE" when no project is open) to open the dropdown.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  ●  ○  ○   Android IDE — MyApp ▾                             │
+└─────────────────────────────────────────────────────────────┘
+                │
+                ▼
+  ┌──────────────────────────────┐
+  │ ★ MyApp          ~/code/...  │  ← pinned / active (highlighted)
+  │   OtherProject   ~/dev/...   │
+  │   ThirdProject   ~/work/...  │
+  │ ─────────────────────────── │
+  │   Open Folder…  Cmd+O        │
+  └──────────────────────────────┘
+```
+
+### Actions
+- **Click a project** — switch to it (cancels any running build, stops logcat, opens the new project)
+- **★ star icon** — pin/unpin a project (pinned entries stay at the top)
+- **× button** (appears on hover for non-active projects) — remove from the list (does NOT delete from disk)
+- **Open Folder…** — browse for a new project folder
+
+### Project App Info
+
+Access via **Command Palette → "Project App Info"** to open a lightweight editor for:
+- **Version Name** (e.g. `1.0.0`) — edits `versionName` in `app/build.gradle(.kts)`
+- **Version Code** (integer) — edits `versionCode` in `app/build.gradle(.kts)`
+- **Application ID** — read-only display of `applicationId`
+
+Changes are written directly to the Gradle file using a regex replace (safe for standard DSL; does not reformat the file).
 
 ---
 
@@ -235,6 +275,10 @@ Click **Refresh** to re-run all checks.
 | **Cmd+,** | Open Settings |
 | **Cmd+Shift+H** | Open Health Center |
 | **Cmd+Shift+P** | Command Palette |
+
+**Command Palette actions** (Cmd+Shift+P, then type):
+- `Project App Info` — open the version name/code editor
+- `Open Folder` — browse for a new project
 
 ---
 

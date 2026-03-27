@@ -32,6 +32,44 @@ export async function getApplicationId(): Promise<string | null> {
   return invoke<string | null>("get_application_id");
 }
 
+// ── Project registry ──────────────────────────────────────────────────────────
+
+import type { ProjectEntry, ProjectAppInfo } from "@/bindings";
+export type { ProjectEntry, ProjectAppInfo };
+
+/** Return the sorted project registry list. */
+export async function listProjects(): Promise<ProjectEntry[]> {
+  return invoke<ProjectEntry[]>("list_projects");
+}
+
+/** Remove a project from the registry by its ID (does not delete from disk). */
+export async function removeProject(id: string): Promise<void> {
+  return invoke<void>("remove_project", { id });
+}
+
+/** Toggle the pinned flag for a project in the registry. */
+export async function pinProject(id: string, pinned: boolean): Promise<void> {
+  return invoke<void>("pin_project", { id, pinned });
+}
+
+/** Return the path of the project that was last active, for session restore. */
+export async function getLastActiveProject(): Promise<string | null> {
+  return invoke<string | null>("get_last_active_project");
+}
+
+/** Read versionName, versionCode and applicationId from the open project. */
+export async function getProjectAppInfo(): Promise<ProjectAppInfo> {
+  return invoke<ProjectAppInfo>("get_project_app_info");
+}
+
+/** Write versionName and versionCode back to the app-level build.gradle(.kts). */
+export async function saveProjectAppInfo(
+  versionName: string,
+  versionCode: bigint
+): Promise<void> {
+  return invoke<void>("save_project_app_info", { versionName, versionCode });
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 export interface AppSettings {

@@ -39,3 +39,7 @@ export type { VariantList } from "./VariantList";
 
 // Settings (keep only what the frontend actively uses)
 export type { AppSettings } from "./AppSettings";
+
+// Projects
+export type { ProjectEntry } from "./ProjectEntry";
+export type { ProjectAppInfo } from "./ProjectAppInfo";

@@ -11,7 +11,11 @@ use commands::device::{
     list_adb_devices, list_avd_devices, refresh_devices, select_device, start_device_polling,
     stop_app_on_device, stop_avd, stop_device_polling,
 };
-use commands::file_system::{get_application_id, get_gradle_root, get_project_root, open_project};
+use commands::file_system::{
+    get_application_id, get_gradle_root, get_last_active_project, get_project_app_info,
+    get_project_root, list_projects, open_project, pin_project, remove_project,
+    save_project_app_info,
+};
 use commands::health::run_health_checks;
 use commands::logcat::{
     clear_logcat, get_logcat_entries, get_logcat_status, list_logcat_packages,
@@ -96,6 +100,14 @@ pub fn run() {
             get_project_root,
             get_gradle_root,
             get_application_id,
+            // Project registry
+            list_projects,
+            remove_project,
+            pin_project,
+            get_last_active_project,
+            // Project App Info
+            get_project_app_info,
+            save_project_app_info,
             // Settings
             get_settings,
             save_settings,

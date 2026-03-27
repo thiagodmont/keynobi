@@ -118,12 +118,34 @@
 
 ### App Polish
 - [ ] First-run onboarding wizard (SDK detection)
-- [ ] "Open Recent" projects list
+- [x] "Open Recent" projects list (multi-project registry + title-bar switcher)
 - [ ] Keyboard shortcut customization
 - [ ] Auto-start logcat when device connects
 - [ ] macOS code signing + notarization
 - [ ] Universal binary (Apple Silicon + Intel)
 - [ ] DMG packaging
+
+---
+
+## Phase 6 — Multi-Project (PARTIALLY DONE)
+
+### Done
+- [x] `ProjectEntry` model + `recent_projects` registry in `AppSettings`
+- [x] `open_project` upserts into registry; registry capped at 20 entries
+- [x] New commands: `list_projects`, `remove_project`, `pin_project`, `get_last_active_project`
+- [x] New commands: `get_project_app_info`, `save_project_app_info`
+- [x] `projects.store.ts` with reactive project list + active project ID
+- [x] Title bar project-switcher dropdown (pinning, remove, switch, open folder)
+- [x] `ProjectInfoEditor.tsx` modal — edit versionName/versionCode in build.gradle
+- [x] Startup: auto-restore last-active project from registry
+- [x] Command palette action: "Project App Info"
+
+### TODO
+- [ ] Per-project build variant persistence (currently global in `BuildSettings`)
+- [ ] Per-project selected device persistence
+- [ ] Project-level "notes" or README preview
+- [ ] Rename project display name (edit `ProjectEntry.name` without renaming the folder)
+- [ ] Drag-to-reorder pinned projects in the switcher
 
 ---
 

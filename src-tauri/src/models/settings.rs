@@ -1,6 +1,27 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+/// A known Android project entry in the project registry.
+/// Persisted inside `AppSettings.recent_projects`.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ProjectEntry {
+    /// Deterministic hex ID derived from the canonical project path.
+    pub id: String,
+    /// Absolute path to the project root folder.
+    pub path: String,
+    /// Display name (the folder's base name).
+    pub name: String,
+    /// Detected Gradle root (ancestor containing `settings.gradle(.kts)`),
+    /// or `None` if not yet detected.
+    pub gradle_root: Option<String>,
+    /// ISO-8601 timestamp of the last time this project was opened.
+    pub last_opened: String,
+    /// Whether the user has pinned this project (pinned entries sort first).
+    pub pinned: bool,
+}
+
 /// All IDE settings persisted to `~/.androidide/settings.json`.
 /// Every field uses `#[serde(default)]` so the file is forward-compatible —
 /// adding new settings never breaks existing config files.
@@ -18,6 +39,11 @@ pub struct AppSettings {
     pub advanced: AdvancedSettings,
     pub build: BuildSettings,
     pub logcat: LogcatSettings,
+    /// Registry of recently-opened projects.  Capped at 20 entries; oldest
+    /// non-pinned entry is evicted when the cap is exceeded.
+    pub recent_projects: Vec<ProjectEntry>,
+    /// The path of the project that was active when the app was last closed.
+    pub last_active_project: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
@@ -139,9 +165,15 @@ impl Default for AppSettings {
             advanced: AdvancedSettings::default(),
             build: BuildSettings::default(),
             logcat: LogcatSettings::default(),
+            recent_projects: Vec::new(),
+            last_active_project: None,
         }
     }
 }
+
+/// Maximum number of entries kept in `AppSettings.recent_projects`.
+/// The oldest non-pinned entry is evicted when this limit is exceeded.
+pub const MAX_RECENT_PROJECTS: usize = 20;
 
 impl Default for EditorSettings {
     fn default() -> Self {
@@ -249,6 +281,20 @@ impl Default for LogcatSettings {
     fn default() -> Self {
         Self { auto_start: true }
     }
+}
+
+/// App version information read from (and written back to) `app/build.gradle(.kts)`.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ProjectAppInfo {
+    /// The `applicationId` declared in the app module (read-only — editing it
+    /// would require a full Gradle sync and is out of scope).
+    pub application_id: Option<String>,
+    /// Human-readable version string (e.g. `"1.2.3"`).
+    pub version_name: Option<String>,
+    /// Integer version code used by the Play Store.
+    pub version_code: Option<i64>,
 }
 
 #[cfg(test)]

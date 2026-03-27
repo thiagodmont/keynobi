@@ -8,6 +8,7 @@ import type { FilesSettings } from "./FilesSettings";
 import type { JavaSettings } from "./JavaSettings";
 import type { LogcatSettings } from "./LogcatSettings";
 import type { LspSettings } from "./LspSettings";
+import type { ProjectEntry } from "./ProjectEntry";
 import type { SearchSettings } from "./SearchSettings";
 
 /**
@@ -15,4 +16,13 @@ import type { SearchSettings } from "./SearchSettings";
  * Every field uses `#[serde(default)]` so the file is forward-compatible —
  * adding new settings never breaks existing config files.
  */
-export type AppSettings = { editor: EditorSettings, appearance: AppearanceSettings, search: SearchSettings, files: FilesSettings, android: AndroidSettings, lsp: LspSettings, java: JavaSettings, advanced: AdvancedSettings, build: BuildSettings, logcat: LogcatSettings, };
+export type AppSettings = { editor: EditorSettings, appearance: AppearanceSettings, search: SearchSettings, files: FilesSettings, android: AndroidSettings, lsp: LspSettings, java: JavaSettings, advanced: AdvancedSettings, build: BuildSettings, logcat: LogcatSettings, 
+/**
+ * Registry of recently-opened projects.  Capped at 20 entries; oldest
+ * non-pinned entry is evicted when the cap is exceeded.
+ */
+recentProjects: Array<ProjectEntry>, 
+/**
+ * The path of the project that was active when the app was last closed.
+ */
+lastActiveProject: string | null, };
