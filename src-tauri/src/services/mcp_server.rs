@@ -6,7 +6,8 @@
  *
  * Transport: stdio (for `claude mcp add android-companion`)
  */
-use crate::services::logcat::{LogcatFilter, LogcatLevel, LogcatState};
+use crate::models::logcat::LogcatLevel;
+use crate::services::logcat::{LogcatFilter, LogcatState};
 use crate::services::settings_manager;
 use crate::services::variant_manager;
 use crate::FsState;
@@ -240,7 +241,7 @@ async fn tool_get_logcat_entries(app: &AppHandle, args: &Value) -> Result<Value,
     let logcat = app.state::<LogcatState>();
     let state = logcat.lock().await;
 
-    let entries: Vec<String> = state.buffer.entries.iter()
+    let entries: Vec<String> = state.store.iter()
         .rev()
         .filter(|e| filter.matches(e))
         .take(count)
@@ -261,7 +262,7 @@ async fn tool_get_crash_logs(app: &AppHandle, args: &Value) -> Result<Value, Mcp
     let logcat = app.state::<LogcatState>();
     let state = logcat.lock().await;
 
-    let entries: Vec<String> = state.buffer.entries.iter()
+    let entries: Vec<String> = state.store.iter()
         .rev()
         .filter(|e| e.is_crash)
         .take(count)

@@ -20,8 +20,8 @@ use commands::file_system::{
 };
 use commands::health::run_health_checks;
 use commands::logcat::{
-    clear_logcat, get_logcat_entries, get_logcat_status, list_logcat_packages,
-    new_logcat_state, start_logcat, stop_logcat,
+    clear_logcat, get_logcat_entries, get_logcat_stats, get_logcat_status,
+    list_logcat_packages, new_logcat_state, set_logcat_filter, start_logcat, stop_logcat,
 };
 use commands::mcp::start_mcp_server;
 use commands::settings::*;
@@ -160,6 +160,8 @@ pub fn run() {
             get_logcat_entries,
             get_logcat_status,
             list_logcat_packages,
+            set_logcat_filter,
+            get_logcat_stats,
             // MCP Server
             start_mcp_server,
         ])

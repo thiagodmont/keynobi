@@ -131,13 +131,13 @@ Use the command palette (Cmd+Shift+P) → **Clean Project** to run `./gradlew cl
 
 ## 4. Logcat Panel
 
-The Logcat panel streams Android device log output in real time.
+The Logcat panel streams Android device log output in real time through a multi-stage processing pipeline that enriches entries before display.
 
 ### Starting Logcat
 
 1. Connect an Android device or start an emulator (see Devices panel)
 2. Click **Start** in the Logcat toolbar, or the app will auto-connect to the selected device
-3. Log entries appear immediately as they arrive
+3. Log entries appear immediately as they arrive, enriched with package resolution and category detection
 
 ### Log Levels
 
@@ -154,15 +154,36 @@ Entries are color-coded by log level:
 
 ### Filtering
 
-- **Level filter** — Dropdown to show only entries at or above a minimum level
-- **Tag filter** — Type to filter by tag name (case-insensitive substring)
-- **Text filter** — Type to search in message text and tag
+The query bar supports a rich filter syntax. Simple filters (level, tag, text, package) are applied in the Rust backend before entries cross the IPC bridge — this keeps the JS thread responsive even at 1000+ lines/sec.
+
+| Syntax | Example | Description |
+|--------|---------|-------------|
+| `level:X` | `level:error` | Minimum log level |
+| `tag:X` | `tag:OkHttp` | Tag substring |
+| `tag~:X` | `tag~:Ok.*Http` | Tag regex |
+| `message:X` | `message:null` | Message substring |
+| `package:X` | `package:com.example` | Package name |
+| `package:mine` | `package:mine` | Filter to the current app |
+| `age:N` | `age:5m` | Only last N seconds/minutes/hours |
+| `is:crash` | `is:crash` | Crash entries only |
+| `is:stacktrace` | `is:stacktrace` | Stack trace lines only |
+| `-tag:system` | `-tag:system` | Negate — exclude entries matching |
+| bare text | `login` | Search tag + message + package |
+
+Multiple tokens are AND-ed together. Use the **Presets** button to save frequently used filters.
+
+### JSON Viewer
+
+When a log entry's message contains valid JSON, a `{}` badge appears on the row. Click the badge to open the **JSON Detail Panel** at the bottom of the log, which shows the JSON formatted and syntax-highlighted. Click **Copy** to copy the raw JSON, or **✕** to close the panel.
 
 ### Controls
 
 - **Start / Stop** — Begin or end logcat streaming
 - **Pause / Resume** — Pause new entries (no data is lost, buffer continues)
 - **Clear** — Clear the display buffer and the in-memory ring buffer
+- **Age pills** — Quick-select time window (30s, 1m, 5m, 15m, 1h, All)
+- **↓ Export** — Save the currently filtered entries to a `.log` file
+- **⎘ N rows** — Copy multiple selected rows (Shift+click to select a range)
 
 ### Ring Buffer
 
@@ -170,7 +191,21 @@ The logcat ring buffer holds up to **50,000 entries** in memory. The oldest entr
 
 ### Crash Detection
 
-When a `FATAL EXCEPTION` or `AndroidRuntime` crash is detected, the entry is highlighted in red regardless of other filters.
+When a `FATAL EXCEPTION`, `AndroidRuntime` crash, ANR, or native signal crash is detected:
+- The entry is highlighted in red with a red left border
+- All consecutive lines in the same stack trace share a `crash_group_id` and get the same red indicator
+- The crash counter in the toolbar (⚡ N) increments
+- Use **↑ / ↓** beside the crash counter to navigate between crashes
+- ANR entries are highlighted in yellow with an **ANR** badge
+
+### Entry Categories
+
+The pipeline automatically classifies entries by tag into categories (visible in filtering):
+- **Network** — OkHttp, Retrofit, Volley
+- **Lifecycle** — ActivityManager, Fragment, Application
+- **Performance** — Choreographer, SurfaceFlinger, OpenGLRenderer
+- **GC** — art, dalvikvm
+- **Database** — SQLiteDatabase, Room
 
 ---
 

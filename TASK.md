@@ -49,7 +49,7 @@
 
 ---
 
-## Phase 4 — MCP Server (TODO)
+## Phase 4 — MCP Server
 
 **Goal:** Claude Code can interact with the IDE via MCP protocol.
 
@@ -88,9 +88,6 @@
   - [ ] `launch_avd(name)` → delegates to `adb_manager`
   - [ ] `stop_avd(serial)` → delegates to `adb_manager`
 
-- [ ] **Interaction tools**
-  A way to interact with the device, like click, scroll, select elements. Identify elements in the screen, by name initial. (could be looking at layout tree)
-
 
 ### Documentation
 - [ ] Add MCP server status indicator to status bar
@@ -102,12 +99,18 @@
 ## Phase 5 — Polish + UX (TODO)
 
 ### Logcat Improvements
+- [x] Logcat pipeline: 4-stage Ingester → Processor → Store → StreamManager
+- [x] Backend filtering via `set_logcat_filter` command (moves O(n) JS scan to Rust)
+- [x] JSON detection + inline JSON viewer panel (`{}` badge on rows)
+- [x] Enhanced crash detection: ANR, native signals, crash group IDs
+- [x] Category classification: Network, Lifecycle, Performance, GC, Database
+- [x] LogStore with crash/JSON secondary indexes + LogStats
 - [ ] Logcat session save to file (JSON or plain text)
-- [ ] "Jump to Crash" button when crash is detected
+- [x] "Jump to Crash" button when crash is detected
 - [ ] Package filter (filter by app package name from device)
 - [ ] Regex mode for tag/text filter
 - [ ] Timestamp format toggle (relative vs absolute)
-- [ ] Copy selected entry to clipboard
+- [x] Copy selected entry to clipboard
 
 ### Build Improvements
 - [ ] Click error in Build panel to open file in external editor (Reveal in Finder / VS Code)

@@ -140,7 +140,7 @@ pub async fn run_health_checks(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn java_bin_defaults_to_java_when_no_home() {

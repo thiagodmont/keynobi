@@ -505,3 +505,89 @@ runAndDeploy() → resolveDevice (pick dialog if no online device selected)
 
 **DeployPhase:** `buildState.deployPhase` drives the status bar during the install/launch steps after a successful build. Always cleared in the `finally` block.
 
+---
+
+## Logcat Pipeline Pattern (Phase 3+)
+
+### Architecture
+
+The logcat data flow is a four-stage pipeline:
+
+```
+adb logcat
+  → Ingester (parse raw lines → RawLogLine, zero mutex)
+  → Pipeline+Batcher task (every 100ms: run processors, lock state once, emit filtered)
+  → StreamManager (filter entries before IPC emit)
+  → Frontend (render pre-filtered entries; frontend-only filtering for age/regex/negate)
+```
+
+### Processor Chain (`services/log_pipeline.rs`)
+
+Processors implement the `LogProcessor` trait and run sequentially per entry:
+
+```rust
+pub trait LogProcessor: Send + Sync {
+    fn process(&self, entry: &mut ProcessedEntry, ctx: &mut PipelineContext);
+}
+```
+
+Built-in processors (in order):
+1. **PackageResolver** — attaches `package` from PID→package map
+2. **CrashAnalyzer** — detects FATAL/ANR/native, assigns `crash_group_id`
+3. **JsonExtractor** — detects valid JSON in message, stores raw string in `json_body`
+4. **CategoryClassifier** — O(1) tag→category lookup
+
+`PipelineContext` is owned by the pipeline task (no mutex) and carries cross-entry state (pid_to_package, crash group tracking). It is synced into `LogcatStateInner.known_packages` once per 100ms tick.
+
+### LogStore (`services/log_store.rs`)
+
+Replaces the old `LogcatBuffer`. Adds secondary indexes for O(1) crash/JSON lookups:
+
+```rust
+pub struct LogStore {
+    entries: VecDeque<ProcessedEntry>,  // 50K ring buffer
+    crash_ids: VecDeque<u64>,           // IDs of crash entries
+    json_ids: VecDeque<u64>,            // IDs of JSON entries
+    pub stats: LogStats,                // running counters (O(1) per entry)
+}
+```
+
+### Backend Filtering (`services/log_stream.rs`)
+
+`StreamState` holds the active `LogcatFilter`. The batcher calls `filter_batch()` before emitting — only matching entries cross the IPC bridge. Updated via `set_logcat_filter` command:
+
+```typescript
+// Frontend: on query change, send simple tokens to backend
+await setLogcatFilter({ minLevel: "error", tag: null, text: null, package: null, onlyCrashes: false });
+// Then fetch backfill with same filter
+const entries = await getLogcatEntries({ minLevel: "error" });
+```
+
+### Frontend Filter Split
+
+The frontend `filteredEntries` memo only applies tokens the backend cannot handle:
+- `age:N` — time-based, needs `Date.now()`
+- `-tag:X` / `-message:X` — negation
+- `tag~:X` / `message~:X` — regex
+
+Everything else (level, simple tag/text/package, only_crashes) is handled in Rust. This reduces the JS O(n) scan to a much smaller pre-filtered set.
+
+### ProcessedEntry (IPC type)
+
+```rust
+pub struct ProcessedEntry {
+    // Core fields (same as old LogcatEntry)
+    pub id: u64, pub timestamp: String, pub pid: i32, pub tid: i32,
+    pub level: LogcatLevel, pub tag: String, pub message: String,
+    pub package: Option<String>, pub kind: LogcatKind, pub is_crash: bool,
+
+    // Pipeline-enriched fields
+    pub flags: u32,                  // EntryFlags bitfield (CRASH, ANR, JSON_BODY, …)
+    pub category: EntryCategory,     // Network / Lifecycle / Performance / GC / …
+    pub crash_group_id: Option<u64>, // groups consecutive crash stack lines
+    pub json_body: Option<String>,   // raw JSON (parsed on-demand in frontend)
+}
+```
+
+`json_body` is `Option<String>` (not `Value`) to avoid double-serialisation. Frontend parses when user expands the JSON viewer panel.
+

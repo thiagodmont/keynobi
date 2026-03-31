@@ -388,20 +388,11 @@ export function downloadSystemImage(
 
 // ── Logcat ────────────────────────────────────────────────────────────────────
 
-export interface LogcatEntry {
-  id: number;
-  timestamp: string;
-  pid: number;
-  tid: number;
-  level: "verbose" | "debug" | "info" | "warn" | "error" | "fatal" | "unknown";
-  tag: string;
-  message: string;
-  isCrash: boolean;
-  /** Package/process name resolved from the ActivityManager pid→package map. */
-  package: string | null;
-  /** Entry kind — normal log line vs process lifecycle separator. */
-  kind?: "normal" | "processDied" | "processStarted";
-}
+// Use the generated ProcessedEntry as the canonical logcat entry type.
+// The type alias keeps existing code working unchanged.
+import type { ProcessedEntry, LogStats, LogcatFilterSpec } from "@/bindings";
+export type { ProcessedEntry, LogStats, LogcatFilterSpec };
+export type LogcatEntry = ProcessedEntry;
 
 export async function startLogcat(deviceSerial?: string): Promise<void> {
   return invoke<void>("start_logcat", { deviceSerial: deviceSerial ?? null });
@@ -422,8 +413,8 @@ export async function getLogcatEntries(opts?: {
   text?: string;
   package?: string;
   onlyCrashes?: boolean;
-}): Promise<LogcatEntry[]> {
-  return invoke<LogcatEntry[]>("get_logcat_entries", {
+}): Promise<ProcessedEntry[]> {
+  return invoke<ProcessedEntry[]>("get_logcat_entries", {
     count: opts?.count ?? null,
     minLevel: opts?.minLevel ?? null,
     tag: opts?.tag ?? null,
@@ -441,10 +432,24 @@ export async function listLogcatPackages(): Promise<string[]> {
   return invoke<string[]>("list_logcat_packages");
 }
 
+/**
+ * Update the backend stream filter.
+ * After this call, only entries matching the spec will be emitted via
+ * `logcat:entries`. Pass an empty spec to disable backend filtering.
+ */
+export async function setLogcatFilter(spec: LogcatFilterSpec): Promise<void> {
+  return invoke<void>("set_logcat_filter", { filterSpec: spec });
+}
+
+/** Return running statistics for the current logcat session. */
+export async function getLogcatStats(): Promise<LogStats> {
+  return invoke<LogStats>("get_logcat_stats");
+}
+
 export function listenLogcatEntries(
-  cb: (entries: LogcatEntry[]) => void
+  cb: (entries: ProcessedEntry[]) => void
 ): Promise<UnlistenFn> {
-  return listen<LogcatEntry[]>("logcat:entries", (e) => cb(e.payload));
+  return listen<ProcessedEntry[]>("logcat:entries", (e) => cb(e.payload));
 }
 
 export function listenLogcatCleared(cb: () => void): Promise<UnlistenFn> {

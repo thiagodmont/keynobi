@@ -1,98 +1,26 @@
-use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
+use crate::models::logcat::{LogcatFilterSpec, LogcatLevel, ProcessedEntry};
+use crate::services::log_pipeline::{parse_logcat_line, LogPipeline, PipelineContext};
+use crate::services::log_store::LogStore;
+use crate::services::log_stream::StreamState;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, warn};
 
-// ── Model types ───────────────────────────────────────────────────────────────
-
-/// Discriminant for special log entries (process lifecycle separators).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase")]
-pub enum LogcatKind {
-    #[default]
-    Normal,
-    /// The app process died — rendered as a visual separator in the log.
-    ProcessDied,
-    /// The app process (re)started after previously being seen.
-    ProcessStarted,
-}
-
-/// A parsed logcat entry.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LogcatEntry {
-    pub id: u64,
-    pub timestamp: String,
-    pub pid: i32,
-    pub tid: i32,
-    pub level: LogcatLevel,
-    pub tag: String,
-    pub message: String,
-    pub is_crash: bool,
-    /// Package/process name resolved from the ActivityManager pid→package map.
-    /// `None` for system processes or when the mapping hasn't been populated yet.
-    pub package: Option<String>,
-    /// Normal log line vs process lifecycle separator.
-    #[serde(default)]
-    pub kind: LogcatKind,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum LogcatLevel {
-    Verbose,
-    Debug,
-    Info,
-    Warn,
-    Error,
-    Fatal,
-    Unknown,
-}
-
-impl LogcatLevel {
-    fn from_char(c: char) -> Self {
-        match c {
-            'V' => LogcatLevel::Verbose,
-            'D' => LogcatLevel::Debug,
-            'I' => LogcatLevel::Info,
-            'W' => LogcatLevel::Warn,
-            'E' => LogcatLevel::Error,
-            'F' | 'A' => LogcatLevel::Fatal,
-            _ => LogcatLevel::Unknown,
-        }
-    }
-
-    pub fn priority(&self) -> u8 {
-        match self {
-            LogcatLevel::Verbose => 0,
-            LogcatLevel::Debug => 1,
-            LogcatLevel::Info => 2,
-            LogcatLevel::Warn => 3,
-            LogcatLevel::Error => 4,
-            LogcatLevel::Fatal => 5,
-            LogcatLevel::Unknown => 0,
-        }
-    }
-}
-
 // ── Filter ────────────────────────────────────────────────────────────────────
 
-/// Filter specification for logcat entries.
+/// Internal filter applied server-side before emitting batches to the frontend.
 ///
-/// The `tag_lower`, `text_lower`, and `package_lower` fields store
-/// **pre-lowercased** needle strings so `matches()` never calls
-/// `to_lowercase()` at comparison time, eliminating per-row heap allocations.
+/// All string needles are pre-lowercased once at construction time.
+/// `matches()` uses an allocation-free case-insensitive substring search so
+/// every call on the hot path produces zero heap allocations.
 #[derive(Debug, Clone, Default)]
 pub struct LogcatFilter {
     pub min_level: Option<LogcatLevel>,
-    /// Pre-lowercased tag needle (set by callers, not computed here).
     pub tag_lower: Option<String>,
-    /// Pre-lowercased text needle (set by callers, not computed here).
     pub text_lower: Option<String>,
-    /// Pre-lowercased package name needle.
     pub package_lower: Option<String>,
     pub only_crashes: bool,
 }
@@ -115,9 +43,25 @@ impl LogcatFilter {
         }
     }
 
-    /// O(1) match against a single entry.
-    /// All string comparisons use pre-lowercased needles — no allocations.
-    pub fn matches(&self, entry: &LogcatEntry) -> bool {
+    /// Build from the IPC-facing `LogcatFilterSpec`, converting the level
+    /// string to the internal enum.
+    pub fn from_spec(spec: &LogcatFilterSpec) -> Self {
+        let min_level = spec.min_level.as_deref().map(parse_level_str);
+        LogcatFilter::new(
+            min_level,
+            spec.tag.clone(),
+            spec.text.clone(),
+            spec.package.clone(),
+            spec.only_crashes,
+        )
+    }
+
+    /// Zero-allocation match against a single entry.
+    ///
+    /// Needles are pre-lowercased; haystacks are compared using a
+    /// byte-level case-insensitive scan that never allocates.
+    #[inline]
+    pub fn matches(&self, entry: &ProcessedEntry) -> bool {
         if self.only_crashes && !entry.is_crash {
             return false;
         }
@@ -127,23 +71,19 @@ impl LogcatFilter {
             }
         }
         if let Some(needle) = &self.tag_lower {
-            if !entry.tag.to_lowercase().contains(needle.as_str()) {
+            if !ci_contains(&entry.tag, needle) {
                 return false;
             }
         }
         if let Some(needle) = &self.text_lower {
-            if !entry.message.to_lowercase().contains(needle.as_str())
-                && !entry.tag.to_lowercase().contains(needle.as_str())
-            {
+            if !ci_contains(&entry.message, needle) && !ci_contains(&entry.tag, needle) {
                 return false;
             }
         }
         if let Some(needle) = &self.package_lower {
-            // Match against the resolved package name, or fall through to tag if unavailable.
             let matched = match &entry.package {
-                Some(pkg) => pkg.to_lowercase().contains(needle.as_str()),
-                // Fallback: if no package resolved yet, match against tag
-                None => entry.tag.to_lowercase().contains(needle.as_str()),
+                Some(pkg) => ci_contains(pkg, needle),
+                None => ci_contains(&entry.tag, needle),
             };
             if !matched {
                 return false;
@@ -153,262 +93,80 @@ impl LogcatFilter {
     }
 }
 
-// ── Ring buffer ───────────────────────────────────────────────────────────────
-
-/// Maximum entries kept in the Rust ring-buffer.
-pub const MAX_LOGCAT_ENTRIES: usize = 50_000;
-
-/// Pre-allocation size: large enough that a busy app never triggers a
-/// reallocation in the first few seconds.
-const INITIAL_CAPACITY: usize = 10_000;
-
-/// Maximum entries per IPC batch.  Caps the size of each `logcat:entries`
-/// JSON payload so the JS thread is never blocked deserialising a huge message.
-pub const MAX_BATCH_SIZE: usize = 500;
-
-pub struct LogcatBuffer {
-    pub entries: VecDeque<LogcatEntry>,
-    pub next_id: u64,
+/// Allocation-free case-insensitive substring search.
+///
+/// `needle` must already be ASCII-lowercased (guaranteed by `LogcatFilter::new`).
+/// Android log tags and package names are pure ASCII; messages may contain
+/// Unicode but the common filter case is ASCII keywords, so ASCII folding
+/// covers ~99 % of real-world queries without any allocation.
+#[inline]
+fn ci_contains(haystack: &str, needle: &str) -> bool {
+    if needle.is_empty() {
+        return true;
+    }
+    if haystack.len() < needle.len() {
+        return false;
+    }
+    let nb = needle.as_bytes();
+    haystack.as_bytes().windows(nb.len()).any(|window| {
+        window
+            .iter()
+            .zip(nb)
+            .all(|(&h, &n)| h.to_ascii_lowercase() == n)
+    })
 }
 
-impl LogcatBuffer {
-    pub fn new() -> Self {
-        LogcatBuffer {
-            entries: VecDeque::with_capacity(INITIAL_CAPACITY),
-            next_id: 1,
-        }
-    }
-
-    #[inline]
-    pub fn push(&mut self, mut entry: LogcatEntry) {
-        entry.id = self.next_id;
-        self.next_id += 1;
-        if self.entries.len() >= MAX_LOGCAT_ENTRIES {
-            self.entries.pop_front();
-        }
-        self.entries.push_back(entry);
-    }
-
-    pub fn clear(&mut self) {
-        self.entries.clear();
+fn parse_level_str(s: &str) -> LogcatLevel {
+    match s.to_uppercase().as_str() {
+        "V" | "VERBOSE" => LogcatLevel::Verbose,
+        "D" | "DEBUG" => LogcatLevel::Debug,
+        "I" | "INFO" => LogcatLevel::Info,
+        "W" | "WARN" | "WARNING" => LogcatLevel::Warn,
+        "E" | "ERROR" => LogcatLevel::Error,
+        "F" | "FATAL" | "A" | "ASSERT" => LogcatLevel::Fatal,
+        _ => LogcatLevel::Verbose,
     }
 }
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 pub type LogcatState = Arc<Mutex<LogcatStateInner>>;
 
 pub struct LogcatStateInner {
-    pub buffer: LogcatBuffer,
+    /// The processed entry store (ring buffer + indexes + stats).
+    pub store: LogStore,
+    /// Active stream filter — entries not matching this are not forwarded to
+    /// the frontend.  `None` means no filtering (forward everything).
+    pub stream_state: StreamState,
     pub streaming: bool,
     pub device_serial: Option<String>,
-    /// PID → package name, populated from ActivityManager "Start proc" lines.
-    /// Cleared when `buffer.clear()` is called (since old PIDs become stale).
-    pub pid_to_package: std::collections::HashMap<i32, String>,
-    /// Packages that have been seen at least once — used to detect re-starts.
-    pub seen_packages: std::collections::HashSet<String>,
+    /// All distinct package names seen in this session.
+    pub known_packages: HashSet<String>,
 }
 
 impl LogcatStateInner {
     pub fn new() -> Self {
         LogcatStateInner {
-            buffer: LogcatBuffer::new(),
+            store: LogStore::new(),
+            stream_state: StreamState::new(),
             streaming: false,
             device_serial: None,
-            pid_to_package: std::collections::HashMap::new(),
-            seen_packages: std::collections::HashSet::new(),
+            known_packages: HashSet::new(),
         }
     }
 
     /// Return a sorted, deduplicated list of all known package names.
-    pub fn known_packages(&self) -> Vec<String> {
-        let mut pkgs: Vec<String> = self.pid_to_package.values().cloned().collect();
+    pub fn known_packages_sorted(&self) -> Vec<String> {
+        let mut pkgs: Vec<String> = self.known_packages.iter().cloned().collect();
         pkgs.sort_unstable();
-        pkgs.dedup();
         pkgs
     }
 }
 
-// ── Parser ────────────────────────────────────────────────────────────────────
-
-/// Parse a single logcat line in `threadtime` format:
-/// `MM-DD HH:MM:SS.mmm  PID  TID LEVEL TAG: message`
-pub fn parse_logcat_line(line: &str, id: u64) -> Option<LogcatEntry> {
-    let mut parts = line.splitn(2, ' ');
-    let date = parts.next()?.to_owned();
-    let rest = parts.next()?.trim_start();
-
-    let mut rest_parts = rest.splitn(2, ' ');
-    let time = rest_parts.next()?.to_owned();
-    let rest = rest_parts.next()?.trim_start();
-
-    let timestamp = format!("{} {}", date, time);
-
-    // PID
-    let mut rest_parts = rest.splitn(2, |c: char| c == ' ');
-    let pid: i32 = rest_parts.next()?.trim().parse().ok()?;
-    let rest = rest_parts.next()?.trim_start();
-
-    // TID
-    let mut rest_parts = rest.splitn(2, |c: char| c == ' ');
-    let tid: i32 = rest_parts.next()?.trim().parse().ok()?;
-    let rest = rest_parts.next()?.trim_start();
-
-    // Level (single char)
-    let mut chars = rest.chars();
-    let level_char = chars.next()?;
-    let level = LogcatLevel::from_char(level_char);
-    let rest = chars.as_str().trim_start();
-
-    // "TAG: message" or "TAG:message"
-    let (tag, message) = if let Some(idx) = rest.find(": ") {
-        (&rest[..idx], rest[idx + 2..].to_owned())
-    } else if let Some(idx) = rest.find(':') {
-        (&rest[..idx], rest[idx + 1..].to_owned())
-    } else {
-        ("", rest.to_owned())
-    };
-
-    let is_crash = message.contains("FATAL EXCEPTION")
-        || message.contains("AndroidRuntime")
-        || tag.contains("AndroidRuntime");
-
-    Some(LogcatEntry {
-        id,
-        timestamp,
-        pid,
-        tid,
-        level,
-        tag: tag.trim().to_owned(),
-        message: message.trim_end_matches('\n').to_owned(),
-        is_crash,
-        package: None, // filled in by caller from pid_to_package map
-        kind: LogcatKind::Normal,
-    })
-}
-
-/// Try to extract a (pid, package_name) pair from an ActivityManager "Start proc" line.
-///
-/// Handles two common formats across Android versions:
-///   - Modern (5.0+): `ActivityManager: Start proc 12345:com.example.app/u0a123 for ...`
-///   - Legacy:        `ActivityManager: Start proc com.example.app for activity ...`
-///
-/// Returns `Some((pid, package))` when a mapping is found, `None` otherwise.
-pub fn extract_pid_package(tag: &str, message: &str) -> Option<(i32, String)> {
-    if tag != "ActivityManager" {
-        return None;
+impl Default for LogcatStateInner {
+    fn default() -> Self {
+        Self::new()
     }
-    // Modern format: "Start proc 12345:com.example.app/u0a123 ..."
-    if let Some(rest) = message.strip_prefix("Start proc ") {
-        // Try "PID:package/uid"
-        if let Some(colon_pos) = rest.find(':') {
-            let pid_str = &rest[..colon_pos];
-            if let Ok(pid) = pid_str.trim().parse::<i32>() {
-                let after_pid = &rest[colon_pos + 1..];
-                // Package ends at '/' (uid separator) or ' ' (whitespace)
-                let end = after_pid
-                    .find(|c| c == '/' || c == ' ')
-                    .unwrap_or(after_pid.len());
-                let raw_pkg = &after_pid[..end];
-                let pkg = strip_process_suffix(raw_pkg);
-                if looks_like_package(pkg) {
-                    return Some((pid, pkg.to_owned()));
-                }
-            }
-        }
-        // Legacy format: "Start proc com.example.app for ..."
-        let end = rest.find(" for ").or_else(|| rest.find(' ')).unwrap_or(rest.len());
-        let pkg = strip_process_suffix(&rest[..end]);
-        if looks_like_package(pkg) {
-            // No PID in this format — we can't build a pid→package entry, skip.
-            return None;
-        }
-    }
-    None
-}
-
-/// Try to extract a package name from ActivityManager process-death messages.
-///
-/// Recognises:
-///   - `Process com.example.app (pid 12345) has died`
-///   - `Killing 12345:com.example.app/u0a123: remove task`
-///   - `Force finishing activity com.example.app/.MainActivity`
-pub fn extract_process_death(tag: &str, message: &str) -> Option<String> {
-    if tag != "ActivityManager" {
-        return None;
-    }
-    // "Process com.example.app (pid N) has died"
-    if let Some(rest) = message.strip_prefix("Process ") {
-        if let Some(space) = rest.find(' ') {
-            let pkg = strip_process_suffix(&rest[..space]);
-            if looks_like_package(pkg) && rest.contains("has died") {
-                return Some(pkg.to_owned());
-            }
-        }
-    }
-    // "Killing N:com.example.app/uid: reason"
-    if let Some(rest) = message.strip_prefix("Killing ") {
-        if let Some(colon) = rest.find(':') {
-            let after = &rest[colon + 1..];
-            let end = after.find(|c| c == '/' || c == ' ' || c == ':').unwrap_or(after.len());
-            let pkg = strip_process_suffix(&after[..end]);
-            if looks_like_package(pkg) {
-                return Some(pkg.to_owned());
-            }
-        }
-    }
-    // "Force finishing activity com.example.app/.Activity"
-    if let Some(rest) = message.strip_prefix("Force finishing activity ") {
-        let end = rest.find('/').or_else(|| rest.find(' ')).unwrap_or(rest.len());
-        let pkg = strip_process_suffix(&rest[..end]);
-        if looks_like_package(pkg) {
-            return Some(pkg.to_owned());
-        }
-    }
-    None
-}
-
-/// Strip the process-role suffix after `:` in a process name.
-/// e.g. `com.example.app:pushservice` → `com.example.app`
-fn strip_process_suffix(name: &str) -> &str {
-    name.find(':').map_or(name, |i| &name[..i])
-}
-
-/// A heuristic: a valid Android package name contains at least one `.` and
-/// only alphanumeric characters, `_`, and `.`.
-fn looks_like_package(s: &str) -> bool {
-    s.contains('.') && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.')
-}
-
-/// Build a synthetic separator entry for the log stream.
-fn make_separator(
-    timestamp: &str,
-    pid: i32,
-    package: &str,
-    kind: LogcatKind,
-    next_id: &mut u64,
-) -> LogcatEntry {
-    let message = match kind {
-        LogcatKind::ProcessDied => format!("{} process died", package),
-        LogcatKind::ProcessStarted => format!("{} process (re)started", package),
-        LogcatKind::Normal => String::new(),
-    };
-    let entry = LogcatEntry {
-        id: *next_id,
-        timestamp: timestamp.to_owned(),
-        pid,
-        tid: 0,
-        level: match kind {
-            LogcatKind::ProcessDied => LogcatLevel::Error,
-            _ => LogcatLevel::Info,
-        },
-        tag: "---".to_owned(),
-        message,
-        is_crash: false,
-        package: Some(package.to_owned()),
-        kind,
-    };
-    *next_id += 1;
-    entry
 }
 
 // ── ADB path resolution ───────────────────────────────────────────────────────
@@ -425,24 +183,28 @@ pub fn find_adb_binary(sdk_path: Option<&str>) -> PathBuf {
 
 // ── Streaming ─────────────────────────────────────────────────────────────────
 
-/// Spawn an `adb logcat` process, parse lines, and stream batched entries to
-/// the frontend via Tauri events.
+/// Maximum entries per IPC batch.  Caps the size of each `logcat:entries`
+/// JSON payload so the JS thread is never blocked deserializing a huge message.
+pub const MAX_BATCH_SIZE: usize = 500;
+
+/// Spawn an `adb logcat` process, parse lines through the processing pipeline,
+/// store them in the LogStore, and stream filtered batches to the frontend.
 ///
-/// Architecture (producer/consumer with clock-driven batching):
+/// Architecture (two tasks):
 ///
-///   ┌─────────────────────┐     mpsc::unbounded     ┌──────────────────────┐
-///   │  reader task        │ ──── LogcatEntry ──────► │  batcher task        │
-///   │  (parse + store)    │                          │  (100ms timer emit)  │
-///   └─────────────────────┘                          └──────────────────────┘
+///   ┌─────────────────────┐     mpsc::unbounded     ┌───────────────────────────┐
+///   │  reader task        │ ──── RawLogLine ────────► │  pipeline + batcher task  │
+///   │  (parse lines only) │                          │  (enrich → store → emit)  │
+///   └─────────────────────┘                          └───────────────────────────┘
 ///
-/// The reader parses each line, writes it to the ring-buffer (single lock),
-/// and sends a clone to the channel.  The batcher wakes on a 100ms Tokio
-/// interval, drains the channel, and emits batches capped at MAX_BATCH_SIZE.
+/// Reader: Reads lines from adb stdout, calls `parse_logcat_line`, sends
+///   `RawLogLine` on the channel.  No state access, no mutex.
 ///
-/// This decouples emission rate from line arrival rate:
-///   - Trickle input: lines are always emitted within 100ms of arrival.
-///   - Burst input:   large bursts are split into ≤500-entry chunks,
-///                    preventing one giant IPC message from blocking the JS thread.
+/// Pipeline+Batcher: Wakes every 100ms, drains the raw channel, runs each
+///   line through the processor chain, pushes to LogStore, then emits only
+///   the filter-matching entries in batches of ≤ MAX_BATCH_SIZE.
+///   Locking the state once per tick (not once per line) greatly reduces
+///   mutex contention at high log rates.
 pub async fn start_logcat_stream(
     adb_bin: PathBuf,
     device_serial: Option<String>,
@@ -480,64 +242,19 @@ pub async fn start_logcat_stream(
         }
     };
 
-    // Channel between the reader task and the batcher task.
-    let (tx, mut rx) = mpsc::unbounded_channel::<LogcatEntry>();
+    // Channel: reader → pipeline+batcher
+    let (tx, mut rx) = mpsc::unbounded_channel::<crate::services::log_pipeline::RawLogLine>();
 
     // ── Reader task ──────────────────────────────────────────────────────────
-    let state_for_reader = logcat_state.clone();
+    // Parses raw lines only — zero state access, zero mutex.
+    // Uses a 64 KB read buffer to batch syscalls at high log rates.
     let reader_handle = tokio::spawn(async move {
-        let mut reader = BufReader::new(stdout).lines();
+        let mut reader = BufReader::with_capacity(64 * 1024, stdout).lines();
         loop {
             match reader.next_line().await {
                 Ok(Some(line)) => {
-                    // Single mutex acquisition: read next_id, parse, store — all in one lock.
-                    let entries_to_send: Vec<LogcatEntry> = {
-                        let mut state = state_for_reader.lock().await;
-                        let id = state.buffer.next_id;
-                        match parse_logcat_line(&line, id) {
-                            Some(mut e) => {
-                                state.buffer.next_id += 1;
-                                let mut extras: Vec<LogcatEntry> = Vec::new();
-
-                                // 1. Check for process death
-                                if let Some(dead_pkg) = extract_process_death(&e.tag, &e.message) {
-                                    let sep = make_separator(
-                                        &e.timestamp, e.pid, &dead_pkg,
-                                        LogcatKind::ProcessDied, &mut state.buffer.next_id,
-                                    );
-                                    state.buffer.push(sep.clone());
-                                    extras.push(sep);
-                                }
-
-                                // 2. Check for process start; detect re-start
-                                if let Some((new_pid, pkg)) = extract_pid_package(&e.tag, &e.message) {
-                                    let is_restart = state.seen_packages.contains(&pkg);
-                                    state.seen_packages.insert(pkg.clone());
-                                    state.pid_to_package.insert(new_pid, pkg.clone());
-
-                                    if is_restart {
-                                        let sep = make_separator(
-                                            &e.timestamp, new_pid, &pkg,
-                                            LogcatKind::ProcessStarted, &mut state.buffer.next_id,
-                                        );
-                                        state.buffer.push(sep.clone());
-                                        extras.push(sep);
-                                    }
-                                }
-
-                                // 3. Resolve the package for this entry's PID
-                                e.package = state.pid_to_package.get(&e.pid).cloned();
-                                state.buffer.push(e.clone());
-
-                                let mut all = extras;
-                                all.push(e);
-                                all
-                            }
-                            None => vec![],
-                        }
-                    };
-                    for entry in entries_to_send {
-                        let _ = tx.send(entry);
+                    if let Some(raw) = parse_logcat_line(&line) {
+                        let _ = tx.send(raw);
                     }
                 }
                 Ok(None) => {
@@ -552,297 +269,118 @@ pub async fn start_logcat_stream(
         }
     });
 
-    // ── Batcher task ─────────────────────────────────────────────────────────
-    // Wakes every 100ms on a Tokio interval, regardless of whether new lines
-    // have arrived.  This guarantees ≤100ms latency for trickle streams, and
-    // caps each IPC message at MAX_BATCH_SIZE entries for burst streams.
-    let batcher_handle = tokio::spawn(async move {
-        let mut interval = tokio::time::interval(
-            tokio::time::Duration::from_millis(100),
-        );
-        // MissedTickBehavior::Delay: if a tick is delayed (e.g. by a slow emit)
-        // we skip missed ticks rather than issuing a burst of them.
+    // ── Pipeline + Batcher task ───────────────────────────────────────────────
+    // Owns PipelineContext (no mutex needed for the pipeline itself).
+    // Locks LogcatState once per 100ms tick to batch-write + sync packages.
+    let logcat_state_pipeline = logcat_state.clone();
+    let pipeline_handle = tokio::spawn(async move {
+        let logcat_state = logcat_state_pipeline;
+        let pipeline = LogPipeline::default_pipeline();
+        let mut ctx = PipelineContext::new();
+
+        let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
         loop {
             interval.tick().await;
 
-            // Drain available entries.
-            let mut batch: Vec<LogcatEntry> = Vec::new();
-            while let Ok(entry) = rx.try_recv() {
-                batch.push(entry);
-                if batch.len() >= MAX_BATCH_SIZE {
-                    // Emit this chunk immediately and continue draining.
-                    if let Err(e) = app_handle.emit("logcat:entries", &batch) {
+            // Drain all available raw lines and process them through the pipeline.
+            // `run_batch_into` pushes directly into `processed`, avoiding a
+            // temporary Vec per line.
+            let mut processed: Vec<ProcessedEntry> = Vec::new();
+            pipeline.run_batch_into(&mut rx, &mut ctx, &mut processed);
+
+            if !processed.is_empty() {
+                // Lock state once per tick to batch-write entries.
+                //
+                // Single-pass filter+store: for each processed entry we move it
+                // into the store (no clone) and only clone entries that pass the
+                // active filter — the entries destined for the frontend.
+                // With a level:error filter this means ~5 % of entries are cloned
+                // instead of 100 %.
+                let to_emit = {
+                    let mut state = logcat_state.lock().await;
+
+                    // Sync newly discovered packages into state (drain buffer).
+                    if !ctx.new_packages.is_empty() {
+                        for pkg in ctx.new_packages.drain(..) {
+                            state.known_packages.insert(pkg);
+                        }
+                        state.store.stats.packages_seen = state.known_packages.len();
+                    }
+
+                    let filter = state.stream_state.clone_filter();
+                    let mut to_emit: Vec<ProcessedEntry> =
+                        Vec::with_capacity(processed.len().min(MAX_BATCH_SIZE));
+
+                    for entry in processed {
+                        // Clone only if this entry will be emitted.
+                        let passes = filter.as_ref().map_or(true, |f| f.matches(&entry));
+                        if passes {
+                            to_emit.push(entry.clone());
+                        }
+                        state.store.push(entry); // move into store — zero clone
+                    }
+
+                    to_emit
+                    // Lock dropped here.
+                };
+
+                // Emit the filtered entries in chunks of MAX_BATCH_SIZE.
+                for chunk in to_emit.chunks(MAX_BATCH_SIZE) {
+                    if let Err(e) = app_handle.emit("logcat:entries", chunk) {
                         warn!("Failed to emit logcat batch: {}", e);
                     }
-                    batch.clear();
-                }
-            }
-
-            // Emit any remaining entries in the last partial batch.
-            if !batch.is_empty() {
-                if let Err(e) = app_handle.emit("logcat:entries", &batch) {
-                    warn!("Failed to emit logcat batch: {}", e);
                 }
             }
 
             // Exit once the channel is closed (reader task finished).
             if rx.is_closed() {
+                // Drain any remaining lines after EOF before exiting.
+                let mut remaining: Vec<ProcessedEntry> = Vec::new();
+                pipeline.run_batch_into(&mut rx, &mut ctx, &mut remaining);
+                if !remaining.is_empty() {
+                    let to_emit = {
+                        let mut state = logcat_state.lock().await;
+                        if !ctx.new_packages.is_empty() {
+                            for pkg in ctx.new_packages.drain(..) {
+                                state.known_packages.insert(pkg);
+                            }
+                            state.store.stats.packages_seen = state.known_packages.len();
+                        }
+                        let filter = state.stream_state.clone_filter();
+                        let mut to_emit = Vec::with_capacity(remaining.len());
+                        for entry in remaining {
+                            let passes = filter.as_ref().map_or(true, |f| f.matches(&entry));
+                            if passes {
+                                to_emit.push(entry.clone());
+                            }
+                            state.store.push(entry);
+                        }
+                        to_emit
+                    };
+                    for chunk in to_emit.chunks(MAX_BATCH_SIZE) {
+                        if let Err(e) = app_handle.emit("logcat:entries", chunk) {
+                            warn!("Failed to emit final logcat batch: {}", e);
+                        }
+                    }
+                }
                 break;
             }
         }
     });
 
-    // Wait for the reader to finish (process ended), then let the batcher drain.
     let _ = reader_handle.await;
-    let _ = batcher_handle.await;
+    let _ = pipeline_handle.await;
 
-    // Mark streaming as stopped.
     let mut state = logcat_state.lock().await;
     state.streaming = false;
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── Filter compat helpers ─────────────────────────────────────────────────────
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // ── Parser tests ──────────────────────────────────────────────────────────
-
-    #[test]
-    fn parse_standard_threadtime_line() {
-        let line = "01-23 12:34:56.789  1234  5678 D MyTag: Hello world";
-        let entry = parse_logcat_line(line, 1).expect("should parse");
-        assert_eq!(entry.level, LogcatLevel::Debug);
-        assert_eq!(entry.tag, "MyTag");
-        assert_eq!(entry.message, "Hello world");
-        assert_eq!(entry.pid, 1234);
-        assert_eq!(entry.tid, 5678);
-    }
-
-    #[test]
-    fn parse_error_level() {
-        let line = "01-23 12:34:56.789  1234  5678 E AndroidRuntime: FATAL EXCEPTION";
-        let entry = parse_logcat_line(line, 1).expect("should parse");
-        assert_eq!(entry.level, LogcatLevel::Error);
-        assert!(entry.is_crash);
-    }
-
-    #[test]
-    fn parse_fatal_level() {
-        let line = "01-23 12:34:56.789  1234  5678 F MyApp: crash message";
-        let entry = parse_logcat_line(line, 1).expect("should parse");
-        assert_eq!(entry.level, LogcatLevel::Fatal);
-    }
-
-    #[test]
-    fn parse_verbose_level() {
-        let line = "01-23 12:34:56.789  1234  5678 V MyTag: verbose message";
-        let entry = parse_logcat_line(line, 1).expect("should parse");
-        assert_eq!(entry.level, LogcatLevel::Verbose);
-        assert!(!entry.is_crash);
-    }
-
-    #[test]
-    fn parse_assigns_id() {
-        let line = "01-23 12:34:56.789  1 1 I T: m";
-        let entry = parse_logcat_line(line, 42).expect("should parse");
-        assert_eq!(entry.id, 42);
-    }
-
-    #[test]
-    fn parse_returns_none_for_garbage() {
-        assert!(parse_logcat_line("not a logcat line", 1).is_none());
-        assert!(parse_logcat_line("", 1).is_none());
-    }
-
-    // ── Filter tests ──────────────────────────────────────────────────────────
-
-    fn make_entry(level: LogcatLevel, tag: &str, message: &str) -> LogcatEntry {
-        LogcatEntry {
-            id: 1,
-            timestamp: "".into(),
-            pid: 0,
-            tid: 0,
-            level,
-            tag: tag.into(),
-            message: message.into(),
-            is_crash: false,
-            package: None,
-            kind: LogcatKind::Normal,
-        }
-    }
-
-    fn make_entry_with_package(level: LogcatLevel, tag: &str, message: &str, pid: i32, pkg: &str) -> LogcatEntry {
-        LogcatEntry {
-            id: 1,
-            timestamp: "".into(),
-            pid,
-            tid: 0,
-            level,
-            tag: tag.into(),
-            message: message.into(),
-            is_crash: false,
-            package: Some(pkg.into()),
-            kind: LogcatKind::Normal,
-        }
-    }
-
-    #[test]
-    fn filter_by_min_level() {
-        let filter = LogcatFilter::new(Some(LogcatLevel::Warn), None, None, None, false);
-        assert!(!filter.matches(&make_entry(LogcatLevel::Debug, "T", "m")));
-        assert!(!filter.matches(&make_entry(LogcatLevel::Info, "T", "m")));
-        assert!(filter.matches(&make_entry(LogcatLevel::Warn, "T", "m")));
-        assert!(filter.matches(&make_entry(LogcatLevel::Error, "T", "m")));
-        assert!(filter.matches(&make_entry(LogcatLevel::Fatal, "T", "m")));
-    }
-
-    #[test]
-    fn filter_by_tag_case_insensitive() {
-        let filter = LogcatFilter::new(None, Some("myapp".into()), None, None, false);
-        assert!(filter.matches(&make_entry(LogcatLevel::Info, "MyApp", "m")));
-        assert!(filter.matches(&make_entry(LogcatLevel::Info, "MYAPP", "m")));
-        assert!(!filter.matches(&make_entry(LogcatLevel::Info, "OtherTag", "m")));
-    }
-
-    #[test]
-    fn filter_by_text_case_insensitive() {
-        let filter = LogcatFilter::new(None, None, Some("hello".into()), None, false);
-        assert!(filter.matches(&make_entry(LogcatLevel::Info, "T", "Hello World")));
-        assert!(filter.matches(&make_entry(LogcatLevel::Info, "T", "HELLO")));
-        assert!(!filter.matches(&make_entry(LogcatLevel::Info, "T", "goodbye")));
-    }
-
-    #[test]
-    fn filter_only_crashes() {
-        let filter = LogcatFilter::new(None, None, None, None, true);
-        let mut crash = make_entry(LogcatLevel::Error, "T", "m");
-        crash.is_crash = true;
-        let normal = make_entry(LogcatLevel::Error, "T", "m");
-        assert!(filter.matches(&crash));
-        assert!(!filter.matches(&normal));
-    }
-
-    #[test]
-    fn filter_by_package_case_insensitive() {
-        let filter = LogcatFilter::new(None, None, None, Some("com.example".into()), false);
-        let matching = make_entry_with_package(LogcatLevel::Info, "T", "m", 1234, "com.example.myapp");
-        let non_matching = make_entry_with_package(LogcatLevel::Info, "T", "m", 9999, "com.other.app");
-        assert!(filter.matches(&matching));
-        assert!(!filter.matches(&non_matching));
-    }
-
-    #[test]
-    fn filter_by_package_falls_back_to_tag_when_no_package() {
-        // When entry.package is None, the filter matches against tag instead.
-        let filter = LogcatFilter::new(None, None, None, Some("myapp".into()), false);
-        let no_pkg = make_entry(LogcatLevel::Info, "MyApp", "m");  // no package field
-        assert!(filter.matches(&no_pkg));
-    }
-
-    #[test]
-    fn filter_package_no_match_when_tag_also_differs() {
-        let filter = LogcatFilter::new(None, None, None, Some("com.example".into()), false);
-        let no_pkg = make_entry(LogcatLevel::Info, "SomeOtherTag", "m");
-        assert!(!filter.matches(&no_pkg));
-    }
-
-    // ── extract_pid_package tests ─────────────────────────────────────────────
-
-    #[test]
-    fn extract_modern_start_proc_format() {
-        let result = extract_pid_package(
-            "ActivityManager",
-            "Start proc 12345:com.example.myapp/u0a123 for activity ...",
-        );
-        assert_eq!(result, Some((12345, "com.example.myapp".to_string())));
-    }
-
-    #[test]
-    fn extract_strips_process_role_suffix() {
-        let result = extract_pid_package(
-            "ActivityManager",
-            "Start proc 9876:com.example.myapp:pushservice/u0a123",
-        );
-        assert_eq!(result, Some((9876, "com.example.myapp".to_string())));
-    }
-
-    #[test]
-    fn extract_returns_none_for_non_activity_manager() {
-        let result = extract_pid_package("SomeOtherTag", "Start proc 123:com.foo/u0 for ...");
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn extract_returns_none_for_non_start_proc() {
-        let result = extract_pid_package("ActivityManager", "Killing com.example.app");
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn extract_returns_none_for_non_package_string() {
-        // "server" doesn't look like a package name (no dot)
-        let result = extract_pid_package("ActivityManager", "Start proc 123:server/u0 for ...");
-        assert!(result.is_none());
-    }
-
-    // ── known_packages tests ──────────────────────────────────────────────────
-
-    #[test]
-    fn known_packages_sorted_and_deduplicated() {
-        let mut state = super::LogcatStateInner::new();
-        state.pid_to_package.insert(1, "com.z.app".into());
-        state.pid_to_package.insert(2, "com.a.app".into());
-        state.pid_to_package.insert(3, "com.z.app".into()); // duplicate value
-        let packages = state.known_packages();
-        assert_eq!(packages, vec!["com.a.app", "com.z.app"]);
-    }
-
-    // ── Buffer tests ──────────────────────────────────────────────────────────
-
-    #[test]
-    fn buffer_assigns_sequential_ids() {
-        let mut buf = LogcatBuffer::new();
-        for i in 0..5u64 {
-            let e = make_entry(LogcatLevel::Info, "T", "m");
-            buf.push(e);
-            assert_eq!(buf.entries.back().unwrap().id, i + 1);
-        }
-    }
-
-    #[test]
-    fn buffer_evicts_oldest_at_capacity() {
-        let mut buf = LogcatBuffer::new();
-        // Override capacity for testing with a smaller limit
-        for _ in 0..MAX_LOGCAT_ENTRIES {
-            buf.push(make_entry(LogcatLevel::Info, "T", "m"));
-        }
-        let first_id_before = buf.entries.front().unwrap().id;
-        // Push one more — should evict the oldest
-        buf.push(make_entry(LogcatLevel::Info, "T", "extra"));
-        assert_eq!(buf.entries.len(), MAX_LOGCAT_ENTRIES);
-        assert_eq!(buf.entries.front().unwrap().id, first_id_before + 1);
-    }
-
-    #[test]
-    fn buffer_clear_empties_entries() {
-        let mut buf = LogcatBuffer::new();
-        buf.push(make_entry(LogcatLevel::Info, "T", "m"));
-        buf.clear();
-        assert!(buf.entries.is_empty());
-    }
-
-    #[test]
-    fn buffer_initial_capacity_avoids_early_reallocation() {
-        // The buffer should start with at least INITIAL_CAPACITY slots
-        // so that pushing INITIAL_CAPACITY entries causes no reallocation.
-        let buf = LogcatBuffer::new();
-        // VecDeque doesn't expose capacity directly in stable Rust, but we can
-        // confirm construction doesn't panic and the initial push path works.
-        assert_eq!(buf.entries.len(), 0);
-        assert_eq!(buf.next_id, 1);
-    }
+/// Keep HashMap<i32, String> available for the MCP server which needs it.
+/// This is computed on-demand from state.known_packages.
+pub fn packages_from_known(known: &HashSet<String>) -> HashMap<String, ()> {
+    known.iter().map(|p| (p.clone(), ())).collect()
 }

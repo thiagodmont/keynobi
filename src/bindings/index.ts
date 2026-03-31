@@ -47,3 +47,11 @@ export type { AppSettings } from "./AppSettings";
 // Projects
 export type { ProjectEntry } from "./ProjectEntry";
 export type { ProjectAppInfo } from "./ProjectAppInfo";
+
+// Logcat pipeline
+export type { ProcessedEntry } from "./ProcessedEntry";
+export type { LogcatLevel } from "./LogcatLevel";
+export type { LogcatKind } from "./LogcatKind";
+export type { EntryCategory } from "./EntryCategory";
+export type { LogStats } from "./LogStats";
+export type { LogcatFilterSpec } from "./LogcatFilterSpec";
