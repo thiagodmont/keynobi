@@ -7,6 +7,8 @@ import { overallHealth, healthSummary } from "@/stores/health.store";
 import { buildState, isBuilding, isDeploying } from "@/stores/build.store";
 import { VariantSelectorPill } from "@/components/build/VariantSelector";
 import { setActiveTab } from "@/stores/ui.store";
+import { startMcpServer, getMcpSetupStatus } from "@/lib/tauri-api";
+import { mcpState } from "@/stores/mcp.store";
 import Icon from "@/components/common/Icon";
 
 async function startDrag(e: MouseEvent) {
@@ -163,6 +165,94 @@ function BuildStatusIndicator(): JSX.Element {
   );
 }
 
+// ── MCP status indicator ───────────────────────────────────────────────────────
+
+function McpStatusIndicator(): JSX.Element {
+  const running = () => mcpState.running;
+  const clientName = () => mcpState.clientName;
+
+  const handleClick = async () => {
+    if (running()) {
+      try {
+        const s = await getMcpSetupStatus();
+        await navigator.clipboard.writeText(
+          `claude mcp add android-companion --command "${s.setupCommand}"`
+        );
+      } catch {
+        // Non-fatal: copy silently fails
+      }
+      return;
+    }
+    try {
+      await startMcpServer();
+    } catch {
+      // Error toast shown by App.tsx action handler
+    }
+  };
+
+  const tooltip = () => {
+    if (!running()) return "Start MCP server for Claude Code integration";
+    if (clientName()) return `MCP: ${clientName()} connected — click to copy setup command`;
+    return "MCP server running (stdio) — click to copy setup command";
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      onMouseDown={(e) => e.stopPropagation()}
+      title={tooltip()}
+      style={{
+        display: "flex",
+        "align-items": "center",
+        gap: "4px",
+        padding: "0 6px",
+        height: "18px",
+        background: running()
+          ? "rgba(96,165,250,0.15)"
+          : "rgba(255,255,255,0.08)",
+        border: running()
+          ? "1px solid rgba(96,165,250,0.4)"
+          : "1px solid rgba(255,255,255,0.12)",
+        "border-radius": "3px",
+        cursor: "pointer",
+        "flex-shrink": "0",
+        transition: "background 0.1s",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.background = running()
+          ? "rgba(96,165,250,0.25)"
+          : "rgba(255,255,255,0.15)";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.background = running()
+          ? "rgba(96,165,250,0.15)"
+          : "rgba(255,255,255,0.08)";
+      }}
+    >
+      <span
+        style={{
+          width: "6px",
+          height: "6px",
+          "border-radius": "50%",
+          background: running() ? "#60a5fa" : "rgba(255,255,255,0.3)",
+          "flex-shrink": "0",
+          display: "inline-block",
+        }}
+      />
+      <span
+        style={{
+          color: running() ? "#93c5fd" : "rgba(255,255,255,0.7)",
+          "font-size": "11px",
+          "line-height": "1",
+          "white-space": "nowrap",
+        }}
+      >
+        {running() && clientName() ? `MCP: ${clientName()}` : "MCP"}
+      </span>
+    </button>
+  );
+}
+
 // ── StatusBar ─────────────────────────────────────────────────────────────────
 
 export function StatusBar(): JSX.Element {
@@ -233,6 +323,9 @@ export function StatusBar(): JSX.Element {
 
         {/* Build status indicator */}
         <BuildStatusIndicator />
+
+        {/* MCP server indicator */}
+        <McpStatusIndicator />
 
         {/* Variant selector */}
         <Show when={projectState.projectName}>

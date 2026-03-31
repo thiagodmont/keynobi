@@ -23,7 +23,7 @@ use commands::logcat::{
     clear_logcat, get_logcat_entries, get_logcat_stats, get_logcat_status,
     list_logcat_packages, new_logcat_state, set_logcat_filter, start_logcat, stop_logcat,
 };
-use commands::mcp::start_mcp_server;
+use commands::mcp::{configure_mcp_in_claude, get_mcp_setup_status, start_mcp_server};
 use commands::settings::*;
 use commands::variant::{get_variants_from_gradle, get_variants_preview, set_active_variant};
 use models::log_entry::LogEntry;
@@ -41,7 +41,7 @@ use tokio::sync::Mutex;
 ///
 /// Accessed by all file commands. The Mutex is held only for the brief
 /// moment needed to read `project_root` — never during I/O operations.
-pub struct FsState(pub Mutex<FsStateInner>);
+pub struct FsState(pub Arc<Mutex<FsStateInner>>);
 
 pub struct FsStateInner {
     pub project_root: Option<PathBuf>,
@@ -53,10 +53,16 @@ pub struct FsStateInner {
 
 impl FsState {
     pub fn new() -> Self {
-        FsState(Mutex::new(FsStateInner {
+        FsState(Arc::new(Mutex::new(FsStateInner {
             project_root: None,
             gradle_root: None,
-        }))
+        })))
+    }
+}
+
+impl Clone for FsState {
+    fn clone(&self) -> Self {
+        FsState(self.0.clone())
     }
 }
 
@@ -96,6 +102,20 @@ pub fn run() {
         .manage(DeviceState::new())
         .manage(new_logcat_state())
         .manage(Arc::new(Mutex::new(VecDeque::<LogEntry>::new())) as LogBuffer)
+        .setup(|app| {
+            // Auto-start MCP server if the user has enabled it in settings.
+            if services::settings_manager::load_settings().mcp.auto_start {
+                let handle = app.handle().clone();
+                tokio::spawn(async move {
+                    // Small delay so the window finishes initialising first.
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    if let Err(e) = services::mcp_server::start_mcp_server(handle).await {
+                        tracing::warn!("MCP auto-start failed: {}", e);
+                    }
+                });
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // File system
             open_project,
@@ -164,6 +184,8 @@ pub fn run() {
             get_logcat_stats,
             // MCP Server
             start_mcp_server,
+            get_mcp_setup_status,
+            configure_mcp_in_claude,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

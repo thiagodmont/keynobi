@@ -74,6 +74,9 @@ export function App(): JSX.Element {
     initKeybindings();
     loadSettings();
 
+    // Initialize MCP lifecycle event listeners.
+    import("@/stores/mcp.store").then(({ initMcpListeners }) => initMcpListeners());
+
     // Load project registry into the sidebar store.
     refreshProjectsList().catch(console.error);
 

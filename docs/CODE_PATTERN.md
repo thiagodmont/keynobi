@@ -591,3 +591,111 @@ pub struct ProcessedEntry {
 
 `json_body` is `Option<String>` (not `Value`) to avoid double-serialisation. Frontend parses when user expands the JSON viewer panel.
 
+---
+
+## MCP Tool Pattern
+
+MCP tools are defined using the `rmcp` crate with the `#[tool_router]` / `#[tool]` / `#[tool_handler]` macros.
+
+### Defining a new tool
+
+1. Add a parameter struct (if the tool takes arguments):
+
+```rust
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct MyToolParams {
+    /// Description shown to the AI in the tool schema.
+    #[schemars(description = "What this parameter does")]
+    pub my_param: String,
+    pub optional_param: Option<usize>,
+}
+```
+
+2. Add the method to `AndroidMcpServer`'s `#[tool_router]` impl block:
+
+```rust
+#[tool(description = "One-line description for the AI agent.")]
+async fn my_tool(
+    &self,
+    Parameters(p): Parameters<MyToolParams>,
+) -> Result<CallToolResult, McpError> {
+    // Validate inputs before accessing state.
+    validate_my_input(&p.my_param)?;
+
+    // Lock state, clone what you need, drop before I/O.
+    let value = { self.build_state.inner.lock().await.some_field.clone() };
+
+    Ok(CallToolResult::success(vec![Content::text(format!("Result: {value}"))]))
+}
+```
+
+3. For tools with execution errors (not protocol errors), use `CallToolResult::error()`:
+
+```rust
+Ok(CallToolResult::error(vec![Content::text("Build failed — see errors above")]))
+```
+
+### Input validation
+
+All MCP tools that accept strings must validate inputs before acting:
+
+- Gradle task names: `validate_gradle_task(task)?` — alphanumeric + `:.-_`
+- Package names: `validate_package_name(pkg)?` — `com.example.app` format
+- Device serials: `validate_device_serial(serial)?` — alphanumeric + `-:._`
+- APK paths: `self.validate_apk_path(path).await?` — must be within project build outputs
+
+### Headless vs GUI mode
+
+`AndroidMcpServer` works in both modes:
+
+- **GUI mode**: `AndroidMcpServer::from_app_handle(&app)` — reads shared state from Tauri
+- **Headless mode**: `AndroidMcpServer::new_headless(build, device, logcat, fs, pm)` — owns fresh state
+
+The `--mcp` CLI flag triggers headless mode in `main.rs`. `--project <path>` sets the project root.
+
+### Accessing state in tools
+
+The state structs use `Arc<Mutex<>>` internally, so `AndroidMcpServer` is `Clone` (all fields are cheap Arc copies):
+
+```rust
+// In tools: lock, clone what you need, drop before any await.
+let status = { self.build_state.inner.lock().await.status.clone() };
+// BuildLog is sync (std::sync::Mutex), safe to lock without await.
+let lines: Vec<String> = self.build_state.build_log.lock().unwrap().iter().cloned().collect();
+```
+
+### Structured outputs
+
+Use `CallToolResult::structured(json!({...}))` for data the AI will reason about (devices, errors, logcat).
+Use `CallToolResult::success(vec![Content::text(...)])` for human-readable text.
+Use `Content::image(base64, "image/png")` for screenshots.
+
+```rust
+// Structured — AI can chain this into install_apk
+Ok(CallToolResult::structured(json!({ "count": devices.len(), "devices": structured })))
+
+// Plain text — diagnostic output
+Ok(CallToolResult::success(vec![Content::text("Build cancelled.")]))
+
+// Image — screenshot
+Ok(CallToolResult::success(vec![Content::image(BASE64.encode(&bytes), "image/png")]))
+```
+
+### MCP Resources (read-only project files)
+
+Implement `list_resources` and `read_resource` in `impl ServerHandler for AndroidMcpServer`.
+Use `android://` URIs for project files. Return `ResourceContents::TextResourceContents { uri, mime_type, text, meta: None }`.
+
+### MCP Prompts
+
+Use `#[prompt_router]` and `#[prompt]` on a separate impl block before `#[tool_handler] #[prompt_handler] impl ServerHandler`.
+Prompt functions receive typed args via `Parameters<T>` and return `GetPromptResult::new(messages).with_description(...)`.
+
+### Lifecycle events (GUI mode)
+
+Emit Tauri events from `on_initialized` and the `start_mcp_server` task:
+- `mcp:started` — when the server task starts
+- `mcp:client_connected` — from `on_initialized` with `{ clientName, connectedAt }`
+- `mcp:stopped` — when the server task exits
+
+Frontend subscribes via `initMcpListeners()` in `src/stores/mcp.store.ts`.

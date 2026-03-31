@@ -2,7 +2,7 @@ use crate::models::build::{
     BuildError, BuildErrorSeverity, BuildLine, BuildLineKind, BuildRecord, BuildResult,
     BuildStatus,
 };
-use crate::services::build_runner::{self, BuildState, find_output_apk};
+use crate::services::build_runner::{self, build_env_vars, BuildState, find_output_apk};
 use crate::services::process_manager::{self, ProcessManager, SpawnOptions};
 use crate::services::settings_manager;
 use crate::FsState;
@@ -72,6 +72,8 @@ pub async fn run_gradle_task(
     let errors_buf: Arc<StdMutex<Vec<BuildError>>> = Arc::new(StdMutex::new(vec![]));
     let duration_ms: Arc<StdMutex<u64>> = Arc::new(StdMutex::new(0));
     let success_flag: Arc<StdMutex<bool>> = Arc::new(StdMutex::new(false));
+    // Share the BuildLog Arc so the on_line callback can push lines directly.
+    let build_log = build_state.build_log.clone();
 
     let args_strs: Vec<String> = args;
     let args_refs: Vec<&str> = args_strs.iter().map(|s| s.as_str()).collect();
@@ -87,7 +89,11 @@ pub async fn run_gradle_task(
                 let errors_buf = errors_buf.clone();
                 let duration_ms = duration_ms.clone();
                 let success_flag = success_flag.clone();
+                let build_log = build_log.clone();
                 move |proc_line| {
+                    // Push every raw line into the persistent build log.
+                    build_runner::push_build_log(&build_log, proc_line.text.clone());
+
                     let line = build_runner::parse_build_line(&proc_line.text);
 
                     // Collect structured errors / warnings (including those without file locations).
@@ -158,9 +164,9 @@ pub async fn run_gradle_task(
     )
     .await?;
 
-    // Mark build as running in the managed state.
+    // Mark build as running in the managed state and clear the log for this run.
     {
-        let mut bs = build_state.0.lock().await;
+        let mut bs = build_state.inner.lock().await;
         bs.status = BuildStatus::Running {
             task: task.clone(),
             started_at: started_at.clone(),
@@ -168,6 +174,7 @@ pub async fn run_gradle_task(
         bs.current_build = Some(id);
         bs.current_errors.clear();
     }
+    build_runner::clear_build_log(&build_state.build_log);
 
     Ok(id)
 }
@@ -198,7 +205,7 @@ pub async fn finalize_build(
         error_count,
         warning_count: warn_count,
     };
-    build_runner::record_build_result(&build_state.0, task, started_at, result, errors).await;
+    build_runner::record_build_result(&build_state, task, started_at, result, errors).await;
     Ok(())
 }
 
@@ -208,7 +215,7 @@ pub async fn cancel_build(
     build_state: State<'_, BuildState>,
     process_manager: State<'_, ProcessManager>,
 ) -> Result<(), String> {
-    build_runner::cancel_build(&build_state.0, &process_manager).await;
+    build_runner::cancel_build(&build_state, &process_manager).await;
     Ok(())
 }
 
@@ -217,7 +224,7 @@ pub async fn cancel_build(
 pub async fn get_build_status(
     build_state: State<'_, BuildState>,
 ) -> Result<BuildStatus, String> {
-    Ok(build_state.0.lock().await.status.clone())
+    Ok(build_state.inner.lock().await.status.clone())
 }
 
 /// Return the structured errors from the last build.
@@ -225,7 +232,7 @@ pub async fn get_build_status(
 pub async fn get_build_errors(
     build_state: State<'_, BuildState>,
 ) -> Result<Vec<BuildError>, String> {
-    Ok(build_state.0.lock().await.current_errors.clone())
+    Ok(build_state.inner.lock().await.current_errors.clone())
 }
 
 /// Return a summary of the last N builds (up to MAX_HISTORY).
@@ -233,7 +240,7 @@ pub async fn get_build_errors(
 pub async fn get_build_history(
     build_state: State<'_, BuildState>,
 ) -> Result<Vec<BuildRecord>, String> {
-    let bs = build_state.0.lock().await;
+    let bs = build_state.inner.lock().await;
     Ok(bs.history.iter().cloned().collect())
 }
 
@@ -255,33 +262,3 @@ pub async fn find_apk_path(
         .map(|p| p.to_string_lossy().into_owned()))
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-fn build_env_vars(
-    settings: &crate::models::settings::AppSettings,
-    gradle_root: &std::path::Path,
-) -> Vec<(String, String)> {
-    let mut env = Vec::new();
-    if let Some(java_home) = settings.java.home.as_deref() {
-        env.push(("JAVA_HOME".into(), java_home.into()));
-    }
-    if let Some(sdk) = settings.android.sdk_path.as_deref() {
-        env.push(("ANDROID_HOME".into(), sdk.into()));
-        env.push(("ANDROID_SDK_ROOT".into(), sdk.into()));
-    }
-    if let Some(jvm_args) = settings.build.gradle_jvm_args.as_deref() {
-        env.push(("GRADLE_OPTS".into(), jvm_args.into()));
-    }
-    // Ensure gradlew has executable permissions.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let gradlew = gradle_root.join("gradlew");
-        if let Ok(meta) = std::fs::metadata(&gradlew) {
-            let mut perms = meta.permissions();
-            perms.set_mode(perms.mode() | 0o755);
-            let _ = std::fs::set_permissions(&gradlew, perms);
-        }
-    }
-    env
-}

@@ -209,7 +209,7 @@ pub async fn start_logcat_stream(
     adb_bin: PathBuf,
     device_serial: Option<String>,
     logcat_state: LogcatState,
-    app_handle: tauri::AppHandle,
+    app_handle: Option<tauri::AppHandle>,
 ) {
     use tauri::Emitter;
 
@@ -328,8 +328,10 @@ pub async fn start_logcat_stream(
 
                 // Emit the filtered entries in chunks of MAX_BATCH_SIZE.
                 for chunk in to_emit.chunks(MAX_BATCH_SIZE) {
-                    if let Err(e) = app_handle.emit("logcat:entries", chunk) {
-                        warn!("Failed to emit logcat batch: {}", e);
+                    if let Some(ref handle) = app_handle {
+                        if let Err(e) = handle.emit("logcat:entries", chunk) {
+                            warn!("Failed to emit logcat batch: {}", e);
+                        }
                     }
                 }
             }
@@ -360,8 +362,10 @@ pub async fn start_logcat_stream(
                         to_emit
                     };
                     for chunk in to_emit.chunks(MAX_BATCH_SIZE) {
-                        if let Err(e) = app_handle.emit("logcat:entries", chunk) {
-                            warn!("Failed to emit final logcat batch: {}", e);
+                        if let Some(ref handle) = app_handle {
+                            if let Err(e) = handle.emit("logcat:entries", chunk) {
+                                warn!("Failed to emit final logcat batch: {}", e);
+                            }
                         }
                     }
                 }

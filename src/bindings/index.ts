@@ -43,6 +43,7 @@ export type { VariantList } from "./VariantList";
 
 // Settings (keep only what the frontend actively uses)
 export type { AppSettings } from "./AppSettings";
+export type { McpSettings } from "./McpSettings";
 
 // Projects
 export type { ProjectEntry } from "./ProjectEntry";

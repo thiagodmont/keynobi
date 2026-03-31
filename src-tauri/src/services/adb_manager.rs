@@ -1,6 +1,7 @@
 use crate::models::device::{AvailableSystemImage, AvdInfo, Device, DeviceConnectionState, DeviceDefinition, DeviceKind, SdkDownloadProgress, SystemImageInfo};
 use crate::models::settings::AppSettings;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::sync::Mutex;
@@ -920,11 +921,17 @@ impl DeviceStateInner {
     }
 }
 
-pub struct DeviceState(pub Mutex<DeviceStateInner>);
+pub struct DeviceState(pub Arc<Mutex<DeviceStateInner>>);
 
 impl DeviceState {
     pub fn new() -> Self {
-        DeviceState(Mutex::new(DeviceStateInner::new()))
+        DeviceState(Arc::new(Mutex::new(DeviceStateInner::new())))
+    }
+}
+
+impl Clone for DeviceState {
+    fn clone(&self) -> Self {
+        DeviceState(self.0.clone())
     }
 }
 

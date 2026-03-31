@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tokio::sync::Mutex;
@@ -45,11 +46,17 @@ impl ProcessManagerInner {
     }
 }
 
-pub struct ProcessManager(pub Mutex<ProcessManagerInner>);
+pub struct ProcessManager(pub Arc<Mutex<ProcessManagerInner>>);
 
 impl ProcessManager {
     pub fn new() -> Self {
-        ProcessManager(Mutex::new(ProcessManagerInner::new()))
+        ProcessManager(Arc::new(Mutex::new(ProcessManagerInner::new())))
+    }
+}
+
+impl Clone for ProcessManager {
+    fn clone(&self) -> Self {
+        ProcessManager(self.0.clone())
     }
 }
 

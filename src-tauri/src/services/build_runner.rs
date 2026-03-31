@@ -6,10 +6,14 @@ use crate::services::process_manager::{self, ProcessId, ProcessManager};
 use regex::Regex;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock};
 use tokio::sync::Mutex;
 
 /// Maximum number of build records kept in history (bounded collection).
 pub const MAX_HISTORY: usize = 10;
+
+/// Maximum number of raw build output lines retained for MCP `get_build_log`.
+pub const MAX_BUILD_LOG: usize = 5_000;
 
 // ── Regex patterns for parsing Gradle / Kotlin / Java / AAPT2 output ─────────
 //
@@ -55,6 +59,22 @@ const TASK_OUTCOME_PATTERN: &str = r"^> Task (:.+) (FAILED|UP-TO-DATE|SKIPPED|NO
 const BUILD_SUCCESS_PATTERN: &str = r"^BUILD SUCCESSFUL(?: in (.+))?$";
 const BUILD_FAILED_PATTERN: &str = r"^BUILD FAILED(?: in (.+))?$";
 
+// ── Compiled regexes (lazy-initialized once, reused for all builds) ───────────
+static KOTLIN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(KOTLIN_DIAG_PATTERN).unwrap());
+static JAVA_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(JAVA_DIAG_PATTERN).unwrap());
+static AAPT_FILE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(AAPT_FILE_PATTERN).unwrap());
+static AAPT_BARE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(AAPT_BARE_PATTERN).unwrap());
+static AGP_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(AGP_ERROR_PATTERN).unwrap());
+static GRADLE_FAIL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(GRADLE_FAILURE_PATTERN).unwrap());
+static WHAT_WENT_WRONG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(WHAT_WENT_WRONG_PATTERN).unwrap());
+static GENERIC_ERR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(GENERIC_ERROR_PATTERN).unwrap());
+static DOWNLOAD_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(DOWNLOAD_PATTERN).unwrap());
+static TASK_OUTCOME_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(TASK_OUTCOME_PATTERN).unwrap());
+static TASK_START_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(TASK_START_PATTERN).unwrap());
+static SUCCESS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(BUILD_SUCCESS_PATTERN).unwrap());
+static FAILED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(BUILD_FAILED_PATTERN).unwrap());
+static DURATION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"in (?:(\d+)m )?(\d+)(?:\.(\d+))?s").unwrap());
+
 pub struct BuildStateInner {
     /// Process ID of the currently running Gradle process, if any.
     pub current_build: Option<ProcessId>,
@@ -79,11 +99,34 @@ impl BuildStateInner {
         }
     }
 }
-pub struct BuildState(pub Mutex<BuildStateInner>);
+
+/// Synchronously-accessible ring-buffer of raw build output lines.
+///
+/// Uses a `std::sync::Mutex` (not tokio) so the `on_line` process callback can
+/// push lines without `await`. Capped at `MAX_BUILD_LOG` entries.
+pub type BuildLog = Arc<std::sync::Mutex<VecDeque<String>>>;
+
+pub struct BuildState {
+    pub inner: Arc<Mutex<BuildStateInner>>,
+    /// Raw build output log — accessible from both sync callbacks and async MCP tools.
+    pub build_log: BuildLog,
+}
 
 impl BuildState {
     pub fn new() -> Self {
-        BuildState(Mutex::new(BuildStateInner::new()))
+        BuildState {
+            inner: Arc::new(Mutex::new(BuildStateInner::new())),
+            build_log: Arc::new(std::sync::Mutex::new(VecDeque::new())),
+        }
+    }
+}
+
+impl Clone for BuildState {
+    fn clone(&self) -> Self {
+        BuildState {
+            inner: self.inner.clone(),
+            build_log: self.build_log.clone(),
+        }
     }
 }
 
@@ -93,29 +136,28 @@ impl Default for BuildState {
     }
 }
 
+pub fn push_build_log(build_log: &BuildLog, line: String) {
+    if let Ok(mut log) = build_log.lock() {
+        if log.len() >= MAX_BUILD_LOG {
+            log.pop_front();
+        }
+        log.push_back(line);
+    }
+}
+
+pub fn clear_build_log(build_log: &BuildLog) {
+    if let Ok(mut log) = build_log.lock() {
+        log.clear();
+    }
+}
+
 /// Parse a single raw line from Gradle / Kotlin / Java / AAPT2 compiler output.
 ///
 /// Returns a structured `BuildLine` that carries enough information for the
 /// frontend to display clickable file:line links and populate the Problems tab.
 pub fn parse_build_line(raw: &str) -> BuildLine {
-    // Compile patterns once per call. These are not on a hot-path; the
-    // bottleneck is I/O from the Gradle process.
-    let kotlin_re = Regex::new(KOTLIN_DIAG_PATTERN).expect("static regex");
-    let java_re = Regex::new(JAVA_DIAG_PATTERN).expect("static regex");
-    let aapt_file_re = Regex::new(AAPT_FILE_PATTERN).expect("static regex");
-    let aapt_bare_re = Regex::new(AAPT_BARE_PATTERN).expect("static regex");
-    let agp_re = Regex::new(AGP_ERROR_PATTERN).expect("static regex");
-    let gradle_fail_re = Regex::new(GRADLE_FAILURE_PATTERN).expect("static regex");
-    let what_went_wrong_re = Regex::new(WHAT_WENT_WRONG_PATTERN).expect("static regex");
-    let generic_err_re = Regex::new(GENERIC_ERROR_PATTERN).expect("static regex");
-    let download_re = Regex::new(DOWNLOAD_PATTERN).expect("static regex");
-    let task_outcome_re = Regex::new(TASK_OUTCOME_PATTERN).expect("static regex");
-    let task_start_re = Regex::new(TASK_START_PATTERN).expect("static regex");
-    let success_re = Regex::new(BUILD_SUCCESS_PATTERN).expect("static regex");
-    let failed_re = Regex::new(BUILD_FAILED_PATTERN).expect("static regex");
-
     // ── Kotlin compiler error / warning ──────────────────────────────────────
-    if let Some(caps) = kotlin_re.captures(raw) {
+    if let Some(caps) = KOTLIN_RE.captures(raw) {
         let is_warning = raw.starts_with("w:");
         return BuildLine {
             kind: if is_warning { BuildLineKind::Warning } else { BuildLineKind::Error },
@@ -127,7 +169,7 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
     }
 
     // ── Java compiler error / warning ─────────────────────────────────────────
-    if let Some(caps) = java_re.captures(raw) {
+    if let Some(caps) = JAVA_RE.captures(raw) {
         let is_warning = caps.get(3).map(|m| m.as_str()) == Some("warning");
         return BuildLine {
             kind: if is_warning { BuildLineKind::Warning } else { BuildLineKind::Error },
@@ -139,7 +181,7 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
     }
 
     // ── AAPT2 resource error with file location ───────────────────────────────
-    if let Some(caps) = aapt_file_re.captures(raw) {
+    if let Some(caps) = AAPT_FILE_RE.captures(raw) {
         return BuildLine {
             kind: BuildLineKind::Error,
             content: caps.get(4).map(|m| m.as_str().to_owned()).unwrap_or_default(),
@@ -150,7 +192,7 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
     }
 
     // ── AAPT2 bare error / warning (no file location) ────────────────────────
-    if let Some(caps) = aapt_bare_re.captures(raw) {
+    if let Some(caps) = AAPT_BARE_RE.captures(raw) {
         let is_warning = caps.get(1).map(|m| m.as_str()) == Some("warning");
         return BuildLine {
             kind: if is_warning { BuildLineKind::Warning } else { BuildLineKind::Error },
@@ -162,7 +204,7 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
     }
 
     // ── AGP resource error with file:line ─────────────────────────────────────
-    if let Some(caps) = agp_re.captures(raw) {
+    if let Some(caps) = AGP_RE.captures(raw) {
         return BuildLine {
             kind: BuildLineKind::Error,
             content: caps.get(4).map(|m| m.as_str().to_owned()).unwrap_or_default(),
@@ -173,7 +215,7 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
     }
 
     // ── Gradle FAILURE / dependency resolution errors ─────────────────────────
-    if gradle_fail_re.is_match(raw) {
+    if GRADLE_FAIL_RE.is_match(raw) {
         return BuildLine {
             kind: BuildLineKind::Error,
             content: raw.to_owned(),
@@ -184,7 +226,7 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
     }
 
     // ── "What went wrong" header ──────────────────────────────────────────────
-    if what_went_wrong_re.is_match(raw) {
+    if WHAT_WENT_WRONG_RE.is_match(raw) {
         return BuildLine {
             kind: BuildLineKind::Error,
             content: raw.to_owned(),
@@ -195,7 +237,7 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
     }
 
     // ── Gradle task outcome (check before task start — more specific) ─────────
-    if let Some(caps) = task_outcome_re.captures(raw) {
+    if let Some(caps) = TASK_OUTCOME_RE.captures(raw) {
         let task = caps.get(1).map(|m| m.as_str().to_owned()).unwrap_or_default();
         let outcome = caps.get(2).map(|m| m.as_str().to_owned()).unwrap_or_default();
         return BuildLine {
@@ -208,7 +250,7 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
     }
 
     // ── Gradle task start ─────────────────────────────────────────────────────
-    if let Some(caps) = task_start_re.captures(raw) {
+    if let Some(caps) = TASK_START_RE.captures(raw) {
         let task = caps.get(1).map(|m| m.as_str().to_owned()).unwrap_or_default();
         return BuildLine {
             kind: BuildLineKind::TaskStart,
@@ -220,7 +262,7 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
     }
 
     // ── BUILD SUCCESSFUL / BUILD FAILED ───────────────────────────────────────
-    if success_re.is_match(raw) || failed_re.is_match(raw) {
+    if SUCCESS_RE.is_match(raw) || FAILED_RE.is_match(raw) {
         return BuildLine {
             kind: BuildLineKind::Summary,
             content: raw.to_owned(),
@@ -231,7 +273,7 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
     }
 
     // ── Download / progress lines (show as info, not noise) ──────────────────
-    if download_re.is_match(raw) {
+    if DOWNLOAD_RE.is_match(raw) {
         return BuildLine {
             kind: BuildLineKind::Info,
             content: raw.to_owned(),
@@ -242,7 +284,7 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
     }
 
     // ── Generic error keyword (catch-all) ─────────────────────────────────────
-    if let Some(caps) = generic_err_re.captures(raw) {
+    if let Some(caps) = GENERIC_ERR_RE.captures(raw) {
         return BuildLine {
             kind: BuildLineKind::Error,
             content: caps.get(1).map(|m| m.as_str().to_owned()).unwrap_or_else(|| raw.to_owned()),
@@ -260,9 +302,7 @@ pub fn parse_build_line(raw: &str) -> BuildLine {
 ///
 /// Returns duration in milliseconds, or 0 if unparseable.
 pub fn parse_build_duration(summary_line: &str) -> u64 {
-    // e.g. "BUILD SUCCESSFUL in 1m 30s" or "BUILD SUCCESSFUL in 45s"
-    let re = Regex::new(r"in (?:(\d+)m )?(\d+)(?:\.(\d+))?s").expect("static regex");
-    if let Some(caps) = re.captures(summary_line) {
+    if let Some(caps) = DURATION_RE.captures(summary_line) {
         let mins: u64 = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
         let secs: u64 = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
         let millis_str = caps.get(3).map(|m| m.as_str()).unwrap_or("0");
@@ -394,11 +434,11 @@ pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf
 
 /// Cancel the currently running build.
 pub async fn cancel_build(
-    build_state: &Mutex<BuildStateInner>,
+    build_state: &BuildState,
     process_manager: &ProcessManager,
 ) {
     let pid = {
-        let mut bs = build_state.lock().await;
+        let mut bs = build_state.inner.lock().await;
         let pid = bs.current_build.take();
         bs.status = BuildStatus::Cancelled;
         pid
@@ -410,13 +450,13 @@ pub async fn cancel_build(
 
 /// Record the completed build result and push it to history.
 pub async fn record_build_result(
-    build_state: &Mutex<BuildStateInner>,
+    build_state: &BuildState,
     task: String,
     started_at: String,
     result: BuildResult,
     errors: Vec<BuildError>,
 ) {
-    let mut bs = build_state.lock().await;
+    let mut bs = build_state.inner.lock().await;
     bs.status = if result.success {
         BuildStatus::Success(result.clone())
     } else {
@@ -438,6 +478,37 @@ pub async fn record_build_result(
     while bs.history.len() > MAX_HISTORY {
         bs.history.pop_front();
     }
+}
+
+/// Build environment variables for a Gradle process, and ensure `gradlew` is executable.
+pub fn build_env_vars(
+    settings: &crate::models::settings::AppSettings,
+    gradle_root: &Path,
+) -> Vec<(String, String)> {
+    let mut env = Vec::new();
+    if let Some(java_home) = settings.java.home.as_deref() {
+        env.push(("JAVA_HOME".into(), java_home.into()));
+    }
+    if let Some(sdk) = settings.android.sdk_path.as_deref() {
+        env.push(("ANDROID_HOME".into(), sdk.into()));
+        env.push(("ANDROID_SDK_ROOT".into(), sdk.into()));
+    }
+    if let Some(jvm_args) = settings.build.gradle_jvm_args.as_deref() {
+        env.push(("GRADLE_OPTS".into(), jvm_args.into()));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let gradlew = gradle_root.join("gradlew");
+        if let Ok(meta) = std::fs::metadata(&gradlew) {
+            let mut perms = meta.permissions();
+            perms.set_mode(perms.mode() | 0o755);
+            let _ = std::fs::set_permissions(&gradlew, perms);
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = gradle_root;
+    env
 }
 
 #[cfg(test)]

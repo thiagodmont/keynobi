@@ -38,6 +38,11 @@ futures-util = "0.3"
 libc = "0.2"
 # Regex for build output parsing
 regex = "1"
+# Official MCP SDK — provides JSON-RPC 2.0 framing, stdio transport, tool macros
+rmcp = { version = "1.3.0", features = ["server", "macros", "transport-io", "schemars"] }
+# JSON Schema generation for MCP tool input schemas
+schemars = "1.2.1"
+base64 = "0.22.1"
 
 [dev-dependencies]
 # Atomic writes in tests

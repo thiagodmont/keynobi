@@ -14,6 +14,12 @@ import {
   type CheckStatus,
   type HealthCheck,
 } from "@/stores/health.store";
+import { mcpState } from "@/stores/mcp.store";
+import {
+  getMcpSetupStatus,
+  configureMcpInClaude,
+  type McpSetupStatus,
+} from "@/lib/tauri-api";
 
 // ── Panel visibility signal (module-level, like SettingsPanel) ────────────────
 
@@ -186,6 +192,340 @@ function CategorySection(props: {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+
+// ── MCP Setup Section ─────────────────────────────────────────────────────────
+
+function McpSetupSection(): JSX.Element {
+  const [status, setStatus] = createSignal<McpSetupStatus | null>(null);
+  const [loading, setLoading] = createSignal(true);
+  const [configuring, setConfiguring] = createSignal(false);
+  const [configResult, setConfigResult] = createSignal<{ ok: boolean; msg: string } | null>(null);
+
+  onMount(async () => {
+    try {
+      const s = await getMcpSetupStatus();
+      setStatus(s);
+    } catch {
+      // Non-fatal: show fallback UI
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  const handleConfigure = async () => {
+    setConfiguring(true);
+    setConfigResult(null);
+    try {
+      const msg = await configureMcpInClaude();
+      setConfigResult({ ok: true, msg });
+      // Refresh status after successful configuration
+      const s = await getMcpSetupStatus();
+      setStatus(s);
+    } catch (e: unknown) {
+      setConfigResult({ ok: false, msg: String(e) });
+    } finally {
+      setConfiguring(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    const s = status();
+    if (!s) return;
+    const cmd = `claude mcp add android-companion --command "${s.setupCommand}"`;
+    await navigator.clipboard.writeText(cmd).catch(() => {});
+  };
+
+  const runningDot = (color: string) => (
+    <span
+      style={{
+        width: "8px",
+        height: "8px",
+        "border-radius": "50%",
+        background: color,
+        "flex-shrink": "0",
+        display: "inline-block",
+      }}
+    />
+  );
+
+  return (
+    <div
+      style={{
+        "margin-top": "8px",
+        "margin-bottom": "16px",
+        padding: "14px",
+        background: "var(--bg-tertiary)",
+        "border-radius": "6px",
+        border: "1px solid var(--border)",
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "space-between",
+          "margin-bottom": "10px",
+        }}
+      >
+        <div
+          style={{
+            "font-size": "10px",
+            "font-weight": "600",
+            "letter-spacing": "0.08em",
+            "text-transform": "uppercase",
+            color: "var(--text-muted)",
+          }}
+        >
+          Claude Code Integration (MCP)
+        </div>
+
+        {/* Live server connection badge */}
+        <Show when={mcpState.running}>
+          <div
+            style={{
+              display: "flex",
+              "align-items": "center",
+              gap: "5px",
+              background: "rgba(74,222,128,0.12)",
+              border: "1px solid rgba(74,222,128,0.3)",
+              "border-radius": "10px",
+              padding: "2px 8px",
+            }}
+          >
+            {runningDot("var(--success)")}
+            <span style={{ "font-size": "11px", color: "var(--success)" }}>
+              {mcpState.clientName ? mcpState.clientName : "Connected"}
+            </span>
+          </div>
+        </Show>
+      </div>
+
+      {/* Loading state */}
+      <Show when={loading()}>
+        <div style={{ "font-size": "12px", color: "var(--text-muted)", padding: "4px 0" }}>
+          Checking Claude Code installation…
+        </div>
+      </Show>
+
+      {/* Loaded state */}
+      <Show when={!loading()}>
+        {/* State 1: Claude not found */}
+        <Show when={status() && !status()!.claudeFound}>
+          <div
+            style={{
+              display: "flex",
+              "align-items": "flex-start",
+              gap: "10px",
+              padding: "10px",
+              background: "rgba(251,191,36,0.08)",
+              border: "1px solid rgba(251,191,36,0.25)",
+              "border-radius": "5px",
+              "margin-bottom": "10px",
+            }}
+          >
+            <span style={{ "font-size": "14px" }}>⚠</span>
+            <div>
+              <div style={{ "font-size": "12px", color: "var(--text-primary)", "font-weight": "500", "margin-bottom": "3px" }}>
+                Claude Code CLI not found
+              </div>
+              <div style={{ "font-size": "11px", color: "var(--text-secondary)", "line-height": "1.5" }}>
+                Install Claude Code to enable one-click setup. The{" "}
+                <code style={{ "font-family": "var(--font-mono)" }}>claude</code> CLI must be accessible.
+              </div>
+            </div>
+          </div>
+          <a
+            href="https://claude.ai/download"
+            target="_blank"
+            rel="noopener"
+            style={{
+              display: "inline-flex",
+              "align-items": "center",
+              gap: "6px",
+              padding: "6px 14px",
+              background: "var(--accent)",
+              color: "#fff",
+              "border-radius": "5px",
+              "font-size": "12px",
+              "font-weight": "500",
+              "text-decoration": "none",
+              cursor: "pointer",
+              "margin-bottom": "12px",
+            }}
+          >
+            Download Claude Code →
+          </a>
+        </Show>
+
+        {/* State 2: Already configured */}
+        <Show when={status()?.isConfigured}>
+          <div
+            style={{
+              display: "flex",
+              "align-items": "center",
+              gap: "8px",
+              "margin-bottom": "10px",
+            }}
+          >
+            {runningDot("var(--success)")}
+            <span style={{ "font-size": "13px", color: "var(--text-primary)", "font-weight": "500" }}>
+              Registered in Claude Code
+            </span>
+          </div>
+          <Show when={status()?.configuredCommand}>
+            <div style={{ "font-size": "11px", color: "var(--text-secondary)", "margin-bottom": "8px" }}>
+              Currently configured command:
+            </div>
+            <code
+              style={{
+                display: "block",
+                "font-family": "var(--font-mono)",
+                "font-size": "11px",
+                background: "var(--bg-secondary)",
+                border: "1px solid var(--border)",
+                "border-radius": "4px",
+                padding: "8px 10px",
+                color: "var(--text-primary)",
+                "overflow-x": "auto",
+                "white-space": "nowrap",
+                "margin-bottom": "10px",
+              }}
+            >
+              {status()!.configuredCommand}
+            </code>
+          </Show>
+          {/* Reconfigure button (e.g. if the app was moved) */}
+          <button
+            onClick={handleConfigure}
+            disabled={configuring()}
+            style={{
+              padding: "5px 12px",
+              background: "transparent",
+              border: "1px solid var(--border)",
+              "border-radius": "4px",
+              color: "var(--text-secondary)",
+              cursor: configuring() ? "not-allowed" : "pointer",
+              "font-size": "11px",
+              opacity: configuring() ? "0.6" : "1",
+            }}
+          >
+            {configuring() ? "Updating…" : "Reconfigure (if app was moved)"}
+          </button>
+        </Show>
+
+        {/* State 3: Claude found but not configured */}
+        <Show when={status()?.claudeFound && !status()?.isConfigured}>
+          <div style={{ "font-size": "12px", color: "var(--text-secondary)", "margin-bottom": "12px", "line-height": "1.5" }}>
+            Claude Code is installed but this app is not registered yet. Click below to configure it automatically.
+          </div>
+
+          {/* One-click configure button */}
+          <button
+            onClick={handleConfigure}
+            disabled={configuring()}
+            style={{
+              display: "inline-flex",
+              "align-items": "center",
+              gap: "7px",
+              padding: "8px 16px",
+              background: configuring() ? "var(--bg-active)" : "var(--accent)",
+              color: "#fff",
+              border: "none",
+              "border-radius": "5px",
+              cursor: configuring() ? "not-allowed" : "pointer",
+              "font-size": "13px",
+              "font-weight": "500",
+              opacity: configuring() ? "0.7" : "1",
+              transition: "opacity 0.15s",
+              "margin-bottom": "12px",
+            }}
+          >
+            <Show when={configuring()}>
+              <span style={{ "font-size": "12px" }}>⟳</span>
+            </Show>
+            {configuring() ? "Configuring…" : "Configure in Claude Code"}
+          </button>
+        </Show>
+
+        {/* Fallback: no status loaded (first-run or error) — always show manual command */}
+        <Show when={!status()}>
+          <div style={{ "font-size": "12px", color: "var(--text-secondary)", "margin-bottom": "8px" }}>
+            Run this command in your terminal to register the MCP server:
+          </div>
+        </Show>
+
+        {/* Result feedback */}
+        <Show when={configResult()}>
+          <div
+            style={{
+              padding: "8px 12px",
+              "border-radius": "4px",
+              background: configResult()!.ok ? "rgba(74,222,128,0.1)" : "rgba(248,113,113,0.1)",
+              border: `1px solid ${configResult()!.ok ? "rgba(74,222,128,0.3)" : "rgba(248,113,113,0.3)"}`,
+              "font-size": "12px",
+              color: configResult()!.ok ? "var(--success)" : "var(--error)",
+              "margin-bottom": "10px",
+              "line-height": "1.5",
+              "word-break": "break-word",
+            }}
+          >
+            {configResult()!.ok ? "✓ " : "✗ "}
+            {configResult()!.msg}
+          </div>
+        </Show>
+
+        {/* Always show the manual command as a copy-able fallback */}
+        <div style={{ "margin-top": status()?.isConfigured ? "14px" : "4px", "border-top": status()?.isConfigured ? "1px solid var(--border)" : "none", "padding-top": status()?.isConfigured ? "12px" : "0" }}>
+          <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between", "margin-bottom": "6px" }}>
+            <span style={{ "font-size": "11px", color: "var(--text-muted)" }}>
+              Manual setup command:
+            </span>
+            <button
+              onClick={handleCopy}
+              style={{
+                background: "none",
+                border: "1px solid var(--border)",
+                color: "var(--text-muted)",
+                "border-radius": "3px",
+                padding: "1px 8px",
+                "font-size": "10px",
+                cursor: "pointer",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-primary)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+            >
+              Copy
+            </button>
+          </div>
+          <code
+            style={{
+              display: "block",
+              "font-family": "var(--font-mono)",
+              "font-size": "11px",
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--border)",
+              "border-radius": "4px",
+              padding: "8px 10px",
+              color: "var(--text-primary)",
+              "overflow-x": "auto",
+              "white-space": "nowrap",
+            }}
+          >
+            {status()
+              ? `claude mcp add android-companion --command "${status()!.setupCommand}"`
+              : `claude mcp add android-companion --command "/Applications/AndroidDevCompanion.app/Contents/MacOS/android-dev-companion --mcp"`}
+          </code>
+          <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-top": "6px" }}>
+            Optionally append{" "}
+            <code style={{ "font-family": "var(--font-mono)" }}>--project /path/to/project</code>
+            {" "}to scope to a specific project.
+          </div>
+        </div>
+      </Show>
+    </div>
+  );
+}
 
 export function HealthPanel(): JSX.Element {
   onMount(() => {
@@ -423,6 +763,9 @@ export function HealthPanel(): JSX.Element {
               />
             )}
           </For>
+
+          {/* MCP Server section */}
+          <McpSetupSection />
 
           {/* Footer hint */}
           <div

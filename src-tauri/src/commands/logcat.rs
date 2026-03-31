@@ -29,7 +29,7 @@ pub async fn start_logcat(
 
     let state_clone = logcat_state.inner().clone();
     tokio::spawn(async move {
-        logcat::start_logcat_stream(adb_bin, device_serial, state_clone, app_handle).await;
+        logcat::start_logcat_stream(adb_bin, device_serial, state_clone, Some(app_handle)).await;
     });
 
     Ok(())

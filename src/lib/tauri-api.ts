@@ -125,6 +125,12 @@ export interface AppSettings {
   logcat: {
     autoStart: boolean;
   };
+  mcp: {
+    autoStart: boolean;
+    buildTimeoutSec: number;
+    logcatDefaultCount: number;
+    buildLogDefaultLines: number;
+  };
 }
 
 export async function getSettings(): Promise<AppSettings> {
@@ -458,7 +464,31 @@ export function listenLogcatCleared(cb: () => void): Promise<UnlistenFn> {
 
 // ── MCP Server ─────────────────────────────────────────────────────────────────
 
+export interface McpSetupStatus {
+  exePath: string;
+  setupCommand: string;
+  claudeFound: boolean;
+  isConfigured: boolean;
+  configuredCommand: string | null;
+}
+
 /** Start the MCP server on stdio. For use in MCP mode only. */
 export async function startMcpServer(): Promise<void> {
   return invoke<void>("start_mcp_server");
+}
+
+/**
+ * Query the real binary path, Claude CLI presence, and MCP registration status.
+ * Used to show the correct setup command and button state in the Health panel.
+ */
+export async function getMcpSetupStatus(): Promise<McpSetupStatus> {
+  return invoke<McpSetupStatus>("get_mcp_setup_status");
+}
+
+/**
+ * Run `claude mcp add android-companion --command "<real_path> --mcp"`.
+ * Returns a success message or throws with an error description.
+ */
+export async function configureMcpInClaude(): Promise<string> {
+  return invoke<string>("configure_mcp_in_claude");
 }

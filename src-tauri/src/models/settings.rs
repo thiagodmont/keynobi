@@ -60,6 +60,7 @@ pub struct AppSettings {
     pub advanced: AdvancedSettings,
     pub build: BuildSettings,
     pub logcat: LogcatSettings,
+    pub mcp: McpSettings,
     /// Registry of recently-opened projects.  Capped at 20 entries; oldest
     /// non-pinned entry is evicted when the cap is exceeded.
     pub recent_projects: Vec<ProjectEntry>,
@@ -171,6 +172,27 @@ pub struct LogcatSettings {
     pub auto_start: bool,
 }
 
+/// Settings for the MCP (Model Context Protocol) server integration.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct McpSettings {
+    /// Automatically start the MCP stdio server when the app launches.
+    ///
+    /// When enabled, Claude Code can connect immediately after the app opens
+    /// without needing to trigger "Start MCP Server" from the command palette.
+    pub auto_start: bool,
+    /// Maximum seconds to wait for a Gradle build via the `run_gradle_task`
+    /// MCP tool before cancelling. Increase for very large projects.
+    pub build_timeout_sec: u32,
+    /// Default number of logcat entries returned by `get_logcat_entries`
+    /// when the caller does not specify a `count` argument.
+    pub logcat_default_count: u32,
+    /// Default number of raw build log lines returned by `get_build_log`
+    /// when the caller does not specify a `lines` argument.
+    pub build_log_default_lines: u32,
+}
+
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
 impl Default for AppSettings {
@@ -186,6 +208,7 @@ impl Default for AppSettings {
             advanced: AdvancedSettings::default(),
             build: BuildSettings::default(),
             logcat: LogcatSettings::default(),
+            mcp: McpSettings::default(),
             recent_projects: Vec::new(),
             last_active_project: None,
         }
@@ -301,6 +324,17 @@ impl Default for BuildSettings {
 impl Default for LogcatSettings {
     fn default() -> Self {
         Self { auto_start: true }
+    }
+}
+
+impl Default for McpSettings {
+    fn default() -> Self {
+        Self {
+            auto_start: false,
+            build_timeout_sec: 600,
+            logcat_default_count: 200,
+            build_log_default_lines: 200,
+        }
     }
 }
 

@@ -413,8 +413,63 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
       <Show when={m("Auto-start Logcat", "Automatically start logcat when a device connects")}>
         <SettingRow label="Auto-start on Connect" description="Automatically start logcat streaming when a device connects">
           <SettingToggle
-            checked={(settingsState as any).logcat?.autoStart ?? true}
-            onChange={(v) => updateSetting("logcat" as any, "autoStart" as any, v)}
+            checked={settingsState.logcat.autoStart}
+            onChange={(v) => updateSetting("logcat", "autoStart", v)}
+          />
+        </SettingRow>
+      </Show>
+
+      <SectionHeader title="Claude Code (MCP)" />
+      <Show when={m("MCP Auto-start", "Start MCP server when the app launches")}>
+        <SettingRow
+          label="Auto-start MCP Server"
+          description="Automatically start the MCP stdio server when the app opens. Lets Claude Code connect without a manual trigger."
+        >
+          <SettingToggle
+            checked={settingsState.mcp.autoStart}
+            onChange={(v) => updateSetting("mcp", "autoStart", v)}
+          />
+        </SettingRow>
+      </Show>
+      <Show when={m("MCP Build Timeout", "Maximum seconds to wait for a Gradle build via MCP")}>
+        <SettingRow
+          label="Build Timeout (seconds)"
+          description="Maximum time to wait for a Gradle build triggered via the run_gradle_task MCP tool. Increase for large projects."
+        >
+          <SettingNumberInput
+            value={settingsState.mcp.buildTimeoutSec}
+            min={60}
+            max={3600}
+            step={60}
+            onChange={(v) => updateSetting("mcp", "buildTimeoutSec", v)}
+          />
+        </SettingRow>
+      </Show>
+      <Show when={m("MCP Logcat Count", "Default logcat entries returned by get_logcat_entries")}>
+        <SettingRow
+          label="Default Logcat Count"
+          description="Default number of logcat entries returned by get_logcat_entries when the AI agent does not specify a count."
+        >
+          <SettingNumberInput
+            value={settingsState.mcp.logcatDefaultCount}
+            min={50}
+            max={5000}
+            step={50}
+            onChange={(v) => updateSetting("mcp", "logcatDefaultCount", v)}
+          />
+        </SettingRow>
+      </Show>
+      <Show when={m("MCP Build Log Lines", "Default build log lines returned by get_build_log")}>
+        <SettingRow
+          label="Default Build Log Lines"
+          description="Default number of raw build output lines returned by get_build_log when the AI agent does not specify a count."
+        >
+          <SettingNumberInput
+            value={settingsState.mcp.buildLogDefaultLines}
+            min={50}
+            max={2000}
+            step={50}
+            onChange={(v) => updateSetting("mcp", "buildLogDefaultLines", v)}
           />
         </SettingRow>
       </Show>

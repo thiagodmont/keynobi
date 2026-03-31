@@ -320,36 +320,104 @@ Click **Refresh** to re-run all checks.
 ## 10. Claude Code Integration
 
 Android Dev Companion exposes an **MCP server** that Claude Code can connect to. This lets Claude Code:
-- Trigger builds and read errors
-- Read logcat entries and crash logs
-- Manage devices and install APKs
-- Query build variants
+- Trigger builds and read structured errors
+- Read logcat output and crash logs
+- Manage devices, install APKs, and launch apps
+- List and switch build variants
+- Run health checks and query project info
 
-### Setup (coming in Phase 4)
+### Setup
+
+**Option A — Headless mode (recommended for Claude Code)**
+
+The companion binary can run as a headless MCP server with no GUI window:
 
 ```bash
-claude mcp add android-companion --command "/path/to/android-dev-companion --mcp"
+claude mcp add android-companion --command "/Applications/AndroidDevCompanion.app/Contents/MacOS/android-dev-companion --mcp"
 ```
+
+To specify a project path:
+
+```bash
+claude mcp add android-companion --command "/path/to/android-dev-companion --mcp --project /path/to/MyAndroidProject"
+```
+
+**Option B — GUI mode**
+
+1. Open the companion app and load your project
+2. Open the command palette (Cmd+Shift+P) and run `Start MCP Server (for Claude Code)`
+3. The MCP indicator in the status bar turns blue
+4. Add to Claude Code using the setup command shown in the Health panel (Cmd+Shift+H)
 
 ### Available MCP Tools
 
-Once connected, Claude Code can use:
+| Tool | Description |
+|------|-------------|
+| `run_gradle_task` | Run a Gradle task (e.g. `assembleDebug`), returns result + structured errors |
+| `get_build_status` | Current build status with duration and error counts |
+| `get_build_errors` | Structured compiler errors with file:line locations (JSON) |
+| `get_build_log` | Raw build output lines (last N lines) |
+| `cancel_build` | Cancel a running build |
+| `list_build_variants` | List variants and show the active one (JSON) |
+| `set_active_variant` | Switch to a different build variant |
+| `find_apk_path` | Find the output APK path after a build |
+| `run_tests` | Run unit or connected tests |
+| `start_logcat` | Start logcat streaming (required in headless mode) |
+| `stop_logcat` | Stop the logcat stream |
+| `get_logcat_entries` | Recent logcat entries with level/tag/text/package filter (JSON) |
+| `get_crash_logs` | FATAL EXCEPTION, ANR, and native crash entries (JSON) |
+| `clear_logcat` | Clear the in-memory logcat buffer |
+| `get_logcat_stats` | Logcat statistics (counts by level, crashes, packages) |
+| `list_devices` | Connected ADB devices — always queries ADB fresh (JSON) |
+| `refresh_devices` | Force-refresh device list from ADB |
+| `screenshot` | Capture a screenshot — returns inline image |
+| `get_device_info` | SDK level, model, screen size, battery |
+| `dump_app_info` | App version, install path, activities |
+| `get_memory_info` | PSS, heap, native, graphics memory breakdown |
+| `install_apk` | Install an APK on a device (path-validated) |
+| `launch_app` | Launch an app with `am start` |
+| `stop_app` | Force-stop an app |
+| `list_avds` | List configured Android Virtual Devices (JSON) |
+| `launch_avd` | Start an emulator |
+| `stop_avd` | Stop a running emulator |
+| `get_project_info` | Project name, path, and Gradle root |
+| `run_health_check` | Java, SDK, ADB, Gradle wrapper status (JSON) |
 
-- `run_gradle_task` — trigger any Gradle task
-- `get_build_status` / `get_build_errors` — check build results
-- `get_logcat_entries` — read recent device logs
-- `get_crash_logs` — get recent crash stack traces
-- `list_devices` — see connected devices
-- `install_apk` / `launch_app` — deploy and run
-- `list_build_variants` / `set_active_variant`
+### MCP Prompts
+
+Three built-in prompts wire multiple tools together:
+
+| Prompt | Description |
+|--------|-------------|
+| `diagnose-crash` | Fetches crash logs, memory, and app info for root-cause analysis |
+| `full-deploy` | Builds, finds APK, installs, and launches in one workflow |
+| `build-and-fix` | Runs build and explains each error with suggested fixes |
+
+### MCP Resources
+
+The server exposes project files as readable resources:
+
+- `android://manifest` — AndroidManifest.xml
+- `android://app-build-gradle` — app/build.gradle.kts
+- `android://build-gradle` — root build.gradle.kts
+- `android://gradle-settings` — settings.gradle.kts
+- `android://project-info` — project name and path
 
 ### Workflow Example
 
-1. Write code in Android Studio
-2. Ask Claude Code: *"Build the app and show me any errors"*
+1. Ask Claude Code: *"Build the app and show me any errors"*
+2. Claude calls `get_project_info()` to verify the project is open
 3. Claude calls `run_gradle_task("assembleDebug")`
-4. Build panel shows live output
-5. Claude calls `get_build_errors()` and explains the issues
-6. Fix in Android Studio
-7. Ask Claude: *"Run it on the connected emulator"*
-8. Claude calls `run_gradle_task`, `install_apk`, `launch_app`
+4. Claude calls `get_build_errors()` and explains the issues
+5. You fix in your editor
+6. Ask Claude: *"Run it on the connected emulator"*
+7. Claude calls `list_devices()` to pick a device, then `install_apk()` and `launch_app()`
+
+### MCP Status Indicator
+
+The status bar shows an **MCP pill** that:
+- Is grey when the server is not started
+- Turns blue when the MCP server is running (stdio transport)
+- Click to start the server (if not running) or copy the setup command
+
+The **Health panel** (Cmd+Shift+H) shows the MCP server status and the exact `claude mcp add` command to run.

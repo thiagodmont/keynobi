@@ -53,6 +53,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   logcat: {
     autoStart: true,
   },
+  mcp: {
+    autoStart: false,
+    buildTimeoutSec: 600,
+    logcatDefaultCount: 200,
+    buildLogDefaultLines: 200,
+  },
 };
 
 const [settingsState, setSettingsState] = createStore<AppSettings>(
