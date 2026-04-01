@@ -1,6 +1,4 @@
-use crate::models::logcat::{LogcatLevel, ProcessedEntry, LogcatKind, EntryCategory};
-
-// ── Public types ──────────────────────────────────────────────────────────────
+use crate::models::logcat::ProcessedEntry;
 
 #[derive(Debug, serde::Serialize)]
 pub struct StackFrame {
@@ -28,8 +26,6 @@ pub struct CausedBy {
     pub frames: Vec<StackFrame>,
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
-
 /// Find and parse a crash from a slice of logcat entries.
 /// If `crash_group_id` is given, returns that group.
 /// Otherwise returns the latest group for `package` (or latest overall).
@@ -54,25 +50,21 @@ pub fn find_crash(
             return None;
         }
         gid
+    } else if let Some(pkg) = package {
+        let pkg_lower = pkg.to_lowercase();
+        *groups
+            .keys()
+            .filter(|gid| {
+                groups[*gid].iter().any(|e| {
+                    e.package
+                        .as_deref()
+                        .map(|p| p.to_lowercase().contains(&pkg_lower))
+                        .unwrap_or(false)
+                })
+            })
+            .max()?
     } else {
-        let mut candidates: Vec<u64> = groups.keys().copied().collect();
-        candidates.sort_unstable();
-        if let Some(pkg) = package {
-            let pkg_lower = pkg.to_lowercase();
-            candidates
-                .into_iter()
-                .rev()
-                .find(|gid| {
-                    groups[gid].iter().any(|e| {
-                        e.package
-                            .as_deref()
-                            .map(|p| p.to_lowercase().contains(&pkg_lower))
-                            .unwrap_or(false)
-                    })
-                })?
-        } else {
-            *candidates.last()?
-        }
+        *groups.keys().max()?
     };
 
     let group = &groups[&target_gid];
@@ -92,8 +84,6 @@ pub fn find_crash(
         raw_line_count: group.len(),
     })
 }
-
-// ── Parsing helpers ────────────────────────────────────────────────────────────
 
 /// Returns (exception_type, message, frames, caused_by)
 fn parse_crash_lines(
@@ -212,11 +202,10 @@ fn parse_location(loc: &str) -> (Option<String>, Option<u32>) {
     }
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::logcat::{LogcatLevel, LogcatKind, EntryCategory};
 
     fn make_entry(id: u64, msg: &str, gid: Option<u64>, pkg: Option<&str>) -> ProcessedEntry {
         ProcessedEntry {

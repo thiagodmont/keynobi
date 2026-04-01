@@ -432,19 +432,24 @@ pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf
     apks.into_iter().next().cloned()
 }
 
-/// Cancel the currently running build.
+/// Cancel the currently running build. Returns `true` if a build was running, `false` otherwise.
 pub async fn cancel_build(
     build_state: &BuildState,
     process_manager: &ProcessManager,
-) {
+) -> bool {
     let pid = {
         let mut bs = build_state.inner.lock().await;
         let pid = bs.current_build.take();
-        bs.status = BuildStatus::Cancelled;
+        if pid.is_some() {
+            bs.status = BuildStatus::Cancelled;
+        }
         pid
     };
     if let Some(id) = pid {
         process_manager::cancel(&process_manager.0, id).await;
+        true
+    } else {
+        false
     }
 }
 
@@ -700,5 +705,89 @@ mod tests {
     #[test]
     fn returns_zero_for_no_match() {
         assert_eq!(parse_build_duration("BUILD SUCCESSFUL"), 0);
+    }
+
+    // ── cancel_build ──────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn cancel_build_returns_false_when_idle() {
+        let state = BuildState::new();
+        let pm = ProcessManager::new();
+        let was_running = cancel_build(&state, &pm).await;
+        assert!(!was_running, "cancel_build should return false when no build is running");
+    }
+
+    #[tokio::test]
+    async fn cancel_build_does_not_change_status_when_idle() {
+        let state = BuildState::new();
+        let pm = ProcessManager::new();
+        cancel_build(&state, &pm).await;
+        let inner = state.inner.lock().await;
+        assert!(
+            matches!(inner.status, BuildStatus::Idle),
+            "status must remain Idle when there was no build to cancel"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_build_returns_true_when_build_was_running() {
+        let state = BuildState::new();
+        let pm = ProcessManager::new();
+
+        // Simulate a running build by injecting a fake PID and Running status.
+        {
+            let mut inner = state.inner.lock().await;
+            inner.current_build = Some(99999);
+            inner.status = BuildStatus::Running {
+                task: "assembleDebug".into(),
+                started_at: "2024-01-01T00:00:00Z".into(),
+            };
+        }
+
+        let was_running = cancel_build(&state, &pm).await;
+        assert!(was_running, "cancel_build should return true when a build was running");
+    }
+
+    #[tokio::test]
+    async fn cancel_build_sets_cancelled_status_when_build_was_running() {
+        let state = BuildState::new();
+        let pm = ProcessManager::new();
+
+        {
+            let mut inner = state.inner.lock().await;
+            inner.current_build = Some(99999);
+            inner.status = BuildStatus::Running {
+                task: "assembleDebug".into(),
+                started_at: "2024-01-01T00:00:00Z".into(),
+            };
+        }
+
+        cancel_build(&state, &pm).await;
+
+        let inner = state.inner.lock().await;
+        assert!(
+            matches!(inner.status, BuildStatus::Cancelled),
+            "status must be Cancelled after cancelling a running build"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_build_clears_current_build_pid() {
+        let state = BuildState::new();
+        let pm = ProcessManager::new();
+
+        {
+            let mut inner = state.inner.lock().await;
+            inner.current_build = Some(99999);
+            inner.status = BuildStatus::Running {
+                task: "assembleDebug".into(),
+                started_at: "2024-01-01T00:00:00Z".into(),
+            };
+        }
+
+        cancel_build(&state, &pm).await;
+
+        let inner = state.inner.lock().await;
+        assert!(inner.current_build.is_none(), "current_build PID must be cleared after cancel");
     }
 }

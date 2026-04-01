@@ -493,6 +493,35 @@ export async function configureMcpInClaude(): Promise<string> {
   return invoke<string>("configure_mcp_in_claude");
 }
 
+export interface McpActivityEntry {
+  timestamp: string;
+  kind: string;
+  name: string;
+  durationMs: number | null;
+  status: string;
+  summary: string | null;
+}
+
+export interface McpServerStatus {
+  alive: boolean;
+  pid: number | null;
+}
+
+/** Return the last `limit` activity log entries (default 200). */
+export async function getMcpActivity(limit?: number): Promise<McpActivityEntry[]> {
+  return invoke<McpActivityEntry[]>("get_mcp_activity", { limit: limit ?? null });
+}
+
+/** Check whether a headless MCP server process is currently running. */
+export async function getMcpServerStatus(): Promise<McpServerStatus> {
+  return invoke<McpServerStatus>("get_mcp_server_status");
+}
+
+/** Truncate the MCP activity log. */
+export async function clearMcpActivity(): Promise<void> {
+  return invoke<void>("clear_mcp_activity");
+}
+
 // ── Android Studio integration ────────────────────────────────────────────────
 
 /**

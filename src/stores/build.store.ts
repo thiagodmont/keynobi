@@ -1,5 +1,5 @@
 import { createStore, produce } from "solid-js/store";
-import { createMemo } from "solid-js";
+import { createMemo, createSignal } from "solid-js";
 import type { BuildError, BuildRecord, BuildLine, LogEntry } from "@/bindings";
 import { createLogStore, type LogStore } from "@/stores/log.store";
 
@@ -17,6 +17,23 @@ export interface BuildStoreState {
   warnings: BuildError[];
   history: BuildRecord[];
   deployPhase: DeployPhase;
+}
+
+// ── Tick (1-second reactive heartbeat while a build is running) ───────────────
+
+let _tickHandle: ReturnType<typeof setInterval> | null = null;
+const [_tick, _setTick] = createSignal(0);
+
+function _startTick(): void {
+  _stopTick();
+  _tickHandle = setInterval(() => _setTick((n) => n + 1), 1000);
+}
+
+function _stopTick(): void {
+  if (_tickHandle !== null) {
+    clearInterval(_tickHandle);
+    _tickHandle = null;
+  }
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -41,6 +58,7 @@ export const buildLogStore: LogStore = createLogStore({ maxEntries: 10_000 });
 
 /** Live elapsed time in milliseconds (only meaningful while running). */
 export const buildDurationMs = createMemo(() => {
+  _tick(); // reactive dependency — forces recompute every second while building
   if (buildState.phase !== "running" || !buildState.startedAt) {
     return buildState.durationMs ?? 0;
   }
@@ -65,6 +83,7 @@ export function startBuild(task: string): void {
     deployPhase: null,
   });
   buildLogStore.clearEntries();
+  _startTick();
 }
 
 export function setDeployPhase(phase: DeployPhase): void {
@@ -128,6 +147,7 @@ export function setBuildResult(opts: {
   errorCount: number;
   warningCount: number;
 }): void {
+  _stopTick();
   setBuildState({
     phase: opts.success ? "success" : "failed",
     durationMs: opts.durationMs,
@@ -136,10 +156,12 @@ export function setBuildResult(opts: {
 }
 
 export function cancelBuildState(): void {
+  _stopTick();
   setBuildState({ phase: "cancelled", startedAt: null, deployPhase: null });
 }
 
 export function clearBuild(): void {
+  _stopTick();
   setBuildState({
     phase: "idle",
     currentTask: null,

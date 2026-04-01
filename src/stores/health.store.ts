@@ -12,7 +12,6 @@
 
 import { createStore } from "solid-js/store";
 import { createMemo } from "solid-js";
-import { projectState } from "@/stores/project.store";
 import { settingsState } from "@/stores/settings.store";
 import { runHealthChecks } from "@/lib/tauri-api";
 import type { SystemHealthReport } from "@/bindings";
@@ -84,8 +83,6 @@ function openSettingsAction(): void {
 export const healthChecks = createMemo<HealthCheck[]>(() => {
   const report = healthState.systemReport;
   const checks: HealthCheck[] = [];
-
-  const projectRoot = projectState.projectRoot as string | null;
 
   // ── 1. Android SDK ──────────────────────────────────────────────────────────
   const sdkPath = settingsState.android.sdkPath;
@@ -209,29 +206,7 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
       : undefined,
   });
 
-  // ── 5. Gradle Wrapper ───────────────────────────────────────────────────────
-  const gradleFound = report?.gradleWrapperFound;
-  checks.push({
-    id: "gradle-wrapper",
-    category: "project",
-    name: "Gradle Wrapper",
-    status: !projectRoot
-      ? "skip"
-      : gradleFound === undefined
-      ? "loading"
-      : gradleFound
-      ? "ok"
-      : "warning",
-    detail: !projectRoot
-      ? "No project open"
-      : gradleFound === undefined
-      ? "Checking…"
-      : gradleFound
-      ? "gradlew found — Gradle integration enabled"
-      : "gradlew not found at project root — Gradle may not run",
-  });
-
-  // ── 6. App Directory ────────────────────────────────────────────────────────
+  // ── 5. App Directory ────────────────────────────────────────────────────────
   const appDirOk = report?.lspSystemDirOk;
   checks.push({
     id: "app-dir",

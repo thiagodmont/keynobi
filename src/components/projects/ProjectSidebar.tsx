@@ -182,17 +182,45 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
 
           <div
             style={{
-              "font-size": "10px",
-              color: "var(--text-muted)",
-              overflow: "hidden",
-              "text-overflow": "ellipsis",
-              "white-space": "nowrap",
+              display: "flex",
+              "align-items": "center",
+              gap: "5px",
               "margin-top": "1px",
             }}
           >
-            {props.entry.lastBuildVariant
-              ? `${props.entry.lastBuildVariant} · ${shortenPath(props.entry.path)}`
-              : shortenPath(props.entry.path)}
+            <span
+              style={{
+                "font-size": "10px",
+                color: "var(--text-muted)",
+                overflow: "hidden",
+                "text-overflow": "ellipsis",
+                "white-space": "nowrap",
+                "flex-shrink": "1",
+                "min-width": "0",
+              }}
+            >
+              {props.entry.lastBuildVariant
+                ? `${props.entry.lastBuildVariant} · ${shortenPath(props.entry.path)}`
+                : shortenPath(props.entry.path)}
+            </span>
+            <Show when={props.entry.gradleRoot !== null}>
+              <span
+                title={`gradlew found at ${props.entry.gradleRoot}`}
+                style={{
+                  "font-size": "9px",
+                  color: "var(--success, #4ade80)",
+                  background: "rgba(74,222,128,0.12)",
+                  border: "1px solid rgba(74,222,128,0.25)",
+                  "border-radius": "3px",
+                  padding: "0 4px",
+                  "line-height": "14px",
+                  "flex-shrink": "0",
+                  "white-space": "nowrap",
+                }}
+              >
+                gradlew
+              </span>
+            </Show>
           </div>
         </div>
 

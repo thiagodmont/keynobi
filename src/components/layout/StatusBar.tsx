@@ -4,11 +4,11 @@ import { projectState } from "@/stores/project.store";
 import { openSettings } from "@/components/settings/SettingsPanel";
 import { openHealthPanel } from "@/components/health/HealthPanel";
 import { overallHealth, healthSummary } from "@/stores/health.store";
-import { buildState, isBuilding, isDeploying } from "@/stores/build.store";
+import { buildState, isBuilding, isDeploying, buildDurationMs } from "@/stores/build.store";
 import { VariantSelectorPill } from "@/components/build/VariantSelector";
 import { setActiveTab } from "@/stores/ui.store";
-import { startMcpServer, getMcpSetupStatus } from "@/lib/tauri-api";
 import { mcpState } from "@/stores/mcp.store";
+import { openMcpPanel } from "@/components/mcp/McpPanel";
 import Icon from "@/components/common/Icon";
 
 async function startDrag(e: MouseEvent) {
@@ -89,19 +89,29 @@ function HealthIndicator(): JSX.Element {
 
 // ── Build status indicator ─────────────────────────────────────────────────────
 
+function formatElapsed(ms: number): string {
+  if (ms < 1000) return "";
+  const totalSec = Math.floor(ms / 1000);
+  if (totalSec < 60) return ` (${totalSec}s)`;
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return s > 0 ? ` (${m}m ${s}s)` : ` (${m}m)`;
+}
+
 function BuildStatusIndicator(): JSX.Element {
   const phase = () => buildState.phase;
   const task = () => buildState.currentTask;
   const deployPhase = () => buildState.deployPhase;
+  const dur = () => formatElapsed(buildDurationMs());
 
   const label = createMemo(() => {
     // Deploy phases take precedence over build phase labels.
     if (deployPhase() === "installing") return "Installing…";
     if (deployPhase() === "launching") return "Launching…";
     switch (phase()) {
-      case "running":   return task() ? `Building: ${task()}` : "Building…";
-      case "success":   return deployPhase() ? null : "Build: OK";
-      case "failed":    return "Build: Failed";
+      case "running":   return task() ? `Building: ${task()}${dur()}` : `Building…${dur()}`;
+      case "success":   return deployPhase() ? null : `Build: OK${dur()}`;
+      case "failed":    return `Build: Failed${dur()}`;
       case "cancelled": return "Build: Cancelled";
       default:          return null;
     }
@@ -168,37 +178,26 @@ function BuildStatusIndicator(): JSX.Element {
 // ── MCP status indicator ───────────────────────────────────────────────────────
 
 function McpStatusIndicator(): JSX.Element {
-  const running = () => mcpState.running;
+  const connected = () => mcpState.running || mcpState.serverAlive;
   const clientName = () => mcpState.clientName;
 
-  const handleClick = async () => {
-    if (running()) {
-      try {
-        const s = await getMcpSetupStatus();
-        await navigator.clipboard.writeText(
-          `claude mcp add android-companion --command "${s.setupCommand}"`
-        );
-      } catch {
-        // Non-fatal: copy silently fails
-      }
-      return;
-    }
-    try {
-      await startMcpServer();
-    } catch {
-      // Error toast shown by App.tsx action handler
-    }
+  const dotColor = () => {
+    if (mcpState.clientName) return "#4ade80";       // client actively connected
+    if (mcpState.serverAlive) return "#60a5fa";       // server alive, no client
+    if (mcpState.running)     return "#fbbf24";       // GUI-mode server running
+    return "rgba(255,255,255,0.3)";                   // idle
   };
 
   const tooltip = () => {
-    if (!running()) return "Start MCP server for Claude Code integration";
-    if (clientName()) return `MCP: ${clientName()} connected — click to copy setup command`;
-    return "MCP server running (stdio) — click to copy setup command";
+    if (clientName()) return `MCP: ${clientName()} connected — click for activity log`;
+    if (mcpState.serverAlive) return `MCP server running (PID ${mcpState.serverPid ?? "?"}) — click for activity log`;
+    if (mcpState.running) return "MCP server running — click for activity log";
+    return "MCP — click to set up or view activity log";
   };
 
   return (
     <button
-      onClick={handleClick}
+      onClick={openMcpPanel}
       onMouseDown={(e) => e.stopPropagation()}
       title={tooltip()}
       style={{
@@ -207,10 +206,10 @@ function McpStatusIndicator(): JSX.Element {
         gap: "4px",
         padding: "0 6px",
         height: "18px",
-        background: running()
+        background: connected()
           ? "rgba(96,165,250,0.15)"
           : "rgba(255,255,255,0.08)",
-        border: running()
+        border: connected()
           ? "1px solid rgba(96,165,250,0.4)"
           : "1px solid rgba(255,255,255,0.12)",
         "border-radius": "3px",
@@ -219,12 +218,12 @@ function McpStatusIndicator(): JSX.Element {
         transition: "background 0.1s",
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.background = running()
+        (e.currentTarget as HTMLElement).style.background = connected()
           ? "rgba(96,165,250,0.25)"
           : "rgba(255,255,255,0.15)";
       }}
       onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = running()
+        (e.currentTarget as HTMLElement).style.background = connected()
           ? "rgba(96,165,250,0.15)"
           : "rgba(255,255,255,0.08)";
       }}
@@ -234,20 +233,20 @@ function McpStatusIndicator(): JSX.Element {
           width: "6px",
           height: "6px",
           "border-radius": "50%",
-          background: running() ? "#60a5fa" : "rgba(255,255,255,0.3)",
+          background: dotColor(),
           "flex-shrink": "0",
           display: "inline-block",
         }}
       />
       <span
         style={{
-          color: running() ? "#93c5fd" : "rgba(255,255,255,0.7)",
+          color: connected() ? "#93c5fd" : "rgba(255,255,255,0.7)",
           "font-size": "11px",
           "line-height": "1",
           "white-space": "nowrap",
         }}
       >
-        {running() && clientName() ? `MCP: ${clientName()}` : "MCP"}
+        {clientName() ? `MCP: ${clientName()}` : "MCP"}
       </span>
     </button>
   );

@@ -375,13 +375,15 @@ Android Dev Companion exposes an **MCP server** that Claude Code can connect to.
 The companion binary can run as a headless MCP server with no GUI window:
 
 ```bash
-claude mcp add android-companion --command "/Applications/AndroidDevCompanion.app/Contents/MacOS/android-dev-companion --mcp"
+claude mcp add --transport stdio android-companion -- "/Applications/AndroidDevCompanion.app/Contents/MacOS/android-dev-companion" --mcp
 ```
 
-To specify a project path:
+The MCP server automatically uses whichever Android project is currently open in the IDE. No extra configuration is needed — just open your project in the companion app and the MCP will pick it up.
+
+To override and point at a specific project regardless of what the IDE has open:
 
 ```bash
-claude mcp add android-companion --command "/path/to/android-dev-companion --mcp --project /path/to/MyAndroidProject"
+claude mcp add --transport stdio android-companion -- "/path/to/android-dev-companion" --mcp --project /path/to/MyAndroidProject
 ```
 
 **Option B — GUI mode**

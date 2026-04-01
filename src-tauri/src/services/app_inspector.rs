@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 
-// ── Public types ──────────────────────────────────────────────────────────────
-
 #[derive(Debug, serde::Serialize)]
 pub struct ProcessInfo {
     pub pid: i32,
@@ -27,8 +25,6 @@ pub struct RestartResult {
     pub cold_start: bool,
 }
 
-// ── Runtime state ─────────────────────────────────────────────────────────────
-
 pub async fn get_runtime_state(
     adb: &PathBuf,
     device_serial: Option<&str>,
@@ -46,19 +42,18 @@ pub async fn get_runtime_state(
         };
     }
 
-    let mut processes = Vec::new();
-    for (pid, name) in &pids {
-        let (threads, rss) = tokio::join!(
-            get_thread_count(adb, device_serial, *pid),
-            get_rss_kb(adb, device_serial, *pid)
-        );
-        processes.push(ProcessInfo {
-            pid: *pid,
-            name: name.clone(),
-            thread_count: threads,
-            rss_kb: rss,
-        });
-    }
+    let processes: Vec<ProcessInfo> = futures_util::future::join_all(pids.iter().map(|(pid, name)| {
+        let pid = *pid;
+        let name = name.clone();
+        async move {
+            let (threads, rss) = tokio::join!(
+                get_thread_count(adb, device_serial, pid),
+                get_rss_kb(adb, device_serial, pid)
+            );
+            ProcessInfo { pid, name, thread_count: threads, rss_kb: rss }
+        }
+    }))
+    .await;
 
     let total_threads = processes.iter().filter_map(|p| p.thread_count).sum();
     let total_rss_kb = processes.iter().filter_map(|p| p.rss_kb).sum();
@@ -80,15 +75,15 @@ pub async fn restart_app(
     cold: bool,
 ) -> Result<RestartResult, String> {
     if cold {
-        run_adb_shell(adb, device_serial, &["pm", "clear", package]).await?;
+        adb_cmd(adb, Some(device_serial), &["shell", "pm", "clear", package]).await?;
     } else {
-        run_adb_shell(adb, device_serial, &["am", "force-stop", package]).await?;
+        adb_cmd(adb, Some(device_serial), &["shell", "am", "force-stop", package]).await?;
     }
 
     let activity = resolve_launcher_activity(adb, device_serial, package).await?;
 
     let start = std::time::Instant::now();
-    run_adb_shell(adb, device_serial, &["am", "start", "-n", &activity]).await?;
+    adb_cmd(adb, Some(device_serial), &["shell", "am", "start", "-n", &activity]).await?;
 
     let display_time_ms = wait_for_displayed(adb, device_serial, package, start).await;
 
@@ -100,10 +95,8 @@ pub async fn restart_app(
     })
 }
 
-// ── Internal helpers ──────────────────────────────────────────────────────────
-
 /// Returns Vec of (pid, process_name) for all processes matching the package.
-pub async fn find_pids_for_package(
+async fn find_pids_for_package(
     adb: &PathBuf,
     device_serial: Option<&str>,
     package: &str,
@@ -114,7 +107,7 @@ pub async fn find_pids_for_package(
     parse_ps_for_package(&output, package)
 }
 
-pub fn parse_ps_for_package(output: &str, package: &str) -> Vec<(i32, String)> {
+fn parse_ps_for_package(output: &str, package: &str) -> Vec<(i32, String)> {
     output
         .lines()
         .skip(1) // header
@@ -154,7 +147,7 @@ async fn get_rss_kb(adb: &PathBuf, device_serial: Option<&str>, pid: i32) -> Opt
     parse_vmrss(&output)
 }
 
-pub fn parse_vmrss(status: &str) -> Option<u64> {
+fn parse_vmrss(status: &str) -> Option<u64> {
     status
         .lines()
         .find(|l| l.starts_with("VmRSS:"))
@@ -237,7 +230,7 @@ async fn wait_for_displayed(
     }
 }
 
-pub fn parse_displayed_time(logcat_output: &str, package: &str) -> Option<u64> {
+fn parse_displayed_time(logcat_output: &str, package: &str) -> Option<u64> {
     for line in logcat_output.lines().rev() {
         if line.contains("Displayed") && line.contains(package) {
             if let Some(ms) = extract_display_ms(line) {
@@ -279,29 +272,6 @@ fn extract_display_ms(line: &str) -> Option<u64> {
     None
 }
 
-async fn run_adb_shell(
-    adb: &PathBuf,
-    device_serial: &str,
-    args: &[&str],
-) -> Result<String, String> {
-    let output = tokio::process::Command::new(adb)
-        .arg("-s")
-        .arg(device_serial)
-        .arg("shell")
-        .args(args)
-        .output()
-        .await
-        .map_err(|e| format!("adb shell failed: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let msg = if !stderr.trim().is_empty() { stderr } else { stdout };
-        return Err(msg);
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).to_string())
-}
-
 async fn adb_cmd(
     adb: &PathBuf,
     device_serial: Option<&str>,
@@ -324,8 +294,6 @@ async fn adb_cmd(
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

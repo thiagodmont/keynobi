@@ -1,5 +1,7 @@
 pub use crate::services::mcp_server::start_mcp_server;
 
+use crate::services::mcp_activity;
+pub use crate::services::mcp_activity::{McpActivityEntry, McpServerStatus};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -11,7 +13,7 @@ pub struct McpSetupStatus {
     /// The real absolute path to this application's binary.
     /// Use this to build the `claude mcp add` command.
     pub exe_path: String,
-    /// The full `--command` string ready to paste into a terminal.
+    /// The binary path with `--mcp` flag (the part that follows `--` in the stdio command).
     pub setup_command: String,
     /// Whether the `claude` CLI was found (via PATH or login shell).
     pub claude_found: bool,
@@ -55,7 +57,7 @@ pub async fn get_mcp_setup_status() -> Result<McpSetupStatus, String> {
     })
 }
 
-/// Run `claude mcp add android-companion --command "<exe_path> --mcp"`.
+/// Run `claude mcp add --transport stdio android-companion -- "<exe_path>" --mcp`.
 ///
 /// Returns a human-readable success/error message.
 #[tauri::command]
@@ -68,8 +70,6 @@ pub async fn configure_mcp_in_claude() -> Result<String, String> {
         .await
         .ok_or_else(|| "Claude Code CLI not found. Install Claude Code from https://claude.ai/download".to_string())?;
 
-    let command_arg = format!("{} --mcp", exe_path);
-
     // Remove any existing entry first so re-configuring works cleanly.
     let _ = tokio::process::Command::new(&claude)
         .args(["mcp", "remove", "android-companion"])
@@ -81,7 +81,7 @@ pub async fn configure_mcp_in_claude() -> Result<String, String> {
     let output = tokio::time::timeout(
         std::time::Duration::from_secs(15),
         tokio::process::Command::new(&claude)
-            .args(["mcp", "add", "android-companion", "--command", &command_arg])
+            .args(["mcp", "add", "--transport", "stdio", "android-companion", "--", &exe_path, "--mcp"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output(),
@@ -92,8 +92,8 @@ pub async fn configure_mcp_in_claude() -> Result<String, String> {
 
     if output.status.success() {
         Ok(format!(
-            "MCP server registered successfully!\nCommand: claude mcp add android-companion --command \"{}\"",
-            command_arg
+            "MCP server registered successfully!\nCommand: claude mcp add --transport stdio android-companion -- \"{}\" --mcp",
+            exe_path
         ))
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -188,4 +188,35 @@ fn is_executable_on_path(name: &str) -> bool {
             let p = std::path::Path::new(dir).join(name);
             p.is_file()
         })
+}
+
+// ── Activity log commands ─────────────────────────────────────────────────────
+
+/// Return the last `limit` MCP activity entries (default 200, max 2000).
+#[tauri::command]
+pub async fn get_mcp_activity(limit: Option<u32>) -> Result<Vec<McpActivityEntry>, String> {
+    let n = limit.unwrap_or(200).min(2000) as usize;
+    Ok(tokio::task::spawn_blocking(move || mcp_activity::read_activity(n))
+        .await
+        .map_err(|e| format!("Failed to read MCP activity log: {e}"))?)
+}
+
+/// Return the live status of the MCP server: whether a headless process is alive and its PID.
+#[tauri::command]
+pub async fn get_mcp_server_status() -> Result<McpServerStatus, String> {
+    let status = tokio::task::spawn_blocking(|| McpServerStatus {
+        alive: mcp_activity::is_mcp_server_alive(),
+        pid: mcp_activity::read_pid_file(),
+    })
+    .await
+    .map_err(|e| format!("Failed to check MCP server status: {e}"))?;
+    Ok(status)
+}
+
+/// Clear the MCP activity log.
+#[tauri::command]
+pub async fn clear_mcp_activity() -> Result<(), String> {
+    tokio::task::spawn_blocking(mcp_activity::clear_activity_log)
+        .await
+        .map_err(|e| format!("Failed to clear MCP activity log: {e}"))
 }

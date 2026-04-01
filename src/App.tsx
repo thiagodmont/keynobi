@@ -14,6 +14,7 @@ import { AppErrorBoundary } from "@/components/common/ErrorBoundary";
 import { CommandPalette, openPalette } from "@/components/common/CommandPalette";
 import { SettingsPanel, openSettings } from "@/components/settings/SettingsPanel";
 import { HealthPanel, openHealthPanel } from "@/components/health/HealthPanel";
+import { McpPanel } from "@/components/mcp/McpPanel";
 import { BuildPanel } from "@/components/build/BuildPanel";
 import { LogcatPanel } from "@/components/logcat/LogcatPanel";
 import { ProjectInfoEditor, openProjectInfoEditor } from "@/components/projects/ProjectInfoEditor";
@@ -27,8 +28,9 @@ import { openProjectFolder, refreshProjectsList, restoreLastProject } from "@/se
 import { initBuildService, runBuild, runAndDeploy, cancelBuild } from "@/services/build.service";
 import { initDevices } from "@/stores/device.store";
 import { openVariantPicker } from "@/components/build/VariantSelector";
-import { formatError, startMcpServer } from "@/lib/tauri-api";
+import { formatError } from "@/lib/tauri-api";
 import { projectState } from "@/stores/project.store";
+import { openMcpPanel } from "@/components/mcp/McpPanel";
 
 function formatShortcut(opts: { key: string; metaKey?: boolean; shiftKey?: boolean; altKey?: boolean }): string {
   const parts: string[] = [];
@@ -75,7 +77,11 @@ export function App(): JSX.Element {
     loadSettings();
 
     // Initialize MCP lifecycle event listeners.
-    import("@/stores/mcp.store").then(({ initMcpListeners }) => initMcpListeners());
+    import("@/stores/mcp.store").then(({ initMcpListeners, loadMcpActivity }) => {
+      initMcpListeners();
+      // Prime the server-alive status so the StatusBar dot is correct immediately.
+      loadMcpActivity();
+    });
 
     // Load project registry into the sidebar store.
     refreshProjectsList().catch(console.error);
@@ -169,16 +175,29 @@ export function App(): JSX.Element {
       },
     });
 
+    registerKeyAndAction({
+      id: "mcp.panel",
+      key: "m",
+      metaKey: true,
+      shiftKey: true,
+      label: "Open MCP Activity Panel",
+      category: "General",
+      action: openMcpPanel,
+    });
+
     registerAction({
       id: "mcp.start",
-      label: "Start MCP Server (for Claude Code)",
+      label: "Copy MCP Setup Command",
       category: "General",
       action: async () => {
         try {
-          await startMcpServer();
-          showToast("MCP server started on stdio. Run: claude mcp add android-companion", "success");
+          const { getMcpSetupStatus } = await import("@/lib/tauri-api");
+          const s = await getMcpSetupStatus();
+          const cmd = `claude mcp add --transport stdio android-companion -- "${s.exePath}" --mcp`;
+          await navigator.clipboard.writeText(cmd);
+          showToast("MCP setup command copied — paste it in your terminal to register with Claude Code", "success");
         } catch (e) {
-          showToast(`MCP server error: ${formatError(e)}`, "error");
+          showToast(`Failed to copy MCP command: ${formatError(e)}`, "error");
         }
       },
     });
@@ -290,6 +309,7 @@ export function App(): JSX.Element {
       <CommandPalette />
       <SettingsPanel />
       <HealthPanel />
+      <McpPanel />
       <ProjectInfoEditor />
       <DevicePickerDialog />
       <DialogHost />

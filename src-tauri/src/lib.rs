@@ -23,7 +23,7 @@ use commands::logcat::{
     clear_logcat, get_logcat_entries, get_logcat_stats, get_logcat_status,
     list_logcat_packages, new_logcat_state, set_logcat_filter, start_logcat, stop_logcat,
 };
-use commands::mcp::{configure_mcp_in_claude, get_mcp_setup_status, start_mcp_server};
+use commands::mcp::{configure_mcp_in_claude, get_mcp_activity, get_mcp_server_status, get_mcp_setup_status, clear_mcp_activity, start_mcp_server};
 use commands::settings::*;
 use commands::studio::open_in_studio;
 use commands::variant::{get_variants_from_gradle, get_variants_preview, set_active_variant};
@@ -187,6 +187,9 @@ pub fn run() {
             start_mcp_server,
             get_mcp_setup_status,
             configure_mcp_in_claude,
+            get_mcp_activity,
+            get_mcp_server_status,
+            clear_mcp_activity,
             // Android Studio integration
             open_in_studio,
         ])

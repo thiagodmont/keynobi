@@ -44,6 +44,23 @@ impl PipelineContext {
         }
     }
 
+    /// Create a context pre-seeded with a PID → package map from `adb shell ps`.
+    /// This ensures that apps already running when logcat starts will have their
+    /// `package` field populated from the first entry, without waiting for an
+    /// ActivityManager "Start proc" event.
+    pub fn with_initial_pids(pid_to_package: HashMap<i32, String>) -> Self {
+        let seen_packages: HashSet<String> = pid_to_package.values().cloned().collect();
+        let new_packages: Vec<String> = seen_packages.iter().cloned().collect();
+        PipelineContext {
+            next_id: 1,
+            pid_to_package,
+            seen_packages,
+            active_crash_group: None,
+            next_crash_group: 1,
+            new_packages,
+        }
+    }
+
     pub fn next_id(&mut self) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
@@ -275,10 +292,12 @@ impl LogProcessor for CrashAnalyzer {
         let msg = &entry.message;
         let tag = &entry.tag;
 
-        // Check tag first (pointer comparison, free) before scanning the message.
-        let is_fatal = tag == "AndroidRuntime"
-            || msg.contains("FATAL EXCEPTION")
-            || msg.contains("AndroidRuntime");
+        // A real crash from AndroidRuntime always contains "FATAL EXCEPTION".
+        // Using `tag == "AndroidRuntime"` alone is too broad — it also matches
+        // normal VM lifecycle messages from tools like `monkey` (used by launch_app),
+        // which share the tag but are not crashes.
+        let is_fatal = msg.contains("FATAL EXCEPTION")
+            || msg.contains("Uncaught handler: thread");
         // ANR: tag check short-circuits the message scan for non-AM lines.
         let is_anr = tag == "ActivityManager" && msg.contains("ANR in");
         let is_native = msg.contains("signal 11 (SIGSEGV)")
@@ -569,6 +588,37 @@ mod tests {
     // ── CrashAnalyzer ─────────────────────────────────────────────────────────
 
     #[test]
+    fn crash_analyzer_does_not_flag_monkey_tool_startup_as_crash() {
+        // Regression: launch_app uses `adb shell monkey` which emits AndroidRuntime
+        // tag entries that are NOT crashes. The analyzer must not flag these.
+        let pipeline = LogPipeline::default_pipeline();
+        let mut ctx = PipelineContext::new();
+
+        let monkey_messages = [
+            ">>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<",
+            "Using default boot image",
+            "Calling main entry com.android.commands.monkey.Monkey",
+            "VM exiting with result code 0.",
+        ];
+
+        for msg in monkey_messages {
+            let raw = RawLogLine {
+                timestamp: "01-01 00:00:00.000".into(),
+                pid: 9000,
+                tid: 9000,
+                level: LogcatLevel::Info,
+                tag: "AndroidRuntime".into(),
+                message: msg.into(),
+            };
+            let entry = pipeline.run(raw, &mut ctx);
+            assert!(
+                !entry.is_crash,
+                "monkey message must not be flagged as crash: {msg}"
+            );
+        }
+    }
+
+    #[test]
     fn crash_analyzer_flags_fatal_exception() {
         let pipeline = LogPipeline::default_pipeline();
         let mut ctx = PipelineContext::new();
@@ -734,5 +784,80 @@ mod tests {
         assert!(entries.len() >= 2, "expected at least separator + main entry");
         let sep = &entries[0];
         assert_eq!(sep.kind, LogcatKind::ProcessDied);
+    }
+
+    // ── PipelineContext::with_initial_pids ────────────────────────────────────
+
+    #[test]
+    fn with_initial_pids_populates_pid_map() {
+        let mut map = HashMap::new();
+        map.insert(1234, "com.example.app".into());
+        map.insert(5678, "com.google.android.gms".into());
+
+        let ctx = PipelineContext::with_initial_pids(map);
+
+        assert_eq!(ctx.pid_to_package.get(&1234).map(String::as_str), Some("com.example.app"));
+        assert_eq!(ctx.pid_to_package.get(&5678).map(String::as_str), Some("com.google.android.gms"));
+    }
+
+    #[test]
+    fn with_initial_pids_populates_seen_packages() {
+        let mut map = HashMap::new();
+        map.insert(1234, "com.example.app".into());
+        map.insert(5678, "com.example.app".into()); // duplicate package, different PID
+
+        let ctx = PipelineContext::with_initial_pids(map);
+
+        assert!(ctx.seen_packages.contains("com.example.app"));
+        assert_eq!(ctx.seen_packages.len(), 1, "duplicate package names must be deduplicated");
+    }
+
+    #[test]
+    fn with_initial_pids_populates_new_packages_for_first_sync() {
+        let mut map = HashMap::new();
+        map.insert(42, "com.example.first".into());
+
+        let ctx = PipelineContext::with_initial_pids(map);
+
+        assert!(ctx.new_packages.contains(&"com.example.first".to_string()),
+            "initial packages must appear in new_packages so the first sync pushes them to state");
+    }
+
+    #[test]
+    fn package_resolver_uses_pre_seeded_pid_map() {
+        // Verify that a context built with with_initial_pids resolves packages
+        // for entries whose PIDs were known BEFORE logcat started — this is the
+        // core bug that with_initial_pids was added to fix.
+        let mut map = HashMap::new();
+        map.insert(9999, "com.already.running".into());
+
+        let pipeline = LogPipeline::default_pipeline();
+        let mut ctx = PipelineContext::with_initial_pids(map);
+
+        let raw = RawLogLine {
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 9999,
+            tid: 9999,
+            level: LogcatLevel::Info,
+            tag: "SomeTag".into(),
+            message: "log from pre-existing process".into(),
+        };
+
+        let entry = pipeline.run(raw, &mut ctx);
+        assert_eq!(
+            entry.package.as_deref(),
+            Some("com.already.running"),
+            "package must be resolved for a PID that was running before logcat started"
+        );
+    }
+
+    #[test]
+    fn with_initial_pids_empty_map_behaves_like_new() {
+        let ctx_seeded = PipelineContext::with_initial_pids(HashMap::new());
+        let ctx_plain = PipelineContext::new();
+
+        assert_eq!(ctx_seeded.pid_to_package.len(), ctx_plain.pid_to_package.len());
+        assert_eq!(ctx_seeded.seen_packages.len(), ctx_plain.seen_packages.len());
+        assert_eq!(ctx_seeded.new_packages.len(), ctx_plain.new_packages.len());
     }
 }

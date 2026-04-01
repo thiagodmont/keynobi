@@ -7,6 +7,12 @@ fn settings_dir() -> PathBuf {
         .join(".androidide")
 }
 
+/// Public accessor for the `~/.androidide/` data directory.
+/// Used by `mcp_activity` and other services that need to store files alongside settings.
+pub fn data_dir() -> PathBuf {
+    settings_dir()
+}
+
 fn settings_file() -> PathBuf {
     settings_dir().join("settings.json")
 }

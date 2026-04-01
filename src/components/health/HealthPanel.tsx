@@ -441,7 +441,7 @@ function McpSetupSection(): JSX.Element {
   const handleCopy = async () => {
     const s = status();
     if (!s) return;
-    const cmd = `claude mcp add android-companion --command "${s.setupCommand}"`;
+    const cmd = `claude mcp add --transport stdio android-companion -- "${s.exePath}" --mcp`;
     await navigator.clipboard.writeText(cmd).catch(() => {});
   };
 
@@ -723,13 +723,14 @@ function McpSetupSection(): JSX.Element {
             }}
           >
             {status()
-              ? `claude mcp add android-companion --command "${status()!.setupCommand}"`
-              : `claude mcp add android-companion --command "/Applications/AndroidDevCompanion.app/Contents/MacOS/android-dev-companion --mcp"`}
+              ? `claude mcp add --transport stdio android-companion -- "${status()!.exePath}" --mcp`
+              : `claude mcp add --transport stdio android-companion -- "/Applications/AndroidDevCompanion.app/Contents/MacOS/android-dev-companion" --mcp`}
           </code>
           <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-top": "6px" }}>
+            The MCP will automatically use the project currently open in the IDE.
             Optionally append{" "}
             <code style={{ "font-family": "var(--font-mono)" }}>--project /path/to/project</code>
-            {" "}to scope to a specific project.
+            {" "}to override.
           </div>
         </div>
       </Show>

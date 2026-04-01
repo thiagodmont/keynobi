@@ -10,7 +10,7 @@ export type McpSetupStatus = {
  */
 exePath: string, 
 /**
- * The full `--command` string ready to paste into a terminal.
+ * The binary path with `--mcp` flag (the part that follows `--` in the stdio command).
  */
 setupCommand: string, 
 /**

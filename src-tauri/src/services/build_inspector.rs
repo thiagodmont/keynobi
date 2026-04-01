@@ -1,7 +1,5 @@
 use std::path::{Path, PathBuf};
 
-// ── Public types ──────────────────────────────────────────────────────────────
-
 #[derive(Debug, serde::Serialize)]
 pub struct BuildConfig {
     pub module: String,
@@ -27,8 +25,6 @@ pub struct ProductFlavor {
     pub name: String,
     pub dimension: Option<String>,
 }
-
-// ── Public API ────────────────────────────────────────────────────────────────
 
 pub fn parse_build_config(
     gradle_root: &Path,
@@ -62,8 +58,6 @@ pub fn parse_build_config(
         product_flavors: parse_product_flavors(&content),
     })
 }
-
-// ── Internal ──────────────────────────────────────────────────────────────────
 
 fn read_build_gradle(module_dir: &Path) -> Result<(PathBuf, String), String> {
     for name in &["build.gradle.kts", "build.gradle"] {
@@ -296,8 +290,6 @@ fn extract_bool_value(content: &str, keys: &[&str]) -> Option<bool> {
     }
     None
 }
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

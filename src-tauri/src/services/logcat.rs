@@ -187,6 +187,53 @@ pub fn find_adb_binary(sdk_path: Option<&str>) -> PathBuf {
 /// JSON payload so the JS thread is never blocked deserializing a huge message.
 pub const MAX_BATCH_SIZE: usize = 500;
 
+/// Query `adb shell ps -A` to build an initial PID → package name map for all
+/// currently-running processes.  This seeds the pipeline context so that apps
+/// already running when logcat starts will have their package field populated
+/// immediately, without waiting for an ActivityManager "Start proc" line.
+pub async fn seed_pid_map_from_ps(
+    adb_bin: &PathBuf,
+    device_serial: Option<&str>,
+) -> HashMap<i32, String> {
+    let mut cmd = tokio::process::Command::new(adb_bin);
+    if let Some(serial) = device_serial {
+        cmd.args(["-s", serial]);
+    }
+    // `-A` shows all processes; `-o PID,NAME` selects only the columns we need.
+    cmd.args(["shell", "ps", "-A", "-o", "PID,NAME"])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+
+    let output = match cmd.output().await {
+        Ok(o) => o,
+        Err(_) => return HashMap::new(),
+    };
+
+    let text = String::from_utf8_lossy(&output.stdout);
+    parse_ps_output(&text)
+}
+
+/// Parse the output of `adb shell ps -A -o PID,NAME` into a PID → package map.
+///
+/// Only entries whose NAME contains a dot are kept — this filters out kernel
+/// threads and native processes (e.g. `init`, `kworker/0:1`) while keeping
+/// all Android app packages (e.g. `com.example.myapp`).
+pub fn parse_ps_output(text: &str) -> HashMap<i32, String> {
+    let mut map = HashMap::new();
+    for line in text.lines().skip(1) {  // skip header row (PID NAME)
+        let mut parts = line.split_whitespace();
+        if let (Some(pid_str), Some(name)) = (parts.next(), parts.next()) {
+            if let Ok(pid) = pid_str.parse::<i32>() {
+                if name.contains('.') {
+                    map.insert(pid, name.to_owned());
+                }
+            }
+        }
+    }
+    map
+}
+
 /// Spawn an `adb logcat` process, parse lines through the processing pipeline,
 /// store them in the LogStore, and stream filtered batches to the frontend.
 ///
@@ -269,6 +316,11 @@ pub async fn start_logcat_stream(
         }
     });
 
+    // Seed the PID → package map from all currently-running processes before
+    // the pipeline starts.  This ensures apps already running when logcat starts
+    // have their `package` field populated immediately.
+    let initial_pid_map = seed_pid_map_from_ps(&adb_bin, device_serial.as_deref()).await;
+
     // ── Pipeline + Batcher task ───────────────────────────────────────────────
     // Owns PipelineContext (no mutex needed for the pipeline itself).
     // Locks LogcatState once per 100ms tick to batch-write + sync packages.
@@ -276,7 +328,7 @@ pub async fn start_logcat_stream(
     let pipeline_handle = tokio::spawn(async move {
         let logcat_state = logcat_state_pipeline;
         let pipeline = LogPipeline::default_pipeline();
-        let mut ctx = PipelineContext::new();
+        let mut ctx = PipelineContext::with_initial_pids(initial_pid_map);
 
         let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -387,4 +439,74 @@ pub async fn start_logcat_stream(
 /// This is computed on-demand from state.known_packages.
 pub fn packages_from_known(known: &HashSet<String>) -> HashMap<String, ()> {
     known.iter().map(|p| (p.clone(), ())).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── parse_ps_output ───────────────────────────────────────────────────────
+
+    #[test]
+    fn parse_ps_output_extracts_app_packages() {
+        let ps = "\
+PID NAME
+1234 com.example.myapp
+5678 com.google.android.gms
+9999 init
+8888 kworker/0:1
+";
+        let map = parse_ps_output(ps);
+        assert_eq!(map.get(&1234).map(String::as_str), Some("com.example.myapp"));
+        assert_eq!(map.get(&5678).map(String::as_str), Some("com.google.android.gms"));
+    }
+
+    #[test]
+    fn parse_ps_output_excludes_native_processes_without_dot() {
+        let ps = "\
+PID NAME
+1 init
+2 kthreadd
+100 com.android.systemui
+";
+        let map = parse_ps_output(ps);
+        assert!(!map.contains_key(&1), "`init` has no dot and must be excluded");
+        assert!(!map.contains_key(&2), "`kthreadd` has no dot and must be excluded");
+        assert!(map.contains_key(&100), "`com.android.systemui` must be included");
+    }
+
+    #[test]
+    fn parse_ps_output_skips_header_row() {
+        // The first line "PID NAME" must not be parsed as a PID.
+        let ps = "PID NAME\n1234 com.example.app\n";
+        let map = parse_ps_output(ps);
+        // "PID" is not a valid i32, so the header is silently dropped.
+        assert_eq!(map.len(), 1);
+        assert!(map.contains_key(&1234));
+    }
+
+    #[test]
+    fn parse_ps_output_handles_empty_input() {
+        let map = parse_ps_output("");
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn parse_ps_output_handles_header_only() {
+        let map = parse_ps_output("PID NAME\n");
+        assert!(map.is_empty());
+    }
+
+    #[test]
+    fn parse_ps_output_multiple_pids_same_package() {
+        // Android can have multiple processes for the same app (:service, :remote, etc.)
+        let ps = "\
+PID NAME
+100 com.example.app
+101 com.example.app:service
+";
+        let map = parse_ps_output(ps);
+        assert_eq!(map.get(&100).map(String::as_str), Some("com.example.app"));
+        assert_eq!(map.get(&101).map(String::as_str), Some("com.example.app:service"));
+    }
 }

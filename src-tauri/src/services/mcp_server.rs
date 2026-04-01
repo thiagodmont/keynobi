@@ -615,7 +615,12 @@ impl AndroidMcpServer {
             )]));
         }
 
-        let entries: Vec<_> = logcat.store.iter().cloned().collect();
+        let entries: Vec<_> = logcat
+            .store
+            .iter()
+            .filter(|e| e.crash_group_id.is_some())
+            .cloned()
+            .collect();
         drop(logcat);
 
         match crash_inspector::find_crash(
@@ -678,12 +683,7 @@ impl AndroidMcpServer {
         let settings = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
-        let serial = if let Some(s) = p.device_serial.as_deref() {
-            Some(s.to_string())
-        } else {
-            let logcat = self.logcat_state.lock().await;
-            logcat.device_serial.clone()
-        };
+        let serial = resolve_device_serial(&adb, p.device_serial.as_deref()).await;
 
         let state = app_inspector::get_runtime_state(
             &adb,
