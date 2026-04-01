@@ -492,3 +492,21 @@ export async function getMcpSetupStatus(): Promise<McpSetupStatus> {
 export async function configureMcpInClaude(): Promise<string> {
   return invoke<string>("configure_mcp_in_claude");
 }
+
+// ── Android Studio integration ────────────────────────────────────────────────
+
+/**
+ * Open a source file in Android Studio at the given line.
+ *
+ * @param classPath  – fully-qualified package, e.g. `com.example.app`
+ * @param filename   – source filename from the stack frame, e.g. `MainActivity.kt`
+ * @param line       – 1-based line number
+ * @returns the absolute path of the opened file
+ */
+export async function openInStudio(
+  classPath: string,
+  filename: string,
+  line: number,
+): Promise<string> {
+  return invoke<string>("open_in_studio", { classPath, filename, line });
+}

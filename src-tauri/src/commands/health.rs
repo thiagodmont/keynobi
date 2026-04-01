@@ -124,6 +124,18 @@ pub async fn run_health_checks(
         .await
         .is_ok();
 
+    // ── Android Studio CLI probe ──────────────────────────────────────────────
+    // Uses a login shell so macOS users who set PATH in .zshrc / .zprofile
+    // have the `studio` command resolved correctly.
+    let studio_command_found = tokio::process::Command::new("sh")
+        .args(["-lc", "which studio"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .await
+        .map(|s| s.success())
+        .unwrap_or(false);
+
     Ok(SystemHealthReport {
         java_executable_found,
         java_version,
@@ -134,6 +146,7 @@ pub async fn run_health_checks(
         emulator_found,
         gradle_wrapper_found,
         lsp_system_dir_ok,
+        studio_command_found,
     })
 }
 

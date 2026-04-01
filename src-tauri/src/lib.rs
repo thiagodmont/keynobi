@@ -25,6 +25,7 @@ use commands::logcat::{
 };
 use commands::mcp::{configure_mcp_in_claude, get_mcp_setup_status, start_mcp_server};
 use commands::settings::*;
+use commands::studio::open_in_studio;
 use commands::variant::{get_variants_from_gradle, get_variants_preview, set_active_variant};
 use models::log_entry::LogEntry;
 use services::adb_manager::DeviceState;
@@ -186,6 +187,8 @@ pub fn run() {
             start_mcp_server,
             get_mcp_setup_status,
             configure_mcp_in_claude,
+            // Android Studio integration
+            open_in_studio,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

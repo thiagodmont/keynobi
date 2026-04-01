@@ -5,4 +5,5 @@ pub mod health;
 pub mod logcat;
 pub mod mcp;
 pub mod settings;
+pub mod studio;
 pub mod variant;

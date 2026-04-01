@@ -164,6 +164,24 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
       : undefined,
   });
 
+  // ── 3b. Android Studio CLI ──────────────────────────────────────────────────
+  const studioFound = report?.studioCommandFound;
+  checks.push({
+    id: "studio-command",
+    category: "environment",
+    name: "Android Studio CLI (studio)",
+    status: studioFound === undefined
+      ? "loading"
+      : studioFound
+      ? "ok"
+      : "warning",
+    detail: studioFound === true
+      ? "studio command found — crash stack frames can be opened directly"
+      : studioFound === false
+      ? "studio command not found — add Android Studio's MacOS bin dir to $PATH to enable jump-to-line"
+      : "Checking…",
+  });
+
   // ── 4. Java / JDK ──────────────────────────────────────────────────────────
   const javaHome = settingsState.java.home;
   const javaFound = report?.javaExecutableFound;

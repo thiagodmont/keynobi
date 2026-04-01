@@ -59,6 +59,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ts-rs",
+ "walkdir",
 ]
 
 [[package]]

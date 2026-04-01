@@ -191,6 +191,216 @@ function CategorySection(props: {
   );
 }
 
+// ── Studio Setup Section ──────────────────────────────────────────────────────
+
+function StudioSetupSection(): JSX.Element {
+  const report = () => healthState.systemReport;
+  const studioFound = () => report()?.studioCommandFound;
+
+  const pathSnippet = `export PATH="$PATH:/Applications/Android Studio.app/Contents/MacOS"`;
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(pathSnippet).catch(() => {});
+  };
+
+  const dot = (color: string) => (
+    <span
+      style={{
+        width: "8px",
+        height: "8px",
+        "border-radius": "50%",
+        background: color,
+        "flex-shrink": "0",
+        display: "inline-block",
+      }}
+    />
+  );
+
+  return (
+    <div
+      style={{
+        "margin-top": "8px",
+        "margin-bottom": "16px",
+        padding: "14px",
+        background: "var(--bg-tertiary)",
+        "border-radius": "6px",
+        border: "1px solid var(--border)",
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "space-between",
+          "margin-bottom": "10px",
+        }}
+      >
+        <div
+          style={{
+            "font-size": "10px",
+            "font-weight": "600",
+            "letter-spacing": "0.08em",
+            "text-transform": "uppercase",
+            color: "var(--text-muted)",
+          }}
+        >
+          Android Studio CLI
+        </div>
+        <Show when={studioFound() === true}>
+          <div
+            style={{
+              display: "flex",
+              "align-items": "center",
+              gap: "5px",
+              background: "rgba(74,222,128,0.12)",
+              border: "1px solid rgba(74,222,128,0.3)",
+              "border-radius": "10px",
+              padding: "2px 8px",
+            }}
+          >
+            {dot("var(--success)")}
+            <span style={{ "font-size": "11px", color: "var(--success)" }}>
+              studio command found
+            </span>
+          </div>
+        </Show>
+      </div>
+
+      {/* Already configured */}
+      <Show when={studioFound() === true}>
+        <div style={{ "font-size": "12px", color: "var(--text-secondary)", "line-height": "1.5" }}>
+          The <code style={{ "font-family": "var(--font-mono)" }}>studio</code> command is on your
+          PATH. Stack frame lines in crash logs have a jump-to-line button.
+        </div>
+      </Show>
+
+      {/* Not found */}
+      <Show when={studioFound() === false}>
+        <div
+          style={{
+            display: "flex",
+            "align-items": "flex-start",
+            gap: "10px",
+            padding: "10px",
+            background: "rgba(251,191,36,0.08)",
+            border: "1px solid rgba(251,191,36,0.25)",
+            "border-radius": "5px",
+            "margin-bottom": "12px",
+          }}
+        >
+          <span style={{ "font-size": "14px" }}>⚠</span>
+          <div>
+            <div
+              style={{
+                "font-size": "12px",
+                color: "var(--text-primary)",
+                "font-weight": "500",
+                "margin-bottom": "3px",
+              }}
+            >
+              studio command not found
+            </div>
+            <div
+              style={{
+                "font-size": "11px",
+                color: "var(--text-secondary)",
+                "line-height": "1.6",
+              }}
+            >
+              Add{" "}
+              <code style={{ "font-family": "var(--font-mono)" }}>
+                /Applications/Android Studio.app/Contents/MacOS
+              </code>{" "}
+              to your{" "}
+              <code style={{ "font-family": "var(--font-mono)" }}>$PATH</code>{" "}
+              and use{" "}
+              <code style={{ "font-family": "var(--font-mono)" }}>studio</code>{" "}
+              to run commands. Once added, crash stack frames in Logcat will show a
+              jump-to-line button.
+            </div>
+          </div>
+        </div>
+
+        {/* Setup instructions */}
+        <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-bottom": "6px" }}>
+          Add to your shell profile (
+          <code style={{ "font-family": "var(--font-mono)" }}>.zshrc</code> /{" "}
+          <code style={{ "font-family": "var(--font-mono)" }}>.bash_profile</code>
+          ):
+        </div>
+        <div
+          style={{
+            display: "flex",
+            "align-items": "center",
+            gap: "8px",
+          }}
+        >
+          <code
+            style={{
+              flex: "1",
+              display: "block",
+              "font-family": "var(--font-mono)",
+              "font-size": "11px",
+              background: "var(--bg-secondary)",
+              border: "1px solid var(--border)",
+              "border-radius": "4px",
+              padding: "8px 10px",
+              color: "var(--text-primary)",
+              "overflow-x": "auto",
+              "white-space": "nowrap",
+            }}
+          >
+            {pathSnippet}
+          </code>
+          <button
+            onClick={handleCopy}
+            title="Copy to clipboard"
+            style={{
+              background: "none",
+              border: "1px solid var(--border)",
+              color: "var(--text-muted)",
+              "border-radius": "3px",
+              padding: "2px 8px",
+              "font-size": "10px",
+              cursor: "pointer",
+              "flex-shrink": "0",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "var(--text-primary)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "var(--text-muted)";
+            }}
+          >
+            Copy
+          </button>
+        </div>
+        <div
+          style={{
+            "font-size": "11px",
+            color: "var(--text-muted)",
+            "margin-top": "8px",
+            "line-height": "1.5",
+          }}
+        >
+          After editing the file run{" "}
+          <code style={{ "font-family": "var(--font-mono)" }}>source ~/.zshrc</code>{" "}
+          (or restart your terminal), then click{" "}
+          <strong>Refresh</strong> above to re-run health checks.
+        </div>
+      </Show>
+
+      {/* Loading state */}
+      <Show when={studioFound() === undefined}>
+        <div style={{ "font-size": "12px", color: "var(--text-muted)", padding: "4px 0" }}>
+          Checking for studio command…
+        </div>
+      </Show>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 // ── MCP Setup Section ─────────────────────────────────────────────────────────
@@ -766,6 +976,9 @@ export function HealthPanel(): JSX.Element {
 
           {/* MCP Server section */}
           <McpSetupSection />
+
+          {/* Android Studio CLI section */}
+          <StudioSetupSection />
 
           {/* Footer hint */}
           <div

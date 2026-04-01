@@ -38,6 +38,8 @@ import {
   setPackageInQuery,
   getPackageFromQuery,
   getMinePackage,
+  parseStackFrame,
+  isProjectFrame,
   type QueryToken,
   type FilterGroup,
 } from "@/lib/logcat-query";
@@ -52,6 +54,8 @@ import {
   MAX_SAVED_FILTERS,
   type SavedFilter,
 } from "@/lib/logcat-filter-storage";
+import { openInStudio } from "@/lib/tauri-api";
+import { healthState } from "@/stores/health.store";
 
 // ── EntryFlags (mirrors Rust EntryFlags consts) ────────────────────────────────
 const ENTRY_FLAGS = {
@@ -1230,6 +1234,82 @@ function SeparatorRow(props: { entry: LogcatEntry }): JSX.Element {
   );
 }
 
+// ── StudioJumpButton ──────────────────────────────────────────────────────────
+
+/**
+ * A small "↗ Studio" button rendered on hover for crash-group stack frame lines.
+ * Parses the message to extract the file and line, then calls `open_in_studio`.
+ */
+function StudioJumpButton(props: { message: string }): JSX.Element {
+  const frame = () => {
+    const f = parseStackFrame(props.message);
+    // Only show the button for frames that belong to the project —
+    // hide it for Android / Kotlin / Java framework packages.
+    if (f && !isProjectFrame(f.classPath)) return null;
+    return f;
+  };
+  const studioReady = () => healthState.systemReport?.studioCommandFound === true;
+  const [hovered, setHovered] = createSignal(false);
+  const [opening, setOpening] = createSignal(false);
+
+  const handleOpen = async (e: MouseEvent) => {
+    e.stopPropagation();
+    const f = frame();
+    if (!f) return;
+    if (!studioReady()) {
+      showToast("Install the studio command — see Health Panel for setup instructions", "warning");
+      return;
+    }
+    setOpening(true);
+    try {
+      await openInStudio(f.packagePath, f.filename, f.line);
+    } catch (err: unknown) {
+      showToast(String(err), "error");
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  return (
+    <Show when={frame() !== null}>
+      <button
+        onClick={handleOpen}
+        title={
+          studioReady()
+            ? `Open ${frame()!.filename}:${frame()!.line} in Android Studio`
+            : "Install the studio command to enable jump-to-line (see Health Panel)"
+        }
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          "flex-shrink": "0",
+          display: "inline-flex",
+          "align-items": "center",
+          gap: "3px",
+          padding: "1px 6px",
+          "border-radius": "3px",
+          border: `1px solid ${studioReady() ? "rgba(96,165,250,0.4)" : "rgba(156,163,175,0.3)"}`,
+          background: hovered()
+            ? studioReady()
+              ? "rgba(96,165,250,0.15)"
+              : "rgba(156,163,175,0.1)"
+            : "transparent",
+          color: studioReady() ? "rgba(96,165,250,0.9)" : "var(--text-disabled)",
+          cursor: opening() ? "wait" : studioReady() ? "pointer" : "not-allowed",
+          "font-size": "9px",
+          "font-family": "var(--font-ui)",
+          "font-weight": "500",
+          opacity: opening() ? "0.6" : "1",
+          transition: "background 0.1s, opacity 0.1s",
+          "white-space": "nowrap",
+        }}
+      >
+        {opening() ? "⟳" : "↗"} Studio
+      </button>
+    </Show>
+  );
+}
+
 // ── LogcatRow ─────────────────────────────────────────────────────────────────
 
 function LogcatRow(props: {
@@ -1361,6 +1441,11 @@ function LogcatRow(props: {
       >
         {props.entry.message}
       </span>
+
+      {/* Open in Studio button — shown for crash-group stack frame lines */}
+      <Show when={inCrashGroup() || props.entry.isCrash}>
+        <StudioJumpButton message={props.entry.message} />
+      </Show>
     </div>
   );
 }

@@ -42,4 +42,8 @@ gradleWrapperFound: boolean,
 /**
  * Whether the `.androidide` app directory is writable.
  */
-lspSystemDirOk: boolean, };
+lspSystemDirOk: boolean, 
+/**
+ * Whether the `studio` command is available on PATH (Android Studio CLI).
+ */
+studioCommandFound: boolean, };

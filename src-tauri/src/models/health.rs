@@ -27,6 +27,8 @@ pub struct SystemHealthReport {
     pub gradle_wrapper_found: bool,
     /// Whether the `.androidide` app directory is writable.
     pub lsp_system_dir_ok: bool,
+    /// Whether the `studio` command is available on PATH (Android Studio CLI).
+    pub studio_command_found: bool,
 }
 
 #[cfg(test)]
@@ -45,6 +47,7 @@ mod tests {
             emulator_found: true,
             gradle_wrapper_found: true,
             lsp_system_dir_ok: true,
+            studio_command_found: false,
         };
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("javaExecutableFound"));
