@@ -14,11 +14,9 @@
  *
  * Setup: `claude mcp add --transport stdio android-companion -- "/path/to/android-dev-companion" --mcp`
  */
-use crate::models::build::{BuildError, BuildErrorSeverity, BuildLineKind, BuildResult};
-use crate::models::logcat::LogcatLevel;
 use crate::services::adb_manager::{self, DeviceState};
 use crate::services::build_runner::{self, BuildState};
-use crate::services::logcat::{LogcatFilter, LogcatState};
+use crate::services::logcat::{self, LogcatFilter, LogcatState};
 use crate::services::mcp_activity::{self, McpActivityEntry};
 use crate::services::process_manager::ProcessManager;
 use crate::services::settings_manager;
@@ -26,6 +24,8 @@ use crate::services::variant_manager;
 use crate::services::crash_inspector;
 use crate::services::app_inspector;
 use crate::services::build_inspector;
+use crate::services::device_inspector;
+use crate::services::health_inspector;
 use crate::FsState;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rmcp::{
@@ -40,7 +40,7 @@ use rmcp::{
 use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;
-use std::sync::{Arc, atomic::{AtomicBool, AtomicU64, Ordering}};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
 use tauri::{AppHandle, Emitter, Manager};
 use tracing::{debug, error, info};
 
@@ -268,153 +268,63 @@ impl AndroidMcpServer {
         }
 
         let gradle_root = self.get_gradle_root().await
-            .ok_or_else(|| McpError::invalid_params("No project open. Open an Android project first.", None))?;
+            .ok_or_else(|| McpError::invalid_params(
+                "No project open. Open an Android project first.", None,
+            ))?;
 
         let gradlew = build_runner::find_gradlew(&gradle_root)
-            .ok_or_else(|| McpError::invalid_params("gradlew not found. Is this an Android project?", None))?;
+            .ok_or_else(|| McpError::invalid_params(
+                "gradlew not found. Is this an Android project?", None,
+            ))?;
 
         let settings = settings_manager::load_settings();
-        let timeout_sec = settings.mcp.build_timeout_sec;
-        let mut args = vec![p.task.clone(), "--console=plain".to_owned()];
-        if settings.build.gradle_parallel { args.push("--parallel".into()); }
-        if settings.build.gradle_offline { args.push("--offline".into()); }
-
+        let mut extra: Vec<&str> = Vec::new();
+        if settings.build.gradle_parallel { extra.push("--parallel"); }
+        if settings.build.gradle_offline { extra.push("--offline"); }
         let env = build_runner::build_env_vars(&settings, &gradle_root);
-        let build_log = self.build_state.build_log.clone();
-        build_runner::clear_build_log(&build_log);
 
-        let started_at = chrono::Utc::now().to_rfc3339();
-
-        let errors_buf = Arc::new(std::sync::Mutex::new(Vec::<BuildError>::new()));
-        let success_flag = Arc::new(AtomicBool::new(false));
-        let duration_buf = Arc::new(AtomicU64::new(0));
-        let done_flag = Arc::new(AtomicBool::new(false));
-        let done_flag_clone = done_flag.clone();
-
-        {
-            let mut bs = self.build_state.inner.lock().await;
-            bs.status = crate::models::build::BuildStatus::Running {
-                task: p.task.clone(),
-                started_at: started_at.clone(),
-            };
-            bs.current_errors.clear();
-        }
-
-        let args_strs: Vec<String> = args;
-        let args_refs: Vec<&str> = args_strs.iter().map(|s| s.as_str()).collect();
-
-        use crate::services::process_manager::{self as pm, SpawnOptions};
-
-        let pid = pm::spawn(
-            &self.process_manager.0,
-            gradlew.to_str().unwrap_or("./gradlew"),
-            &args_refs,
-            gradle_root.clone(),
+        let result = build_runner::run_task(
+            &p.task,
+            &extra,
+            &gradle_root,
+            &gradlew,
+            settings.mcp.build_timeout_sec as u64,
             env,
-            SpawnOptions {
-                on_line: Box::new({
-                    let build_log = build_log.clone();
-                    let errors_buf = errors_buf.clone();
-                    let success_flag = success_flag.clone();
-                    let duration_buf = duration_buf.clone();
-                    move |proc_line| {
-                        build_runner::push_build_log(&build_log, proc_line.text.clone());
-                        let line = build_runner::parse_build_line(&proc_line.text);
-                        if matches!(line.kind, BuildLineKind::Error | BuildLineKind::Warning) {
-                            if let Ok(mut e) = errors_buf.lock() {
-                                e.push(BuildError {
-                                    message: line.content.clone(),
-                                    file: line.file.clone(),
-                                    line: line.line,
-                                    col: line.col,
-                                    severity: if line.kind == BuildLineKind::Error {
-                                        BuildErrorSeverity::Error
-                                    } else {
-                                        BuildErrorSeverity::Warning
-                                    },
-                                });
-                            }
-                        }
-                        if line.kind == BuildLineKind::Summary {
-                            let dur = build_runner::parse_build_duration(&line.content);
-                            duration_buf.store(dur, Ordering::Relaxed);
-                            if line.content.contains("BUILD SUCCESSFUL") {
-                                success_flag.store(true, Ordering::Relaxed);
-                            }
-                        }
-                    }
-                }),
-                on_exit: Box::new(move |_pid, _code| {
-                    done_flag_clone.store(true, Ordering::Release);
-                }),
-            },
-        ).await.map_err(|e| McpError::internal_error(format!("Failed to spawn Gradle: {e}"), None))?;
+            &self.build_state,
+            &self.process_manager,
+        )
+        .await
+        .map_err(|e| McpError::internal_error(e, None))?;
 
-        {
-            let mut bs = self.build_state.inner.lock().await;
-            bs.current_build = Some(pid);
-        }
-
-        // Poll until the build finishes (configurable timeout, default 10 minutes).
-        let timeout = std::time::Duration::from_secs(timeout_sec as u64);
-        let start = std::time::Instant::now();
-        let timed_out;
-        loop {
-            tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-            if done_flag.load(Ordering::Acquire) {
-                timed_out = false;
-                break;
-            }
-            if start.elapsed() > timeout {
-                timed_out = true;
-                break;
-            }
-        }
-
-        // Cancel the process if we timed out to prevent orphan Gradle processes.
-        if timed_out {
-            build_runner::cancel_build(&self.build_state, &self.process_manager).await;
+        if result.timed_out {
             return Ok(CallToolResult::error(vec![Content::text(format!(
                 "Build timed out after {}s — task '{}'. Build has been cancelled.",
-                timeout_sec, p.task
+                settings.mcp.build_timeout_sec, p.task
             ))]));
         }
 
-        let success = success_flag.load(Ordering::Relaxed);
-        let errors = errors_buf.lock().map(|g| g.clone()).unwrap_or_default();
-        let duration_ms = duration_buf.load(Ordering::Relaxed);
+        let issue_lines = build_runner::format_build_issues(&result.errors);
 
-        let error_count = errors.iter().filter(|e| e.severity == BuildErrorSeverity::Error).count() as u32;
-        let warning_count = errors.iter().filter(|e| e.severity == BuildErrorSeverity::Warning).count() as u32;
-
-        // Record the result — this populates current_errors so get_build_errors works.
-        let result = BuildResult { success, duration_ms, error_count, warning_count };
-        build_runner::record_build_result(
-            &self.build_state, p.task.clone(), started_at, result, errors.clone(),
-        ).await;
-
-        let issue_lines: Vec<String> = errors.iter().map(|e| {
-            let loc = match (&e.file, e.line) {
-                (Some(f), Some(l)) => format!("{}:{}", f, l),
-                (Some(f), None) => f.clone(),
-                _ => String::new(),
-            };
-            let sev = format!("{:?}", e.severity).to_lowercase();
-            if loc.is_empty() { format!("[{sev}] {}", e.message) } else { format!("[{sev}] {loc} — {}", e.message) }
-        }).collect();
-
-        if success {
-            let msg = if errors.is_empty() {
-                format!("BUILD SUCCESSFUL — task '{}' ({}ms)", p.task, duration_ms)
+        if result.success {
+            let msg = if result.errors.is_empty() {
+                format!("BUILD SUCCESSFUL — task '{}' ({}ms)", p.task, result.duration_ms)
             } else {
-                format!("BUILD SUCCESSFUL (with {} warning(s)) — task '{}' ({}ms)\n{}", errors.len(), p.task, duration_ms, issue_lines.join("\n"))
+                format!(
+                    "BUILD SUCCESSFUL (with {} warning(s)) — task '{}' ({}ms)\n{}",
+                    result.errors.len(), p.task, result.duration_ms, issue_lines.join("\n")
+                )
             };
             Ok(CallToolResult::success(vec![Content::text(msg)]))
         } else {
             let msg = format!(
                 "BUILD FAILED — task '{}'\n{} issue(s):\n{}",
-                p.task, errors.len(),
-                if errors.is_empty() { "Check get_build_log for details.".to_owned() } else { issue_lines.join("\n") }
+                p.task,
+                result.errors.len(),
+                if result.errors.is_empty() {
+                    "Check get_build_log for details.".to_owned()
+                } else {
+                    issue_lines.join("\n")
+                }
             );
             Ok(CallToolResult::error(vec![Content::text(msg)]))
         }
@@ -654,7 +564,7 @@ impl AndroidMcpServer {
         let settings = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
-        let serial = match resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
             Some(s) => s,
             None => return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or launch an emulator first.",
@@ -683,7 +593,7 @@ impl AndroidMcpServer {
         let settings = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
-        let serial = resolve_device_serial(&adb, p.device_serial.as_deref()).await;
+        let serial = adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await;
 
         let state = app_inspector::get_runtime_state(
             &adb,
@@ -771,7 +681,7 @@ impl AndroidMcpServer {
         let mcp_settings = settings_manager::load_settings().mcp;
         let count = p.count.unwrap_or(mcp_settings.logcat_default_count as usize).min(10_000);
         let only_crashes = p.only_crashes.unwrap_or(false);
-        let min_level = p.min_level.as_deref().map(parse_level_str);
+        let min_level = p.min_level.as_deref().map(logcat::parse_level_str);
         let filter = LogcatFilter::new(min_level, p.tag, p.text, p.package, only_crashes);
 
         let logcat = self.logcat_state.lock().await;
@@ -789,7 +699,7 @@ impl AndroidMcpServer {
 
         let structured: Vec<serde_json::Value> = entries.iter().map(|e| json!({
             "timestamp": e.timestamp,
-            "level": level_char(&e.level),
+            "level": logcat::level_char(&e.level),
             "tag": e.tag,
             "pid": e.pid,
             "message": e.message,
@@ -903,26 +813,15 @@ impl AndroidMcpServer {
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.device_serial)?;
 
-        let settings = settings_manager::load_settings();
-        let adb = adb_manager::get_adb_path(&settings);
-
-        // adb exec-out screencap -p writes raw PNG to stdout.
-        let output = tokio::process::Command::new(&adb)
-            .args(["-s", &p.device_serial, "exec-out", "screencap", "-p"])
-            .output()
-            .await
-            .map_err(|e| McpError::internal_error(format!("adb exec-out screencap failed: {e}"), None))?;
-
-        if !output.status.success() || output.stdout.is_empty() {
-            return Ok(CallToolResult::error(vec![Content::text(
-                format!("Screenshot failed: {}", String::from_utf8_lossy(&output.stderr))
-            )]));
+        let adb = adb_manager::get_adb_path(&settings_manager::load_settings());
+        match device_inspector::take_screenshot(&adb, &p.device_serial).await {
+            Ok(bytes) => Ok(CallToolResult::success(vec![
+                Content::image(BASE64.encode(&bytes), "image/png"),
+            ])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(
+                format!("Screenshot failed: {e}")
+            )])),
         }
-
-        let encoded = BASE64.encode(&output.stdout);
-        Ok(CallToolResult::success(vec![
-            Content::image(encoded, "image/png"),
-        ]))
     }
 
     /// Get device hardware and software properties.
@@ -933,68 +832,11 @@ impl AndroidMcpServer {
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.device_serial)?;
 
-        let settings = settings_manager::load_settings();
-        let adb = adb_manager::get_adb_path(&settings);
-
-        let serial = &p.device_serial;
-        let mk_getprop = |prop: &'static str| {
-            tokio::process::Command::new(adb.clone())
-                .args(["-s", serial, "shell", "getprop", prop])
-                .output()
-        };
-
-        // Run all property queries and the display-size / battery queries concurrently.
-        let (sdk, release, manufacturer, model, name, fingerprint, build_id, wm_size, battery) = tokio::join!(
-            mk_getprop("ro.build.version.sdk"),
-            mk_getprop("ro.build.version.release"),
-            mk_getprop("ro.product.manufacturer"),
-            mk_getprop("ro.product.model"),
-            mk_getprop("ro.product.name"),
-            mk_getprop("ro.build.fingerprint"),
-            mk_getprop("ro.build.id"),
-            tokio::process::Command::new(adb.clone())
-                .args(["-s", serial, "shell", "wm", "size"])
-                .output(),
-            tokio::process::Command::new(adb.clone())
-                .args(["-s", serial, "shell", "dumpsys", "battery"])
-                .output(),
-        );
-
-        let prop_val = |res: Result<std::process::Output, _>| -> String {
-            res.ok()
-                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
-                .unwrap_or_default()
-        };
-
-        let mut info = serde_json::Map::new();
-        for (key, val) in [
-            ("build_version_sdk", prop_val(sdk)),
-            ("build_version_release", prop_val(release)),
-            ("product_manufacturer", prop_val(manufacturer)),
-            ("product_model", prop_val(model)),
-            ("product_name", prop_val(name)),
-            ("build_fingerprint", prop_val(fingerprint)),
-            ("build_id", prop_val(build_id)),
-        ] {
-            if !val.is_empty() {
-                info.insert(key.into(), json!(val));
-            }
+        let adb = adb_manager::get_adb_path(&settings_manager::load_settings());
+        match device_inspector::get_device_info(&adb, &p.device_serial).await {
+            Ok(info) => Ok(CallToolResult::structured(json!(info))),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
-
-        let size_str = prop_val(wm_size);
-        if !size_str.is_empty() {
-            info.insert("display_size".into(), json!(size_str));
-        }
-
-        // Extract battery level line from `dumpsys battery` output.
-        let battery_str = battery.ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-            .unwrap_or_default();
-        if let Some(level_line) = battery_str.lines().find(|l| l.trim_start().starts_with("level:")) {
-            info.insert("battery".into(), json!(level_line.trim()));
-        }
-
-        Ok(CallToolResult::structured(serde_json::Value::Object(info)))
     }
 
     /// Get installed app details from a device.
@@ -1006,45 +848,11 @@ impl AndroidMcpServer {
         validate_device_serial(&p.device_serial)?;
         validate_package_name(&p.package)?;
 
-        let settings = settings_manager::load_settings();
-        let adb = adb_manager::get_adb_path(&settings);
-
-        let (path_res, dump_res) = tokio::join!(
-            tokio::process::Command::new(adb.clone())
-                .args(["-s", &p.device_serial, "shell", "pm", "path", &p.package])
-                .output(),
-            tokio::process::Command::new(adb.clone())
-                .args(["-s", &p.device_serial, "shell", "dumpsys", "package", &p.package])
-                .output(),
-        );
-        let path_out = path_res.ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
-            .unwrap_or_default();
-        let dump_out = dump_res.ok()
-            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-            .unwrap_or_default();
-
-        if dump_out.is_empty() && path_out.is_empty() {
-            return Ok(CallToolResult::error(vec![Content::text(
-                format!("Package '{}' not found on device {}. Is it installed?", p.package, p.device_serial)
-            )]));
+        let adb = adb_manager::get_adb_path(&settings_manager::load_settings());
+        match device_inspector::dump_app_info(&adb, &p.device_serial, &p.package).await {
+            Ok(info) => Ok(CallToolResult::structured(json!(info))),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
-
-        // Extract key lines.
-        let version_name = extract_dump_value(&dump_out, "versionName=");
-        let version_code = extract_dump_value(&dump_out, "versionCode=");
-        let data_dir = extract_dump_value(&dump_out, "dataDir=");
-        let first_install = extract_dump_value(&dump_out, "firstInstallTime=");
-
-        Ok(CallToolResult::structured(json!({
-            "package": p.package,
-            "install_path": path_out.strip_prefix("package:").unwrap_or(&path_out).trim(),
-            "data_dir": data_dir,
-            "version_name": version_name,
-            "version_code": version_code,
-            "first_install": first_install,
-            "raw_dump_excerpt": dump_out.lines().take(40).collect::<Vec<_>>().join("\n"),
-        })))
     }
 
     /// Get memory usage for an app.
@@ -1056,38 +864,11 @@ impl AndroidMcpServer {
         validate_device_serial(&p.device_serial)?;
         validate_package_name(&p.package)?;
 
-        let settings = settings_manager::load_settings();
-        let adb = adb_manager::get_adb_path(&settings);
-
-        let output = tokio::process::Command::new(&adb)
-            .args(["-s", &p.device_serial, "shell", "dumpsys", "meminfo", &p.package])
-            .output().await
-            .map_err(|e| McpError::internal_error(format!("adb dumpsys meminfo failed: {e}"), None))?;
-
-        let text = String::from_utf8_lossy(&output.stdout).to_string();
-        if text.trim().is_empty() || text.contains("No process found") {
-            return Ok(CallToolResult::error(vec![Content::text(
-                format!("No memory info for '{}' — is the app running?", p.package)
-            )]));
+        let adb = adb_manager::get_adb_path(&settings_manager::load_settings());
+        match device_inspector::get_memory_info(&adb, &p.device_serial, &p.package).await {
+            Ok(info) => Ok(CallToolResult::structured(json!(info))),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
-
-        // Extract total PSS and key sections (PSS + RSS columns from App Summary).
-        let total_pss = extract_dump_value(&text, "TOTAL PSS:");
-        let (java_heap_pss, java_heap_rss) = extract_dump_two_values(&text, "Java Heap:");
-        let (native_heap_pss, native_heap_rss) = extract_dump_two_values(&text, "Native Heap:");
-        let (graphics_pss, graphics_rss) = extract_dump_two_values(&text, "Graphics:");
-
-        Ok(CallToolResult::structured(json!({
-            "package": p.package,
-            "total_pss": total_pss,
-            "java_heap_pss": java_heap_pss,
-            "java_heap_rss": java_heap_rss,
-            "native_heap_pss": native_heap_pss,
-            "native_heap_rss": native_heap_rss,
-            "graphics_pss": graphics_pss,
-            "graphics_rss": graphics_rss,
-            "raw": text.lines().take(50).collect::<Vec<_>>().join("\n"),
-        })))
     }
 
     /// Install an APK on a connected device.
@@ -1236,62 +1017,42 @@ impl AndroidMcpServer {
             (fs.project_root.clone(), fs.gradle_root.clone())
         };
 
-        let java_bin = settings.java.home.as_deref()
-            .map(|h| PathBuf::from(h).join("bin").join("java"))
-            .unwrap_or_else(|| PathBuf::from("java"));
-        let adb = adb_manager::get_adb_path(&settings);
+        let report = health_inspector::run_health_check(
+            &settings,
+            project_root.as_deref(),
+            gradle_root.as_deref(),
+        )
+        .await;
 
-        let (java_status, adb_status) = tokio::join!(
-            tokio::process::Command::new(&java_bin)
-                .arg("-version")
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status(),
-            tokio::process::Command::new(&adb)
-                .arg("version")
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status(),
-        );
-        let java_ok = java_status.map(|s| s.success()).unwrap_or(false);
-        let adb_ok = adb_status.map(|s| s.success()).unwrap_or(false);
-
-        let detected_sdk = detect_sdk_path(settings.android.sdk_path.as_deref(), project_root.as_deref());
-        let sdk_ok = detected_sdk.is_some();
-
-        // Persist auto-detected SDK path back to settings so ADB and other tools can use it.
-        if sdk_ok {
-            if let Some(ref sdk_path) = detected_sdk {
-                if settings.android.sdk_path.as_deref() != Some(sdk_path.as_str()) {
-                    let mut updated = settings.clone();
-                    updated.android.sdk_path = Some(sdk_path.clone());
-                    let _ = settings_manager::save_settings(&updated);
-                }
-            }
-        }
-
-        let gradlew_ok = gradle_root.as_ref().or(project_root.as_ref())
-            .map(|r| r.join("gradlew").is_file())
-            .unwrap_or(false);
-
-        let gradle_hint = if gradlew_ok {
+        let gradle_hint = if report.gradlew_ok {
             serde_json::Value::Null
-        } else if project_root.is_none() {
+        } else if !report.project_open {
             json!("No Android project open — pass --project /path/to/project or open one in the IDE first")
         } else {
             json!("No gradlew found in the selected project — ensure it is an Android Gradle project")
         };
 
-        let all_ok = java_ok && sdk_ok && adb_ok && gradlew_ok && project_root.is_some();
-
         Ok(CallToolResult::structured(json!({
-            "all_ok": all_ok,
+            "all_ok": report.all_ok,
             "checks": {
-                "java": { "ok": java_ok, "hint": if java_ok { serde_json::Value::Null } else { json!("Set java.home in Settings → Tools") } },
-                "android_sdk": { "ok": sdk_ok, "detected_path": detected_sdk, "hint": if sdk_ok { serde_json::Value::Null } else { json!("SDK not found — set android.sdkPath in Settings → Android, or ensure ANDROID_HOME is set") } },
-                "adb": { "ok": adb_ok, "hint": if adb_ok { serde_json::Value::Null } else { json!("ADB not found — check Android SDK path") } },
-                "gradle_wrapper": { "ok": gradlew_ok, "hint": gradle_hint },
-                "project": { "ok": project_root.is_some(), "path": project_root.as_ref().map(|p| p.to_string_lossy().to_string()) },
+                "java": {
+                    "ok": report.java_ok,
+                    "hint": if report.java_ok { serde_json::Value::Null } else { json!("Set java.home in Settings → Tools") }
+                },
+                "android_sdk": {
+                    "ok": report.sdk_ok,
+                    "detected_path": report.detected_sdk,
+                    "hint": if report.sdk_ok { serde_json::Value::Null } else { json!("SDK not found — set android.sdkPath in Settings → Android, or ensure ANDROID_HOME is set") }
+                },
+                "adb": {
+                    "ok": report.adb_ok,
+                    "hint": if report.adb_ok { serde_json::Value::Null } else { json!("ADB not found — check Android SDK path") }
+                },
+                "gradle_wrapper": { "ok": report.gradlew_ok, "hint": gradle_hint },
+                "project": {
+                    "ok": report.project_open,
+                    "path": report.project_path.as_ref().map(|p| p.to_string_lossy().to_string())
+                },
             }
         })))
     }
@@ -1620,146 +1381,6 @@ fn validate_device_serial(serial: &str) -> Result<(), McpError> {
     Ok(())
 }
 
-/// Resolve a device serial: use the provided one, or fall back to the first
-/// online device reported by `adb devices`.
-async fn resolve_device_serial(adb: &PathBuf, requested: Option<&str>) -> Option<String> {
-    if let Some(s) = requested {
-        return Some(s.to_string());
-    }
-    let output = tokio::process::Command::new(adb)
-        .arg("devices")
-        .output()
-        .await
-        .ok()?;
-    let text = String::from_utf8_lossy(&output.stdout);
-    text.lines()
-        .skip(1)
-        .filter(|l| l.contains("\tdevice"))
-        .next()
-        .map(|l| l.split_whitespace().next().unwrap_or("").to_string())
-        .filter(|s| !s.is_empty())
-}
-
-fn level_char(level: &LogcatLevel) -> &'static str {
-    match level {
-        LogcatLevel::Verbose => "V",
-        LogcatLevel::Debug => "D",
-        LogcatLevel::Info => "I",
-        LogcatLevel::Warn => "W",
-        LogcatLevel::Error => "E",
-        LogcatLevel::Fatal => "F",
-        LogcatLevel::Unknown => "?",
-    }
-}
-
-fn parse_level_str(s: &str) -> LogcatLevel {
-    match s.to_lowercase().as_str() {
-        "verbose" | "v" => LogcatLevel::Verbose,
-        "debug" | "d" => LogcatLevel::Debug,
-        "info" | "i" => LogcatLevel::Info,
-        "warn" | "w" => LogcatLevel::Warn,
-        "error" | "e" => LogcatLevel::Error,
-        "fatal" | "f" => LogcatLevel::Fatal,
-        _ => LogcatLevel::Verbose,
-    }
-}
-
-/// Detect the Android SDK root using a priority chain:
-/// 1. Explicitly configured `settings.android.sdk_path`
-/// 2. `sdk.dir` in `local.properties` at the project root
-/// 3. `ANDROID_HOME` / `ANDROID_SDK_ROOT` environment variables
-/// 4. Standard platform-specific default locations
-///
-/// Returns the first valid SDK path found, or `None`.
-fn detect_sdk_path(configured: Option<&str>, project_root: Option<&std::path::Path>) -> Option<String> {
-    fn is_valid_sdk(path: &std::path::Path) -> bool {
-        path.exists()
-            && (path.join("platforms").is_dir() || path.join("platform-tools").is_dir())
-    }
-
-    fn expand(s: &str) -> std::path::PathBuf {
-        if let Some(rest) = s.strip_prefix("~/") {
-            if let Some(home) = dirs::home_dir() {
-                return home.join(rest);
-            }
-        }
-        std::path::PathBuf::from(s)
-    }
-
-    // 1. Explicitly configured path.
-    if let Some(p) = configured {
-        let path = expand(p);
-        if is_valid_sdk(&path) {
-            return Some(path.to_string_lossy().to_string());
-        }
-    }
-
-    // 2. local.properties in the project root.
-    if let Some(root) = project_root {
-        let lp = root.join("local.properties");
-        if let Ok(content) = std::fs::read_to_string(&lp) {
-            for line in content.lines() {
-                if let Some(val) = line.strip_prefix("sdk.dir=") {
-                    let path = expand(val.trim());
-                    if is_valid_sdk(&path) {
-                        return Some(path.to_string_lossy().to_string());
-                    }
-                }
-            }
-        }
-    }
-
-    // 3. Environment variables.
-    for var in &["ANDROID_HOME", "ANDROID_SDK_ROOT"] {
-        if let Ok(val) = std::env::var(var) {
-            let path = std::path::PathBuf::from(&val);
-            if is_valid_sdk(&path) {
-                return Some(val);
-            }
-        }
-    }
-
-    // 4. Standard default locations.
-    let candidates: &[&str] = &[
-        "~/Library/Android/sdk",          // macOS
-        "~/Android/Sdk",                  // Linux
-        "~/AppData/Local/Android/Sdk",    // Windows
-    ];
-    for candidate in candidates {
-        let path = expand(candidate);
-        if is_valid_sdk(&path) {
-            return Some(path.to_string_lossy().to_string());
-        }
-    }
-
-    None
-}
-
-/// Extract a value from `dumpsys` output. Returns the text after `key` on the same line.
-fn extract_dump_value(text: &str, key: &str) -> Option<String> {
-    text.lines()
-        .find(|l| l.contains(key))
-        .and_then(|l| l.split(key).nth(1))
-        .map(|v| v.split_whitespace().next().unwrap_or(v).trim().to_owned())
-        .filter(|v| !v.is_empty())
-}
-
-/// Extract two whitespace-separated values after `key` on the same line (e.g. PSS and RSS columns).
-/// Returns `(first, second)` — either may be `None` if the column is absent.
-fn extract_dump_two_values(text: &str, key: &str) -> (Option<String>, Option<String>) {
-    let after = text.lines()
-        .find(|l| l.contains(key))
-        .and_then(|l| l.split(key).nth(1));
-    match after {
-        None => (None, None),
-        Some(s) => {
-            let mut parts = s.split_whitespace();
-            let first = parts.next().map(str::to_owned).filter(|v| !v.is_empty());
-            let second = parts.next().map(str::to_owned).filter(|v| !v.is_empty());
-            (first, second)
-        }
-    }
-}
 
 fn capitalize_first(s: &str) -> String {
     let mut c = s.chars();
@@ -2061,18 +1682,6 @@ mod tests {
     }
 
     #[test]
-    fn extract_dump_value_finds_version() {
-        let dump = "    versionName=1.2.3\n    versionCode=42\n";
-        assert_eq!(extract_dump_value(dump, "versionName="), Some("1.2.3".into()));
-        assert_eq!(extract_dump_value(dump, "versionCode="), Some("42".into()));
-    }
-
-    #[test]
-    fn extract_dump_value_returns_none_for_missing() {
-        assert!(extract_dump_value("some text", "nothere=").is_none());
-    }
-
-    #[test]
     fn capitalize_first_works() {
         assert_eq!(capitalize_first("debug"), "Debug");
         assert_eq!(capitalize_first("release"), "Release");
@@ -2086,90 +1695,4 @@ mod tests {
         let _ = MCP_STDIO_RUNNING.load(Ordering::SeqCst);
     }
 
-    // ── detect_sdk_path ───────────────────────────────────────────────────────
-
-    #[test]
-    fn detect_sdk_path_accepts_valid_configured_path() {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(dir.path().join("platform-tools")).unwrap();
-        let path = dir.path().to_str().unwrap();
-        let result = detect_sdk_path(Some(path), None);
-        assert_eq!(result.as_deref(), Some(path));
-    }
-
-    #[test]
-    fn detect_sdk_path_ignores_invalid_configured_path() {
-        // A path that exists but has no platforms/platform-tools dirs is not a valid SDK.
-        let dir = tempfile::tempdir().unwrap();
-        let result = detect_sdk_path(Some(dir.path().to_str().unwrap()), None);
-        assert!(result.is_none() || result.as_deref() != dir.path().to_str());
-    }
-
-    #[test]
-    fn detect_sdk_path_falls_back_to_local_properties() {
-        let sdk_dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(sdk_dir.path().join("platforms")).unwrap();
-
-        let project_dir = tempfile::tempdir().unwrap();
-        let props = format!("sdk.dir={}\n", sdk_dir.path().to_str().unwrap());
-        std::fs::write(project_dir.path().join("local.properties"), props).unwrap();
-
-        // No configured path — must fall through to local.properties.
-        let result = detect_sdk_path(None, Some(project_dir.path()));
-        assert_eq!(result.as_deref(), Some(sdk_dir.path().to_str().unwrap()));
-    }
-
-    #[test]
-    fn detect_sdk_path_skips_missing_local_properties() {
-        let project_dir = tempfile::tempdir().unwrap();
-        // No local.properties written, no env vars, no standard paths → None.
-        // (Standard paths are unlikely to exist in a CI environment.)
-        let result = detect_sdk_path(None, Some(project_dir.path()));
-        // We can only assert that the call doesn't panic; the result depends on the environment.
-        let _ = result;
-    }
-
-    #[test]
-    fn detect_sdk_path_does_not_return_invalid_configured_path() {
-        // A non-existent configured path must never be returned, even if
-        // standard fallback paths happen to exist on this machine.
-        let result = detect_sdk_path(Some("/nonexistent/sdk/path_xyz_unique"), None);
-        assert_ne!(result.as_deref(), Some("/nonexistent/sdk/path_xyz_unique"));
-    }
-
-    // ── extract_dump_two_values ───────────────────────────────────────────────
-
-    #[test]
-    fn extract_dump_two_values_extracts_pss_and_rss() {
-        // Simulate the App Summary section of `dumpsys meminfo` output.
-        let meminfo = "App Summary\n   Java Heap:        0                          13832\n   Native Heap:        4                            764\n";
-        let (pss, rss) = extract_dump_two_values(meminfo, "Java Heap:");
-        assert_eq!(pss.as_deref(), Some("0"));
-        assert_eq!(rss.as_deref(), Some("13832"));
-    }
-
-    #[test]
-    fn extract_dump_two_values_returns_none_none_for_missing_key() {
-        let meminfo = "App Summary\n   Java Heap:  0   1234\n";
-        let (pss, rss) = extract_dump_two_values(meminfo, "Graphics:");
-        assert!(pss.is_none());
-        assert!(rss.is_none());
-    }
-
-    #[test]
-    fn extract_dump_two_values_handles_single_column() {
-        // Line has only one value after the key.
-        let text = "   Graphics:        8\n";
-        let (pss, rss) = extract_dump_two_values(text, "Graphics:");
-        assert_eq!(pss.as_deref(), Some("8"));
-        assert!(rss.is_none());
-    }
-
-    #[test]
-    fn extract_dump_two_values_both_non_zero() {
-        let meminfo = "   Native Heap:      512                          2048\n";
-        let (pss, rss) = extract_dump_two_values(meminfo, "Native Heap:");
-        assert_eq!(pss.as_deref(), Some("512"));
-        assert_eq!(rss.as_deref(), Some("2048"));
-    }
 }

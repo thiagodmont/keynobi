@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use crate::models::settings::AppSettings;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HealthReport {
     pub all_ok: bool,
     pub java_ok: bool,
@@ -61,6 +61,7 @@ pub async fn run_health_check(
         }
     }
 
+    // Check both gradlew (Unix) and gradlew.bat (Windows)
     let gradlew_ok = gradle_root
         .or(project_root)
         .map(|r| r.join("gradlew").is_file() || r.join("gradlew.bat").is_file())

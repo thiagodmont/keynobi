@@ -524,6 +524,23 @@ pub struct GradleTaskResult {
     pub errors: Vec<crate::models::build::BuildError>,
 }
 
+/// Format `BuildError` structs into human-readable strings for display.
+///
+/// Each error is formatted as `[severity] location — message` or `[severity] message`
+/// if no location is available. Severity is derived from the error's severity field.
+pub fn format_build_issues(errors: &[crate::models::build::BuildError]) -> Vec<String> {
+    errors.iter().map(|e| {
+        let loc = match (&e.file, e.line) {
+            (Some(f), Some(l)) => format!("{}:{}", f, l),
+            (Some(f), None) => f.clone(),
+            _ => String::new(),
+        };
+        let sev = format!("{:?}", e.severity).to_lowercase();
+        if loc.is_empty() { format!("[{sev}] {}", e.message) }
+        else { format!("[{sev}] {loc} — {}", e.message) }
+    }).collect()
+}
+
 pub async fn run_task(
     task: &str,
     extra_args: &[&str],
