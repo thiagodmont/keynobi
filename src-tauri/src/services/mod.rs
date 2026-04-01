@@ -1,10 +1,12 @@
 pub mod adb_manager;
 pub mod build_runner;
+pub mod crash_inspector;
 pub mod fs_manager;
 pub mod log_pipeline;
 pub mod log_store;
 pub mod log_stream;
 pub mod logcat;
+pub mod mcp_activity;
 pub mod mcp_server;
 pub mod process_manager;
 pub mod settings_manager;
