@@ -12,16 +12,20 @@
  *
  * Transport: stdio (newline-delimited JSON-RPC 2.0).
  *
- * Setup: `claude mcp add android-companion --command "/path/to/android-dev-companion --mcp"`
+ * Setup: `claude mcp add --transport stdio android-companion -- "/path/to/android-dev-companion" --mcp`
  */
 use crate::models::build::{BuildError, BuildErrorSeverity, BuildLineKind, BuildResult};
 use crate::models::logcat::LogcatLevel;
 use crate::services::adb_manager::{self, DeviceState};
 use crate::services::build_runner::{self, BuildState};
 use crate::services::logcat::{LogcatFilter, LogcatState};
+use crate::services::mcp_activity::{self, McpActivityEntry};
 use crate::services::process_manager::ProcessManager;
 use crate::services::settings_manager;
 use crate::services::variant_manager;
+use crate::services::crash_inspector;
+use crate::services::app_inspector;
+use crate::services::build_inspector;
 use crate::FsState;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rmcp::{
@@ -207,6 +211,38 @@ pub struct FindApkPathParams {
 pub struct RunTestsParams {
     #[schemars(description = "Test type: 'unit' (testDebug), 'connected' (connectedAndroidTest), or a specific Gradle test task")]
     pub test_type: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetCrashStackTraceParams {
+    #[schemars(description = "Filter to a specific package name, e.g. com.example.app")]
+    pub package: Option<String>,
+    #[schemars(description = "Return a specific crash group by ID (from get_crash_logs crash_group_id field)")]
+    pub crash_group_id: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RestartAppParams {
+    #[schemars(description = "Android package name, e.g. com.example.app")]
+    pub package: String,
+    #[schemars(description = "ADB device serial (from list_devices). Uses first connected device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(description = "Cold start: clears app data with pm clear before launching (default true). Set false for warm restart.")]
+    pub cold: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetAppRuntimeStateParams {
+    #[schemars(description = "Android package name, e.g. com.example.app")]
+    pub package: String,
+    #[schemars(description = "ADB device serial (from list_devices). Uses first connected device if omitted.")]
+    pub device_serial: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetBuildConfigParams {
+    #[schemars(description = "Gradle module name (subdirectory), e.g. app (default) or feature-login")]
+    pub module: Option<String>,
 }
 
 // ── Tool implementations ──────────────────────────────────────────────────────
@@ -459,8 +495,9 @@ impl AndroidMcpServer {
     /// Cancel a running Gradle build.
     #[tool(description = "Cancel the currently running Gradle build. Returns immediately if no build is running.")]
     async fn cancel_build(&self) -> Result<CallToolResult, McpError> {
-        build_runner::cancel_build(&self.build_state, &self.process_manager).await;
-        Ok(CallToolResult::success(vec![Content::text("Build cancelled.")]))
+        let was_running = build_runner::cancel_build(&self.build_state, &self.process_manager).await;
+        let msg = if was_running { "Build cancelled." } else { "No build was running." };
+        Ok(CallToolResult::success(vec![Content::text(msg)]))
     }
 
     /// List available build variants.
@@ -492,7 +529,7 @@ impl AndroidMcpServer {
                 }
             }
         }
-        Ok(CallToolResult::success(vec![Content::text("Could not parse build variants. Ensure a project is open and build.gradle.kts exists.")]))
+        Ok(CallToolResult::structured(json!({ "variants": [], "active": null, "error": "Could not parse build variants. Ensure a project is open and build.gradle.kts exists." })))
     }
 
     /// Set the active build variant.
@@ -557,6 +594,118 @@ impl AndroidMcpServer {
         // Delegate to run_gradle_task with the resolved task name.
         let params = RunGradleTaskParams { task, variant: None };
         self.run_gradle_task(Parameters(params)).await
+    }
+
+    /// Get a parsed crash stack trace from the in-memory logcat buffer.
+    /// Requires logcat to be running (call start_logcat first).
+    #[tool(description = "Get a parsed crash stack trace from logcat. Returns exception type, message, stack frames, and caused-by chain. Requires start_logcat to be running.")]
+    async fn get_crash_stack_trace(
+        &self,
+        Parameters(p): Parameters<GetCrashStackTraceParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref pkg) = p.package {
+            validate_package_name(pkg)?;
+        }
+
+        let logcat = self.logcat_state.lock().await;
+
+        if !logcat.streaming && logcat.store.iter().count() == 0 {
+            return Ok(CallToolResult::error(vec![Content::text(
+                "Logcat not running — call start_logcat first.",
+            )]));
+        }
+
+        let entries: Vec<_> = logcat.store.iter().cloned().collect();
+        drop(logcat);
+
+        match crash_inspector::find_crash(
+            &entries,
+            p.package.as_deref(),
+            p.crash_group_id,
+        ) {
+            None => {
+                let msg = if let Some(pkg) = &p.package {
+                    format!("No crashes found for package '{pkg}'.")
+                } else {
+                    "No crashes found in the logcat buffer.".to_string()
+                };
+                Ok(CallToolResult::structured(json!({ "found": false, "message": msg })))
+            }
+            Some(crash) => Ok(CallToolResult::structured(json!(crash))),
+        }
+    }
+
+    /// Restart an Android app: stop it (optionally clearing data), then relaunch and wait for display.
+    #[tool(description = "Restart an Android app: force-stop or pm clear, then relaunch and wait for the activity to display. Returns launch time.")]
+    async fn restart_app(
+        &self,
+        Parameters(p): Parameters<RestartAppParams>,
+    ) -> Result<CallToolResult, McpError> {
+        validate_package_name(&p.package)?;
+
+        let settings = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+
+        let serial = match resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or launch an emulator first.",
+            )])),
+        };
+
+        let cold = p.cold.unwrap_or(true);
+
+        match app_inspector::restart_app(&adb, &serial, &p.package, cold).await {
+            Ok(result) => Ok(CallToolResult::structured(json!(result))),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    /// Get process list, thread counts, and RSS memory for all processes of an app.
+    #[tool(description = "Get runtime state for an Android app: running processes, thread counts per process, and RSS memory. Lightweight — no SIGQUIT.")]
+    async fn get_app_runtime_state(
+        &self,
+        Parameters(p): Parameters<GetAppRuntimeStateParams>,
+    ) -> Result<CallToolResult, McpError> {
+        validate_package_name(&p.package)?;
+
+        let settings = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+
+        let serial = if let Some(s) = p.device_serial.as_deref() {
+            Some(s.to_string())
+        } else {
+            let logcat = self.logcat_state.lock().await;
+            logcat.device_serial.clone()
+        };
+
+        let state = app_inspector::get_runtime_state(
+            &adb,
+            serial.as_deref(),
+            &p.package,
+        )
+        .await;
+
+        Ok(CallToolResult::structured(json!(state)))
+    }
+
+    /// Parse the module's build.gradle(.kts) for SDK levels, build types, and product flavors.
+    #[tool(description = "Parse build.gradle(.kts) for SDK levels, applicationId, buildTypes, and productFlavors. No Gradle execution needed.")]
+    async fn get_build_config(
+        &self,
+        Parameters(p): Parameters<GetBuildConfigParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let gradle_root = self.get_gradle_root().await
+            .ok_or_else(|| McpError::invalid_params(
+                "No project open. Open an Android project first.", None,
+            ))?;
+
+        let module = p.module.as_deref().unwrap_or("app");
+
+        match build_inspector::parse_build_config(&gradle_root, module) {
+            Ok(config) => Ok(CallToolResult::structured(json!(config))),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
     }
 
     // ── Logcat tools ──────────────────────────────────────────────────────────
@@ -910,18 +1059,21 @@ impl AndroidMcpServer {
             )]));
         }
 
-        // Extract the TOTAL PSS line and key sections.
+        // Extract total PSS and key sections (PSS + RSS columns from App Summary).
         let total_pss = extract_dump_value(&text, "TOTAL PSS:");
-        let java_heap = extract_dump_value(&text, "Java Heap:");
-        let native_heap = extract_dump_value(&text, "Native Heap:");
-        let graphics = extract_dump_value(&text, "Graphics:");
+        let (java_heap_pss, java_heap_rss) = extract_dump_two_values(&text, "Java Heap:");
+        let (native_heap_pss, native_heap_rss) = extract_dump_two_values(&text, "Native Heap:");
+        let (graphics_pss, graphics_rss) = extract_dump_two_values(&text, "Graphics:");
 
         Ok(CallToolResult::structured(json!({
             "package": p.package,
             "total_pss": total_pss,
-            "java_heap": java_heap,
-            "native_heap": native_heap,
-            "graphics": graphics,
+            "java_heap_pss": java_heap_pss,
+            "java_heap_rss": java_heap_rss,
+            "native_heap_pss": native_heap_pss,
+            "native_heap_rss": native_heap_rss,
+            "graphics_pss": graphics_pss,
+            "graphics_rss": graphics_rss,
             "raw": text.lines().take(50).collect::<Vec<_>>().join("\n"),
         })))
     }
@@ -1045,7 +1197,7 @@ impl AndroidMcpServer {
         match fs.project_root.as_ref() {
             None => Ok(CallToolResult::structured(json!({
                 "open": false,
-                "hint": "No project open. Launch with --project /path/to/project or open in the app."
+                "hint": "No project open. Open an Android project in the IDE, or launch with --project /path/to/project."
             }))),
             Some(root) => {
                 let name = root.file_name()
@@ -1092,15 +1244,31 @@ impl AndroidMcpServer {
         let java_ok = java_status.map(|s| s.success()).unwrap_or(false);
         let adb_ok = adb_status.map(|s| s.success()).unwrap_or(false);
 
-        let sdk_ok = settings.android.sdk_path.as_deref()
-            .map(|p| {
-                let root = PathBuf::from(p);
-                root.exists() && (root.join("platforms").is_dir() || root.join("platform-tools").is_dir())
-            }).unwrap_or(false);
+        let detected_sdk = detect_sdk_path(settings.android.sdk_path.as_deref(), project_root.as_deref());
+        let sdk_ok = detected_sdk.is_some();
+
+        // Persist auto-detected SDK path back to settings so ADB and other tools can use it.
+        if sdk_ok {
+            if let Some(ref sdk_path) = detected_sdk {
+                if settings.android.sdk_path.as_deref() != Some(sdk_path.as_str()) {
+                    let mut updated = settings.clone();
+                    updated.android.sdk_path = Some(sdk_path.clone());
+                    let _ = settings_manager::save_settings(&updated);
+                }
+            }
+        }
 
         let gradlew_ok = gradle_root.as_ref().or(project_root.as_ref())
             .map(|r| r.join("gradlew").is_file())
             .unwrap_or(false);
+
+        let gradle_hint = if gradlew_ok {
+            serde_json::Value::Null
+        } else if project_root.is_none() {
+            json!("No Android project open — pass --project /path/to/project or open one in the IDE first")
+        } else {
+            json!("No gradlew found in the selected project — ensure it is an Android Gradle project")
+        };
 
         let all_ok = java_ok && sdk_ok && adb_ok && gradlew_ok && project_root.is_some();
 
@@ -1108,9 +1276,9 @@ impl AndroidMcpServer {
             "all_ok": all_ok,
             "checks": {
                 "java": { "ok": java_ok, "hint": if java_ok { serde_json::Value::Null } else { json!("Set java.home in Settings → Tools") } },
-                "android_sdk": { "ok": sdk_ok, "hint": if sdk_ok { serde_json::Value::Null } else { json!("Set android.sdkPath in Settings → Android") } },
+                "android_sdk": { "ok": sdk_ok, "detected_path": detected_sdk, "hint": if sdk_ok { serde_json::Value::Null } else { json!("SDK not found — set android.sdkPath in Settings → Android, or ensure ANDROID_HOME is set") } },
                 "adb": { "ok": adb_ok, "hint": if adb_ok { serde_json::Value::Null } else { json!("ADB not found — check Android SDK path") } },
-                "gradle_wrapper": { "ok": gradlew_ok, "hint": if gradlew_ok { serde_json::Value::Null } else { json!("No gradlew at project root — open an Android project") } },
+                "gradle_wrapper": { "ok": gradlew_ok, "hint": gradle_hint },
                 "project": { "ok": project_root.is_some(), "path": project_root.as_ref().map(|p| p.to_string_lossy().to_string()) },
             }
         })))
@@ -1440,6 +1608,26 @@ fn validate_device_serial(serial: &str) -> Result<(), McpError> {
     Ok(())
 }
 
+/// Resolve a device serial: use the provided one, or fall back to the first
+/// online device reported by `adb devices`.
+async fn resolve_device_serial(adb: &PathBuf, requested: Option<&str>) -> Option<String> {
+    if let Some(s) = requested {
+        return Some(s.to_string());
+    }
+    let output = tokio::process::Command::new(adb)
+        .arg("devices")
+        .output()
+        .await
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.lines()
+        .skip(1)
+        .filter(|l| l.contains("\tdevice"))
+        .next()
+        .map(|l| l.split_whitespace().next().unwrap_or("").to_string())
+        .filter(|s| !s.is_empty())
+}
+
 fn level_char(level: &LogcatLevel) -> &'static str {
     match level {
         LogcatLevel::Verbose => "V",
@@ -1464,6 +1652,77 @@ fn parse_level_str(s: &str) -> LogcatLevel {
     }
 }
 
+/// Detect the Android SDK root using a priority chain:
+/// 1. Explicitly configured `settings.android.sdk_path`
+/// 2. `sdk.dir` in `local.properties` at the project root
+/// 3. `ANDROID_HOME` / `ANDROID_SDK_ROOT` environment variables
+/// 4. Standard platform-specific default locations
+///
+/// Returns the first valid SDK path found, or `None`.
+fn detect_sdk_path(configured: Option<&str>, project_root: Option<&std::path::Path>) -> Option<String> {
+    fn is_valid_sdk(path: &std::path::Path) -> bool {
+        path.exists()
+            && (path.join("platforms").is_dir() || path.join("platform-tools").is_dir())
+    }
+
+    fn expand(s: &str) -> std::path::PathBuf {
+        if let Some(rest) = s.strip_prefix("~/") {
+            if let Some(home) = dirs::home_dir() {
+                return home.join(rest);
+            }
+        }
+        std::path::PathBuf::from(s)
+    }
+
+    // 1. Explicitly configured path.
+    if let Some(p) = configured {
+        let path = expand(p);
+        if is_valid_sdk(&path) {
+            return Some(path.to_string_lossy().to_string());
+        }
+    }
+
+    // 2. local.properties in the project root.
+    if let Some(root) = project_root {
+        let lp = root.join("local.properties");
+        if let Ok(content) = std::fs::read_to_string(&lp) {
+            for line in content.lines() {
+                if let Some(val) = line.strip_prefix("sdk.dir=") {
+                    let path = expand(val.trim());
+                    if is_valid_sdk(&path) {
+                        return Some(path.to_string_lossy().to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Environment variables.
+    for var in &["ANDROID_HOME", "ANDROID_SDK_ROOT"] {
+        if let Ok(val) = std::env::var(var) {
+            let path = std::path::PathBuf::from(&val);
+            if is_valid_sdk(&path) {
+                return Some(val);
+            }
+        }
+    }
+
+    // 4. Standard default locations.
+    let candidates: &[&str] = &[
+        "~/Library/Android/sdk",          // macOS
+        "~/Android/Sdk",                  // Linux
+        "~/AppData/Local/Android/Sdk",    // Windows
+    ];
+    for candidate in candidates {
+        let path = expand(candidate);
+        if is_valid_sdk(&path) {
+            return Some(path.to_string_lossy().to_string());
+        }
+    }
+
+    None
+}
+
 /// Extract a value from `dumpsys` output. Returns the text after `key` on the same line.
 fn extract_dump_value(text: &str, key: &str) -> Option<String> {
     text.lines()
@@ -1473,11 +1732,149 @@ fn extract_dump_value(text: &str, key: &str) -> Option<String> {
         .filter(|v| !v.is_empty())
 }
 
+/// Extract two whitespace-separated values after `key` on the same line (e.g. PSS and RSS columns).
+/// Returns `(first, second)` — either may be `None` if the column is absent.
+fn extract_dump_two_values(text: &str, key: &str) -> (Option<String>, Option<String>) {
+    let after = text.lines()
+        .find(|l| l.contains(key))
+        .and_then(|l| l.split(key).nth(1));
+    match after {
+        None => (None, None),
+        Some(s) => {
+            let mut parts = s.split_whitespace();
+            let first = parts.next().map(str::to_owned).filter(|v| !v.is_empty());
+            let second = parts.next().map(str::to_owned).filter(|v| !v.is_empty());
+            (first, second)
+        }
+    }
+}
+
 fn capitalize_first(s: &str) -> String {
     let mut c = s.chars();
     match c.next() {
         None => String::new(),
         Some(f) => f.to_uppercase().to_string() + c.as_str(),
+    }
+}
+
+// ── Logging wrapper ────────────────────────────────────────────────────────────
+
+/// Wraps `AndroidMcpServer` to intercept all tool calls, resource reads, and
+/// prompt requests and write activity entries to the shared JSONL log.
+///
+/// This is used in place of `AndroidMcpServer` directly in both GUI and headless
+/// modes so the companion app always has a log to display.
+struct LoggingMcpServer(AndroidMcpServer);
+
+impl ServerHandler for LoggingMcpServer {
+    // ── Delegation for methods that AndroidMcpServer overrides ────────────────
+
+    fn get_info(&self) -> ServerInfo {
+        self.0.get_info()
+    }
+
+    async fn on_initialized(&self, context: rmcp::service::NotificationContext<RoleServer>) {
+        let client_name = context.peer
+            .peer_info()
+            .map(|i| i.client_info.name.clone())
+            .unwrap_or_else(|| "unknown".into());
+        mcp_activity::log_activity(&McpActivityEntry::lifecycle(
+            format!("Client connected: {client_name}"),
+        ));
+        self.0.on_initialized(context).await;
+    }
+
+    async fn list_resources(
+        &self,
+        request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, McpError> {
+        self.0.list_resources(request, context).await
+    }
+
+    // ── Instrumented: resource reads ──────────────────────────────────────────
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, McpError> {
+        let start = std::time::Instant::now();
+        let uri = request.uri.clone();
+        let result = self.0.read_resource(request, context).await;
+        let ms = start.elapsed().as_millis() as u64;
+        let (status, summary) = match &result {
+            Ok(_) => ("ok", None),
+            Err(e) => ("error", Some(e.message.clone().to_string())),
+        };
+        mcp_activity::log_activity(&McpActivityEntry::resource_read(&uri, ms, status, summary));
+        result
+    }
+
+    // ── Instrumented: tool calls (generated by #[tool_handler]) ──────────────
+
+    async fn call_tool(
+        &self,
+        request: CallToolRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        let start = std::time::Instant::now();
+        let name = request.name.clone();
+        let result = self.0.call_tool(request, context).await;
+        let ms = start.elapsed().as_millis() as u64;
+        let (status, summary) = match &result {
+            Ok(r) => {
+                let is_err = r.is_error.unwrap_or(false);
+                let first_text = r.content.first()
+                    .and_then(|c| c.as_text())
+                    .map(|t| {
+                        let s = &t.text;
+                        if s.len() > 120 { format!("{}…", &s[..120]) } else { s.clone() }
+                    });
+                if is_err { ("error", first_text) } else { ("ok", first_text) }
+            }
+            Err(e) => ("error", Some(e.message.clone().to_string())),
+        };
+        mcp_activity::log_activity(&McpActivityEntry::tool_call(
+            name.as_ref(), ms, status, summary,
+        ));
+        result
+    }
+
+    async fn list_tools(
+        &self,
+        request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListToolsResult, McpError> {
+        self.0.list_tools(request, context).await
+    }
+
+    fn get_tool(&self, name: &str) -> Option<Tool> {
+        self.0.get_tool(name)
+    }
+
+    // ── Instrumented: prompts (generated by #[prompt_handler]) ───────────────
+
+    async fn get_prompt(
+        &self,
+        request: GetPromptRequestParams,
+        context: RequestContext<RoleServer>,
+    ) -> Result<GetPromptResult, McpError> {
+        let start = std::time::Instant::now();
+        let name = request.name.clone();
+        let result = self.0.get_prompt(request, context).await;
+        let ms = start.elapsed().as_millis() as u64;
+        let status = if result.is_ok() { "ok" } else { "error" };
+        mcp_activity::log_activity(&McpActivityEntry::prompt(&name, ms, status));
+        result
+    }
+
+    async fn list_prompts(
+        &self,
+        request: Option<PaginatedRequestParams>,
+        context: RequestContext<RoleServer>,
+    ) -> Result<ListPromptsResult, McpError> {
+        self.0.list_prompts(request, context).await
     }
 }
 
@@ -1497,7 +1894,10 @@ pub async fn start_mcp_server(app_handle: AppHandle) -> Result<(), String> {
     let _ = app_handle.emit("mcp:started", serde_json::json!({ "transport": "stdio" }));
 
     tokio::spawn(async move {
-        let server = AndroidMcpServer::from_app_handle(&app_handle);
+        mcp_activity::rotate_activity_log();
+        mcp_activity::log_activity(&McpActivityEntry::lifecycle("Server started (GUI mode)"));
+
+        let server = LoggingMcpServer(AndroidMcpServer::from_app_handle(&app_handle));
         let transport = rmcp::transport::stdio();
         match server.serve(transport).await {
             Ok(running) => {
@@ -1510,6 +1910,7 @@ pub async fn start_mcp_server(app_handle: AppHandle) -> Result<(), String> {
                 error!("MCP server failed to start: {}", e);
             }
         }
+        mcp_activity::log_activity(&McpActivityEntry::lifecycle("Server stopped (GUI mode)"));
         MCP_STDIO_RUNNING.store(false, Ordering::SeqCst);
         let _ = app_handle.emit("mcp:stopped", serde_json::json!({}));
     });
@@ -1535,7 +1936,21 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
         .with_target(false)
         .init();
 
-    let project_root = project_path.or_else(|| std::env::current_dir().ok());
+    // Priority: --project arg > last_active_project from settings > current_dir.
+    let project_root = project_path
+        .or_else(|| {
+            let settings = settings_manager::load_settings();
+            settings.last_active_project.and_then(|p| {
+                let path = PathBuf::from(&p);
+                if path.is_dir() {
+                    info!("MCP headless: using last active project from settings: {}", p);
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+        })
+        .or_else(|| std::env::current_dir().ok());
     let gradle_root = project_root.as_ref().and_then(|root| fs_manager::find_gradle_root(root));
 
     let fs_state = FsState(Arc::new(tokio::sync::Mutex::new(crate::FsStateInner {
@@ -1552,9 +1967,18 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
 
     info!("MCP headless server starting. Project: {:?}", project_root);
 
-    let server = AndroidMcpServer::new_headless(
+    mcp_activity::rotate_activity_log();
+    mcp_activity::write_pid_file();
+    mcp_activity::log_activity(&McpActivityEntry::lifecycle(format!(
+        "Server started (headless) — project: {}",
+        project_root.as_ref()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|| "none".into())
+    )));
+
+    let server = LoggingMcpServer(AndroidMcpServer::new_headless(
         build_state, device_state, logcat_state, fs_state, process_manager,
-    );
+    ));
     let transport = rmcp::transport::stdio();
     match server.serve(transport).await {
         Ok(running) => {
@@ -1564,9 +1988,15 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
         }
         Err(e) => {
             eprintln!("MCP server failed to start: {e}");
+            mcp_activity::log_activity(&McpActivityEntry::lifecycle(
+                format!("Server failed to start: {e}")
+            ));
+            mcp_activity::remove_pid_file();
             std::process::exit(1);
         }
     }
+    mcp_activity::log_activity(&McpActivityEntry::lifecycle("Server stopped (headless)"));
+    mcp_activity::remove_pid_file();
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -1642,5 +2072,92 @@ mod tests {
         // Guard should be false at startup (or after test isolation).
         // We just check the type; actual state depends on test order.
         let _ = MCP_STDIO_RUNNING.load(Ordering::SeqCst);
+    }
+
+    // ── detect_sdk_path ───────────────────────────────────────────────────────
+
+    #[test]
+    fn detect_sdk_path_accepts_valid_configured_path() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("platform-tools")).unwrap();
+        let path = dir.path().to_str().unwrap();
+        let result = detect_sdk_path(Some(path), None);
+        assert_eq!(result.as_deref(), Some(path));
+    }
+
+    #[test]
+    fn detect_sdk_path_ignores_invalid_configured_path() {
+        // A path that exists but has no platforms/platform-tools dirs is not a valid SDK.
+        let dir = tempfile::tempdir().unwrap();
+        let result = detect_sdk_path(Some(dir.path().to_str().unwrap()), None);
+        assert!(result.is_none() || result.as_deref() != dir.path().to_str());
+    }
+
+    #[test]
+    fn detect_sdk_path_falls_back_to_local_properties() {
+        let sdk_dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(sdk_dir.path().join("platforms")).unwrap();
+
+        let project_dir = tempfile::tempdir().unwrap();
+        let props = format!("sdk.dir={}\n", sdk_dir.path().to_str().unwrap());
+        std::fs::write(project_dir.path().join("local.properties"), props).unwrap();
+
+        // No configured path — must fall through to local.properties.
+        let result = detect_sdk_path(None, Some(project_dir.path()));
+        assert_eq!(result.as_deref(), Some(sdk_dir.path().to_str().unwrap()));
+    }
+
+    #[test]
+    fn detect_sdk_path_skips_missing_local_properties() {
+        let project_dir = tempfile::tempdir().unwrap();
+        // No local.properties written, no env vars, no standard paths → None.
+        // (Standard paths are unlikely to exist in a CI environment.)
+        let result = detect_sdk_path(None, Some(project_dir.path()));
+        // We can only assert that the call doesn't panic; the result depends on the environment.
+        let _ = result;
+    }
+
+    #[test]
+    fn detect_sdk_path_does_not_return_invalid_configured_path() {
+        // A non-existent configured path must never be returned, even if
+        // standard fallback paths happen to exist on this machine.
+        let result = detect_sdk_path(Some("/nonexistent/sdk/path_xyz_unique"), None);
+        assert_ne!(result.as_deref(), Some("/nonexistent/sdk/path_xyz_unique"));
+    }
+
+    // ── extract_dump_two_values ───────────────────────────────────────────────
+
+    #[test]
+    fn extract_dump_two_values_extracts_pss_and_rss() {
+        // Simulate the App Summary section of `dumpsys meminfo` output.
+        let meminfo = "App Summary\n   Java Heap:        0                          13832\n   Native Heap:        4                            764\n";
+        let (pss, rss) = extract_dump_two_values(meminfo, "Java Heap:");
+        assert_eq!(pss.as_deref(), Some("0"));
+        assert_eq!(rss.as_deref(), Some("13832"));
+    }
+
+    #[test]
+    fn extract_dump_two_values_returns_none_none_for_missing_key() {
+        let meminfo = "App Summary\n   Java Heap:  0   1234\n";
+        let (pss, rss) = extract_dump_two_values(meminfo, "Graphics:");
+        assert!(pss.is_none());
+        assert!(rss.is_none());
+    }
+
+    #[test]
+    fn extract_dump_two_values_handles_single_column() {
+        // Line has only one value after the key.
+        let text = "   Graphics:        8\n";
+        let (pss, rss) = extract_dump_two_values(text, "Graphics:");
+        assert_eq!(pss.as_deref(), Some("8"));
+        assert!(rss.is_none());
+    }
+
+    #[test]
+    fn extract_dump_two_values_both_non_zero() {
+        let meminfo = "   Native Heap:      512                          2048\n";
+        let (pss, rss) = extract_dump_two_values(meminfo, "Native Heap:");
+        assert_eq!(pss.as_deref(), Some("512"));
+        assert_eq!(rss.as_deref(), Some("2048"));
     }
 }
