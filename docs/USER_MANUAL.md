@@ -172,6 +172,17 @@ The query bar supports a rich filter syntax. Simple filters (level, tag, text, p
 
 Multiple tokens are AND-ed together. Use the **Presets** button to save frequently used filters.
 
+### Package Filter Dropdown
+
+The second toolbar row contains a **package filter dropdown** (labelled "All packages" by default). Click it to open a searchable list of all package names that have produced log output in the current session.
+
+- **All packages** — removes the package filter and shows everything
+- **My App** — shortcut for `package:mine` (resolves to the project's `applicationId`)
+- **Individual packages** — any package name seen so far, sorted alphabetically
+- Use the search box inside the dropdown to narrow the list when many packages are present
+
+Selecting a package inserts a `package:` token into the query bar, which triggers backend-side filtering (entries from other packages are not forwarded across IPC). The dropdown reflects whatever package token is currently in the query, and editing the query bar directly keeps the dropdown in sync.
+
 ### JSON Viewer
 
 When a log entry's message contains valid JSON, a `{}` badge appears on the row. Click the badge to open the **JSON Detail Panel** at the bottom of the log, which shows the JSON formatted and syntax-highlighted. Click **Copy** to copy the raw JSON, or **✕** to close the panel.

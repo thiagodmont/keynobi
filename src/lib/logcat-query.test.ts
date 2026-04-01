@@ -5,6 +5,8 @@ import {
   parseAge,
   parseLogcatTimestamp,
   setAgeInQuery,
+  setPackageInQuery,
+  getPackageFromQuery,
   getActiveTokenContext,
   setMinePackage,
   isStackTraceLine,
@@ -469,5 +471,83 @@ describe("isStackTraceLine", () => {
   it("does not match normal messages", () => {
     expect(isStackTraceLine("Hello world")).toBe(false);
     expect(isStackTraceLine("Error initializing app")).toBe(false);
+  });
+});
+
+// ── setPackageInQuery ─────────────────────────────────────────────────────────
+
+describe("setPackageInQuery", () => {
+  it("adds package to empty query", () => {
+    expect(setPackageInQuery("", "com.example")).toBe("package:com.example");
+  });
+
+  it("appends package token to existing query", () => {
+    expect(setPackageInQuery("level:error", "com.example")).toBe("level:error package:com.example");
+  });
+
+  it("replaces existing package token", () => {
+    expect(setPackageInQuery("level:error package:com.old", "com.new")).toBe("level:error package:com.new");
+  });
+
+  it("removes package token when null is passed", () => {
+    expect(setPackageInQuery("level:error package:com.example", null)).toBe("level:error");
+  });
+
+  it("returns empty string when only the package token is removed", () => {
+    expect(setPackageInQuery("package:com.example", null)).toBe("");
+  });
+
+  it("supports the 'mine' shorthand", () => {
+    expect(setPackageInQuery("", "mine")).toBe("package:mine");
+  });
+
+  it("does not disturb other tokens when replacing", () => {
+    expect(setPackageInQuery("level:warn package:com.old age:5m", "com.new")).toBe(
+      "level:warn age:5m package:com.new"
+    );
+  });
+
+  it("composes correctly with setAgeInQuery (order-independent)", () => {
+    const withPkg = setPackageInQuery("", "com.example");
+    const withBoth = setAgeInQuery(withPkg, "5m");
+    expect(withBoth).toContain("package:com.example");
+    expect(withBoth).toContain("age:5m");
+    // Round-trip: removing both leaves empty
+    const cleared = setPackageInQuery(setAgeInQuery(withBoth, null), null);
+    expect(cleared).toBe("");
+  });
+});
+
+// ── getPackageFromQuery ───────────────────────────────────────────────────────
+
+describe("getPackageFromQuery", () => {
+  it("returns null for empty query", () => {
+    expect(getPackageFromQuery("")).toBeNull();
+  });
+
+  it("returns null when no package token present", () => {
+    expect(getPackageFromQuery("level:error tag:MyTag")).toBeNull();
+  });
+
+  it("extracts the package value", () => {
+    expect(getPackageFromQuery("package:com.example")).toBe("com.example");
+  });
+
+  it("extracts package from a multi-token query", () => {
+    expect(getPackageFromQuery("level:error package:com.example age:5m")).toBe("com.example");
+  });
+
+  it("returns 'mine' for the mine shorthand", () => {
+    expect(getPackageFromQuery("package:mine")).toBe("mine");
+  });
+
+  it("is consistent with setPackageInQuery round-trip", () => {
+    const q = setPackageInQuery("level:error", "com.roundtrip");
+    expect(getPackageFromQuery(q)).toBe("com.roundtrip");
+  });
+
+  it("returns null after package is removed", () => {
+    const q = setPackageInQuery("package:com.example", null);
+    expect(getPackageFromQuery(q)).toBeNull();
   });
 });

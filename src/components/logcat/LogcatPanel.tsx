@@ -34,9 +34,12 @@ import {
   parseQuery,
   matchesQuery,
   setAgeInQuery,
+  setPackageInQuery,
+  getPackageFromQuery,
   getMinePackage,
   type QueryToken,
 } from "@/lib/logcat-query";
+import { PackageDropdown } from "@/components/logcat/PackageDropdown";
 
 // ── EntryFlags (mirrors Rust EntryFlags consts) ────────────────────────────────
 const ENTRY_FLAGS = {
@@ -321,6 +324,12 @@ export function LogcatPanel(): JSX.Element {
     }
     return null;
   });
+
+  const activePackage = createMemo(() => getPackageFromQuery(debouncedQuery()));
+
+  function handlePackageSelect(pkg: string | null) {
+    updateQuery(setPackageInQuery(query(), pkg));
+  }
 
   function parseAge(v: string): number {
     const m = v.match(/^(\d+)(s|m|h)$/i);
@@ -916,6 +925,15 @@ export function LogcatPanel(): JSX.Element {
             );
           }}
         </For>
+
+        <div style={{ width: "1px", height: "14px", background: "var(--border)", "flex-shrink": "0", "margin-left": "2px" }} />
+
+        {/* Package filter dropdown */}
+        <PackageDropdown
+          packages={knownPackages()}
+          selected={activePackage()}
+          onSelect={handlePackageSelect}
+        />
 
         <Show when={isFiltered()}>
           <button

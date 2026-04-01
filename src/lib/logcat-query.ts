@@ -311,6 +311,22 @@ export function setAgeInQuery(query: string, age: string | null): string {
   return withoutAge ? `${withoutAge} age:${age}` : `age:${age}`;
 }
 
+/** Replace or insert a `package:` token in a raw query string. */
+export function setPackageInQuery(query: string, pkg: string | null): string {
+  const withoutPkg = query.replace(/\bpackage:\S+/g, "").replace(/\s+/g, " ").trim();
+  if (!pkg) return withoutPkg;
+  return withoutPkg ? `${withoutPkg} package:${pkg}` : `package:${pkg}`;
+}
+
+/**
+ * Extract the value of the first `package:` token from a raw query string.
+ * Returns null when no package token is present.
+ */
+export function getPackageFromQuery(query: string): string | null {
+  const match = query.match(/\bpackage:(\S+)/);
+  return match ? match[1] : null;
+}
+
 /** Detect which key the user is currently completing (for autocomplete). */
 export function getActiveTokenContext(query: string): {
   key: string | null;
