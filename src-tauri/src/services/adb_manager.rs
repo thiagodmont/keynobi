@@ -941,6 +941,25 @@ impl Default for DeviceState {
     }
 }
 
+/// Resolve a device serial: use the provided one, or fall back to the first
+/// online device reported by `adb devices`.
+pub async fn resolve_device_serial(adb: &std::path::PathBuf, requested: Option<&str>) -> Option<String> {
+    if let Some(s) = requested {
+        return Some(s.to_string());
+    }
+    let output = tokio::process::Command::new(adb)
+        .arg("devices")
+        .output()
+        .await
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    text.lines()
+        .skip(1)
+        .find(|l| l.contains("\tdevice"))
+        .map(|l| l.split_whitespace().next().unwrap_or("").to_string())
+        .filter(|s| !s.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

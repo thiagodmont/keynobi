@@ -116,7 +116,7 @@ fn ci_contains(haystack: &str, needle: &str) -> bool {
     })
 }
 
-fn parse_level_str(s: &str) -> LogcatLevel {
+pub fn parse_level_str(s: &str) -> LogcatLevel {
     match s.to_uppercase().as_str() {
         "V" | "VERBOSE" => LogcatLevel::Verbose,
         "D" | "DEBUG" => LogcatLevel::Debug,
@@ -125,6 +125,18 @@ fn parse_level_str(s: &str) -> LogcatLevel {
         "E" | "ERROR" => LogcatLevel::Error,
         "F" | "FATAL" | "A" | "ASSERT" => LogcatLevel::Fatal,
         _ => LogcatLevel::Verbose,
+    }
+}
+
+pub fn level_char(level: &LogcatLevel) -> &'static str {
+    match level {
+        LogcatLevel::Verbose => "V",
+        LogcatLevel::Debug => "D",
+        LogcatLevel::Info => "I",
+        LogcatLevel::Warn => "W",
+        LogcatLevel::Error => "E",
+        LogcatLevel::Fatal => "F",
+        LogcatLevel::Unknown => "?",
     }
 }
 

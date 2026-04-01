@@ -516,6 +516,147 @@ pub fn build_env_vars(
     env
 }
 
+#[derive(Debug)]
+pub struct GradleTaskResult {
+    pub success: bool,
+    pub timed_out: bool,
+    pub duration_ms: u64,
+    pub errors: Vec<crate::models::build::BuildError>,
+}
+
+pub async fn run_task(
+    task: &str,
+    extra_args: &[&str],
+    gradle_root: &std::path::Path,
+    gradlew: &std::path::Path,
+    timeout_sec: u64,
+    env: Vec<(String, String)>,
+    build_state: &BuildState,
+    process_manager: &crate::services::process_manager::ProcessManager,
+) -> Result<GradleTaskResult, String> {
+    use crate::models::build::{BuildError, BuildErrorSeverity, BuildLineKind, BuildResult};
+    use crate::services::process_manager::{self as pm, SpawnOptions};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+    let started_at = chrono::Utc::now().to_rfc3339();
+
+    {
+        let mut bs = build_state.inner.lock().await;
+        bs.status = crate::models::build::BuildStatus::Running {
+            task: task.to_owned(),
+            started_at: started_at.clone(),
+        };
+        bs.current_errors.clear();
+    }
+
+    let build_log = build_state.build_log.clone();
+    clear_build_log(&build_log);
+
+    let mut args = vec![task, "--console=plain"];
+    args.extend_from_slice(extra_args);
+
+    let errors_buf = Arc::new(std::sync::Mutex::new(Vec::<BuildError>::new()));
+    let success_flag = Arc::new(AtomicBool::new(false));
+    let duration_buf = Arc::new(AtomicU64::new(0));
+    let done_flag = Arc::new(AtomicBool::new(false));
+    let done_flag_clone = done_flag.clone();
+
+    let pid = pm::spawn(
+        &process_manager.0,
+        gradlew.to_str().unwrap_or("./gradlew"),
+        &args,
+        gradle_root.to_path_buf(),
+        env,
+        SpawnOptions {
+            on_line: Box::new({
+                let build_log = build_log.clone();
+                let errors_buf = errors_buf.clone();
+                let success_flag = success_flag.clone();
+                let duration_buf = duration_buf.clone();
+                move |proc_line| {
+                    push_build_log(&build_log, proc_line.text.clone());
+                    let line = parse_build_line(&proc_line.text);
+                    if matches!(line.kind, BuildLineKind::Error | BuildLineKind::Warning) {
+                        if let Ok(mut e) = errors_buf.lock() {
+                            e.push(BuildError {
+                                message: line.content.clone(),
+                                file: line.file.clone(),
+                                line: line.line,
+                                col: line.col,
+                                severity: if line.kind == BuildLineKind::Error {
+                                    BuildErrorSeverity::Error
+                                } else {
+                                    BuildErrorSeverity::Warning
+                                },
+                            });
+                        }
+                    }
+                    if line.kind == BuildLineKind::Summary {
+                        let dur = parse_build_duration(&line.content);
+                        duration_buf.store(dur, Ordering::Relaxed);
+                        if line.content.contains("BUILD SUCCESSFUL") {
+                            success_flag.store(true, Ordering::Relaxed);
+                        }
+                    }
+                }
+            }),
+            on_exit: Box::new(move |_pid, _code| {
+                done_flag_clone.store(true, Ordering::Release);
+            }),
+        },
+    )
+    .await
+    .map_err(|e| format!("Failed to spawn Gradle: {e}"))?;
+
+    {
+        let mut bs = build_state.inner.lock().await;
+        bs.current_build = Some(pid);
+    }
+
+    let timeout = std::time::Duration::from_secs(timeout_sec);
+    let start = std::time::Instant::now();
+    let timed_out;
+    loop {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        if done_flag.load(Ordering::Acquire) {
+            timed_out = false;
+            break;
+        }
+        if start.elapsed() > timeout {
+            timed_out = true;
+            break;
+        }
+    }
+
+    if timed_out {
+        cancel_build(build_state, process_manager).await;
+        return Ok(GradleTaskResult {
+            success: false,
+            timed_out: true,
+            duration_ms: 0,
+            errors: Vec::new(),
+        });
+    }
+
+    let success = success_flag.load(Ordering::Acquire);
+    let errors = errors_buf.lock().map(|g| g.clone()).unwrap_or_default();
+    let duration_ms = duration_buf.load(Ordering::Relaxed);
+    let error_count = errors
+        .iter()
+        .filter(|e| e.severity == BuildErrorSeverity::Error)
+        .count() as u32;
+    let warning_count = errors
+        .iter()
+        .filter(|e| e.severity == BuildErrorSeverity::Warning)
+        .count() as u32;
+
+    let result = BuildResult { success, duration_ms, error_count, warning_count };
+    record_build_result(build_state, task.to_owned(), started_at, result, errors.clone()).await;
+
+    Ok(GradleTaskResult { success, timed_out: false, duration_ms, errors })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
