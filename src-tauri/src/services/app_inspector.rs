@@ -201,6 +201,13 @@ async fn wait_for_displayed(
     package: &str,
     start: std::time::Instant,
 ) -> Option<u64> {
+    // Anchor to entries after the launch began so stale "Displayed" lines
+    // from a previous run of the same package are not matched.
+    let anchor_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
     let deadline = std::time::Duration::from_secs(10);
     loop {
         if start.elapsed() > deadline {
@@ -211,7 +218,14 @@ async fn wait_for_displayed(
         let output = adb_cmd(
             adb,
             Some(device_serial),
-            &["logcat", "-d", "-s", "ActivityManager:I"],
+            &[
+                "logcat",
+                "-d",
+                "-T",
+                &anchor_ms.to_string(),
+                "-s",
+                "ActivityManager:I",
+            ],
         )
         .await
         .unwrap_or_default();
@@ -280,9 +294,9 @@ async fn run_adb_shell(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        if !stderr.trim().is_empty() {
-            return Err(stderr);
-        }
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let msg = if !stderr.trim().is_empty() { stderr } else { stdout };
+        return Err(msg);
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
