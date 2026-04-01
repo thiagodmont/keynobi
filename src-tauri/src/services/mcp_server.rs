@@ -609,7 +609,7 @@ impl AndroidMcpServer {
 
         let logcat = self.logcat_state.lock().await;
 
-        if !logcat.streaming && logcat.store.iter().count() == 0 {
+        if !logcat.streaming && logcat.store.is_empty() {
             return Ok(CallToolResult::error(vec![Content::text(
                 "Logcat not running — call start_logcat first.",
             )]));

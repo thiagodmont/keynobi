@@ -201,12 +201,13 @@ async fn wait_for_displayed(
     package: &str,
     start: std::time::Instant,
 ) -> Option<u64> {
-    // Anchor to entries after the launch began so stale "Displayed" lines
-    // from a previous run of the same package are not matched.
-    let anchor_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0);
+    // Format the anchor timestamp as "MM-DD HH:MM:SS.mmm" — the format
+    // Android logcat's -T flag expects for a timestamp anchor.
+    // A bare integer would be interpreted as a line count, not a timestamp.
+    let anchor = {
+        let now = chrono::Local::now();
+        now.format("%m-%d %H:%M:%S%.3f").to_string()
+    };
 
     let deadline = std::time::Duration::from_secs(10);
     loop {
@@ -222,7 +223,7 @@ async fn wait_for_displayed(
                 "logcat",
                 "-d",
                 "-T",
-                &anchor_ms.to_string(),
+                &anchor,
                 "-s",
                 "ActivityManager:I",
             ],
@@ -315,6 +316,12 @@ async fn adb_cmd(
         .output()
         .await
         .map_err(|e| format!("adb command failed: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let msg = if !stderr.trim().is_empty() { stderr } else { stdout };
+        return Err(msg);
+    }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
