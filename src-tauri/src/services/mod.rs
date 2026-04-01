@@ -2,6 +2,7 @@ pub mod adb_manager;
 pub mod app_inspector;
 pub mod build_inspector;
 pub mod build_runner;
+pub mod device_inspector;
 pub mod crash_inspector;
 pub mod fs_manager;
 pub mod log_pipeline;
