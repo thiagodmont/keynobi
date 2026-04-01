@@ -87,6 +87,11 @@ fn extract_int_value(content: &str, keys: &[&str]) -> Option<i64> {
         for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.starts_with(key) {
+                // Guard: next char must be a separator, not part of a longer identifier
+                let after = trimmed[key.len()..].chars().next();
+                if matches!(after, Some(c) if c.is_alphanumeric() || c == '_') {
+                    continue;
+                }
                 let rest = trimmed[key.len()..].trim_start();
                 let digits: String = rest
                     .trim_start_matches(|c| c == '=' || c == '(' || c == ' ')
@@ -107,6 +112,11 @@ fn extract_string_value(content: &str, key: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with(key) {
+            // Guard: next char must be a separator, not part of a longer identifier
+            let after = trimmed[key.len()..].chars().next();
+            if matches!(after, Some(c) if c.is_alphanumeric() || c == '_') {
+                continue;
+            }
             let rest = trimmed[key.len()..].trim_start();
             let rest = rest.trim_start_matches(|c: char| c == '=' || c == ' ');
             if let Some(start) = rest.find('"') {
@@ -268,6 +278,11 @@ fn extract_bool_value(content: &str, keys: &[&str]) -> Option<bool> {
         for line in content.lines() {
             let trimmed = line.trim();
             if trimmed.starts_with(key) {
+                // Guard: next char must be a separator, not part of a longer identifier
+                let after = trimmed[key.len()..].chars().next();
+                if matches!(after, Some(c) if c.is_alphanumeric() || c == '_') {
+                    continue;
+                }
                 let rest = trimmed[key.len()..].trim();
                 let rest = rest.trim_start_matches(|c: char| c == '=' || c == ' ');
                 if rest.starts_with("true") {
@@ -447,5 +462,22 @@ android {
         assert!(cfg.application_id.is_none());
         assert!(cfg.build_types.is_empty());
         assert!(cfg.product_flavors.is_empty());
+    }
+
+    #[test]
+    fn extract_string_value_does_not_match_longer_key() {
+        let dir = make_project(
+            "app",
+            r#"
+android {
+    defaultConfig {
+        applicationIdSuffix ".debug"
+        applicationId = "com.example.app"
+    }
+}
+"#,
+        );
+        let cfg = parse_build_config(dir.path(), "app").unwrap();
+        assert_eq!(cfg.application_id.as_deref(), Some("com.example.app"));
     }
 }
