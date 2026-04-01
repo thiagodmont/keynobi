@@ -642,6 +642,9 @@ impl AndroidMcpServer {
         Parameters(p): Parameters<RestartAppParams>,
     ) -> Result<CallToolResult, McpError> {
         validate_package_name(&p.package)?;
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
 
         let settings = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
@@ -668,6 +671,9 @@ impl AndroidMcpServer {
         Parameters(p): Parameters<GetAppRuntimeStateParams>,
     ) -> Result<CallToolResult, McpError> {
         validate_package_name(&p.package)?;
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
 
         let settings = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
@@ -701,6 +707,12 @@ impl AndroidMcpServer {
             ))?;
 
         let module = p.module.as_deref().unwrap_or("app");
+
+        if module.contains('/') || module.contains('\\') || module.contains("..") {
+            return Err(McpError::invalid_params(
+                "Module name must be a simple directory name, not a path.", None,
+            ));
+        }
 
         match build_inspector::parse_build_config(&gradle_root, module) {
             Ok(config) => Ok(CallToolResult::structured(json!(config))),
