@@ -77,7 +77,9 @@ pub fn find_crash(
 
     let group = &groups[&target_gid];
     let package = group.iter().find_map(|e| e.package.clone());
-    let messages: Vec<&str> = group.iter().map(|e| e.message.as_str()).collect();
+    let mut sorted_group: Vec<&&ProcessedEntry> = group.iter().collect();
+    sorted_group.sort_by_key(|e| e.id);
+    let messages: Vec<&str> = sorted_group.iter().map(|e| e.message.as_str()).collect();
     let parsed = parse_crash_lines(&messages);
 
     Some(ParsedCrash {
@@ -138,11 +140,8 @@ fn parse_crash_lines(
 
     while i < lines.len() {
         let line = lines[i].trim();
-        if line.starts_with("\tat ") || line.starts_with("at ") {
-            let frame_str = line
-                .trim_start_matches('\t')
-                .trim_start_matches("at ")
-                .trim();
+        if line.starts_with("at ") {
+            let frame_str = line.trim_start_matches("at ").trim();
             frames.push(parse_frame(frame_str));
         } else if line.starts_with("Caused by: ") {
             let cb_rest = &line["Caused by: ".len()..];
@@ -151,11 +150,8 @@ fn parse_crash_lines(
             i += 1;
             while i < lines.len() {
                 let inner = lines[i].trim();
-                if inner.starts_with("\tat ") || inner.starts_with("at ") {
-                    let frame_str = inner
-                        .trim_start_matches('\t')
-                        .trim_start_matches("at ")
-                        .trim();
+                if inner.starts_with("at ") {
+                    let frame_str = inner.trim_start_matches("at ").trim();
                     cb_frames.push(parse_frame(frame_str));
                 } else {
                     break;
