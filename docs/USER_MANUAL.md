@@ -169,8 +169,38 @@ The query bar supports a rich filter syntax. Simple filters (level, tag, text, p
 | `is:stacktrace` | `is:stacktrace` | Stack trace lines only |
 | `-tag:system` | `-tag:system` | Negate — exclude entries matching |
 | bare text | `login` | Search tag + message + package |
+| `A && B` | `level:error && tag:MyApp` | **AND** — explicit AND connector (same as space) |
+| `A \| B` | `level:error tag:MyApp \| is:crash` | **OR** — entries matching either group |
 
-Multiple tokens are AND-ed together. Use the **Presets** button to save frequently used filters.
+Multiple tokens within a group are AND-ed together (space or `&&`). Use `|` to separate OR groups — an entry is shown if it satisfies **any** group. For example:
+
+```
+level:error && tag:MyApp | is:crash
+```
+
+Shows all error-or-above logs from `MyApp` **or** any crash entry from any process.
+
+**Building compound filters:**
+- Click **+ AND** to append `&&` to the active group (makes the AND relationship explicit).
+- Click **+ OR** to start a new OR group with ` | `.
+- You can mix both: `tag:App && level:warn | is:crash | package:mine && age:5m`.
+- The query bar shows an **N OR** badge when multiple OR groups are active.
+- Autocomplete works independently within each group — suggestions are scoped to wherever the cursor is.
+
+### Saved Filters
+
+Use the **☰ Filters** button to manage filters:
+
+- **Quick Filters** — built-in one-click presets (My App, Crashes, Errors+, Last 5 min, and more).
+- **Saved** — your saved filters, shown with a `N / 50` count. Up to 50 filters can be saved.
+  - Click a filter name to apply it.
+  - Click **✎** to rename a filter inline (press Enter to confirm, Esc to cancel).
+  - Click **✕** to delete a filter.
+- **+ Save current filter** — saves the active query under a name you choose. If a filter with the same name already exists, it is overwritten.
+
+Your last active query is automatically restored the next time you open the Logcat panel.
+
+> **Migration**: filters saved under the old "Presets" system are automatically migrated to the new Saved Filters format on first use.
 
 ### Package Filter Dropdown
 
@@ -193,6 +223,7 @@ When a log entry's message contains valid JSON, a `{}` badge appears on the row.
 - **Pause / Resume** — Pause new entries (no data is lost, buffer continues)
 - **Clear** — Clear the display buffer and the in-memory ring buffer
 - **Age pills** — Quick-select time window (30s, 1m, 5m, 15m, 1h, All)
+- **☰ Filters** — Open the saved filters dropdown (Quick Filters + your saved filters)
 - **↓ Export** — Save the currently filtered entries to a `.log` file
 - **⎘ N rows** — Copy multiple selected rows (Shift+click to select a range)
 

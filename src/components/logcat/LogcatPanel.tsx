@@ -31,15 +31,27 @@ import { VirtualList } from "@/components/common/VirtualList";
 import { QueryBar } from "@/components/logcat/QueryBar";
 import Icon from "@/components/common/Icon";
 import {
-  parseQuery,
-  matchesQuery,
+  parseFilterGroups,
+  matchesFilterGroups,
+  getFrontendOnlyTokens,
   setAgeInQuery,
   setPackageInQuery,
   getPackageFromQuery,
   getMinePackage,
   type QueryToken,
+  type FilterGroup,
 } from "@/lib/logcat-query";
 import { PackageDropdown } from "@/components/logcat/PackageDropdown";
+import {
+  loadFilterStorage,
+  addSavedFilter,
+  deleteSavedFilter,
+  renameSavedFilter,
+  getLastActiveQuery,
+  setLastActiveQuery,
+  MAX_SAVED_FILTERS,
+  type SavedFilter,
+} from "@/lib/logcat-filter-storage";
 
 // ── EntryFlags (mirrors Rust EntryFlags consts) ────────────────────────────────
 const ENTRY_FLAGS = {
@@ -170,19 +182,60 @@ function tokensToFilterSpec(tokens: QueryToken[]): LogcatFilterSpec {
 }
 
 /**
- * Return the tokens that the backend CANNOT handle (age, regex, negate).
- * These are applied client-side in `filteredEntries`.
+ * Compute the most-permissive union `LogcatFilterSpec` across all OR groups.
+ *
+ * For multi-group queries, the backend cannot know which group will match a
+ * given entry, so we send the least-restrictive spec that still pre-filters
+ * obvious non-matches (e.g. if every group requires `level:error` or higher,
+ * we can still push that to the backend). All precise OR logic is done on the
+ * frontend via `matchesFilterGroups`.
  */
-function getFrontendOnlyTokens(tokens: QueryToken[]): QueryToken[] {
-  return tokens.filter((token) => {
-    if (token.type === "age") return true;
-    if ("negate" in token && token.negate) return true;
-    if ((token.type === "tag" || token.type === "message") && token.regex) return true;
-    return false;
-  });
+function groupsToFilterSpec(groups: FilterGroup[]): LogcatFilterSpec {
+  if (groups.length === 0) return { minLevel: null, tag: null, text: null, package: null, onlyCrashes: false };
+  if (groups.length === 1) return tokensToFilterSpec(groups[0]);
+
+  const LEVEL_PRIORITY_MAP: Record<string, number> = {
+    verbose: 0, debug: 1, info: 2, warn: 3, error: 4, fatal: 5,
+  };
+
+  // Collect per-group specs
+  const specs = groups.map((g) => tokensToFilterSpec(g));
+
+  // minLevel: use the minimum across groups (most permissive)
+  const levels = specs.map((s) => (s.minLevel ? (LEVEL_PRIORITY_MAP[s.minLevel] ?? 0) : 0));
+  const minLevelPriority = Math.min(...levels);
+  const minLevel = minLevelPriority === 0 ? null :
+    Object.entries(LEVEL_PRIORITY_MAP).find(([, v]) => v === minLevelPriority)?.[0] ?? null;
+
+  // tag: only push to backend if every group filters the same tag; otherwise omit
+  const tags = specs.map((s) => s.tag);
+  const tag = tags.every((t) => t !== null && t === tags[0]) ? tags[0] : null;
+
+  // text: same rule as tag
+  const texts = specs.map((s) => s.text);
+  const text = texts.every((t) => t !== null && t === texts[0]) ? texts[0] : null;
+
+  // package: same rule
+  const pkgs = specs.map((s) => s.package);
+  const packageFilter = pkgs.every((p) => p !== null && p === pkgs[0]) ? pkgs[0] : null;
+
+  // onlyCrashes: only if ALL groups require it
+  const onlyCrashes = specs.every((s) => s.onlyCrashes);
+
+  return { minLevel, tag, text, package: packageFilter, onlyCrashes };
 }
 
-// ── Saved presets (localStorage) ──────────────────────────────────────────────
+/**
+ * When OR groups are present, the frontend must apply full OR logic.
+ * Returns true if any group contains frontend-only tokens (overflow, age,
+ * negation, regex, is:stacktrace), or if there are multiple OR groups.
+ */
+function hasAnyFrontendOnlyLogic(groups: FilterGroup[]): boolean {
+  if (groups.length > 1) return true;
+  return getFrontendOnlyTokens(groups[0] ?? []).length > 0;
+}
+
+// ── Saved filters (via logcat-filter-storage) ────────────────────────────────
 
 interface LogcatPreset {
   name: string;
@@ -195,20 +248,8 @@ const BUILTIN_PRESETS: LogcatPreset[] = [
   { name: "Crashes",      query: "is:crash",      builtin: true },
   { name: "Errors+",      query: "level:error",   builtin: true },
   { name: "Last 5 min",   query: "age:5m",        builtin: true },
+  { name: "My App OR Crashes", query: "package:mine | is:crash", builtin: true },
 ];
-
-const PRESET_KEY = "logcat_presets_v1";
-
-function loadUserPresets(): LogcatPreset[] {
-  try {
-    const raw = localStorage.getItem(PRESET_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-function saveUserPresets(presets: LogcatPreset[]): void {
-  localStorage.setItem(PRESET_KEY, JSON.stringify(presets));
-}
 
 // ── LogcatPanel ───────────────────────────────────────────────────────────────
 
@@ -245,11 +286,14 @@ export function LogcatPanel(): JSX.Element {
   const [selectionAnchor, setSelectionAnchor] = createSignal<number | null>(null);
   const [selectionEnd, setSelectionEnd] = createSignal<number | null>(null);
 
-  // Preset UI
+  // Preset / saved filter UI
   const [presetsOpen, setPresetsOpen] = createSignal(false);
-  const [userPresets, setUserPresets] = createSignal<LogcatPreset[]>(loadUserPresets());
+  const [savedFilters, setSavedFilters] = createSignal<SavedFilter[]>(loadFilterStorage().filters);
   const [savingPreset, setSavingPreset] = createSignal(false);
   const [presetNameDraft, setPresetNameDraft] = createSignal("");
+  // Per-filter inline rename state: maps filter id → draft name string
+  const [renamingId, setRenamingId] = createSignal<string | null>(null);
+  const [renameDraft, setRenameDraft] = createSignal("");
 
   // Now signal for age filter reactivity (updates every 5s when age token exists)
   const [now, setNow] = createSignal(Date.now());
@@ -263,30 +307,34 @@ export function LogcatPanel(): JSX.Element {
   let nowTimer: ReturnType<typeof setInterval> | undefined;
 
   // ── Parsed query (debounced — avoids re-parsing on every keystroke)
-  const parsedTokens = createMemo(() => parseQuery(debouncedQuery()));
+  const parsedGroups = createMemo(() => parseFilterGroups(debouncedQuery()));
+  // Flat token list for single-group utilities (age detection, etc.)
+  const parsedTokens = createMemo(() => parsedGroups().flat());
   const hasAgeFilter = createMemo(() => parsedTokens().some((t) => t.type === "age"));
-  const frontendTokens = createMemo(() => getFrontendOnlyTokens(parsedTokens()));
+  // Whether the frontend must apply any filtering logic (OR groups or complex tokens)
+  const needsFrontendFilter = createMemo(() => hasAnyFrontendOnlyLogic(parsedGroups()));
 
   // ── filteredEntries ───────────────────────────────────────────────────────────
   //
   // The backend has already filtered `logcatStore.entries` to match the simple
   // parts of the query (level, tag, text, package, only_crashes).
   //
-  // This memo only needs to handle frontend-only tokens:
-  //   • age:N    — time-based, needs live `now()`
-  //   • -tag:X   — negation
-  //   • tag~:X   — regex
+  // This memo handles:
+  //   • OR groups  — entries must satisfy at least one group
+  //   • age:N      — time-based, needs live `now()`
+  //   • -tag:X     — negation
+  //   • tag~:X     — regex
   //   • -message:X / message~:X
   //
-  // Since `logcatStore.entries` is already pre-filtered, the scan here is on
-  // a much smaller set than before (typically <5% of the full 50K buffer).
+  // For single-group queries without complex tokens, `needsFrontendFilter()`
+  // is false and we short-circuit immediately — same performance as before.
   const filteredEntries = createMemo(
     () => {
-      const tokens = frontendTokens();
+      const groups = parsedGroups();
       const entries = logcatStore.entries;
-      if (tokens.length === 0) return entries;
+      if (!needsFrontendFilter()) return entries;
       const currentNow = hasAgeFilter() ? now() : Date.now();
-      return entries.filter((e) => matchesQuery(e, tokens, currentNow));
+      return entries.filter((e) => matchesFilterGroups(e, groups, currentNow));
     },
     undefined,
     { equals: false }
@@ -306,7 +354,7 @@ export function LogcatPanel(): JSX.Element {
   // When frontend tokens are active filteredEntries may differ from the store,
   // so we fall back to scanning filteredEntries() (the set is already small).
   const crashIndices = createMemo(() => {
-    if (frontendTokens().length === 0) {
+    if (!needsFrontendFilter()) {
       // Fast path: no frontend filtering, use the incremental index.
       return crashIndicesFull();
     }
@@ -346,15 +394,16 @@ export function LogcatPanel(): JSX.Element {
   // ── Backend filter sync ───────────────────────────────────────────────────────
   //
   // When the debounced query changes, we:
-  //   1. Compute the new backend FilterSpec from the simple tokens.
+  //   1. Compute the union backend FilterSpec from all OR groups.
   //   2. Send it to Rust via `set_logcat_filter`.
   //   3. Fetch a fresh backfill from the buffer using the same spec.
   //   4. Replace the store entries with the backfill.
   //
-  // From this point, only entries matching the backend spec arrive via
-  // `logcat:entries` events.
-  async function syncBackendFilter(tokens: QueryToken[]) {
-    const spec = tokensToFilterSpec(tokens);
+  // For single-group queries (no `|`) this behaves identically to before.
+  // For multi-group queries the union spec is sent so the backend pre-filters
+  // broadly; precise OR matching is done client-side in `filteredEntries`.
+  async function syncBackendFilter(groups: FilterGroup[]) {
+    const spec = groupsToFilterSpec(groups);
     setActiveBackendSpec(spec);
 
     try {
@@ -389,14 +438,44 @@ export function LogcatPanel(): JSX.Element {
     const q = debouncedQuery();
     if (q === _prevDebouncedQuery) return;
     _prevDebouncedQuery = q;
-    syncBackendFilter(parseQuery(q));
+    setLastActiveQuery(q);
+    syncBackendFilter(parseFilterGroups(q));
   });
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
   onMount(async () => {
+    // Restore the last active query before fetching entries so the initial
+    // backfill respects any persisted filter.
+    const savedQuery = getLastActiveQuery();
+    if (savedQuery) {
+      setQuery(savedQuery);
+      setDebouncedQuery(savedQuery);
+      _prevDebouncedQuery = savedQuery;
+    }
+
+    // Build the filter spec for the initial backfill.
+    // When a saved query is restored we must also sync the backend filter —
+    // the createEffect guard (_prevDebouncedQuery check) prevents it from
+    // running and the streaming listener would otherwise deliver unfiltered entries.
+    const restoredGroups = savedQuery ? parseFilterGroups(savedQuery) : null;
+    const restoredSpec = restoredGroups ? groupsToFilterSpec(restoredGroups) : null;
+
+    if (restoredSpec && savedQuery) {
+      setActiveBackendSpec(restoredSpec);
+      await setLogcatFilter(restoredSpec).catch(() => {});
+    }
+
     try {
-      const entries = await getLogcatEntries({ count: 2000 });
+      const entries = await getLogcatEntries({
+        count: 2000,
+        // Apply the restored spec so the backfill is already filtered
+        minLevel: restoredSpec?.minLevel ?? undefined,
+        tag: restoredSpec?.tag ?? undefined,
+        text: restoredSpec?.text ?? undefined,
+        package: restoredSpec?.package ?? undefined,
+        onlyCrashes: restoredSpec?.onlyCrashes ?? false,
+      });
       setLogcatStore("entries", entries);
       setCrashIndicesFull(entries.reduce<number[]>((acc, e, i) => {
         if (e.isCrash) acc.push(i);
@@ -426,6 +505,7 @@ export function LogcatPanel(): JSX.Element {
       const newCrashOffsets: number[] = [];
       newEntries.forEach((e, i) => { if (e.isCrash) newCrashOffsets.push(baseLen + i); });
 
+      let didEvict = false;
       setLogcatStore(
         produce((s) => {
           for (const e of newEntries) s.entries.push(e);
@@ -433,15 +513,21 @@ export function LogcatPanel(): JSX.Element {
             const dropped = s.entries.length - MAX_UI_ENTRIES;
             s.entries.splice(0, dropped);
             evictionPending = false;
-            // After eviction, crash indices need a full rebuild since offsets shifted.
-            // Trigger rebuild by clearing — the memo will rescan on next read.
-            setCrashIndicesFull([]);
+            didEvict = true;
           }
         })
       );
 
-      if (newCrashOffsets.length > 0) {
-        // Eviction didn't happen this tick — append to the incremental index.
+      if (didEvict) {
+        // After eviction all pre-computed offsets are stale — rebuild fully.
+        setCrashIndicesFull(
+          logcatStore.entries.reduce<number[]>((acc, e, i) => {
+            if (e.isCrash) acc.push(i);
+            return acc;
+          }, [])
+        );
+      } else if (newCrashOffsets.length > 0) {
+        // No eviction — safe to append the incremental offsets.
         setCrashIndicesFull((prev) => [...prev, ...newCrashOffsets]);
       }
 
@@ -599,28 +685,50 @@ export function LogcatPanel(): JSX.Element {
     }
   }
 
-  // ── Presets ───────────────────────────────────────────────────────────────────
+  // ── Presets / saved filters ───────────────────────────────────────────────────
 
   function applyPreset(q: string) {
     updateQuery(q);
     setPresetsOpen(false);
   }
 
-  function saveCurrentPreset() {
+  function saveCurrentFilter() {
     const name = presetNameDraft().trim();
     if (!name) return;
-    const presets = [...userPresets(), { name, query: query() }];
-    setUserPresets(presets);
-    saveUserPresets(presets);
-    setSavingPreset(false);
-    setPresetNameDraft("");
-    showToast(`Saved preset "${name}"`, "success");
+    try {
+      const saved = addSavedFilter(name, query());
+      setSavedFilters(loadFilterStorage().filters);
+      setSavingPreset(false);
+      setPresetNameDraft("");
+      showToast(`Saved filter "${saved.name}"`, "success");
+    } catch (e) {
+      showToast(String(e), "error");
+    }
   }
 
-  function deletePreset(name: string) {
-    const presets = userPresets().filter((p) => p.name !== name);
-    setUserPresets(presets);
-    saveUserPresets(presets);
+  function deleteSavedFilterItem(id: string) {
+    deleteSavedFilter(id);
+    setSavedFilters(loadFilterStorage().filters);
+  }
+
+  function startRename(filter: SavedFilter) {
+    setRenamingId(filter.id);
+    setRenameDraft(filter.name);
+  }
+
+  function commitRename() {
+    const id = renamingId();
+    if (id) {
+      renameSavedFilter(id, renameDraft());
+      setSavedFilters(loadFilterStorage().filters);
+    }
+    setRenamingId(null);
+    setRenameDraft("");
+  }
+
+  function cancelRename() {
+    setRenamingId(null);
+    setRenameDraft("");
   }
 
   // ── Age pills ─────────────────────────────────────────────────────────────────
@@ -659,7 +767,7 @@ export function LogcatPanel(): JSX.Element {
       <div
         style={{
           display: "flex",
-          "align-items": "center",
+          "align-items": "flex-start",
           gap: "6px",
           padding: "5px 10px",
           background: "var(--bg-secondary)",
@@ -739,11 +847,11 @@ export function LogcatPanel(): JSX.Element {
         {/* Presets */}
         <div style={{ position: "relative", "flex-shrink": "0" }}>
           <button
-            onClick={() => { setPresetsOpen((v) => !v); setSavingPreset(false); }}
+            onClick={() => { setPresetsOpen((v) => !v); setSavingPreset(false); setRenamingId(null); }}
             title="Filter presets"
             style={btnStyle("var(--text-muted)")}
           >
-            ☰ Presets
+            ☰ Filters
           </button>
           <Show when={presetsOpen()}>
             <div
@@ -751,7 +859,8 @@ export function LogcatPanel(): JSX.Element {
                 position: "absolute",
                 top: "calc(100% + 3px)",
                 right: "0",
-                "min-width": "210px",
+                "min-width": "260px",
+                "max-width": "340px",
                 background: "var(--bg-secondary)",
                 border: "1px solid var(--border)",
                 "border-radius": "4px",
@@ -761,6 +870,7 @@ export function LogcatPanel(): JSX.Element {
               }}
             >
               <div style={{ padding: "6px 0" }}>
+                {/* Quick Filters (built-in) */}
                 <div style={{ padding: "2px 10px 4px", "font-size": "10px", color: "var(--text-muted)", "text-transform": "uppercase", "letter-spacing": "0.05em" }}>
                   Quick Filters
                 </div>
@@ -778,44 +888,98 @@ export function LogcatPanel(): JSX.Element {
                       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
                     >
                       <span style={{ flex: "1" }}>{p.name}</span>
-                      <span style={{ color: "var(--text-muted)", "font-size": "10px" }}>{p.query}</span>
+                      <span style={{ color: "var(--text-muted)", "font-size": "10px", "max-width": "130px", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>{p.query}</span>
                     </div>
                   )}
                 </For>
 
-                <Show when={userPresets().length > 0}>
-                  <div style={{ height: "1px", background: "var(--border)", margin: "4px 0" }} />
-                  <div style={{ padding: "2px 10px 4px", "font-size": "10px", color: "var(--text-muted)", "text-transform": "uppercase", "letter-spacing": "0.05em" }}>
+                {/* Saved Filters */}
+                <div style={{ height: "1px", background: "var(--border)", margin: "4px 0" }} />
+                <div style={{ display: "flex", "align-items": "center", padding: "2px 10px 4px" }}>
+                  <span style={{ "font-size": "10px", color: "var(--text-muted)", "text-transform": "uppercase", "letter-spacing": "0.05em", flex: "1" }}>
                     Saved
+                  </span>
+                  <span style={{ "font-size": "10px", color: "var(--text-muted)" }}>
+                    {savedFilters().length} / {MAX_SAVED_FILTERS}
+                  </span>
+                </div>
+
+                <Show when={savedFilters().length === 0}>
+                  <div style={{ padding: "4px 10px 6px", "font-size": "10px", color: "var(--text-muted)", "font-style": "italic" }}>
+                    No saved filters yet
                   </div>
-                  <For each={userPresets()}>
-                    {(p) => (
-                      <div
-                        style={{
-                          display: "flex", "align-items": "center",
-                          padding: "5px 10px", cursor: "pointer",
-                          color: "var(--text-primary)",
-                        }}
-                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
-                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-                      >
-                        <span onClick={() => applyPreset(p.query)} style={{ flex: "1" }}>{p.name}</span>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); deletePreset(p.name); }}
-                          style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "0 4px" }}
-                          title="Delete preset"
-                        >✕</button>
-                      </div>
-                    )}
-                  </For>
                 </Show>
 
+                <For each={savedFilters()}>
+                  {(f) => (
+                    <div
+                      style={{
+                        display: "flex", "align-items": "center",
+                        padding: "4px 10px", cursor: "pointer",
+                        color: "var(--text-primary)",
+                        gap: "4px",
+                      }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                    >
+                      <Show
+                        when={renamingId() === f.id}
+                        fallback={
+                          <>
+                            <span
+                              onClick={() => applyPreset(f.query)}
+                              style={{ flex: "1", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}
+                              title={f.query}
+                            >
+                              {f.name}
+                            </span>
+                            {/* Rename button */}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); startRename(f); }}
+                              style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "0 3px", "font-size": "10px" }}
+                              title="Rename"
+                            >✎</button>
+                            {/* Delete button */}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); deleteSavedFilterItem(f.id); }}
+                              style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "0 3px", "font-size": "10px" }}
+                              title="Delete"
+                            >✕</button>
+                          </>
+                        }
+                      >
+                        {/* Inline rename row */}
+                        <input
+                          type="text"
+                          value={renameDraft()}
+                          onInput={(e) => setRenameDraft(e.currentTarget.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") { e.stopPropagation(); commitRename(); }
+                            if (e.key === "Escape") { e.stopPropagation(); cancelRename(); }
+                          }}
+                          autofocus
+                          style={{
+                            flex: "1", background: "var(--bg-primary)",
+                            border: "1px solid var(--accent)",
+                            color: "var(--text-primary)",
+                            "border-radius": "3px", padding: "2px 5px",
+                            "font-size": "11px", outline: "none",
+                          }}
+                        />
+                        <button onClick={(e) => { e.stopPropagation(); commitRename(); }} style={btnStyle("var(--accent)")}>✓</button>
+                        <button onClick={(e) => { e.stopPropagation(); cancelRename(); }} style={btnStyle("var(--text-muted)")}>✕</button>
+                      </Show>
+                    </div>
+                  )}
+                </For>
+
+                {/* Save current filter */}
                 <div style={{ height: "1px", background: "var(--border)", margin: "4px 0" }} />
                 <Show
                   when={savingPreset()}
                   fallback={
                     <div
-                      onClick={() => setSavingPreset(true)}
+                      onClick={() => { setSavingPreset(true); setPresetNameDraft(""); }}
                       style={{
                         padding: "5px 10px", cursor: "pointer",
                         color: isFiltered() ? "var(--accent)" : "var(--text-muted)",
@@ -830,11 +994,11 @@ export function LogcatPanel(): JSX.Element {
                   <div style={{ display: "flex", gap: "4px", padding: "4px 8px" }}>
                     <input
                       type="text"
-                      placeholder="Preset name…"
+                      placeholder="Filter name…"
                       value={presetNameDraft()}
                       onInput={(e) => setPresetNameDraft(e.currentTarget.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") saveCurrentPreset();
+                        if (e.key === "Enter") saveCurrentFilter();
                         if (e.key === "Escape") setSavingPreset(false);
                       }}
                       autofocus
@@ -846,14 +1010,14 @@ export function LogcatPanel(): JSX.Element {
                         "font-size": "11px", outline: "none",
                       }}
                     />
-                    <button onClick={saveCurrentPreset} style={btnStyle("var(--accent)")}>Save</button>
+                    <button onClick={saveCurrentFilter} style={btnStyle("var(--accent)")}>Save</button>
                   </div>
                 </Show>
               </div>
             </div>
             <div
               style={{ position: "fixed", inset: "0", "z-index": "699" }}
-              onClick={() => setPresetsOpen(false)}
+              onClick={() => { setPresetsOpen(false); cancelRename(); }}
             />
           </Show>
         </div>

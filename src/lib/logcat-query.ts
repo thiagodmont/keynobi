@@ -78,7 +78,9 @@ export function parseAge(value: string): number | null {
 export function parseQuery(raw: string): QueryToken[] {
   if (!raw.trim()) return [];
 
-  // Split on whitespace, respecting double-quoted strings
+  // Split on whitespace, respecting double-quoted strings.
+  // Standalone && / & tokens between conditions are explicit AND connectors
+  // and are skipped (AND is already the implicit default between tokens).
   const parts: string[] = [];
   let current = "";
   let inQuote = false;
@@ -95,7 +97,8 @@ export function parseQuery(raw: string): QueryToken[] {
   const tokens: QueryToken[] = [];
 
   for (const part of parts) {
-    if (!part) continue;
+    // Skip empty tokens and explicit AND connectors (&&, &)
+    if (!part || part === "&&" || part === "&") continue;
 
     const negate = part.startsWith("-");
     const p = negate ? part.slice(1) : part;
@@ -294,12 +297,35 @@ function matchToken(entry: LogcatEntry, token: QueryToken, now: number): boolean
   }
 }
 
-function safeRegexTest(pattern: string, target: string): boolean {
+// ── Regex cache ───────────────────────────────────────────────────────────────
+//
+// Without a cache, safeRegexTest creates a new RegExp object on every call.
+// With tag~: or message~: filters and 20K entries, that is 20K compilations
+// per filter pass. A small insertion-order LRU (8 entries) eliminates this
+// cost — there are at most a handful of distinct regex patterns active at once.
+
+const _regexCache = new Map<string, RegExp | null>();
+const MAX_REGEX_CACHE = 8;
+
+function getCachedRegex(pattern: string): RegExp | null {
+  if (_regexCache.has(pattern)) return _regexCache.get(pattern)!;
+  let re: RegExp | null;
   try {
-    return new RegExp(pattern, "i").test(target);
+    re = new RegExp(pattern, "i");
   } catch {
-    return target.toLowerCase().includes(pattern.toLowerCase());
+    re = null;
   }
+  if (_regexCache.size >= MAX_REGEX_CACHE) {
+    // Evict the oldest entry (Map preserves insertion order)
+    _regexCache.delete(_regexCache.keys().next().value as string);
+  }
+  _regexCache.set(pattern, re);
+  return re;
+}
+
+function safeRegexTest(pattern: string, target: string): boolean {
+  const re = getCachedRegex(pattern);
+  return re ? re.test(target) : target.toLowerCase().includes(pattern.toLowerCase());
 }
 
 // ── Query string helpers ──────────────────────────────────────────────────────
@@ -327,14 +353,96 @@ export function getPackageFromQuery(query: string): string | null {
   return match ? match[1] : null;
 }
 
-/** Detect which key the user is currently completing (for autocomplete). */
+/**
+ * Identify which tokens in a group must be evaluated on the frontend.
+ *
+ * The Rust backend filter spec has exactly one slot per field:
+ *   minLevel, tag (single substring), text (shared by message: and freetext),
+ *   package, and an onlyCrashes boolean.
+ *
+ * This function returns every token that the backend either cannot handle at
+ * all, or cannot handle because its slot is already occupied by an earlier
+ * token of the same type ("overflow").
+ *
+ * Tokens always handled on the frontend:
+ *   • age:N          — time-based, requires live Date.now()
+ *   • negated (-X)   — backend has no negation support
+ *   • tag~: / msg~:  — backend does substring only, not regex
+ *   • is:stacktrace  — backend does not have a stacktrace filter
+ *
+ * Overflow tokens (second+ occurrence of a backend-handled type):
+ *   • 2nd+ level:    — only the first minLevel is sent
+ *   • 2nd+ tag:      — only the first tag substring is sent
+ *   • 2nd+ message:  — only the first text slot is sent
+ *   • 2nd+ freetext  — shares the same text slot as message:
+ *   • 2nd+ package:  — only the first package is sent
+ *
+ * For example, `message:socket message:IPPROTO_TCP` — the backend pre-filters
+ * by "socket"; the frontend must additionally verify "IPPROTO_TCP" for correct
+ * AND semantics.
+ */
+export function getFrontendOnlyTokens(tokens: QueryToken[]): QueryToken[] {
+  // Track which backend spec slots have been consumed.
+  let levelConsumed = false;
+  let tagConsumed = false;
+  let textConsumed = false; // shared by message: and freetext
+  let packageConsumed = false;
+
+  return tokens.filter((token) => {
+    // Always frontend-only
+    if (token.type === "age") return true;
+    if ("negate" in token && token.negate) return true;
+    if ((token.type === "tag" || token.type === "message") && token.regex) return true;
+    // is:stacktrace — backend has no handler for this
+    if (token.type === "is" && token.value === "stacktrace") return true;
+
+    // For backend-handleable tokens: first occurrence goes to backend, rest → frontend
+    switch (token.type) {
+      case "level":
+        if (!levelConsumed) { levelConsumed = true; return false; }
+        return true;
+      case "tag":
+        if (!tagConsumed) { tagConsumed = true; return false; }
+        return true;
+      case "message":
+        if (!textConsumed) { textConsumed = true; return false; }
+        return true;
+      case "package":
+        if (!packageConsumed) { packageConsumed = true; return false; }
+        return true;
+      case "is":
+        // is:crash → onlyCrashes flag (boolean, no overflow); handled above for stacktrace
+        return false;
+      case "freetext":
+        if (!textConsumed) { textConsumed = true; return false; }
+        return true;
+      default:
+        return false;
+    }
+  });
+}
 export function getActiveTokenContext(query: string): {
   key: string | null;
   partial: string;
   offset: number;
 } {
+  // If the query ends with an explicit AND connector (with or without trailing
+  // space), treat the context as an empty new token so the autocomplete shows
+  // all available key suggestions.
+  const trimmedEnd = query.trimEnd();
+  if (trimmedEnd.endsWith("&&") || trimmedEnd.endsWith(" &")) {
+    return { key: null, partial: "", offset: query.length };
+  }
+
   const lastSpace = query.lastIndexOf(" ");
   const lastToken = query.slice(lastSpace + 1);
+
+  // Skip the token if it is a bare AND connector (e.g. user typed "&&" without
+  // trailing space — show full suggestions rather than filtering by "&&").
+  if (lastToken === "&&" || lastToken === "&") {
+    return { key: null, partial: "", offset: query.length };
+  }
+
   const negated = lastToken.startsWith("-");
   const token = negated ? lastToken.slice(1) : lastToken;
   const colonIdx = token.indexOf(":");
@@ -348,4 +456,126 @@ export function getActiveTokenContext(query: string): {
     };
   }
   return { key: null, partial: token, offset };
+}
+
+// ── OR-group support ──────────────────────────────────────────────────────────
+
+/**
+ * A FilterGroup is a set of tokens that are AND-ed together.
+ * Multiple groups joined by `|` are OR-ed together.
+ */
+export type FilterGroup = QueryToken[];
+
+/**
+ * Parse a query string that may contain `|`-separated OR groups.
+ *
+ * "level:error tag:App | is:crash"
+ *   → [ [level:error, tag:App], [is:crash] ]
+ *
+ * A query with no `|` returns a single-element array containing the
+ * existing `parseQuery()` result — fully backward-compatible.
+ *
+ * Empty groups produced by trailing/double pipes are filtered out so that
+ * a query like `"level:error | "` continues to filter correctly rather than
+ * treating the empty trailing group as an always-true match.
+ */
+export function parseFilterGroups(raw: string): FilterGroup[] {
+  if (!raw.trim()) return [[]];
+  const groups = raw
+    .split(/\s*\|\s*/)
+    .map((segment) => parseQuery(segment.trim()))
+    .filter((g) => g.length > 0);
+  // Return a single empty group when everything was stripped (empty query edge case)
+  return groups.length > 0 ? groups : [[]];
+}
+
+/**
+ * Test whether a `LogcatEntry` satisfies at least one group (OR semantics).
+ * Each group is internally AND-ed via the existing `matchesQuery()`.
+ *
+ * @param entry   The entry to test.
+ * @param groups  Parsed OR groups (from `parseFilterGroups`).
+ * @param now     `Date.now()` — passed in so the caller controls time.
+ */
+export function matchesFilterGroups(
+  entry: LogcatEntry,
+  groups: FilterGroup[],
+  now: number,
+): boolean {
+  if (groups.length === 0) return true;
+  if (groups.length === 1 && groups[0].length === 0) return true;
+  return groups.some((group) => matchesQuery(entry, group, now));
+}
+
+/**
+ * Return the number of OR groups in a raw query string.
+ * A query with no `|` has 1 group. Empty string → 0.
+ */
+export function getGroupCount(raw: string): number {
+  if (!raw.trim()) return 0;
+  return raw.split("|").length;
+}
+
+/**
+ * Append a new OR group separator to the query, returning the new string.
+ * Ensures exactly one space before and after the `|`.
+ * Does nothing if the query already ends with `|` or is empty.
+ */
+export function addOrGroup(query: string): string {
+  const trimmed = query.trimEnd();
+  if (!trimmed || trimmed.endsWith("|")) return query;
+  return `${trimmed} | `;
+}
+
+/**
+ * Append an explicit AND connector (`&&`) to the current group in the query.
+ * Does nothing if the query is empty or already ends with `&&`, `&`, or `|`.
+ * The `&&` connector is cosmetic — it is skipped by `parseQuery` — but it
+ * makes the AND relationship visually explicit alongside the `|` OR separator.
+ */
+export function addAndConnector(query: string): string {
+  const trimmed = query.trimEnd();
+  if (!trimmed) return query;
+  if (trimmed.endsWith("&&") || trimmed.endsWith("&") || trimmed.endsWith("|")) return query;
+  return `${trimmed} && `;
+}
+
+/**
+ * Return the segment of the query string that the cursor is currently inside
+ * (i.e. the group the user is actively editing). Operates on text to the
+ * left of `cursorPos` (defaults to full string).
+ */
+export function getActiveGroupSegment(
+  query: string,
+  cursorPos?: number,
+): string {
+  const pos = cursorPos ?? query.length;
+  const text = query.slice(0, pos);
+  const lastPipeInText = text.lastIndexOf("|");
+
+  // Start of the group the cursor is in
+  const groupStart = lastPipeInText === -1 ? 0 : lastPipeInText + 1;
+
+  // End of the group: next pipe at or after cursor position, or end of string
+  const nextPipe = query.indexOf("|", pos);
+  const groupEnd = nextPipe === -1 ? query.length : nextPipe;
+
+  return query.slice(groupStart, groupEnd).trim();
+}
+
+/**
+ * Compute the character offset within `query` where the active group begins
+ * (the character right after the last `|` separator, or 0 if no `|`).
+ */
+export function getActiveGroupOffset(
+  query: string,
+  cursorPos?: number,
+): number {
+  const text = cursorPos !== undefined ? query.slice(0, cursorPos) : query;
+  const pipeIdx = text.lastIndexOf("|");
+  if (pipeIdx === -1) return 0;
+  // Advance past any whitespace that follows the pipe
+  let offset = pipeIdx + 1;
+  while (offset < query.length && query[offset] === " ") offset++;
+  return offset;
 }
