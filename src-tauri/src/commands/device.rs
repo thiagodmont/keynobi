@@ -20,6 +20,25 @@ pub struct DeviceListChangedEvent {
     pub devices: Vec<Device>,
 }
 
+// ── Validation helpers ─────────────────────────────────────────────────────────
+
+/// Validate an ADB device serial against an allowlist.
+/// Allowed: alphanumeric, colon, dot, hyphen, underscore. Max 64 chars.
+fn validate_device_serial(serial: &str) -> Result<(), String> {
+    if serial.is_empty() {
+        return Err("Device serial must not be empty".to_string());
+    }
+    if serial.len() > 64 {
+        return Err("Device serial is too long (max 64 characters)".to_string());
+    }
+    if !serial.chars().all(|c| c.is_alphanumeric() || matches!(c, ':' | '.' | '-' | '_')) {
+        return Err(format!(
+            "Invalid device serial '{serial}': only alphanumeric, ':', '.', '-', '_' are allowed"
+        ));
+    }
+    Ok(())
+}
+
 // ── Device commands ────────────────────────────────────────────────────────────
 
 /// Return the current list of connected ADB devices (physical + emulators).
@@ -51,6 +70,7 @@ pub async fn select_device(
     serial: String,
     device_state: State<'_, DeviceState>,
 ) -> Result<(), String> {
+    validate_device_serial(&serial)?;
     device_state.0.lock().await.selected_serial = Some(serial.clone());
     let mut settings = settings_manager::load_settings();
     settings.build.selected_device = Some(serial);
@@ -71,6 +91,7 @@ pub async fn install_apk_on_device(
     serial: String,
     apk_path: String,
 ) -> Result<String, String> {
+    validate_device_serial(&serial)?;
     let settings = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     install_apk(&adb, &serial, &apk_path).await
@@ -83,6 +104,7 @@ pub async fn launch_app_on_device(
     package: String,
     activity: Option<String>,
 ) -> Result<String, String> {
+    validate_device_serial(&serial)?;
     let settings = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     launch_app(&adb, &serial, &package, activity.as_deref()).await
@@ -94,6 +116,7 @@ pub async fn stop_app_on_device(
     serial: String,
     package: String,
 ) -> Result<(), String> {
+    validate_device_serial(&serial)?;
     let settings = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     stop_app(&adb, &serial, &package).await
@@ -286,4 +309,26 @@ pub async fn download_system_image_cmd(
     });
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_serials_pass() {
+        assert!(validate_device_serial("emulator-5554").is_ok());
+        assert!(validate_device_serial("192.168.1.100:5555").is_ok());
+        assert!(validate_device_serial("R5CNA0ZVXXX").is_ok());
+        assert!(validate_device_serial("ce121507d0e5de0e03").is_ok());
+    }
+
+    #[test]
+    fn invalid_serials_rejected() {
+        assert!(validate_device_serial("").is_err());
+        assert!(validate_device_serial("serial; rm -rf /").is_err());
+        assert!(validate_device_serial("$(evil)").is_err());
+        assert!(validate_device_serial(&"a".repeat(65)).is_err());
+        assert!(validate_device_serial("emulator 5554").is_err()); // space
+    }
 }

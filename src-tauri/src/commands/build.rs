@@ -25,6 +25,25 @@ pub struct BuildCompleteEvent {
     pub task: String,
 }
 
+// ── Validation helpers ─────────────────────────────────────────────────────────
+
+/// Validate a Gradle task name against an allowlist.
+/// Allowed: alphanumeric, colon, hyphen, underscore, dot. Max 256 chars.
+fn validate_gradle_task(task: &str) -> Result<(), String> {
+    if task.is_empty() {
+        return Err("Gradle task name must not be empty".to_string());
+    }
+    if task.len() > 256 {
+        return Err("Gradle task name is too long (max 256 characters)".to_string());
+    }
+    if !task.chars().all(|c| c.is_alphanumeric() || matches!(c, ':' | '-' | '_' | '.')) {
+        return Err(format!(
+            "Invalid Gradle task name '{task}': only alphanumeric, ':', '-', '_', '.' are allowed"
+        ));
+    }
+    Ok(())
+}
+
 // ── Build commands ─────────────────────────────────────────────────────────────
 
 /// Run a Gradle task, streaming output via a Tauri Channel.
@@ -41,6 +60,8 @@ pub async fn run_gradle_task(
     build_state: State<'_, BuildState>,
     process_manager: State<'_, ProcessManager>,
 ) -> Result<u32, String> {
+    validate_gradle_task(&task)?;
+
     let gradle_root: PathBuf = {
         let fs = fs_state.0.lock().await;
         fs.gradle_root
@@ -260,5 +281,29 @@ pub async fn find_apk_path(
     };
     Ok(find_output_apk(&gradle_root, &variant)
         .map(|p| p.to_string_lossy().into_owned()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_gradle_tasks_pass() {
+        assert!(validate_gradle_task(":app:assembleDebug").is_ok());
+        assert!(validate_gradle_task("assembleRelease").is_ok());
+        assert!(validate_gradle_task("test").is_ok());
+        assert!(validate_gradle_task(":app:bundleRelease").is_ok());
+        assert!(validate_gradle_task("lint-check").is_ok());
+        assert!(validate_gradle_task("app.assemble").is_ok());
+    }
+
+    #[test]
+    fn invalid_gradle_tasks_rejected() {
+        assert!(validate_gradle_task("").is_err());
+        assert!(validate_gradle_task(":app:assemble; rm -rf /").is_err());
+        assert!(validate_gradle_task("assemble$(evil)").is_err());
+        assert!(validate_gradle_task("assemble\necho pwned").is_err());
+        assert!(validate_gradle_task(&"a".repeat(257)).is_err());
+    }
 }
 
