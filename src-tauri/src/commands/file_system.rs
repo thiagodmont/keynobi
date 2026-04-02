@@ -18,7 +18,7 @@ fn project_id(path: &std::path::Path) -> String {
 /// Upsert a `ProjectEntry` into `settings.recent_projects` and persist.
 /// Evicts the oldest non-pinned entry when the list exceeds `MAX_RECENT_PROJECTS`.
 fn upsert_project(path: &std::path::Path, gradle_root: Option<&std::path::Path>) {
-    let mut settings = settings_manager::load_settings();
+    let (mut settings, _) = settings_manager::load_settings();
 
     let id = project_id(path);
     let name = path
@@ -191,7 +191,7 @@ fn extract_application_id(content: &str) -> Option<String> {
 /// `last_opened` descending (most recent first).
 #[tauri::command]
 pub async fn list_projects() -> Result<Vec<ProjectEntry>, String> {
-    let settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
 
@@ -209,7 +209,7 @@ pub async fn list_projects() -> Result<Vec<ProjectEntry>, String> {
 /// Does *not* delete the project from disk.
 #[tauri::command]
 pub async fn remove_project(id: String) -> Result<(), String> {
-    let mut settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (mut settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
 
@@ -231,7 +231,7 @@ pub async fn remove_project(id: String) -> Result<(), String> {
 /// Toggle the `pinned` flag for a project entry.
 #[tauri::command]
 pub async fn pin_project(id: String, pinned: bool) -> Result<(), String> {
-    let mut settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (mut settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
 
@@ -247,7 +247,7 @@ pub async fn pin_project(id: String, pinned: bool) -> Result<(), String> {
 /// Return the path of the last-active project (used on startup to restore the session).
 #[tauri::command]
 pub async fn get_last_active_project() -> Result<Option<String>, String> {
-    let settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
     Ok(settings.last_active_project)
@@ -390,7 +390,7 @@ pub async fn update_project_meta(
     last_build_variant: Option<String>,
     last_device: Option<String>,
 ) -> Result<(), String> {
-    let mut settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (mut settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
 
@@ -413,7 +413,7 @@ pub async fn rename_project(id: String, new_name: String) -> Result<(), String> 
         return Err("Project name cannot be empty".to_string());
     }
 
-    let mut settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (mut settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
 

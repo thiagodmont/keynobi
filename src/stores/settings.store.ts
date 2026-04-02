@@ -7,6 +7,8 @@ import {
   type AppSettings,
   formatError,
 } from "@/lib/tauri-api";
+import { listen } from "@tauri-apps/api/event";
+import { showToast } from "@/components/common/Toast";
 
 export type { AppSettings };
 
@@ -105,6 +107,19 @@ export async function resetSettings(): Promise<void> {
 
 export function getDefaults(): AppSettings {
   return DEFAULT_SETTINGS;
+}
+
+// Listen for settings corruption detected by the Rust backend on startup.
+// Guard with typeof window to avoid running in test environments.
+if (typeof window !== "undefined") {
+  listen("settings:corrupted", () => {
+    showToast(
+      "Settings file was corrupted and has been reset to defaults. Your previous settings have been lost.",
+      "error"
+    );
+  }).catch(() => {
+    // Non-critical: if listen fails (e.g., in tests), ignore silently.
+  });
 }
 
 // Apply CSS variable effects when appearance/editor settings change

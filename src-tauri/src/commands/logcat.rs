@@ -15,7 +15,7 @@ pub async fn start_logcat(
     logcat_state: State<'_, LogcatState>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let adb_bin = logcat::find_adb_binary(settings.android.sdk_path.as_deref());
 
     {

@@ -17,21 +17,29 @@ fn settings_file() -> PathBuf {
     settings_dir().join("settings.json")
 }
 
-fn load_settings_from_path(path: &std::path::Path) -> AppSettings {
+fn load_settings_from_path(path: &std::path::Path) -> (AppSettings, bool) {
     if !path.exists() {
-        return AppSettings::default();
+        return (AppSettings::default(), false);
     }
     match std::fs::read_to_string(path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Ok(content) => match serde_json::from_str::<AppSettings>(&content) {
+            Ok(settings) => (settings, false),
+            Err(e) => {
+                tracing::warn!("Settings file is corrupted (using defaults): {e}");
+                (AppSettings::default(), true)
+            }
+        },
         Err(e) => {
             tracing::warn!("Failed to read settings file: {e}");
-            AppSettings::default()
+            (AppSettings::default(), false)
         }
     }
 }
 
-/// Load settings from disk, falling back to defaults for any missing/corrupt data.
-pub fn load_settings() -> AppSettings {
+/// Returns `(settings, was_corrupted)`.
+/// `was_corrupted` is true when the file existed but failed to parse —
+/// the user's settings were lost and replaced with defaults.
+pub fn load_settings() -> (AppSettings, bool) {
     load_settings_from_path(&settings_file())
 }
 
@@ -182,7 +190,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("settings.json");
         // File does not exist — must return defaults.
-        let settings = load_settings_from_path(&path);
+        let (settings, _) = load_settings_from_path(&path);
         assert_eq!(settings, AppSettings::default());
     }
 
@@ -215,6 +223,36 @@ mod tests {
             &std::fs::read_to_string(&path).unwrap()
         ).unwrap_or_default();
         assert_eq!(result, AppSettings::default());
+    }
+
+    #[test]
+    fn load_settings_from_path_detects_corruption() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(&path, "{ not valid json !!!").unwrap();
+        let (settings, corrupted) = load_settings_from_path(&path);
+        assert!(corrupted, "should report corruption");
+        assert_eq!(settings, AppSettings::default(), "should return defaults on corruption");
+    }
+
+    #[test]
+    fn load_settings_from_path_no_corruption_flag_on_valid_file() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("settings.json");
+        let json = serde_json::to_string(&AppSettings::default()).unwrap();
+        std::fs::write(&path, &json).unwrap();
+        let (settings, corrupted) = load_settings_from_path(&path);
+        assert!(!corrupted, "valid file should not report corruption");
+        assert_eq!(settings, AppSettings::default());
+    }
+
+    #[test]
+    fn load_settings_from_path_no_corruption_flag_when_file_missing() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("nonexistent.json");
+        let (settings, corrupted) = load_settings_from_path(&path);
+        assert!(!corrupted, "missing file is not corruption");
+        assert_eq!(settings, AppSettings::default());
     }
 
     #[test]

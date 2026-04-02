@@ -71,7 +71,7 @@ pub async fn run_gradle_task(
             .ok_or("No project open")?
     };
 
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
 
     let gradlew = build_runner::find_gradlew(&gradle_root)
         .ok_or_else(|| "gradlew not found at project root".to_string())?;

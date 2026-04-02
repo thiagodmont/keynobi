@@ -3,9 +3,10 @@ use crate::services::settings_manager;
 
 #[tauri::command]
 pub async fn get_settings() -> Result<AppSettings, String> {
-    Ok(tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
-        .map_err(|e| format!("Failed to load settings: {e}"))?)
+        .map_err(|e| format!("Failed to load settings: {e}"))?;
+    Ok(settings)
 }
 
 #[tauri::command]

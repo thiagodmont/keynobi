@@ -54,7 +54,7 @@ pub async fn list_adb_devices(
 pub async fn refresh_devices(
     device_state: State<'_, DeviceState>,
 ) -> Result<Vec<Device>, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     let mut devices = list_devices(&adb).await;
     for d in &mut devices {
@@ -72,7 +72,7 @@ pub async fn select_device(
 ) -> Result<(), String> {
     validate_device_serial(&serial)?;
     device_state.0.lock().await.selected_serial = Some(serial.clone());
-    let mut settings = settings_manager::load_settings();
+    let (mut settings, _) = settings_manager::load_settings();
     settings.build.selected_device = Some(serial);
     settings_manager::save_settings(&settings)
 }
@@ -92,7 +92,7 @@ pub async fn install_apk_on_device(
     apk_path: String,
 ) -> Result<String, String> {
     validate_device_serial(&serial)?;
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     install_apk(&adb, &serial, &apk_path).await
 }
@@ -105,7 +105,7 @@ pub async fn launch_app_on_device(
     activity: Option<String>,
 ) -> Result<String, String> {
     validate_device_serial(&serial)?;
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     launch_app(&adb, &serial, &package, activity.as_deref()).await
 }
@@ -117,7 +117,7 @@ pub async fn stop_app_on_device(
     package: String,
 ) -> Result<(), String> {
     validate_device_serial(&serial)?;
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     stop_app(&adb, &serial, &package).await
 }
@@ -137,7 +137,7 @@ pub async fn launch_avd(
     app_handle: AppHandle,
     device_state: State<'_, DeviceState>,
 ) -> Result<String, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     let emulator = get_emulator_path(&settings);
 
@@ -158,7 +158,7 @@ pub async fn launch_avd(
 #[tauri::command]
 pub async fn stop_avd(serial: String) -> Result<(), String> {
     validate_device_serial(&serial)?;
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     stop_emulator(&adb, &serial).await
 }
@@ -187,7 +187,7 @@ pub async fn start_device_polling(
     let app = app_handle.clone();
     let device_state_bg = device_state.0.clone();
     tokio::spawn(async move {
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let adb = get_adb_path(&settings);
         let mut last_serials: Vec<String> = vec![];
 
@@ -237,14 +237,14 @@ pub async fn stop_device_polling(
 /// Return all installed system images from `$ANDROID_HOME/system-images/`.
 #[tauri::command]
 pub async fn list_system_images_cmd() -> Result<Vec<SystemImageInfo>, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     Ok(list_system_images(&settings))
 }
 
 /// Return hardware device definitions from `avdmanager list device -c`.
 #[tauri::command]
 pub async fn list_device_definitions_cmd() -> Result<Vec<DeviceDefinition>, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let avdmanager = get_avdmanager_path(&settings);
     Ok(list_device_definitions(&avdmanager).await)
 }
@@ -256,7 +256,7 @@ pub async fn create_avd_device(
     system_image: String,
     device: Option<String>,
 ) -> Result<Vec<AvdInfo>, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let avdmanager = get_avdmanager_path(&settings);
     create_avd(&avdmanager, &name, &system_image, device.as_deref()).await?;
     Ok(list_avds())
@@ -265,7 +265,7 @@ pub async fn create_avd_device(
 /// Delete an existing AVD using avdmanager.
 #[tauri::command]
 pub async fn delete_avd_device(name: String) -> Result<Vec<AvdInfo>, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let avdmanager = get_avdmanager_path(&settings);
     delete_avd(&avdmanager, &name).await?;
     Ok(list_avds())
@@ -274,7 +274,7 @@ pub async fn delete_avd_device(name: String) -> Result<Vec<AvdInfo>, String> {
 /// Wipe an AVD's user data by relaunching it with -wipe-data.
 #[tauri::command]
 pub async fn wipe_avd_data_cmd(name: String) -> Result<(), String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let emulator = get_emulator_path(&settings);
     let adb = get_adb_path(&settings);
     wipe_avd_data(&emulator, &adb, &name).await
@@ -284,7 +284,7 @@ pub async fn wipe_avd_data_cmd(name: String) -> Result<(), String> {
 /// Cross-references installed images so the frontend can show installed/not-installed state.
 #[tauri::command]
 pub async fn list_available_system_images_cmd() -> Result<Vec<AvailableSystemImage>, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let sdkmanager = get_sdkmanager_path(&settings);
     Ok(list_available_system_images(&sdkmanager, &settings).await)
 }
@@ -295,7 +295,7 @@ pub async fn download_system_image_cmd(
     sdk_id: String,
     on_progress: Channel<SdkDownloadProgress>,
 ) -> Result<(), String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let sdkmanager = get_sdkmanager_path(&settings);
 
     let channel_clone = on_progress.clone();

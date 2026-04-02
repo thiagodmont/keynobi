@@ -18,7 +18,7 @@ fn expand_tilde(path: &str) -> PathBuf {
 pub async fn run_health_checks(
     fs_state: tauri::State<'_, FsState>,
 ) -> Result<SystemHealthReport, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
 
     let (project_root, gradle_root): (Option<PathBuf>, Option<PathBuf>) = {
         let fs = fs_state.0.lock().await;

@@ -6,7 +6,7 @@ use commands::build::{
     cancel_build, find_apk_path, finalize_build, get_build_errors, get_build_history,
     get_build_status, run_gradle_task,
 };
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use commands::device::{
     create_avd_device, delete_avd_device, download_system_image_cmd, get_selected_device,
     install_apk_on_device, launch_app_on_device, launch_avd, list_adb_devices, list_avd_devices,
@@ -105,8 +105,19 @@ pub fn run() {
         .manage(new_logcat_state())
         .manage(Arc::new(Mutex::new(VecDeque::<LogEntry>::new())) as LogBuffer)
         .setup(|app| {
+            let (settings, settings_corrupted) = services::settings_manager::load_settings();
+
+            if settings_corrupted {
+                let handle = app.handle().clone();
+                tokio::spawn(async move {
+                    // Small delay to let the frontend finish mounting before showing Toast.
+                    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                    let _ = handle.emit("settings:corrupted", ());
+                });
+            }
+
             // Auto-start MCP server if the user has enabled it in settings.
-            if services::settings_manager::load_settings().mcp.auto_start {
+            if settings.mcp.auto_start {
                 let handle = app.handle().clone();
                 tokio::spawn(async move {
                     // Small delay so the window finishes initialising first.
