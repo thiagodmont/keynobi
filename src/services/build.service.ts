@@ -32,12 +32,17 @@ let buildCompleteUnlisten: (() => void) | null = null;
 export async function initBuildService(): Promise<void> {
   if (buildCompleteUnlisten) return;
   buildCompleteUnlisten = await listenBuildComplete((e) => {
-    setBuildResult({
-      success: e.success,
-      durationMs: e.durationMs,
-      errorCount: e.errorCount,
-      warningCount: e.warningCount,
-    });
+    if (e.cancelled) {
+      // Build was explicitly cancelled by the user — use dedicated cancelled phase.
+      cancelBuildState();
+    } else {
+      setBuildResult({
+        success: e.success,
+        durationMs: e.durationMs,
+        errorCount: e.errorCount,
+        warningCount: e.warningCount,
+      });
+    }
     // Reload history from backend.
     getBuildHistory()
       .then(setBuildHistory)
@@ -223,9 +228,12 @@ export async function runAndDeploy(): Promise<void> {
 
 /** Cancel the currently running build. */
 export async function cancelBuild(): Promise<void> {
+  const resolve = _resolveBuildComplete;
   _resolveBuildComplete = null;
   cancelBuildState();
   await cancelBuildApi();
+  // Unblock runBuild immediately so it doesn't hang until timeout.
+  resolve?.({ success: false, durationMs: 0 });
 }
 
 /**
