@@ -79,7 +79,7 @@ describe("settings.store", () => {
     updateSetting("android", "sdkPath", null);
   });
 
-  it("getDefaults returns a new object each time", () => {
+  it("getDefaults returns the same constant reference", () => {
     const d1 = getDefaults();
     const d2 = getDefaults();
     expect(d1).toEqual(d2);

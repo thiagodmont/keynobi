@@ -112,7 +112,9 @@ pub fn run() {
                 tokio::spawn(async move {
                     // Small delay to let the frontend finish mounting before showing Toast.
                     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-                    let _ = handle.emit("settings:corrupted", ());
+                    if let Some(win) = handle.get_webview_window("main") {
+                        let _ = win.emit("settings:corrupted", ());
+                    }
                 });
             }
 
