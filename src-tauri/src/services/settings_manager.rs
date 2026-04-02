@@ -17,19 +17,22 @@ fn settings_file() -> PathBuf {
     settings_dir().join("settings.json")
 }
 
-/// Load settings from disk, falling back to defaults for any missing/corrupt data.
-pub fn load_settings() -> AppSettings {
-    let path = settings_file();
+fn load_settings_from_path(path: &std::path::Path) -> AppSettings {
     if !path.exists() {
         return AppSettings::default();
     }
-    match std::fs::read_to_string(&path) {
+    match std::fs::read_to_string(path) {
         Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
         Err(e) => {
             tracing::warn!("Failed to read settings file: {e}");
             AppSettings::default()
         }
     }
+}
+
+/// Load settings from disk, falling back to defaults for any missing/corrupt data.
+pub fn load_settings() -> AppSettings {
+    load_settings_from_path(&settings_file())
 }
 
 /// Save settings to disk atomically (temp file + rename).
@@ -176,7 +179,10 @@ mod tests {
 
     #[test]
     fn load_returns_defaults_when_no_file() {
-        let settings = load_settings();
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("settings.json");
+        // File does not exist — must return defaults.
+        let settings = load_settings_from_path(&path);
         assert_eq!(settings, AppSettings::default());
     }
 
