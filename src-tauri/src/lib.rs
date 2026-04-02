@@ -6,6 +6,7 @@ use commands::build::{
     cancel_build, find_apk_path, finalize_build, get_build_errors, get_build_history,
     get_build_status, run_gradle_task,
 };
+use tauri::Manager;
 use commands::device::{
     create_avd_device, delete_avd_device, download_system_image_cmd, get_selected_device,
     install_apk_on_device, launch_app_on_device, launch_avd, list_adb_devices, list_avd_devices,
@@ -116,6 +117,44 @@ pub fn run() {
                 });
             }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let app = window.app_handle().clone();
+                tokio::spawn(async move {
+                    let cleanup = async {
+                        // 1. Cancel any running Gradle build.
+                        let build_state = app.state::<BuildState>();
+                        let process_manager = app.state::<ProcessManager>();
+                        services::build_runner::cancel_build(&build_state, &process_manager).await;
+
+                        // 2. Stop logcat streaming (best-effort).
+                        let logcat_state = app.state::<services::logcat::LogcatState>();
+                        logcat_state.lock().await.streaming = false;
+
+                        // 3. Stop ADB device polling.
+                        let device_state = app.state::<DeviceState>();
+                        device_state.0.lock().await.polling = false;
+                    };
+
+                    // Never block shutdown longer than 3 seconds.
+                    if tokio::time::timeout(
+                        std::time::Duration::from_secs(3),
+                        cleanup,
+                    )
+                    .await
+                    .is_err()
+                    {
+                        tracing::warn!("Graceful shutdown timed out after 3s — forcing close");
+                    }
+
+                    // Allow the window to actually close.
+                    if let Some(win) = app.get_webview_window("main") {
+                        let _ = win.destroy();
+                    }
+                });
+            }
         })
         .invoke_handler(tauri::generate_handler![
             // File system
