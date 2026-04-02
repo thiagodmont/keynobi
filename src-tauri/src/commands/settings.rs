@@ -9,7 +9,21 @@ pub async fn get_settings() -> Result<AppSettings, String> {
 }
 
 #[tauri::command]
-pub async fn save_settings(settings: AppSettings) -> Result<(), String> {
+pub async fn save_settings(
+    app_handle: tauri::AppHandle,
+    settings: AppSettings,
+) -> Result<(), String> {
+    // Register the Android SDK directory as an accessible fs scope.
+    if let Some(ref sdk_path) = settings.android.sdk_path {
+        let sdk = std::path::PathBuf::from(sdk_path);
+        if sdk.is_dir() {
+            use tauri_plugin_fs::FsExt;
+            if let Some(scope) = app_handle.try_fs_scope() {
+                let _ = scope.allow_directory(&sdk, true);
+            }
+        }
+    }
+
     tokio::task::spawn_blocking(move || settings_manager::save_settings(&settings))
         .await
         .map_err(|e| format!("Failed to save settings: {e}"))?

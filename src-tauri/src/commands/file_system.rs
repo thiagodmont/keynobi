@@ -78,6 +78,7 @@ fn upsert_project(path: &std::path::Path, gradle_root: Option<&std::path::Path>)
 /// Returns the detected project name on success.
 #[tauri::command]
 pub async fn open_project(
+    app_handle: tauri::AppHandle,
     path: String,
     state: State<'_, FsState>,
 ) -> Result<String, String> {
@@ -111,6 +112,15 @@ pub async fn open_project(
 
     // Persist before holding the state lock.
     upsert_project(&root, gradle_root.as_deref());
+
+    // Register the opened project directory as an allowed fs scope so the
+    // frontend can read project files. This is tighter than home-recursive.
+    use tauri_plugin_fs::FsExt;
+    if let Some(scope) = app_handle.try_fs_scope() {
+        if let Err(e) = scope.allow_directory(&root, true) {
+            tracing::warn!("Failed to register project fs scope: {:?}", e);
+        }
+    }
 
     let mut guard = state.0.lock().await;
     guard.project_root = Some(root);
