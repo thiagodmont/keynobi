@@ -948,4 +948,53 @@ mod tests {
         let inner = state.inner.lock().await;
         assert!(inner.current_build.is_none(), "current_build PID must be cleared after cancel");
     }
+
+    // ── format_build_issues tests ─────────────────────────────────────────────
+
+    fn make_error(msg: &str, file: Option<&str>, line: Option<u32>, severity: crate::models::build::BuildErrorSeverity) -> crate::models::build::BuildError {
+        crate::models::build::BuildError {
+            message: msg.to_string(),
+            file: file.map(str::to_string),
+            line,
+            col: None,
+            severity,
+        }
+    }
+
+    #[test]
+    fn format_error_with_file_and_line() {
+        use crate::models::build::BuildErrorSeverity;
+        let errors = vec![make_error("Unresolved reference: foo", Some("Main.kt"), Some(42), BuildErrorSeverity::Error)];
+        let lines = format_build_issues(&errors);
+        assert_eq!(lines, vec!["[error] Main.kt:42 — Unresolved reference: foo"]);
+    }
+
+    #[test]
+    fn format_error_with_file_only() {
+        use crate::models::build::BuildErrorSeverity;
+        let errors = vec![make_error("Syntax error", Some("build.gradle"), None, BuildErrorSeverity::Error)];
+        let lines = format_build_issues(&errors);
+        assert_eq!(lines, vec!["[error] build.gradle — Syntax error"]);
+    }
+
+    #[test]
+    fn format_error_with_message_only() {
+        use crate::models::build::BuildErrorSeverity;
+        let errors = vec![make_error("Task :app:compileDebugKotlin FAILED", None, None, BuildErrorSeverity::Error)];
+        let lines = format_build_issues(&errors);
+        assert_eq!(lines, vec!["[error] Task :app:compileDebugKotlin FAILED"]);
+    }
+
+    #[test]
+    fn format_warning_severity() {
+        use crate::models::build::BuildErrorSeverity;
+        let errors = vec![make_error("Deprecated API", Some("Foo.kt"), Some(10), BuildErrorSeverity::Warning)];
+        let lines = format_build_issues(&errors);
+        assert_eq!(lines, vec!["[warning] Foo.kt:10 — Deprecated API"]);
+    }
+
+    #[test]
+    fn format_empty_errors_returns_empty_vec() {
+        assert!(format_build_issues(&[]).is_empty());
+    }
 }

@@ -521,4 +521,57 @@ PID NAME
         assert_eq!(map.get(&100).map(String::as_str), Some("com.example.app"));
         assert_eq!(map.get(&101).map(String::as_str), Some("com.example.app:service"));
     }
+
+    // ── level_char tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn level_char_all_variants() {
+        assert_eq!(level_char(&LogcatLevel::Verbose), "V");
+        assert_eq!(level_char(&LogcatLevel::Debug),   "D");
+        assert_eq!(level_char(&LogcatLevel::Info),    "I");
+        assert_eq!(level_char(&LogcatLevel::Warn),    "W");
+        assert_eq!(level_char(&LogcatLevel::Error),   "E");
+        assert_eq!(level_char(&LogcatLevel::Fatal),   "F");
+        assert_eq!(level_char(&LogcatLevel::Unknown), "?");
+    }
+
+    // ── parse_level_str tests ─────────────────────────────────────────────────
+
+    #[test]
+    fn parse_level_str_single_char() {
+        assert_eq!(parse_level_str("V"), LogcatLevel::Verbose);
+        assert_eq!(parse_level_str("D"), LogcatLevel::Debug);
+        assert_eq!(parse_level_str("I"), LogcatLevel::Info);
+        assert_eq!(parse_level_str("W"), LogcatLevel::Warn);
+        assert_eq!(parse_level_str("E"), LogcatLevel::Error);
+        assert_eq!(parse_level_str("F"), LogcatLevel::Fatal);
+        assert_eq!(parse_level_str("A"), LogcatLevel::Fatal);
+    }
+
+    #[test]
+    fn parse_level_str_full_words() {
+        assert_eq!(parse_level_str("verbose"), LogcatLevel::Verbose);
+        assert_eq!(parse_level_str("debug"),   LogcatLevel::Debug);
+        assert_eq!(parse_level_str("info"),    LogcatLevel::Info);
+        assert_eq!(parse_level_str("warn"),    LogcatLevel::Warn);
+        assert_eq!(parse_level_str("warning"), LogcatLevel::Warn);
+        assert_eq!(parse_level_str("error"),   LogcatLevel::Error);
+        assert_eq!(parse_level_str("fatal"),   LogcatLevel::Fatal);
+        assert_eq!(parse_level_str("assert"),  LogcatLevel::Fatal);
+    }
+
+    #[test]
+    fn parse_level_str_case_insensitive() {
+        assert_eq!(parse_level_str("v"),       LogcatLevel::Verbose);
+        assert_eq!(parse_level_str("Debug"),   LogcatLevel::Debug);
+        assert_eq!(parse_level_str("WARNING"), LogcatLevel::Warn);
+        assert_eq!(parse_level_str("ERROR"),   LogcatLevel::Error);
+    }
+
+    #[test]
+    fn parse_level_str_unknown_defaults_to_verbose() {
+        assert_eq!(parse_level_str(""), LogcatLevel::Verbose);
+        assert_eq!(parse_level_str("xyz"), LogcatLevel::Verbose);
+        assert_eq!(parse_level_str("7"), LogcatLevel::Verbose);
+    }
 }
