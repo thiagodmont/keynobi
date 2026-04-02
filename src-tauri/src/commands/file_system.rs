@@ -1,3 +1,4 @@
+use crate::models::error::AppError;
 use crate::models::settings::{ProjectAppInfo, ProjectEntry, MAX_RECENT_PROJECTS};
 use crate::services::{fs_manager, settings_manager};
 use crate::FsState;
@@ -81,19 +82,19 @@ pub async fn open_project(
     app_handle: tauri::AppHandle,
     path: String,
     state: State<'_, FsState>,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     let root = PathBuf::from(&path);
 
     if !root.exists() {
-        return Err(format!("Directory does not exist: {path}"));
+        return Err(AppError::NotFound(format!("Directory does not exist: {path}")));
     }
     if !root.is_dir() {
-        return Err(format!("Path is not a directory: {path}"));
+        return Err(AppError::InvalidInput(format!("Path is not a directory: {path}")));
     }
 
     let canonical_root = root
         .canonicalize()
-        .map_err(|e| format!("Failed to canonicalize path: {e}"))?;
+        .map_err(|e| AppError::Io(format!("Failed to canonicalize path: {e}")))?;
 
     let gradle_root = fs_manager::find_gradle_root(&canonical_root);
     if let Some(ref gr) = gradle_root {

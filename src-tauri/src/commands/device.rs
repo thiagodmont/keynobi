@@ -1,4 +1,5 @@
 use crate::models::device::{AvailableSystemImage, AvdInfo, Device, DeviceDefinition, SdkDownloadProgress, SystemImageInfo};
+use crate::models::error::AppError;
 use crate::services::adb_manager::{
     DeviceState, create_avd, delete_avd, download_system_image, enrich_device_props,
     get_adb_path, get_avdmanager_path, get_emulator_path, get_sdkmanager_path,
@@ -24,17 +25,17 @@ pub struct DeviceListChangedEvent {
 
 /// Validate an ADB device serial against an allowlist.
 /// Allowed: alphanumeric, colon, dot, hyphen, underscore. Max 64 chars.
-fn validate_device_serial(serial: &str) -> Result<(), String> {
+fn validate_device_serial(serial: &str) -> Result<(), AppError> {
     if serial.is_empty() {
-        return Err("Device serial must not be empty".to_string());
+        return Err(AppError::InvalidInput("Device serial must not be empty".to_string()));
     }
     if serial.len() > 64 {
-        return Err("Device serial is too long (max 64 characters)".to_string());
+        return Err(AppError::InvalidInput("Device serial is too long (max 64 characters)".to_string()));
     }
     if !serial.chars().all(|c| c.is_alphanumeric() || matches!(c, ':' | '.' | '-' | '_')) {
-        return Err(format!(
+        return Err(AppError::InvalidInput(format!(
             "Invalid device serial '{serial}': only alphanumeric, ':', '.', '-', '_' are allowed"
-        ));
+        )));
     }
     Ok(())
 }
@@ -69,12 +70,12 @@ pub async fn refresh_devices(
 pub async fn select_device(
     serial: String,
     device_state: State<'_, DeviceState>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     validate_device_serial(&serial)?;
     device_state.0.lock().await.selected_serial = Some(serial.clone());
     let (mut settings, _) = settings_manager::load_settings();
     settings.build.selected_device = Some(serial);
-    settings_manager::save_settings(&settings)
+    settings_manager::save_settings(&settings).map_err(|e| AppError::SettingsError(e))
 }
 
 /// Return the currently selected device serial.
@@ -90,11 +91,11 @@ pub async fn get_selected_device(
 pub async fn install_apk_on_device(
     serial: String,
     apk_path: String,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     validate_device_serial(&serial)?;
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    install_apk(&adb, &serial, &apk_path).await
+    install_apk(&adb, &serial, &apk_path).await.map_err(|e| AppError::Io(e))
 }
 
 /// Launch an app on the given device.
@@ -103,11 +104,11 @@ pub async fn launch_app_on_device(
     serial: String,
     package: String,
     activity: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     validate_device_serial(&serial)?;
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    launch_app(&adb, &serial, &package, activity.as_deref()).await
+    launch_app(&adb, &serial, &package, activity.as_deref()).await.map_err(|e| AppError::ProcessFailed(e))
 }
 
 /// Force-stop an app on the given device.
@@ -115,11 +116,11 @@ pub async fn launch_app_on_device(
 pub async fn stop_app_on_device(
     serial: String,
     package: String,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     validate_device_serial(&serial)?;
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    stop_app(&adb, &serial, &package).await
+    stop_app(&adb, &serial, &package).await.map_err(|e| AppError::ProcessFailed(e))
 }
 
 /// Return the list of installed AVDs.
@@ -156,11 +157,11 @@ pub async fn launch_avd(
 
 /// Kill an emulator.
 #[tauri::command]
-pub async fn stop_avd(serial: String) -> Result<(), String> {
+pub async fn stop_avd(serial: String) -> Result<(), AppError> {
     validate_device_serial(&serial)?;
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    stop_emulator(&adb, &serial).await
+    stop_emulator(&adb, &serial).await.map_err(|e| AppError::ProcessFailed(e))
 }
 
 /// Start background polling for device connections (every 3 seconds).

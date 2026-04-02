@@ -2,6 +2,7 @@ use crate::models::build::{
     BuildError, BuildErrorSeverity, BuildLine, BuildLineKind, BuildRecord, BuildResult,
     BuildStatus,
 };
+use crate::models::error::AppError;
 use crate::services::build_runner::{self, build_env_vars, BuildState, find_output_apk};
 use crate::services::process_manager::{self, ProcessManager, SpawnOptions};
 use crate::services::settings_manager;
@@ -29,17 +30,17 @@ pub struct BuildCompleteEvent {
 
 /// Validate a Gradle task name against an allowlist.
 /// Allowed: alphanumeric, colon, hyphen, underscore, dot. Max 256 chars.
-fn validate_gradle_task(task: &str) -> Result<(), String> {
+fn validate_gradle_task(task: &str) -> Result<(), AppError> {
     if task.is_empty() {
-        return Err("Gradle task name must not be empty".to_string());
+        return Err(AppError::InvalidInput("Gradle task name must not be empty".to_string()));
     }
     if task.len() > 256 {
-        return Err("Gradle task name is too long (max 256 characters)".to_string());
+        return Err(AppError::InvalidInput("Gradle task name is too long (max 256 characters)".to_string()));
     }
     if !task.chars().all(|c| c.is_alphanumeric() || matches!(c, ':' | '-' | '_' | '.')) {
-        return Err(format!(
+        return Err(AppError::InvalidInput(format!(
             "Invalid Gradle task name '{task}': only alphanumeric, ':', '-', '_', '.' are allowed"
-        ));
+        )));
     }
     Ok(())
 }
@@ -59,7 +60,7 @@ pub async fn run_gradle_task(
     fs_state: State<'_, FsState>,
     build_state: State<'_, BuildState>,
     process_manager: State<'_, ProcessManager>,
-) -> Result<u32, String> {
+) -> Result<u32, AppError> {
     validate_gradle_task(&task)?;
 
     let gradle_root: PathBuf = {
@@ -68,13 +69,13 @@ pub async fn run_gradle_task(
             .as_ref()
             .or(fs.project_root.as_ref())
             .cloned()
-            .ok_or("No project open")?
+            .ok_or_else(|| AppError::NotFound("No project is open".into()))?
     };
 
     let (settings, _) = settings_manager::load_settings();
 
     let gradlew = build_runner::find_gradlew(&gradle_root)
-        .ok_or_else(|| "gradlew not found at project root".to_string())?;
+        .ok_or_else(|| AppError::NotFound("gradlew not found at project root".into()))?;
 
     let mut args = vec![task.clone(), "--console=plain".to_owned()];
     if settings.build.gradle_parallel {
@@ -183,7 +184,8 @@ pub async fn run_gradle_task(
             }),
         },
     )
-    .await?;
+    .await
+    .map_err(|e| AppError::ProcessFailed(e))?;
 
     // Mark build as running in the managed state and clear the log for this run.
     {

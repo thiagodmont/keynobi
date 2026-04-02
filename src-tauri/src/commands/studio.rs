@@ -1,3 +1,4 @@
+use crate::models::error::AppError;
 use crate::FsState;
 use std::path::PathBuf;
 use walkdir::WalkDir;
@@ -21,23 +22,23 @@ pub async fn open_in_studio(
     class_path: String,
     filename: String,
     line: u32,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     // ── Resolve project root ───────────────────────────────────────────────────
     let project_root: PathBuf = {
         let fs = fs_state.0.lock().await;
         fs.project_root
             .clone()
-            .ok_or_else(|| "No project is open".to_string())?
+            .ok_or_else(|| AppError::NotFound("No project is open".into()))?
     };
 
     // ── Validate inputs ────────────────────────────────────────────────────────
     // Filename must not contain path separators — it comes from a stack frame
     // like `(MainActivity.kt:42)` and should always be a bare filename.
     if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
-        return Err(format!("Invalid filename: {filename}"));
+        return Err(AppError::InvalidInput(format!("Invalid filename: {filename}")));
     }
     if filename.is_empty() {
-        return Err("filename must not be empty".to_string());
+        return Err(AppError::InvalidInput("filename must not be empty".into()));
     }
 
     // ── Build the expected directory suffix from the class path ────────────────
@@ -55,15 +56,15 @@ pub async fn open_in_studio(
     // ── Security: ensure the resolved path is inside the project root ──────────
     let canonical_root = project_root
         .canonicalize()
-        .map_err(|e| format!("Cannot canonicalize project root: {e}"))?;
+        .map_err(|e| AppError::Io(format!("Cannot canonicalize project root: {e}")))?;
     let canonical_file = found_path
         .canonicalize()
-        .map_err(|e| format!("Cannot canonicalize resolved path: {e}"))?;
+        .map_err(|e| AppError::Io(format!("Cannot canonicalize resolved path: {e}")))?;
     if !canonical_file.starts_with(&canonical_root) {
-        return Err(format!(
+        return Err(AppError::PermissionDenied(format!(
             "Resolved path is outside the project root: {}",
             found_path.display()
-        ));
+        )));
     }
 
     let abs_path = canonical_file.to_string_lossy().into_owned();
@@ -89,16 +90,16 @@ pub async fn open_in_studio(
         .stderr(std::process::Stdio::null())
         .status()
         .await
-        .map_err(|e| format!(
+        .map_err(|e| AppError::ProcessFailed(format!(
             "Failed to launch studio: {e}. Make sure `studio` is on your PATH \
              (see the Health Panel for setup instructions)."
-        ))?;
+        )))?;
 
     if !status.success() {
-        return Err(format!(
+        return Err(AppError::ProcessFailed(format!(
             "studio exited with status {status}. Make sure the `studio` command is on your PATH \
              (see the Health Panel for setup instructions)."
-        ));
+        )));
     }
 
     Ok(abs_path)
@@ -115,7 +116,7 @@ fn find_source_file(
     project_root: &PathBuf,
     class_dir_suffix: &PathBuf,
     filename: &str,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, AppError> {
     // Build the suffix we expect: "com/example/app/MainActivity.kt"
     let ideal_suffix = class_dir_suffix.join(filename);
 
@@ -163,10 +164,10 @@ fn find_source_file(
     }
 
     fallback.ok_or_else(|| {
-        format!(
+        AppError::NotFound(format!(
             "Source file `{filename}` not found in the project. \
              Make sure the project is open."
-        )
+        ))
     })
 }
 

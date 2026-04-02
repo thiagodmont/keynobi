@@ -1,3 +1,4 @@
+use crate::models::error::AppError;
 use crate::models::settings::AppSettings;
 use crate::services::settings_manager;
 
@@ -13,7 +14,7 @@ pub async fn get_settings() -> Result<AppSettings, String> {
 pub async fn save_settings(
     app_handle: tauri::AppHandle,
     settings: AppSettings,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
     // Register the Android SDK directory as an accessible fs scope.
     if let Some(ref sdk_path) = settings.android.sdk_path {
         if let Ok(canonical_sdk) = std::path::PathBuf::from(sdk_path).canonicalize() {
@@ -28,7 +29,8 @@ pub async fn save_settings(
 
     tokio::task::spawn_blocking(move || settings_manager::save_settings(&settings))
         .await
-        .map_err(|e| format!("Failed to save settings: {e}"))?
+        .map_err(|e| AppError::SettingsError(format!("Failed to save settings: {e}")))?
+        .map_err(|e| AppError::SettingsError(e))
 }
 
 #[tauri::command]
