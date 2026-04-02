@@ -146,7 +146,9 @@ export async function initDevices(): Promise<void> {
   // Start polling and register event listener.
   if (!deviceState.polling) {
     setDeviceState("polling", true);
-    await startDevicePolling().catch(() => {});
+    await startDevicePolling().catch((err) => {
+      console.error("[device] Failed to start device polling:", err);
+    });
     await listenDeviceListChanged((newDevices) => {
       setDevices(newDevices);
     });

@@ -41,7 +41,9 @@ export async function initBuildService(): Promise<void> {
     // Reload history from backend.
     getBuildHistory()
       .then(setBuildHistory)
-      .catch(() => {});
+      .catch((err) => {
+        console.error("[build] Failed to reload build history:", err);
+      });
     // Resolve the pending build promise if there is one.
     _resolveBuildComplete?.({ success: e.success, durationMs: e.durationMs });
     _resolveBuildComplete = null;
@@ -134,7 +136,9 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
     errors: accumulatedErrors,
     task: effectiveTask,
     startedAt,
-  }).catch(() => {});
+  }).catch((err) => {
+    console.error("[build] Failed to finalize build:", err);
+  });
 }
 
 /**

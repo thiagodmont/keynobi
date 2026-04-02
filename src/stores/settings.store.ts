@@ -74,7 +74,9 @@ function scheduleSave() {
     try {
       await saveSettingsIpc(settingsState);
     } catch (err) {
-      console.error("Failed to save settings:", formatError(err));
+      const msg = formatError(err);
+      console.error("Failed to save settings:", msg);
+      showToast(`Settings could not be saved: ${msg}`, "error");
     }
   }, 500);
 }
@@ -83,8 +85,13 @@ export async function loadSettings(): Promise<void> {
   try {
     const loaded = await getSettings();
     setSettingsState(loaded);
-  } catch {
-    // First launch or Tauri not available — use defaults
+  } catch (err) {
+    // First launch: settings file doesn't exist yet — expected, use defaults.
+    // For other unexpected errors, log but don't Toast (app still works with defaults).
+    const msg = formatError(err);
+    if (!msg.includes("No such file") && !msg.includes("os error 2")) {
+      console.error("[settings] Unexpected error loading settings:", msg);
+    }
   }
 }
 
@@ -100,8 +107,13 @@ export async function resetSettings(): Promise<void> {
   try {
     const defaults = await resetSettingsToDefaults();
     setSettingsState(defaults);
-  } catch {
+  } catch (err) {
+    const msg = formatError(err);
+    console.error("[settings] Failed to reset settings via backend:", msg);
+    // Fall back to in-memory defaults — the user still gets a reset, but
+    // the file on disk may be out of sync.
     setSettingsState(structuredClone(DEFAULT_SETTINGS));
+    showToast(`Settings reset to defaults (backend error: ${msg})`, "error");
   }
 }
 
