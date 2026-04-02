@@ -348,6 +348,15 @@ pub async fn start_logcat_stream(
         loop {
             interval.tick().await;
 
+            // Exit cleanly on graceful shutdown or stop_logcat.
+            {
+                let state = logcat_state.lock().await;
+                if !state.streaming {
+                    debug!("Logcat pipeline stopped");
+                    break;
+                }
+            }
+
             // Drain all available raw lines and process them through the pipeline.
             // `run_batch_into` pushes directly into `processed`, avoiding a
             // temporary Vec per line.

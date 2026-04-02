@@ -185,6 +185,7 @@ pub async fn start_device_polling(
     }
 
     let app = app_handle.clone();
+    let device_state_bg = device_state.0.clone();
     tokio::spawn(async move {
         let settings = settings_manager::load_settings();
         let adb = get_adb_path(&settings);
@@ -192,6 +193,12 @@ pub async fn start_device_polling(
 
         loop {
             tokio::time::sleep(Duration::from_secs(3)).await;
+
+            // Exit cleanly when stop_device_polling or graceful shutdown sets this to false.
+            if !device_state_bg.lock().await.polling {
+                tracing::debug!("Device polling stopped");
+                break;
+            }
 
             let mut current = list_devices(&adb).await;
             let current_serials: Vec<String> = current.iter().map(|d| d.serial.clone()).collect();
