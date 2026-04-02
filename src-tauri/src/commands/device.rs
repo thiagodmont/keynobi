@@ -344,4 +344,20 @@ mod tests {
         assert!(validate_device_serial("emulator 5554").is_err()); // space
         assert!(validate_device_serial("emulator\n5554").is_err());
     }
+
+    #[test]
+    fn serial_exactly_64_chars_passes() {
+        let serial = "a".repeat(64);
+        assert!(validate_device_serial(&serial).is_ok());
+    }
+
+    #[test]
+    fn serial_tab_char_is_rejected() {
+        assert!(validate_device_serial("emulator\t5554").is_err());
+    }
+
+    #[test]
+    fn serial_carriage_return_is_rejected() {
+        assert!(validate_device_serial("emulator\r5554").is_err());
+    }
 }

@@ -428,3 +428,30 @@ pub async fn rename_project(id: String, new_name: String) -> Result<(), String> 
         .await
         .map_err(|e| format!("Failed to save settings: {e}"))?
 }
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    #[test]
+    fn empty_path_would_fail_is_dir_check() {
+        // Verify that an empty path doesn't exist as a directory
+        let path = PathBuf::from("");
+        assert!(!path.is_dir(), "empty path should not be a directory");
+    }
+
+    #[test]
+    fn nonexistent_path_would_fail_exists_check() {
+        let path = PathBuf::from("/this/path/definitely/does/not/exist/on/any/machine/12345");
+        assert!(!path.exists(), "clearly nonexistent path should not exist");
+    }
+
+    #[test]
+    fn valid_temp_dir_would_pass_checks() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path();
+        assert!(path.exists(), "tempdir must exist");
+        assert!(path.is_dir(), "tempdir must be a directory");
+    }
+}

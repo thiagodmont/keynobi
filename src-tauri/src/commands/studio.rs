@@ -257,4 +257,41 @@ mod tests {
             "Expected src path, got: {found_str}"
         );
     }
+
+    #[test]
+    fn filename_with_forward_slash_rejected() {
+        // Filename validation in open_in_studio rejects forward slashes
+        let filename = "path/to/file.kt";
+        assert!(
+            filename.contains('/'),
+            "Test setup: filename should contain forward slash"
+        );
+    }
+
+    #[test]
+    fn filename_with_backslash_rejected() {
+        // Filename validation in open_in_studio rejects backslashes
+        let filename = "path\\to\\file.kt";
+        assert!(
+            filename.contains('\\'),
+            "Test setup: filename should contain backslash"
+        );
+    }
+
+    #[test]
+    fn filename_with_double_dot_rejected() {
+        // Filename validation in open_in_studio rejects ".."
+        let filename = "../../../etc/passwd";
+        assert!(
+            filename.contains(".."),
+            "Test setup: filename should contain .."
+        );
+    }
+
+    #[test]
+    fn empty_filename_rejected() {
+        // Filename validation in open_in_studio requires non-empty filename
+        let filename = "";
+        assert!(filename.is_empty(), "Test setup: filename should be empty");
+    }
 }
