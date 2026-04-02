@@ -53,7 +53,6 @@ pub struct AppSettings {
     pub editor: EditorSettings,
     pub appearance: AppearanceSettings,
     pub search: SearchSettings,
-    pub files: FilesSettings,
     pub android: AndroidSettings,
     pub lsp: LspSettings,
     pub java: JavaSettings,
@@ -97,15 +96,6 @@ pub struct SearchSettings {
     pub context_lines: u32,
     pub max_results: u32,
     pub max_files: u32,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
-#[serde(rename_all = "camelCase", default)]
-#[ts(export, export_to = "../../src/bindings/")]
-pub struct FilesSettings {
-    pub excluded_dirs: Vec<String>,
-    pub excluded_extensions: Vec<String>,
-    pub max_file_size_mb: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
@@ -201,7 +191,6 @@ impl Default for AppSettings {
             editor: EditorSettings::default(),
             appearance: AppearanceSettings::default(),
             search: SearchSettings::default(),
-            files: FilesSettings::default(),
             android: AndroidSettings::default(),
             lsp: LspSettings::default(),
             java: JavaSettings::default(),
@@ -247,27 +236,6 @@ impl Default for SearchSettings {
             context_lines: 2,
             max_results: 10_000,
             max_files: 500,
-        }
-    }
-}
-
-impl Default for FilesSettings {
-    fn default() -> Self {
-        Self {
-            excluded_dirs: vec![
-                "build".into(),
-                ".gradle".into(),
-                ".idea".into(),
-                ".git".into(),
-                "node_modules".into(),
-            ],
-            excluded_extensions: vec![
-                "class".into(),
-                "dex".into(),
-                "apk".into(),
-                "aar".into(),
-            ],
-            max_file_size_mb: 10,
         }
     }
 }
@@ -389,15 +357,6 @@ mod tests {
         assert!(d.line_numbers);
         assert!(d.bracket_matching);
         assert!(d.auto_close_brackets);
-    }
-
-    #[test]
-    fn files_excludes_defaults() {
-        let d = FilesSettings::default();
-        assert!(d.excluded_dirs.contains(&"build".to_string()));
-        assert!(d.excluded_dirs.contains(&".git".to_string()));
-        assert!(d.excluded_extensions.contains(&"class".to_string()));
-        assert_eq!(d.max_file_size_mb, 10);
     }
 
     #[test]

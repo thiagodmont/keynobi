@@ -29,14 +29,6 @@ describe("settings.store", () => {
     expect(d.search.maxFiles).toBe(500);
   });
 
-  it("has correct files defaults", () => {
-    const d = getDefaults();
-    expect(d.files.excludedDirs).toContain("build");
-    expect(d.files.excludedDirs).toContain(".git");
-    expect(d.files.excludedExtensions).toContain("class");
-    expect(d.files.maxFileSizeMb).toBe(10);
-  });
-
   it("has correct advanced defaults", () => {
     const d = getDefaults();
     expect(d.advanced.treeSitterCacheSize).toBe(50);
@@ -67,13 +59,6 @@ describe("settings.store", () => {
     updateSetting("search", "contextLines", 5);
     expect(settingsState.search.contextLines).toBe(5);
     updateSetting("search", "contextLines", 2);
-  });
-
-  it("updateSetting changes files settings", () => {
-    const original = [...settingsState.files.excludedDirs];
-    updateSetting("files", "excludedDirs", [...original, "vendor"]);
-    expect(settingsState.files.excludedDirs).toContain("vendor");
-    updateSetting("files", "excludedDirs", original);
   });
 
   it("updateSetting changes advanced settings", () => {

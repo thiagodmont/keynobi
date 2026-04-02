@@ -24,11 +24,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   appearance: { uiFontSize: 12 },
   search: { contextLines: 2, maxResults: 10_000, maxFiles: 500 },
-  files: {
-    excludedDirs: ["build", ".gradle", ".idea", ".git", "node_modules"],
-    excludedExtensions: ["class", "dex", "apk", "aar"],
-    maxFileSizeMb: 10,
-  },
   android: { sdkPath: null },
   lsp: { logLevel: "INFO", requestTimeoutSec: 30 },
   java: { home: null },

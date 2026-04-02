@@ -10,7 +10,6 @@ import {
   SettingNumberInput,
   SettingTextInput,
   SettingSelect,
-  SettingTagList,
 } from "@/components/settings/SettingRow";
 import { AndroidSdkStatus, JavaStatus } from "@/components/settings/ToolStatus";
 import Icon from "@/components/common/Icon";
@@ -355,33 +354,6 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
             value={settingsState.search.maxFiles}
             min={50} max={10000} step={100}
             onChange={(v) => updateSetting("search", "maxFiles", v)}
-          />
-        </SettingRow>
-      </Show>
-
-      <SectionHeader title="Files" />
-      <Show when={m("Excluded Directories", "Directories hidden from file tree and search")}>
-        <SettingRow label="Excluded Directories" description="Directories hidden from file tree and search">
-          <SettingTagList
-            tags={settingsState.files.excludedDirs}
-            onChange={(v) => updateSetting("files", "excludedDirs", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={m("Excluded Extensions", "File extensions hidden from file tree")}>
-        <SettingRow label="Excluded Extensions" description="File extensions hidden from file tree">
-          <SettingTagList
-            tags={settingsState.files.excludedExtensions}
-            onChange={(v) => updateSetting("files", "excludedExtensions", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={m("Max File Size", "Maximum file size the editor will open")}>
-        <SettingRow label="Max File Size (MB)" description="Maximum file size the editor will open">
-          <SettingNumberInput
-            value={settingsState.files.maxFileSizeMb}
-            min={1} max={100}
-            onChange={(v) => updateSetting("files", "maxFileSizeMb", v)}
           />
         </SettingRow>
       </Show>
