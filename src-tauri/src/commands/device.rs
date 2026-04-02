@@ -157,6 +157,7 @@ pub async fn launch_avd(
 /// Kill an emulator.
 #[tauri::command]
 pub async fn stop_avd(serial: String) -> Result<(), String> {
+    validate_device_serial(&serial)?;
     let settings = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     stop_emulator(&adb, &serial).await
@@ -330,5 +331,6 @@ mod tests {
         assert!(validate_device_serial("$(evil)").is_err());
         assert!(validate_device_serial(&"a".repeat(65)).is_err());
         assert!(validate_device_serial("emulator 5554").is_err()); // space
+        assert!(validate_device_serial("emulator\n5554").is_err());
     }
 }
