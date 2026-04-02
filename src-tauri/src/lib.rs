@@ -124,8 +124,12 @@ pub fn run() {
                 tokio::spawn(async move {
                     // Small delay so the window finishes initialising first.
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    if let Err(e) = services::mcp_server::start_mcp_server(handle).await {
+                    if let Err(e) = services::mcp_server::start_mcp_server(handle.clone()).await {
                         tracing::warn!("MCP auto-start failed: {}", e);
+                        // Notify the frontend so it can disable MCP UI and show an error.
+                        if let Some(win) = handle.get_webview_window("main") {
+                            let _ = win.emit("mcp:startup-failed", e.to_string());
+                        }
                     }
                 });
             }
