@@ -143,6 +143,15 @@ describe("build store error state transitions", () => {
     expect(buildState.startedAt).toBeNull();
   });
 
+  it("reflects failed phase with zero duration when build fails to start", () => {
+    startBuild("assembleDebug");
+    setBuildResult({ success: false, durationMs: 0, errorCount: 1, warningCount: 0 });
+    expect(buildState.phase).toBe("failed");
+    expect(buildState.durationMs).toBe(0);
+    expect(buildState.startedAt).toBeNull();
+    expect(buildState.currentTask).toBe("assembleDebug");
+  });
+
   it("transitions from failed to running when a new build starts", () => {
     startBuild("assembleDebug");
     setBuildResult({ success: false, durationMs: 2000, errorCount: 1, warningCount: 0 });

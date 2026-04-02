@@ -90,6 +90,10 @@ describe("settings.store", () => {
 });
 
 describe("settings.store error state transitions", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("keeps defaults when getSettings rejects with unexpected error", async () => {
     vi.spyOn(tauriApi, "getSettings").mockRejectedValue(
       new Error("IPC channel unexpectedly closed")
