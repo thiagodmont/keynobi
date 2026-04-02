@@ -93,6 +93,9 @@ pub async fn install_apk_on_device(
     apk_path: String,
 ) -> Result<String, AppError> {
     validate_device_serial(&serial)?;
+    if !std::path::Path::new(&apk_path).exists() {
+        return Err(AppError::NotFound(format!("APK file not found: {apk_path}")));
+    }
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     install_apk(&adb, &serial, &apk_path).await.map_err(|e| AppError::Io(e))
