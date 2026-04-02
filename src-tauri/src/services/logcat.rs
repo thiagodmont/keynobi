@@ -583,4 +583,388 @@ PID NAME
         assert_eq!(parse_level_str("xyz"), LogcatLevel::Verbose);
         assert_eq!(parse_level_str("7"), LogcatLevel::Verbose);
     }
+
+    // ── Ring buffer stress tests ──────────────────────────────────────────────
+
+    /// Verify that a filter correctly matches entries on a bounded buffer.
+    /// This tests the interaction of filtering with the fixed capacity.
+    #[test]
+    fn filter_matches_entries_at_capacity() {
+        let filter = LogcatFilter::new(
+            Some(LogcatLevel::Warn),
+            Some("MyApp".to_string()),
+            None,
+            None,
+            false,
+        );
+
+        // Create entries at various levels
+        let info_entry = ProcessedEntry {
+            id: 1,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Info,
+            tag: "MyApp".into(),
+            message: "info message".into(),
+            package: Some("com.example.app".into()),
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        let warn_entry = ProcessedEntry {
+            id: 2,
+            timestamp: "01-01 00:00:01.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Warn,
+            tag: "MyApp".into(),
+            message: "warning message".into(),
+            package: Some("com.example.app".into()),
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        let error_entry = ProcessedEntry {
+            id: 3,
+            timestamp: "01-01 00:00:02.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Error,
+            tag: "MyApp".into(),
+            message: "error message".into(),
+            package: Some("com.example.app".into()),
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        // Filter by level >= Warn and tag "MyApp"
+        assert!(
+            !filter.matches(&info_entry),
+            "Info level should not match filter with min level Warn"
+        );
+        assert!(
+            filter.matches(&warn_entry),
+            "Warn level should match filter"
+        );
+        assert!(
+            filter.matches(&error_entry),
+            "Error level should match filter"
+        );
+    }
+
+    /// Verify tag filtering is case-insensitive and uses pre-lowercased needles.
+    #[test]
+    fn filter_tag_is_case_insensitive() {
+        let filter = LogcatFilter::new(None, Some("MyApp".to_string()), None, None, false);
+
+        let entry_lower = ProcessedEntry {
+            id: 1,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Info,
+            tag: "myapp".into(),
+            message: "test".into(),
+            package: None,
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        let entry_mixed = ProcessedEntry {
+            id: 2,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Info,
+            tag: "MyApp".into(),
+            message: "test".into(),
+            package: None,
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        let entry_upper = ProcessedEntry {
+            id: 3,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Info,
+            tag: "MYAPP".into(),
+            message: "test".into(),
+            package: None,
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        assert!(
+            filter.matches(&entry_lower),
+            "lowercase tag should match"
+        );
+        assert!(
+            filter.matches(&entry_mixed),
+            "mixed case tag should match"
+        );
+        assert!(
+            filter.matches(&entry_upper),
+            "uppercase tag should match"
+        );
+    }
+
+    /// Verify text filtering searches both message and tag fields.
+    #[test]
+    fn filter_text_searches_message_and_tag() {
+        let filter = LogcatFilter::new(None, None, Some("crash".to_string()), None, false);
+
+        let entry_in_message = ProcessedEntry {
+            id: 1,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Error,
+            tag: "RuntimeException".into(),
+            message: "Native crash detected".into(),
+            package: None,
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        let entry_in_tag = ProcessedEntry {
+            id: 2,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Error,
+            tag: "CrashHandler".into(),
+            message: "Processing error".into(),
+            package: None,
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        let entry_no_match = ProcessedEntry {
+            id: 3,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Info,
+            tag: "MainActivity".into(),
+            message: "Activity started".into(),
+            package: None,
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        assert!(filter.matches(&entry_in_message), "text in message should match");
+        assert!(filter.matches(&entry_in_tag), "text in tag should match");
+        assert!(!filter.matches(&entry_no_match), "unrelated entry should not match");
+    }
+
+    /// Verify that a filter respects the crash-only flag.
+    #[test]
+    fn filter_crash_only_flag_works() {
+        let filter = LogcatFilter::new(None, None, None, None, true);
+
+        let crash_entry = ProcessedEntry {
+            id: 1,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Error,
+            tag: "CRASH".into(),
+            message: "Segmentation fault".into(),
+            package: None,
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: true,
+            flags: crate::models::logcat::EntryFlags::CRASH,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        let normal_entry = ProcessedEntry {
+            id: 2,
+            timestamp: "01-01 00:00:01.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Info,
+            tag: "NORMAL".into(),
+            message: "Normal log line".into(),
+            package: None,
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        assert!(
+            filter.matches(&crash_entry),
+            "crash entry should match crash-only filter"
+        );
+        assert!(
+            !filter.matches(&normal_entry),
+            "normal entry should not match crash-only filter"
+        );
+    }
+
+    /// Verify that combining multiple filter criteria enforces all constraints.
+    #[test]
+    fn filter_multiple_criteria_all_must_match() {
+        let filter = LogcatFilter::new(
+            Some(LogcatLevel::Error),
+            Some("MyApp".to_string()),
+            Some("crash".to_string()),
+            Some("com.example".to_string()),
+            false,
+        );
+
+        let entry_all_match = ProcessedEntry {
+            id: 1,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Error,
+            tag: "MyApp".into(),
+            message: "Native crash".into(),
+            package: Some("com.example.app".into()),
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        let entry_wrong_level = ProcessedEntry {
+            id: 2,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Info,
+            tag: "MyApp".into(),
+            message: "Native crash".into(),
+            package: Some("com.example.app".into()),
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        let entry_wrong_tag = ProcessedEntry {
+            id: 3,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Error,
+            tag: "OtherTag".into(),
+            message: "Native crash".into(),
+            package: Some("com.example.app".into()),
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        let entry_wrong_package = ProcessedEntry {
+            id: 4,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level: LogcatLevel::Error,
+            tag: "MyApp".into(),
+            message: "Native crash".into(),
+            package: Some("com.other.app".into()),
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash: false,
+            flags: 0,
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        };
+
+        assert!(filter.matches(&entry_all_match), "all criteria match");
+        assert!(
+            !filter.matches(&entry_wrong_level),
+            "wrong level should fail"
+        );
+        assert!(!filter.matches(&entry_wrong_tag), "wrong tag should fail");
+        assert!(
+            !filter.matches(&entry_wrong_package),
+            "wrong package should fail"
+        );
+    }
+
+    /// Test ci_contains with various case combinations and partial matches.
+    /// Note: needle must be pre-lowercased by the caller (e.g., LogcatFilter::new).
+    #[test]
+    fn ci_contains_handles_case_insensitive_substrings() {
+        assert!(ci_contains("HelloWorld", "hello"), "lowercase needle in mixed case");
+        assert!(ci_contains("helloworld", "world"), "lowercase needle in lowercase");
+        assert!(ci_contains("HeLLo WoRLd", "lo wo"), "lowercase needle with space");
+        assert!(
+            !ci_contains("hello", "world"),
+            "non-matching substring should return false"
+        );
+        assert!(ci_contains("abc", ""), "empty needle always matches");
+        assert!(
+            !ci_contains("a", "abc"),
+            "longer needle than haystack should not match"
+        );
+    }
+
+    /// Verify that ci_contains works with substring at boundaries.
+    /// Note: needle must be pre-lowercased by the caller (e.g., LogcatFilter::new).
+    #[test]
+    fn ci_contains_boundary_cases() {
+        // At start
+        assert!(ci_contains("HelloWorld", "hello"), "needle at start");
+        // At end
+        assert!(ci_contains("HelloWorld", "world"), "needle at end");
+        // In middle
+        assert!(ci_contains("HelloWorld", "llowor"), "needle in middle");
+        // Exact match
+        assert!(ci_contains("Hello", "hello"), "exact match");
+    }
 }
