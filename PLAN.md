@@ -79,7 +79,7 @@ Claude Code connects via: claude mcp add android-companion
   → MCP server exposes tools: run_gradle_task, get_build_errors,
     get_logcat_entries, list_devices, install_apk, etc.
   → Claude can trigger builds, read logs, manage devices
-  → IDE shows live results in panels as Claude works
+  → Companion app shows live results in panels as Claude works
 ```
 
 ---
@@ -87,7 +87,7 @@ Claude Code connects via: claude mcp add android-companion
 ## Project Structure
 
 ```
-android-ide/
+keynobi/
 ├── src-tauri/                          # Rust backend
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
@@ -123,7 +123,7 @@ android-ide/
     ├── stores/
     │   ├── build.store.ts             # Build state, logs, errors
     │   ├── device.store.ts            # Connected devices, emulator state
-    │   ├── health.store.ts            # IDE health checks
+    │   ├── health.store.ts            # App health checks
     │   ├── project.store.ts           # Project root, name, Gradle root
     │   ├── settings.store.ts          # App settings
     │   ├── ui.store.ts                # Active tab state
@@ -168,9 +168,9 @@ android-ide/
 
 ---
 
-## MCP Tools Exposed by the IDE
+## MCP Tools Exposed by the Companion App
 
-The IDE runs an MCP server so Claude Code can interact with Android development:
+The companion app runs an MCP server so Claude Code can interact with Android development:
 
 ### Build Operations
 - `run_gradle_task(task, variant?)` — Execute any Gradle task

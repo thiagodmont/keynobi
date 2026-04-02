@@ -113,7 +113,7 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
         <div style={{ display: "flex", "align-items": "center", gap: "6px", "flex-shrink": "0" }}>
           <Show when={e.durationMs != null}>
             <span style={{ color: "rgba(255,255,255,0.3)", "font-size": "10px", "font-family": "var(--font-mono)" }}>
-              {e.durationMs}ms
+              {String(e.durationMs)}ms
             </span>
           </Show>
           <span
@@ -347,7 +347,7 @@ export function McpPanel(): JSX.Element {
             </button>
           </div>
           <div style={{ "font-size": "10px", color: "rgba(255,255,255,0.3)", "margin-top": "4px" }}>
-            The MCP uses the project currently open in the IDE. Append{" "}
+            The MCP uses the project currently open in the companion app. Append{" "}
             <code style={{ "font-family": "var(--font-mono)" }}>--project /path</code>
             {" "}to override.
           </div>

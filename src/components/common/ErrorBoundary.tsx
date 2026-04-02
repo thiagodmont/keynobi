@@ -40,7 +40,7 @@ const RELOAD_BTN_STYLE = {
 
 /**
  * Top-level error boundary that prevents a single component crash from
- * taking down the entire IDE. Renders a fallback UI with the error message
+ * taking down the entire app. Renders a fallback UI with the error message
  * and a reload button.
  *
  * Usage: wrap the main App content (or individual panels) with this.

@@ -2,7 +2,7 @@
 ///
 /// Run with:
 ///   cd src-tauri && cargo bench --bench fs_benchmarks
-use android_ide_lib::services::fs_manager::find_gradle_root;
+use keynobi_lib::services::fs_manager::find_gradle_root;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use std::fs;
 

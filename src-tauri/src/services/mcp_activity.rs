@@ -1,11 +1,11 @@
 /// MCP Activity Logger
 ///
 /// Writes a JSONL log of every tool call, resource read, prompt request, and
-/// lifecycle event to `~/.androidide/mcp-activity.jsonl` so the companion GUI
+/// lifecycle event to `~/.keynobi/mcp-activity.jsonl` so the companion GUI
 /// can display a live activity feed regardless of whether the server is running
 /// in GUI or headless mode.
 ///
-/// Also manages a PID file (`~/.androidide/mcp-server.pid`) so the GUI can
+/// Also manages a PID file (`~/.keynobi/mcp-server.pid`) so the GUI can
 /// check whether a headless MCP process is still alive.
 use crate::services::settings_manager;
 use serde::{Deserialize, Serialize};

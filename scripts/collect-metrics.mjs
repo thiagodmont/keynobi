@@ -144,9 +144,9 @@ function collectCriterionBenchmarks() {
 
 function getRustBinarySize() {
   const candidates = [
-    join(RUST_TARGET, "release", "android-ide"),
-    join(RUST_TARGET, "debug", "android-ide"),
-    join(RUST_TARGET, "release", "bundle", "macos", "Android IDE.app"),
+    join(RUST_TARGET, "release", "keynobi"),
+    join(RUST_TARGET, "debug", "keynobi"),
+    join(RUST_TARGET, "release", "bundle", "macos", "Keynobi.app"),
   ];
   for (const path of candidates) {
     if (existsSync(path)) {

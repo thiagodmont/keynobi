@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────────────────────
-# build-dmg.sh — Build Android IDE as a distributable .dmg
+# build-dmg.sh — Build Android Dev Companion as a distributable .dmg
 #
 # Usage:
 #   ./scripts/build-dmg.sh              # Apple Silicon (default)
@@ -106,7 +106,7 @@ npm install --silent
 info "npm dependencies up to date"
 
 # ── Build ─────────────────────────────────────────────────────────────────────
-step "Building Android IDE — $ARCH_LABEL"
+step "Building Android Dev Companion — $ARCH_LABEL"
 echo    "  This compiles the Rust backend in release mode and bundles the frontend."
 echo    "  First build takes 3–8 minutes. Subsequent builds are ~30 seconds."
 echo
@@ -145,6 +145,6 @@ open -R "$DMG_FILE"
 echo
 echo -e "${BOLD}To install:${RESET}"
 echo "  1. Open the .dmg"
-echo "  2. Drag Android IDE → Applications"
+echo "  2. Drag Android Dev Companion → Applications"
 echo "  3. On first launch: right-click the app → Open (bypasses Gatekeeper for unsigned builds)"
 echo

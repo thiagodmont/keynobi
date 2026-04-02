@@ -1,6 +1,6 @@
 # Best Practices
 
-This is a living document covering architectural principles, design decisions, and industry-standard practices for the Android IDE. It explains **why** we do things, while `CODE_PATTERN.md` explains **how**.
+This is a living document covering architectural principles, design decisions, and industry-standard practices for Android Dev Companion. It explains **why** we do things, while `CODE_PATTERN.md` explains **how**.
 
 Update this document when foundational architecture or design decisions change.
 
@@ -24,7 +24,7 @@ Update this document when foundational architecture or design decisions change.
 
 ### 1. Correctness Before Optimization
 
-Write correct code first. Measure, then optimize. Every optimization in this codebase that is not trivially obvious must have a benchmark proving it is necessary. The performance targets (< 100ms build variant discovery, < 2s device list refresh) exist to define "correct enough," not to encourage premature micro-optimization.
+Write correct code first. Measure, then optimize. Every optimization in this codebase that is not trivially obvious must have a benchmark proving it is necessary. The performance targets (< 500ms build variant discovery, < 2s device list refresh) exist to define "correct enough," not to encourage premature micro-optimization.
 
 ### 2. Explicit Over Implicit
 
@@ -38,9 +38,8 @@ Security violations and path traversal attempts must fail immediately with a cle
 
 For any piece of data, there is exactly one authoritative source:
 - Rust models are the source of truth for IPC types (TypeScript bindings are generated from them)
-- The Tauri `FsState` is the source of truth for the open project root (no caching it elsewhere)
-- The `project.store.ts` is the source of truth for the open project root and name
-- The `action-registry.ts` is the source of truth for all discoverable IDE actions
+- The Tauri `FsState` is the authoritative backend source for the open project root; `project.store.ts` is its reactive frontend projection populated via IPC
+- The `action-registry.ts` is the source of truth for all discoverable app actions
 
 When something needs to be known in two places, derive it from the source — don't duplicate it.
 
@@ -90,16 +89,19 @@ The UI runs on the frontend's single JavaScript thread. Any operation that could
 
 ### Bound All Collections
 
-Every in-memory collection that grows over time must have an explicit cap:
+Every in-memory collection that grows over time must have an explicit cap. Examples:
 - Logcat ring buffer: 50K entries (drop oldest on overflow)
 - Build history: last 10 builds
-- Recent projects list: 10 entries
+- Recent projects list: 20 entries
+- Build log: bounded `VecDeque`
+- MCP activity log: bounded entry list
+- Process manager: bounded process map
 
-Unbounded growth is a memory leak on a long-lived IDE process.
+Unbounded growth is a memory leak on a long-lived app process.
 
 ### Hold Locks Briefly
 
-Tauri state Mutexes must be locked only long enough to clone the needed data, then dropped before any I/O or async operation. Holding a Mutex across an `await` creates contention that serializes otherwise independent operations.
+Never hold a Mutex across an `await` or I/O call. Lock, clone what you need, drop, then proceed. See `CODE_PATTERN.md` §Mutex Lock Discipline for the concrete pattern.
 
 ### SolidJS Reactivity Efficiency
 
@@ -171,7 +173,7 @@ UI component rendering tests have lower priority and higher maintenance cost. Pr
 
 ### Test Isolation
 
-Each test must set up its own state and clean up after itself. Stores have reset helpers (`resetUIState`, `resetLspState`). Rust tests use `tempfile::TempDir` for filesystem fixtures. Tests must not rely on the order they run.
+Each test must set up its own state and clean up after itself. Stores have reset helpers (e.g. `resetBuildState`, `resetDeviceState`, `resetVariantState`). Rust tests use `tempfile::TempDir` for filesystem fixtures. Tests must not rely on the order they run.
 
 ### Regression Benchmarks
 
@@ -215,7 +217,7 @@ Never silently discard user work. The close-tab flow, the close-app flow, and th
 | Rust services | `FsError` / domain-specific | Return `Result<T, E>` |
 | Rust commands | `String` | `.map_err(\|e\| e.to_string())` at the boundary |
 | TypeScript services | `unknown` (from `invoke`) | Caught with `try/catch`, shown via `showToast` |
-| TypeScript stores | Not applicable | Stores hold state, not errors |
+| TypeScript stores | Result/error state fields | Stores hold error state (e.g. `buildState.errors`); they do not throw or propagate |
 
 ### Error Visibility
 
@@ -226,7 +228,7 @@ Never silently discard user work. The close-tab flow, the close-app flow, and th
 ### Never Panic in Production
 
 `unwrap()` is banned in production Rust code. `expect("reason")` is acceptable only when:
-1. The condition is statically guaranteed to be safe
+1. The condition is statically guaranteed to be safe (e.g., `Regex::new` on a literal pattern inside a `LazyLock` static)
 2. Or failure truly means a programmer error (e.g., grammar loading on startup fails — the binary is broken)
 
 ---
@@ -241,7 +243,7 @@ All logging uses `tracing` macros. Log levels are:
 - `info!`: milestone events (startup, project open, LSP ready)
 - `debug!`: developer diagnostics (all LSP JSON-RPC traffic, file events)
 
-Enable debug logging via `RUST_LOG=android_ide_lib=debug cargo tauri dev`.
+Enable debug logging via `RUST_LOG=keynobi_lib=debug cargo tauri dev`.
 
 ### Performance Metrics
 
@@ -251,14 +253,14 @@ The `scripts/collect-metrics.mjs` script captures frontend bundle sizes, Rust bi
 
 All LSP JSON-RPC messages are logged at `debug` level via `tracing`:
 ```
-RUST_LOG=android_ide_lib::services::lsp_client=debug npm run tauri dev
+RUST_LOG=keynobi_lib::services::lsp_client=debug npm run tauri dev
 ```
 
 ---
 
 ## AI-First Design
 
-This IDE is built AI-first. Every feature should be designed with AI consumption in mind:
+This companion app is built AI-first. Every feature should be designed with AI consumption in mind:
 
 ### Structured Data Over Raw Text
 
@@ -266,11 +268,11 @@ Prefer structured types (LSP `Diagnostic`, Tree-sitter `SymbolInfo`) over raw st
 
 ### Action Registry as Tool Discovery
 
-The central `action-registry.ts` is not just for the command palette — it will be the foundation for the MCP (Model Context Protocol) server in Phase 5. AI agents will discover available IDE actions from this registry. Every action registered here becomes a tool an AI can invoke.
+The central `action-registry.ts` is not just for the command palette — it is the foundation for the MCP server. AI agents discover available app actions from this registry. Every action registered here becomes a tool an AI can invoke.
 
 ### Navigation History for Context
 
-Navigation history enables AI agents to understand where the user has been, providing context about what they are working on. `pushNavigation` being called on every jump creates an implicit "attention map" of the codebase.
+Navigation history enables AI agents to understand where the user has been, providing context about what they are working on. Every file-open and go-to-location call should go through `openFileAtLocation()` in `project.service.ts` to maintain the navigation stack.
 
 ### Open Project Root as Sandbox
 

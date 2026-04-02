@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Android IDE",
+  "productName": "Android Dev Companion",
   "version": "0.1.0",
-  "identifier": "com.androidide.app",
+  "identifier": "com.keynobi.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",

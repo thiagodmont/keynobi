@@ -86,52 +86,8 @@ export async function renameProject(id: string, newName: string): Promise<void> 
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
-export interface AppSettings {
-  editor: {
-    fontFamily: string;
-    fontSize: number;
-    tabSize: number;
-    insertSpaces: boolean;
-    wordWrap: boolean;
-    lineNumbers: boolean;
-    bracketMatching: boolean;
-    highlightActiveLine: boolean;
-    autoCloseBrackets: boolean;
-  };
-  appearance: { uiFontSize: number };
-  search: { contextLines: number; maxResults: number; maxFiles: number };
-  files: { excludedDirs: string[]; excludedExtensions: string[]; maxFileSizeMb: number };
-  android: { sdkPath: string | null };
-  lsp: { logLevel: string; requestTimeoutSec: number };
-  java: { home: string | null };
-  advanced: {
-    treeSitterCacheSize: number;
-    lspMaxMessageSizeMb: number;
-    watcherDebounceMs: number;
-    lspDidChangeDebounceMs: number;
-    diagnosticsPullDelayMs: number;
-    hoverDelayMs: number;
-    navigationHistoryDepth: number;
-    recentFilesLimit: number;
-  };
-  build: {
-    gradleJvmArgs: string | null;
-    gradleParallel: boolean;
-    gradleOffline: boolean;
-    autoInstallOnBuild: boolean;
-    buildVariant: string | null;
-    selectedDevice: string | null;
-  };
-  logcat: {
-    autoStart: boolean;
-  };
-  mcp: {
-    autoStart: boolean;
-    buildTimeoutSec: number;
-    logcatDefaultCount: number;
-    buildLogDefaultLines: number;
-  };
-}
+import type { AppSettings } from "@/bindings";
+export type { AppSettings };
 
 export async function getSettings(): Promise<AppSettings> {
   return invoke<AppSettings>("get_settings");
@@ -464,13 +420,8 @@ export function listenLogcatCleared(cb: () => void): Promise<UnlistenFn> {
 
 // ── MCP Server ─────────────────────────────────────────────────────────────────
 
-export interface McpSetupStatus {
-  exePath: string;
-  setupCommand: string;
-  claudeFound: boolean;
-  isConfigured: boolean;
-  configuredCommand: string | null;
-}
+import type { McpSetupStatus, McpActivityEntry, McpServerStatus } from "@/bindings";
+export type { McpSetupStatus, McpActivityEntry, McpServerStatus };
 
 /** Start the MCP server on stdio. For use in MCP mode only. */
 export async function startMcpServer(): Promise<void> {
@@ -491,20 +442,6 @@ export async function getMcpSetupStatus(): Promise<McpSetupStatus> {
  */
 export async function configureMcpInClaude(): Promise<string> {
   return invoke<string>("configure_mcp_in_claude");
-}
-
-export interface McpActivityEntry {
-  timestamp: string;
-  kind: string;
-  name: string;
-  durationMs: number | null;
-  status: string;
-  summary: string | null;
-}
-
-export interface McpServerStatus {
-  alive: boolean;
-  pid: number | null;
 }
 
 /** Return the last `limit` activity log entries (default 200). */

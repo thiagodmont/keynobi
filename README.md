@@ -82,7 +82,7 @@ cargo tauri --version  # tauri-cli 2.x.x
 ```bash
 # 1. Clone the repo
 git clone <repo-url>
-cd android-ide
+cd keynobi
 
 # 2. Install JavaScript dependencies
 npm install
@@ -174,7 +174,7 @@ npm run build:dmg:universal # Universal
 Output location:
 
 ```
-src-tauri/target/<arch>/release/bundle/dmg/Android IDE_0.1.0_<arch>.dmg
+src-tauri/target/<arch>/release/bundle/dmg/Android Dev Companion_0.1.0_<arch>.dmg
 ```
 
 > **Unsigned builds:** The DMG is built without a Developer ID certificate. On first launch, testers must right-click the app → **Open** to bypass Gatekeeper. See [Apple's documentation](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac) for details.
@@ -184,13 +184,13 @@ src-tauri/target/<arch>/release/bundle/dmg/Android IDE_0.1.0_<arch>.dmg
 ## Project Structure
 
 ```
-android-ide/
+keynobi/
 ├── src/                                # Frontend — SolidJS + TypeScript
 │   ├── App.tsx                         # Root layout + action/keybinding registry
 │   ├── stores/
 │   │   ├── build.store.ts             # Build state, streaming logs, error list
 │   │   ├── device.store.ts            # Connected devices, AVD state
-│   │   ├── health.store.ts            # IDE health checks
+│   │   ├── health.store.ts            # App health checks
 │   │   ├── project.store.ts           # Project root, name, Gradle root
 │   │   ├── projects.store.ts          # Multi-project registry
 │   │   ├── settings.store.ts          # App settings
@@ -255,7 +255,7 @@ android-ide/
 │       │   ├── fs_manager.rs         # Gradle root detection
 │       │   ├── logcat.rs             # Parser, ring buffer (50K entries)
 │       │   ├── process_manager.rs    # Child process lifecycle + SIGTERM
-│       │   ├── settings_manager.rs   # ~/.androidide/settings.json
+│       │   ├── settings_manager.rs   # ~/.keynobi/settings.json
 │       │   └── variant_manager.rs    # buildTypes × productFlavors parsing
 │       └── models/
 │           ├── build.rs

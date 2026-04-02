@@ -49,6 +49,11 @@ export type { McpSettings } from "./McpSettings";
 export type { ProjectEntry } from "./ProjectEntry";
 export type { ProjectAppInfo } from "./ProjectAppInfo";
 
+// MCP
+export type { McpSetupStatus } from "./McpSetupStatus";
+export type { McpActivityEntry } from "./McpActivityEntry";
+export type { McpServerStatus } from "./McpServerStatus";
+
 // Logcat pipeline
 export type { ProcessedEntry } from "./ProcessedEntry";
 export type { LogcatLevel } from "./LogcatLevel";

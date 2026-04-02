@@ -25,7 +25,7 @@ pub struct SystemHealthReport {
     pub emulator_found: bool,
     /// Whether `gradlew` exists at the project root.
     pub gradle_wrapper_found: bool,
-    /// Whether the `.androidide` app directory is writable.
+    /// Whether the `.keynobi` app directory is writable.
     pub lsp_system_dir_ok: bool,
     /// Whether the `studio` command is available on PATH (Android Studio CLI).
     pub studio_command_found: bool,

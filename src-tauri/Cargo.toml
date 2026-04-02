@@ -1,12 +1,12 @@
 [package]
-name = "android-ide"
+name = "keynobi"
 version = "0.1.0"
-description = "AI-First Android Development Environment"
+description = "AI-First Android Companion App"
 authors = []
 edition = "2021"
 
 [lib]
-name = "android_ide_lib"
+name = "keynobi_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

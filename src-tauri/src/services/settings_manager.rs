@@ -4,10 +4,10 @@ use std::path::PathBuf;
 fn settings_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".androidide")
+        .join(".keynobi")
 }
 
-/// Public accessor for the `~/.androidide/` data directory.
+/// Public accessor for the `~/.keynobi/` data directory.
 /// Used by `mcp_activity` and other services that need to store files alongside settings.
 pub fn data_dir() -> PathBuf {
     settings_dir()

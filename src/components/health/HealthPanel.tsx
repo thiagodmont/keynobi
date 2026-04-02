@@ -727,7 +727,7 @@ function McpSetupSection(): JSX.Element {
               : `claude mcp add --transport stdio android-companion -- "/Applications/AndroidDevCompanion.app/Contents/MacOS/android-dev-companion" --mcp`}
           </code>
           <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-top": "6px" }}>
-            The MCP will automatically use the project currently open in the IDE.
+            The MCP will automatically use the project currently open in the companion app.
             Optionally append{" "}
             <code style={{ "font-family": "var(--font-mono)" }}>--project /path/to/project</code>
             {" "}to override.
@@ -798,7 +798,7 @@ export function HealthPanel(): JSX.Element {
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="IDE Health Center"
+        aria-label="Health Center"
         style={{
           position: "fixed",
           top: "6%",
@@ -863,7 +863,7 @@ export function HealthPanel(): JSX.Element {
                 gap: "8px",
               }}
             >
-              IDE Health Center
+              Health Center
               <span
                 style={{
                   "font-size": "12px",
@@ -1021,7 +1021,7 @@ export function HealthPanel(): JSX.Element {
                 "border-radius": "3px",
               }}
             >
-              ~/.androidide/
+              ~/.keynobi/
             </code>
           </div>
         </div>

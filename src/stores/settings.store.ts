@@ -59,6 +59,8 @@ const DEFAULT_SETTINGS: AppSettings = {
     logcatDefaultCount: 200,
     buildLogDefaultLines: 200,
   },
+  recentProjects: [],
+  lastActiveProject: null,
 };
 
 const [settingsState, setSettingsState] = createStore<AppSettings>(

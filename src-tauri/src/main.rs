@@ -13,10 +13,10 @@ fn main() {
 
         let rt = tokio::runtime::Runtime::new()
             .expect("failed to create tokio runtime for MCP server");
-        rt.block_on(android_ide_lib::services::mcp_server::run_headless_mcp(project_path));
+        rt.block_on(keynobi_lib::services::mcp_server::run_headless_mcp(project_path));
         return;
     }
 
     // Normal mode: launch the full Tauri GUI.
-    android_ide_lib::run();
+    keynobi_lib::run();
 }

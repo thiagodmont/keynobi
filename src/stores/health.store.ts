@@ -1,7 +1,7 @@
 /**
  * health.store.ts
  *
- * Computes IDE health checks from two sources:
+ * Computes app health checks from two sources:
  *  1. Reactive: derived live from existing stores (project, settings).
  *  2. Active:   results from the `run_health_checks` Tauri command (Java version,
  *               disk space, Gradle wrapper, etc.).
@@ -216,10 +216,10 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
       appDirOk === undefined ? "loading" : appDirOk ? "ok" : "error",
     detail:
       appDirOk === undefined
-        ? "Checking ~/.androidide/…"
+        ? "Checking ~/.keynobi/…"
         : appDirOk
-        ? "~/.androidide/ is writable"
-        : "Cannot create ~/.androidide/ — check file permissions",
+        ? "~/.keynobi/ is writable"
+        : "Cannot create ~/.keynobi/ — check file permissions",
   });
 
   return checks;

@@ -16,12 +16,12 @@
 ## Before You Write Code
 
 1. Read `docs/BEST_PRACTICES.md` — architectural principles, security rules, performance targets, and the AI-first design philosophy.
-2. Read `docs/CODE_PATTERN.md` — concrete conventions: file naming, store patterns, IPC patterns, testing patterns.
-4. Read `docs/USER_MANUAL.md` — understand what the user sees and does, so new features integrate naturally.
+2. Read `docs/CODE_PATTERN.md` and `docs/DOMAIN_PATTERN.md` — concrete conventions: file naming, store patterns, IPC patterns, testing patterns.
+3. Read `docs/USER_MANUAL.md` — understand what the user sees and does, so new features integrate naturally.
 
 ## Key Rules
 
-- **Path security**: Every file/LSP command that accepts a path must call `ensure_path_in_project` or `ensure_within_project`. Never use raw `starts_with()` without canonicalization.
+- **Path security**: Every command that accepts a path must validate it against the project root using canonicalization (see `CODE_PATTERN.md` §Path Security). Never use raw `starts_with()` without canonicalization.
 - **Keybindings = Actions**: Use `registerKeyAndAction()` in `App.tsx`, never bare `registerKeybinding()`. Shortcuts that bypass the action registry are invisible in the command palette.
 - **Navigation**: All jump-to-location actions must call `openFileAtLocation()` from `project.service.ts`, not `setActiveFile()` directly. This populates the navigation history stack.
 - **IPC types**: Import from `@/bindings`, never redefine types that originate in Rust.
@@ -74,6 +74,6 @@ npm run generate:bindings
 
 At the end of every development session:
 
-- Update `docs/CODE_PATTERN.md` when a new code pattern is established.
+- Update `docs/CODE_PATTERN.md` and `docs/DOMAIN_PATTERN.md` when a new code pattern is established.
 - Update `docs/BEST_PRACTICES.md` if foundational architecture or principles change.
 - Update `docs/USER_MANUAL.md` when new user-visible features or keyboard shortcuts are added.

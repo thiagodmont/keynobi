@@ -67,11 +67,11 @@ Three main panels — always accessible, no toggling required:
 
 ## 2a. Project Switcher
 
-The **title bar** doubles as a project switcher. Click the project name (or "Android IDE" when no project is open) to open the dropdown.
+The **title bar** doubles as a project switcher. Click the project name (or "Android Dev Companion" when no project is open) to open the dropdown.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  ●  ○  ○   Android IDE — MyApp ▾                             │
+│  ●  ○  ○   Android Dev Companion — MyApp ▾                   │
 └─────────────────────────────────────────────────────────────┘
                 │
                 ▼
@@ -282,7 +282,7 @@ The status bar at the bottom shows:
 |------|-------------|
 | ⚙ | Settings gear — click to open settings |
 | Project name | Name of the open Android project |
-| Health | IDE health indicator — click to open Health Center |
+| Health | App health indicator — click to open Health Center |
 | Build status | Last build result — click to switch to Build panel |
 | Variant pill | Active build variant — click to change |
 | Device pill | Selected device — click to open device selector |
@@ -331,8 +331,8 @@ The Health Center checks:
 | Emulator | Found in `$ANDROID_HOME/emulator/` |
 | Java / JDK | `java -version` exits successfully |
 | Gradle Wrapper | `gradlew` exists at the project root |
-| Disk Space | Free space in `~/.androidide/` |
-| App Directory | `~/.androidide/` is writable |
+| Disk Space | Free space in `~/.keynobi/` |
+| App Directory | `~/.keynobi/` is writable |
 
 Click **Refresh** to re-run all checks.
 
@@ -378,9 +378,9 @@ The companion binary can run as a headless MCP server with no GUI window:
 claude mcp add --transport stdio android-companion -- "/Applications/AndroidDevCompanion.app/Contents/MacOS/android-dev-companion" --mcp
 ```
 
-The MCP server automatically uses whichever Android project is currently open in the IDE. No extra configuration is needed — just open your project in the companion app and the MCP will pick it up.
+The MCP server automatically uses whichever Android project is currently open in the companion app. No extra configuration is needed — just open your project and the MCP will pick it up.
 
-To override and point at a specific project regardless of what the IDE has open:
+To override and point at a specific project regardless of what the companion app has open:
 
 ```bash
 claude mcp add --transport stdio android-companion -- "/path/to/android-dev-companion" --mcp --project /path/to/MyAndroidProject

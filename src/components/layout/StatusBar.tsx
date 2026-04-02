@@ -40,8 +40,8 @@ function HealthIndicator(): JSX.Element {
     const s = overall();
     const { ok, total } = summary();
     if (s === "loading") return "Running health checks…";
-    if (s === "ok")      return `IDE Health: all ${total} checks passing — click for details`;
-    return `IDE Health: ${ok}/${total} checks passing — click to see issues`;
+    if (s === "ok")      return `App health: all ${total} checks passing — click for details`;
+    return `App health: ${ok}/${total} checks passing — click to see issues`;
   };
 
   return (

@@ -38,8 +38,8 @@ export function TitleBar(): JSX.Element {
         }}
       >
         {projectState.projectName
-          ? `Android IDE — ${projectState.projectName}`
-          : "Android IDE"}
+          ? `Android Dev Companion — ${projectState.projectName}`
+          : "Android Dev Companion"}
       </span>
     </div>
   );

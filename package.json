@@ -1,7 +1,7 @@
 {
-  "name": "android-ide",
+  "name": "keynobi",
   "version": "0.1.0",
-  "description": "AI-First Android Development Environment",
+  "description": "AI-First Android Companion App",
   "type": "module",
   "scripts": {
     "start": "vite",

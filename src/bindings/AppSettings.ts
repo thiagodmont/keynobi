@@ -13,7 +13,7 @@ import type { ProjectEntry } from "./ProjectEntry";
 import type { SearchSettings } from "./SearchSettings";
 
 /**
- * All IDE settings persisted to `~/.androidide/settings.json`.
+ * All app settings persisted to `~/.keynobi/settings.json`.
  * Every field uses `#[serde(default)]` so the file is forward-compatible —
  * adding new settings never breaks existing config files.
  */

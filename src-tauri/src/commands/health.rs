@@ -119,7 +119,7 @@ pub async fn run_health_checks(
     // ── App directory probe ──────────────────────────────────────────────────
     let app_dir = dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join(".androidide");
+        .join(".keynobi");
     let lsp_system_dir_ok = tokio::fs::create_dir_all(&app_dir)
         .await
         .is_ok();

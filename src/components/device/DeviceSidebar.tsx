@@ -6,7 +6,7 @@
  * - Collapsed (40px): icon/status-dot rail only
  *
  * Selecting a device calls pickDevice() which sets it as the active device
- * for builds, logcat, and all other IDE features.
+ * for builds, logcat, and all other companion features.
  */
 
 import { type JSX, Show, For, createSignal, onMount } from "solid-js";

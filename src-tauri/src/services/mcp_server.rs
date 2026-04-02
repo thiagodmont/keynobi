@@ -990,7 +990,7 @@ impl AndroidMcpServer {
         match fs.project_root.as_ref() {
             None => Ok(CallToolResult::structured(json!({
                 "open": false,
-                "hint": "No project open. Open an Android project in the IDE, or launch with --project /path/to/project."
+                "hint": "No project open. Open an Android project in the companion app, or launch with --project /path/to/project."
             }))),
             Some(root) => {
                 let name = root.file_name()
@@ -1027,7 +1027,7 @@ impl AndroidMcpServer {
         let gradle_hint = if report.gradlew_ok {
             serde_json::Value::Null
         } else if !report.project_open {
-            json!("No Android project open — pass --project /path/to/project or open one in the IDE first")
+            json!("No Android project open — pass --project /path/to/project or open one in the companion app first")
         } else {
             json!("No gradlew found in the selected project — ensure it is an Android Gradle project")
         };
@@ -1616,11 +1616,11 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
     match server.serve(transport).await {
         Ok(running) => {
             if let Err(e) = running.waiting().await {
-                eprintln!("MCP server error: {e}");
+                tracing::error!("MCP server error: {e}");
             }
         }
         Err(e) => {
-            eprintln!("MCP server failed to start: {e}");
+            tracing::error!("MCP server failed to start: {e}");
             mcp_activity::log_activity(&McpActivityEntry::lifecycle(
                 format!("Server failed to start: {e}")
             ));

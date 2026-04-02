@@ -12,33 +12,38 @@ This document captures the conventions we follow in this repo. These are foundat
 4. [IPC / Tauri Bridge Patterns](#ipc--tauri-bridge-patterns)
 5. [Testing Patterns](#testing-patterns)
 6. [File Naming Conventions](#file-naming-conventions)
+7. [Build / Device / Logcat / MCP Patterns](#build--device--logcat--mcp-patterns) (see also `DOMAIN_PATTERNS.md`)
 
 ---
 
 ## Project Structure
 
 ```
-android-ide/
+keynobi/
 ├── src/                        # Frontend (SolidJS + TypeScript)
 │   ├── bindings/               # Auto-generated Rust-to-TS types (DO NOT EDIT)
 │   ├── components/             # UI components (organized by domain)
+│   │   ├── build/              # Build output panel
 │   │   ├── common/             # Shared UI primitives (Icon, Toast, Dialog, ...)
-│   │   ├── editor/             # CodeMirror wrapper and tab bar
-│   │   ├── filetree/           # File explorer
+│   │   ├── device/             # Device management and AVD panels
+│   │   ├── health/             # System health checks
 │   │   ├── layout/             # Shell: Sidebar, StatusBar, PanelContainer, ...
-│   │   ├── search/             # Search panel and results
-│   │   └── symbols/            # Document outline panel
+│   │   ├── logcat/             # Logcat viewer
+│   │   ├── mcp/               # MCP server panel
+│   │   ├── projects/           # Project switcher and recent projects
+│   │   └── settings/           # Settings panel
 │   ├── lib/                    # Pure logic, no UI
-│   │   ├── codemirror/         # CodeMirror 6 extensions and configuration
-│   │   ├── action-registry.ts  # Central IDE action registry
+│   │   ├── action-registry.ts  # Central app action registry
 │   │   ├── fuzzy-match.ts      # Fuzzy search utility
 │   │   ├── keybindings.ts      # Global keybinding system
-│   │   ├── navigation-history.ts
 │   │   ├── file-utils.ts
+│   │   ├── logcat-query.ts     # Logcat filter query parser
 │   │   └── tauri-api.ts        # Typed Tauri IPC wrappers
 │   ├── services/               # Async flows combining stores + IPC
-│   │   └── project.service.ts
-│   ├── stores/                 # SolidJS reactive stores
+│   │   ├── build.service.ts    # Build + deploy orchestration
+│   │   └── project.service.ts  # Project open/switch/navigation
+│   ├── stores/                 # SolidJS reactive stores ({domain}.store.ts)
+│   ├── test/                   # Vitest setup and Tauri API mocks
 │   └── styles/                 # Global CSS and theme variables
 │
 ├── src-tauri/                  # Rust backend
@@ -119,32 +124,29 @@ pub async fn read_file(path: String) -> Result<String, String> {
 
 Any command that accepts a path from the frontend must validate it against the **effective project root** using canonicalization before passing it to a service.
 
-The effective root is `gradle_root` (detected Gradle project root) when available, otherwise `project_root` (ADR-15). This allows go-to-definition navigation to reach files in sibling Gradle modules.
+The effective root is `gradle_root` (detected Gradle project root) when available, otherwise `project_root`. This allows go-to-definition navigation to reach files in sibling Gradle modules.
+
+The validation pattern (applied inline in each command that needs it):
+
+1. Lock `FsState`, read `gradle_root` or `project_root`, drop lock
+2. `canonicalize()` both root and target path
+3. Check `canonical_target.starts_with(&canonical_root)`
 
 ```rust
-async fn ensure_path_in_project(
-    path: &str,
-    fs_state: &tauri::State<'_, FsState>,
-) -> Result<(), String> {
+// Example: inline path validation in a command
+let root = {
     let fs = fs_state.0.lock().await;
-    let root = fs.gradle_root.as_ref()
-        .or(fs.project_root.as_ref())
-        .ok_or("No project open")?;
-    let canonical_root = root
-        .canonicalize().map_err(|e| format!("Failed to resolve root: {e}"))?;
-    drop(fs);
-
-    let canonical_target = Path::new(path)
-        .canonicalize().map_err(|e| format!("Failed to resolve path: {e}"))?;
-
-    if !canonical_target.starts_with(&canonical_root) {
-        return Err("Path is outside the project directory".into());
-    }
-    Ok(())
+    fs.gradle_root.as_ref().or(fs.project_root.as_ref())
+        .ok_or("No project open")?.clone()
+}; // lock dropped
+let canonical_root = root.canonicalize().map_err(|e| format!("Failed to resolve root: {e}"))?;
+let canonical_target = Path::new(&path).canonicalize().map_err(|e| format!("Failed to resolve path: {e}"))?;
+if !canonical_target.starts_with(&canonical_root) {
+    return Err("Path is outside the project directory".into());
 }
 ```
 
-Never use `path.starts_with(root)` without canonicalization first.
+Never use `path.starts_with(root)` without canonicalization first. For MCP tools, use the domain-specific validators (e.g. `validate_apk_path` for APK paths).
 
 ### 5. Error Handling
 
@@ -179,7 +181,7 @@ npm run generate:bindings
 
 ### 7. Structured Logging
 
-Use `tracing` macros, never `println!`. Match the log level to the audience:
+Use `tracing` macros, never `println!` or `eprintln!`. Match the log level to the audience:
 
 ```rust
 tracing::error!("LSP process crashed: {}", err);   // must be investigated
@@ -188,7 +190,7 @@ tracing::info!("LSP initialized: {:?}", server);    // lifecycle milestones
 tracing::debug!("LSP request [{}] {}", id, method); // developer debugging
 ```
 
-Configure at runtime via `RUST_LOG=android_ide_lib=debug`.
+Configure at runtime via `RUST_LOG=keynobi_lib=debug`.
 
 ---
 
@@ -322,6 +324,10 @@ const unlisten = await listen("lsp:status", (event) => {
 
 Always call `unlisten()` in `onCleanup` to prevent listener leaks.
 
+### 3. Tauri Plugin APIs in Components
+
+Tauri plugin APIs (`@tauri-apps/plugin-dialog`, `@tauri-apps/plugin-fs`, `@tauri-apps/api/window`) may be used directly in components when the operation is UI-specific and does not need a typed wrapper. Examples: file save dialog in `LogcatPanel`, window controls in `TitleBar`. These are distinct from `invoke` calls which must always go through `tauri-api.ts`.
+
 ---
 
 ## Testing Patterns
@@ -381,8 +387,8 @@ Performance-critical services have Criterion benchmarks in `src-tauri/benches/`.
 |-------|---------|---------|
 | Rust modules | `snake_case.rs` | `fs_manager.rs`, `lsp_client.rs` |
 | TypeScript modules | `kebab-case.ts` | `file-utils.ts`, `fuzzy-match.ts` |
-| Store files | `{domain}.store.ts` | `editor.store.ts`, `lsp.store.ts` |
-| Store tests | `{domain}.store.test.ts` | `editor.store.test.ts` |
+| Store files | `{domain}.store.ts` | `build.store.ts`, `device.store.ts` |
+| Store tests | `{domain}.store.test.ts` | `build.store.test.ts` |
 | Components | `PascalCase.tsx` | `FileTree.tsx`, `SearchPanel.tsx` |
 | Component tests | `{name}.test.ts(x)` | `filetree.test.ts` |
 | Services | `{domain}.service.ts` | `project.service.ts` |
@@ -390,312 +396,44 @@ Performance-critical services have Criterion benchmarks in `src-tauri/benches/`.
 
 ---
 
-## Build / Device Patterns (Phase 3)
+## Build / Device / Logcat / MCP Patterns
 
-### Channel Streaming (Build Output)
+Domain-specific implementation details are documented in `DOMAIN_PATTERNS.md`. This section covers only the reusable patterns that apply across all domains.
+
+### Channel Streaming
 
 For high-throughput line-by-line streaming from Rust to frontend, use Tauri Channels (not events). The channel reference is passed as a command parameter:
 
 ```rust
-// Rust command — accepts a Channel<BuildLine>
 #[tauri::command]
 pub async fn run_gradle_task(
     task: String,
-    on_line: Channel<BuildLine>,   // <-- channel parameter
+    on_line: Channel<BuildLine>,
     ...
 ) -> Result<u32, String> {
-    // ...
-    let _ = on_line.send(line);   // fires on each output line
+    let _ = on_line.send(line);
 }
 ```
 
 ```typescript
-// TypeScript — create a Channel and pass it to invoke
 const channel = new Channel<BuildLine>();
 channel.onmessage = (line) => addBuildLine(line);
 await invoke<number>("run_gradle_task", { task, onLine: channel });
 ```
 
-Use Tauri **events** (`emit`/`listen`) for fire-and-forget lifecycle notifications (build complete, device list changed). Use **channels** for high-frequency streaming data (build output).
+Use **events** (`emit`/`listen`) for fire-and-forget lifecycle notifications. Use **channels** for high-frequency streaming data.
 
-### Build State Pattern
+### Service Coordination
 
-Build state follows the per-concern Mutex pattern (ADR-4). `BuildState` holds only the in-flight process ID, current status, errors, and bounded history. No Tauri types in `build_runner.rs`.
+Frontend services (`build.service.ts`, `project.service.ts`) coordinate multiple IPC calls into user-visible actions. They own the orchestration logic: spawn a backend task, listen for its completion event, then update stores. Services may dynamically import UI components (e.g. device picker dialog) to avoid circular dependencies.
 
-```rust
-pub struct BuildState(pub Mutex<BuildStateInner>);
-pub struct BuildStateInner {
-    pub current_build: Option<ProcessId>,
-    pub status: BuildStatus,
-    pub history: VecDeque<BuildRecord>,   // bounded: MAX_HISTORY = 10
-    pub current_errors: Vec<BuildError>,
-    next_id: u32,
-}
-```
+### MCP Tools
 
-### Device State Pattern
+MCP tools use the `rmcp` crate with `#[tool_router]` / `#[tool]` macros. Key rules:
+- Validate all string inputs before acting (task names, package names, device serials, paths)
+- Lock state, clone, drop before I/O — same as Tauri commands
+- Use `CallToolResult::structured(json!({...}))` for data the AI will reason about
+- Use `CallToolResult::error(...)` for execution failures (not protocol errors)
+- `AndroidMcpServer` works in both GUI mode (shared Tauri state) and headless mode (`--mcp` CLI flag)
 
-Same per-concern pattern for ADB device state:
-
-```rust
-pub struct DeviceState(pub Mutex<DeviceStateInner>);
-pub struct DeviceStateInner {
-    pub devices: Vec<Device>,
-    pub selected_serial: Option<String>,
-    pub polling: bool,            // guards against double-starting the poll task
-}
-```
-
-Device polling runs as a detached `tokio::spawn` task. When the device list changes, it emits `device:list_changed` via `AppHandle::emit`. The frontend listens and calls `setDevices()` in the store.
-
-### AVD Management Pattern
-
-AVD lifecycle (create/delete/wipe) goes through `avdmanager` CLI, resolved from `$ANDROID_HOME/cmdline-tools/`:
-
-```rust
-// Service layer (adb_manager.rs)
-pub fn get_avdmanager_path(settings: &AppSettings) -> PathBuf { /* tries latest/, versioned paths */ }
-pub fn list_system_images(settings: &AppSettings) -> Vec<SystemImageInfo> { /* scans system-images/ dir */ }
-pub async fn list_device_definitions(avdmanager: &Path) -> Vec<DeviceDefinition> { /* avdmanager list device -c */ }
-pub async fn create_avd(avdmanager, name, sdk_id, device_id) -> Result<(), String> { /* avdmanager create avd */ }
-pub async fn delete_avd(avdmanager, name) -> Result<(), String> { /* avdmanager delete avd */ }
-```
-
-Commands return the refreshed AVD list (`Vec<AvdInfo>`) so the frontend can update in one round-trip.
-
-### DevicePanel Mode Pattern
-
-`DevicePanel` accepts a `mode` prop for its two usage contexts:
-- `mode="panel"` (default): full-width tab content with toolbar, two sections, AVD lifecycle actions
-- `mode="popover"`: compact 280px dropdown for the StatusBar pill, with "Manage Devices" footer link
-
-```tsx
-// Tab (App.tsx)
-<DevicePanel />
-
-// StatusBar popover
-<DevicePanel mode="popover" onClose={() => setOpen(false)} />
-```
-
-`CreateDeviceDialog` is opened from the panel, loads system images and device definitions lazily (with store cache), and returns the refreshed AVD list via `onCreated` callback.
-
-### Build Service Pattern
-
-A `build.service.ts` coordinates multiple IPC calls into a user-visible action:
-
-```
-runBuild() → runGradleTask (IPC, returns immediately after spawn)
-           → await build:complete event (one-shot Promise resolved by listener)
-           → finalizeBuild (with correct success/duration from event)
-
-runAndDeploy() → resolveDevice (pick dialog if no online device selected)
-              → setDeployPhase("building") → runBuild
-              → setDeployPhase("installing") → findApkPath → installApkOnDevice
-              → setDeployPhase("launching") → launchAppOnDevice (using applicationId)
-              → setDeployPhase(null)
-```
-
-**Key invariants:**
-- `runBuild()` only resolves after `build:complete` fires — `buildState.phase` is always correct when it returns.
-- `_resolveBuildComplete` is a module-level one-shot resolver. It is set before `runGradleTask` and cleared by the `listenBuildComplete` handler.
-- If `cancelBuild()` is called mid-build, `_resolveBuildComplete` is nulled so the awaiting `buildComplete` promise is abandoned without hanging.
-- Build errors accumulate in `accumulatedErrors` (including those without file locations) and are passed to `finalizeBuild` for backend persistence.
-
-**Device resolution:** `resolveDevice()` checks if `deviceState.selectedSerial` is online; if not, it dynamically imports and shows `DevicePickerDialog`. The dialog is lazy-imported to avoid circular dependency between build service and device UI.
-
-**DeployPhase:** `buildState.deployPhase` drives the status bar during the install/launch steps after a successful build. Always cleared in the `finally` block.
-
----
-
-## Logcat Pipeline Pattern (Phase 3+)
-
-### Architecture
-
-The logcat data flow is a four-stage pipeline:
-
-```
-adb logcat
-  → Ingester (parse raw lines → RawLogLine, zero mutex)
-  → Pipeline+Batcher task (every 100ms: run processors, lock state once, emit filtered)
-  → StreamManager (filter entries before IPC emit)
-  → Frontend (render pre-filtered entries; frontend-only filtering for age/regex/negate)
-```
-
-### Processor Chain (`services/log_pipeline.rs`)
-
-Processors implement the `LogProcessor` trait and run sequentially per entry:
-
-```rust
-pub trait LogProcessor: Send + Sync {
-    fn process(&self, entry: &mut ProcessedEntry, ctx: &mut PipelineContext);
-}
-```
-
-Built-in processors (in order):
-1. **PackageResolver** — attaches `package` from PID→package map
-2. **CrashAnalyzer** — detects FATAL/ANR/native, assigns `crash_group_id`
-3. **JsonExtractor** — detects valid JSON in message, stores raw string in `json_body`
-4. **CategoryClassifier** — O(1) tag→category lookup
-
-`PipelineContext` is owned by the pipeline task (no mutex) and carries cross-entry state (pid_to_package, crash group tracking). It is synced into `LogcatStateInner.known_packages` once per 100ms tick.
-
-### LogStore (`services/log_store.rs`)
-
-Replaces the old `LogcatBuffer`. Adds secondary indexes for O(1) crash/JSON lookups:
-
-```rust
-pub struct LogStore {
-    entries: VecDeque<ProcessedEntry>,  // 50K ring buffer
-    crash_ids: VecDeque<u64>,           // IDs of crash entries
-    json_ids: VecDeque<u64>,            // IDs of JSON entries
-    pub stats: LogStats,                // running counters (O(1) per entry)
-}
-```
-
-### Backend Filtering (`services/log_stream.rs`)
-
-`StreamState` holds the active `LogcatFilter`. The batcher calls `filter_batch()` before emitting — only matching entries cross the IPC bridge. Updated via `set_logcat_filter` command:
-
-```typescript
-// Frontend: on query change, send simple tokens to backend
-await setLogcatFilter({ minLevel: "error", tag: null, text: null, package: null, onlyCrashes: false });
-// Then fetch backfill with same filter
-const entries = await getLogcatEntries({ minLevel: "error" });
-```
-
-### Frontend Filter Split
-
-The frontend `filteredEntries` memo only applies tokens the backend cannot handle:
-- `age:N` — time-based, needs `Date.now()`
-- `-tag:X` / `-message:X` — negation
-- `tag~:X` / `message~:X` — regex
-
-Everything else (level, simple tag/text/package, only_crashes) is handled in Rust. This reduces the JS O(n) scan to a much smaller pre-filtered set.
-
-### ProcessedEntry (IPC type)
-
-```rust
-pub struct ProcessedEntry {
-    // Core fields (same as old LogcatEntry)
-    pub id: u64, pub timestamp: String, pub pid: i32, pub tid: i32,
-    pub level: LogcatLevel, pub tag: String, pub message: String,
-    pub package: Option<String>, pub kind: LogcatKind, pub is_crash: bool,
-
-    // Pipeline-enriched fields
-    pub flags: u32,                  // EntryFlags bitfield (CRASH, ANR, JSON_BODY, …)
-    pub category: EntryCategory,     // Network / Lifecycle / Performance / GC / …
-    pub crash_group_id: Option<u64>, // groups consecutive crash stack lines
-    pub json_body: Option<String>,   // raw JSON (parsed on-demand in frontend)
-}
-```
-
-`json_body` is `Option<String>` (not `Value`) to avoid double-serialisation. Frontend parses when user expands the JSON viewer panel.
-
----
-
-## MCP Tool Pattern
-
-MCP tools are defined using the `rmcp` crate with the `#[tool_router]` / `#[tool]` / `#[tool_handler]` macros.
-
-### Defining a new tool
-
-1. Add a parameter struct (if the tool takes arguments):
-
-```rust
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct MyToolParams {
-    /// Description shown to the AI in the tool schema.
-    #[schemars(description = "What this parameter does")]
-    pub my_param: String,
-    pub optional_param: Option<usize>,
-}
-```
-
-2. Add the method to `AndroidMcpServer`'s `#[tool_router]` impl block:
-
-```rust
-#[tool(description = "One-line description for the AI agent.")]
-async fn my_tool(
-    &self,
-    Parameters(p): Parameters<MyToolParams>,
-) -> Result<CallToolResult, McpError> {
-    // Validate inputs before accessing state.
-    validate_my_input(&p.my_param)?;
-
-    // Lock state, clone what you need, drop before I/O.
-    let value = { self.build_state.inner.lock().await.some_field.clone() };
-
-    Ok(CallToolResult::success(vec![Content::text(format!("Result: {value}"))]))
-}
-```
-
-3. For tools with execution errors (not protocol errors), use `CallToolResult::error()`:
-
-```rust
-Ok(CallToolResult::error(vec![Content::text("Build failed — see errors above")]))
-```
-
-### Input validation
-
-All MCP tools that accept strings must validate inputs before acting:
-
-- Gradle task names: `validate_gradle_task(task)?` — alphanumeric + `:.-_`
-- Package names: `validate_package_name(pkg)?` — `com.example.app` format
-- Device serials: `validate_device_serial(serial)?` — alphanumeric + `-:._`
-- APK paths: `self.validate_apk_path(path).await?` — must be within project build outputs
-
-### Headless vs GUI mode
-
-`AndroidMcpServer` works in both modes:
-
-- **GUI mode**: `AndroidMcpServer::from_app_handle(&app)` — reads shared state from Tauri
-- **Headless mode**: `AndroidMcpServer::new_headless(build, device, logcat, fs, pm)` — owns fresh state
-
-The `--mcp` CLI flag triggers headless mode in `main.rs`. `--project <path>` sets the project root.
-
-### Accessing state in tools
-
-The state structs use `Arc<Mutex<>>` internally, so `AndroidMcpServer` is `Clone` (all fields are cheap Arc copies):
-
-```rust
-// In tools: lock, clone what you need, drop before any await.
-let status = { self.build_state.inner.lock().await.status.clone() };
-// BuildLog is sync (std::sync::Mutex), safe to lock without await.
-let lines: Vec<String> = self.build_state.build_log.lock().unwrap().iter().cloned().collect();
-```
-
-### Structured outputs
-
-Use `CallToolResult::structured(json!({...}))` for data the AI will reason about (devices, errors, logcat).
-Use `CallToolResult::success(vec![Content::text(...)])` for human-readable text.
-Use `Content::image(base64, "image/png")` for screenshots.
-
-```rust
-// Structured — AI can chain this into install_apk
-Ok(CallToolResult::structured(json!({ "count": devices.len(), "devices": structured })))
-
-// Plain text — diagnostic output
-Ok(CallToolResult::success(vec![Content::text("Build cancelled.")]))
-
-// Image — screenshot
-Ok(CallToolResult::success(vec![Content::image(BASE64.encode(&bytes), "image/png")]))
-```
-
-### MCP Resources (read-only project files)
-
-Implement `list_resources` and `read_resource` in `impl ServerHandler for AndroidMcpServer`.
-Use `android://` URIs for project files. Return `ResourceContents::TextResourceContents { uri, mime_type, text, meta: None }`.
-
-### MCP Prompts
-
-Use `#[prompt_router]` and `#[prompt]` on a separate impl block before `#[tool_handler] #[prompt_handler] impl ServerHandler`.
-Prompt functions receive typed args via `Parameters<T>` and return `GetPromptResult::new(messages).with_description(...)`.
-
-### Lifecycle events (GUI mode)
-
-Emit Tauri events from `on_initialized` and the `start_mcp_server` task:
-- `mcp:started` — when the server task starts
-- `mcp:client_connected` — from `on_initialized` with `{ clientName, connectedAt }`
-- `mcp:stopped` — when the server task exits
-
-Frontend subscribes via `initMcpListeners()` in `src/stores/mcp.store.ts`.
+See `DOMAIN_PATTERNS.md` for detailed MCP tool definitions, resource/prompt patterns, and lifecycle events.

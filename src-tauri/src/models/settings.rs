@@ -43,7 +43,7 @@ impl Default for ProjectEntry {
     }
 }
 
-/// All IDE settings persisted to `~/.androidide/settings.json`.
+/// All app settings persisted to `~/.keynobi/settings.json`.
 /// Every field uses `#[serde(default)]` so the file is forward-compatible —
 /// adding new settings never breaks existing config files.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]

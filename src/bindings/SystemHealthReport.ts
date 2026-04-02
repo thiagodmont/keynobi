@@ -40,7 +40,7 @@ emulatorFound: boolean,
  */
 gradleWrapperFound: boolean, 
 /**
- * Whether the `.androidide` app directory is writable.
+ * Whether the `.keynobi` app directory is writable.
  */
 lspSystemDirOk: boolean, 
 /**
