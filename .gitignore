@@ -6,3 +6,4 @@ dist/
 .env
 .env.local
 /src-tauri/gen/
+.worktrees/
