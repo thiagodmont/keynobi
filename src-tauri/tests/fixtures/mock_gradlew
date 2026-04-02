@@ -1,0 +1,28 @@
+#!/bin/sh
+# Mock gradlew for integration tests.
+# Simulates different build outcomes based on the first argument.
+TASK="$1"
+case "$TASK" in
+  *"assembleDebug"*)
+    echo "> Task :app:preBuild UP-TO-DATE"
+    echo "> Task :app:compileDebugKotlin"
+    echo "> Task :app:assembleDebug"
+    echo ""
+    echo "BUILD SUCCESSFUL in 3s"
+    exit 0
+    ;;
+  *"fail"*)
+    echo "> Task :app:compileDebugKotlin FAILED"
+    echo ""
+    echo "e: file:///project/app/src/main/java/com/example/Main.kt:10:5: Unresolved reference: foo"
+    echo ""
+    echo "FAILURE: Build failed with an exception."
+    echo ""
+    echo "BUILD FAILED in 1s"
+    exit 1
+    ;;
+  *)
+    echo "BUILD SUCCESSFUL in 1s"
+    exit 0
+    ;;
+esac
