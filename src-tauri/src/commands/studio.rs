@@ -70,15 +70,29 @@ pub async fn open_in_studio(
 
     // ── Invoke studio ──────────────────────────────────────────────────────────
     // Use a login shell so macOS users' custom PATH (set in .zshrc / .zprofile)
-    // is available.  The command is: studio --line <line> <path>
-    let shell_cmd = format!("studio --line {line} '{abs_path}'");
+    // is available.
+    //
+    // SECURITY: Do NOT embed abs_path in the shell script string — that allows
+    // injection via filenames containing single quotes or shell metacharacters.
+    // Instead, pass all arguments as positional parameters to `exec "$0" "$@"`.
+    // The script string is a constant; no user data is ever interpolated into it.
     let status = tokio::process::Command::new("sh")
-        .args(["-lc", &shell_cmd])
+        .args([
+            "-lc",
+            "exec \"$0\" \"$@\"",
+            "studio",
+            "--line",
+            &line.to_string(),
+            &abs_path,
+        ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .await
-        .map_err(|e| format!("Failed to launch studio: {e}"))?;
+        .map_err(|e| format!(
+            "Failed to launch studio: {e}. Make sure `studio` is on your PATH \
+             (see the Health Panel for setup instructions)."
+        ))?;
 
     if !status.success() {
         return Err(format!(
@@ -200,6 +214,20 @@ mod tests {
         let suffix: PathBuf = "com/example/app".into();
         let result = find_source_file(&root, &suffix, "Missing.kt");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn find_source_file_handles_spaces_in_path() {
+        // Files inside directories with spaces must still be found correctly.
+        let tmp = TempDir::new().unwrap();
+        make_file(
+            tmp.path(),
+            "my project/app/src/main/java/com/example/app/MainActivity.kt",
+        );
+        let root = tmp.path().to_path_buf();
+        let suffix: PathBuf = "com/example/app".into();
+        let found = find_source_file(&root, &suffix, "MainActivity.kt").unwrap();
+        assert!(found.ends_with("com/example/app/MainActivity.kt"));
     }
 
     #[test]
