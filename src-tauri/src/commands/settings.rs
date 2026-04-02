@@ -15,11 +15,12 @@ pub async fn save_settings(
 ) -> Result<(), String> {
     // Register the Android SDK directory as an accessible fs scope.
     if let Some(ref sdk_path) = settings.android.sdk_path {
-        let sdk = std::path::PathBuf::from(sdk_path);
-        if sdk.is_dir() {
-            use tauri_plugin_fs::FsExt;
-            if let Some(scope) = app_handle.try_fs_scope() {
-                let _ = scope.allow_directory(&sdk, true);
+        if let Ok(canonical_sdk) = std::path::PathBuf::from(sdk_path).canonicalize() {
+            if canonical_sdk.is_dir() {
+                use tauri_plugin_fs::FsExt;
+                if let Some(scope) = app_handle.try_fs_scope() {
+                    let _ = scope.allow_directory(&canonical_sdk, true);
+                }
             }
         }
     }

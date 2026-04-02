@@ -91,39 +91,43 @@ pub async fn open_project(
         return Err(format!("Path is not a directory: {path}"));
     }
 
-    let gradle_root = fs_manager::find_gradle_root(&root);
+    let canonical_root = root
+        .canonicalize()
+        .map_err(|e| format!("Failed to canonicalize path: {e}"))?;
+
+    let gradle_root = fs_manager::find_gradle_root(&canonical_root);
     if let Some(ref gr) = gradle_root {
         tracing::info!(
             "Gradle root detected: {} (opened: {})",
             gr.display(),
-            root.display()
+            canonical_root.display()
         );
     } else {
         tracing::info!(
             "No Gradle root found above {}; using it as workspace root",
-            root.display()
+            canonical_root.display()
         );
     }
 
-    let project_name = root
+    let project_name = canonical_root
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| path.clone());
 
     // Persist before holding the state lock.
-    upsert_project(&root, gradle_root.as_deref());
+    upsert_project(&canonical_root, gradle_root.as_deref());
 
     // Register the opened project directory as an allowed fs scope so the
     // frontend can read project files. This is tighter than home-recursive.
     use tauri_plugin_fs::FsExt;
     if let Some(scope) = app_handle.try_fs_scope() {
-        if let Err(e) = scope.allow_directory(&root, true) {
-            tracing::warn!("Failed to register project fs scope: {:?}", e);
+        if let Err(e) = scope.allow_directory(&canonical_root, true) {
+            tracing::warn!("Failed to register project fs scope: {e}");
         }
     }
 
     let mut guard = state.0.lock().await;
-    guard.project_root = Some(root);
+    guard.project_root = Some(canonical_root);
     guard.gradle_root = gradle_root;
 
     Ok(project_name)
