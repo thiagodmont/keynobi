@@ -78,22 +78,21 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
   const current = pkg.version;
 
-  // Bump (throws on invalid input)
-  let next;
+  // Bump and sync versions (throws on invalid input or I/O errors)
   try {
-    next = bumpVersion(current, type);
+    const next = bumpVersion(current, type);
+
+    // Write package.json
+    pkg.version = next;
+    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+    // Sync Cargo.toml + tauri.conf.json
+    syncToFiles(next);
+
+    // Print the result
+    console.log(`${current} → ${next}`);
   } catch (err) {
     console.error(`Error: ${err.message}`);
     process.exit(1);
   }
-
-  // Write package.json
-  pkg.version = next;
-  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
-
-  // Sync Cargo.toml + tauri.conf.json
-  syncToFiles(next);
-
-  // Print the result
-  console.log(`${current} → ${next}`);
 }
