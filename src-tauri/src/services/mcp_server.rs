@@ -86,6 +86,16 @@ impl AndroidMcpServer {
         }
     }
 
+    /// Emit a Tauri event to the main window.
+    /// No-ops silently in headless mode (no app_handle).
+    fn emit_event<S: serde::Serialize + Clone>(&self, event: &str, payload: S) {
+        if let Some(handle) = &self.app_handle {
+            if let Some(win) = handle.get_webview_window("main") {
+                let _ = win.emit(event, payload);
+            }
+        }
+    }
+
     /// Construct standalone, for headless `--mcp` mode.
     pub fn new_headless(
         build_state: BuildState,
@@ -1206,13 +1216,11 @@ impl ServerHandler for AndroidMcpServer {
             self.tool_router.list_all().len(),
             self.prompt_router.list_all().len()
         );
-        // Emit lifecycle event to Tauri GUI if running.
-        if let Some(ref handle) = self.app_handle {
-            let _ = handle.emit("mcp:client_connected", serde_json::json!({
-                "clientName": client_name,
-                "connectedAt": chrono::Utc::now().to_rfc3339(),
-            }));
-        }
+        // Emit lifecycle event to Tauri GUI if running (no-op in headless mode).
+        self.emit_event("mcp:client_connected", serde_json::json!({
+            "clientName": client_name,
+            "connectedAt": chrono::Utc::now().to_rfc3339(),
+        }));
     }
 
     async fn list_resources(
