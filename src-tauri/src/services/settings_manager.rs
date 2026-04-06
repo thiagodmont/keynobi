@@ -1,6 +1,26 @@
 use crate::models::settings::AppSettings;
 use std::path::PathBuf;
 
+const KNOWN_SETTINGS_FIELDS: &[&str] = &[
+    "editor", "appearance", "search", "android", "lsp", "java",
+    "advanced", "build", "logcat", "mcp", "recentProjects", "lastActiveProject",
+];
+
+/// Log a warning for each top-level key in the JSON that isn't a known settings field.
+/// This catches typos early (e.g. "fontSizee" silently ignored by serde(default)).
+fn log_unknown_settings_fields(value: &serde_json::Value) {
+    if let Some(obj) = value.as_object() {
+        for key in obj.keys() {
+            if !KNOWN_SETTINGS_FIELDS.contains(&key.as_str()) {
+                tracing::warn!(
+                    "Unknown key in settings.json ignored: '{}' (possible typo?)",
+                    key
+                );
+            }
+        }
+    }
+}
+
 fn settings_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -22,13 +42,20 @@ fn load_settings_from_path(path: &std::path::Path) -> (AppSettings, bool) {
         return (AppSettings::default(), false);
     }
     match std::fs::read_to_string(path) {
-        Ok(content) => match serde_json::from_str::<AppSettings>(&content) {
-            Ok(settings) => (settings, false),
-            Err(e) => {
-                tracing::warn!("Settings file is corrupted (using defaults): {e}");
-                (AppSettings::default(), true)
+        Ok(content) => {
+            // Detect and warn about unknown/misspelled top-level fields.
+            if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&content) {
+                log_unknown_settings_fields(&raw);
             }
-        },
+            // Parse for actual use (serde(default) handles forward compat).
+            match serde_json::from_str::<AppSettings>(&content) {
+                Ok(settings) => (settings, false),
+                Err(e) => {
+                    tracing::warn!("Settings file is corrupted (using defaults): {e}");
+                    (AppSettings::default(), true)
+                }
+            }
+        }
         Err(e) => {
             tracing::warn!("Failed to read settings file: {e}");
             (AppSettings::default(), false)
@@ -270,5 +297,49 @@ mod tests {
         if let Some(path) = result {
             assert!(!path.is_empty());
         }
+    }
+
+    #[test]
+    fn unknown_top_level_field_is_detected() {
+        let known = ["editor", "appearance", "search", "android", "lsp", "java",
+                     "advanced", "build", "logcat", "mcp", "recentProjects", "lastActiveProject"];
+        let json = r#"{"editor": {"fontSize": 16}, "unknownField": true, "typoField": 42}"#;
+        let value: serde_json::Value = serde_json::from_str(json).unwrap();
+        let obj = value.as_object().unwrap();
+        let unknown: Vec<&str> = obj.keys()
+            .filter(|k| !known.contains(&k.as_str()))
+            .map(|k| k.as_str())
+            .collect();
+        assert_eq!(unknown.len(), 2, "should detect 2 unknown fields");
+        assert!(unknown.contains(&"unknownField"));
+        assert!(unknown.contains(&"typoField"));
+    }
+
+    #[test]
+    fn all_known_fields_pass_validation() {
+        let known = ["editor", "appearance", "search", "android", "lsp", "java",
+                     "advanced", "build", "logcat", "mcp", "recentProjects", "lastActiveProject"];
+        let settings = AppSettings::default();
+        let json = serde_json::to_string(&settings).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let obj = value.as_object().unwrap();
+        let unknown: Vec<&str> = obj.keys()
+            .filter(|k| !known.contains(&k.as_str()))
+            .map(|k| k.as_str())
+            .collect();
+        assert!(unknown.is_empty(), "default settings should have no unknown fields, got: {unknown:?}");
+    }
+
+    #[test]
+    fn load_settings_from_path_with_unknown_field_still_loads_valid_fields() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("settings.json");
+        // Write settings with a typo field + a valid field
+        std::fs::write(&path, r#"{"editor": {"fontSize": 18}, "fontSizee": 20}"#).unwrap();
+        let (settings, corrupted) = load_settings_from_path(&path);
+        assert!(!corrupted, "misspelled field is not corruption");
+        assert_eq!(settings.editor.font_size, 18, "valid field must be loaded");
+        // The typo "fontSizee" is silently ignored by serde(default) —
+        // our helper only logs a warning, it doesn't change the return value.
     }
 }
