@@ -48,6 +48,7 @@ pub struct AppSettings {
     pub build: BuildSettings,
     pub logcat: LogcatSettings,
     pub mcp: McpSettings,
+    pub telemetry: TelemetrySettings,
     /// Registry of recently-opened projects.  Capped at 20 entries; oldest
     /// non-pinned entry is evicted when the cap is exceeded.
     pub recent_projects: Vec<ProjectEntry>,
@@ -152,6 +153,16 @@ pub struct BuildSettings {
 pub struct LogcatSettings {
     /// Automatically start logcat streaming when a device connects.
     pub auto_start: bool,
+}
+
+/// Telemetry / crash-reporting settings.
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct TelemetrySettings {
+    /// Whether to send anonymous crash reports to help improve the app.
+    /// Default: false — user must opt in.
+    pub enabled: bool,
 }
 
 /// Settings for the MCP (Model Context Protocol) server integration.

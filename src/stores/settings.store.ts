@@ -57,6 +57,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     logcatDefaultCount: 200,
     buildLogDefaultLines: 200,
   },
+  telemetry: { enabled: false },
   recentProjects: [],
   lastActiveProject: null,
 };
@@ -96,10 +97,11 @@ export async function loadSettings(): Promise<void> {
   }
 }
 
-export function updateSetting<
-  S extends keyof AppSettings,
-  K extends keyof AppSettings[S],
->(section: S, key: K, value: AppSettings[S][K]): void {
+export function updateSetting<S extends keyof AppSettings, K extends keyof AppSettings[S]>(
+  section: S,
+  key: K,
+  value: AppSettings[S][K]
+): void {
   setSettingsState(section, key as never, value as never);
   scheduleSave();
 }
@@ -139,14 +141,8 @@ if (typeof window !== "undefined") {
 if (typeof document !== "undefined") {
   createEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty(
-      "--font-size-editor",
-      `${settingsState.editor.fontSize}px`
-    );
-    root.style.setProperty(
-      "--font-size-ui",
-      `${settingsState.appearance.uiFontSize}px`
-    );
+    root.style.setProperty("--font-size-editor", `${settingsState.editor.fontSize}px`);
+    root.style.setProperty("--font-size-ui", `${settingsState.appearance.uiFontSize}px`);
     root.style.setProperty("--font-mono", settingsState.editor.fontFamily);
   });
 }

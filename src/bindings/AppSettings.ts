@@ -10,19 +10,32 @@ import type { LspSettings } from "./LspSettings";
 import type { McpSettings } from "./McpSettings";
 import type { ProjectEntry } from "./ProjectEntry";
 import type { SearchSettings } from "./SearchSettings";
+import type { TelemetrySettings } from "./TelemetrySettings";
 
 /**
  * All app settings persisted to `~/.keynobi/settings.json`.
  * Every field uses `#[serde(default)]` so the file is forward-compatible —
  * adding new settings never breaks existing config files.
  */
-export type AppSettings = { editor: EditorSettings, appearance: AppearanceSettings, search: SearchSettings, android: AndroidSettings, lsp: LspSettings, java: JavaSettings, advanced: AdvancedSettings, build: BuildSettings, logcat: LogcatSettings, mcp: McpSettings, 
-/**
- * Registry of recently-opened projects.  Capped at 20 entries; oldest
- * non-pinned entry is evicted when the cap is exceeded.
- */
-recentProjects: Array<ProjectEntry>, 
-/**
- * The path of the project that was active when the app was last closed.
- */
-lastActiveProject: string | null, };
+export type AppSettings = {
+  editor: EditorSettings;
+  appearance: AppearanceSettings;
+  search: SearchSettings;
+  android: AndroidSettings;
+  lsp: LspSettings;
+  java: JavaSettings;
+  advanced: AdvancedSettings;
+  build: BuildSettings;
+  logcat: LogcatSettings;
+  mcp: McpSettings;
+  telemetry: TelemetrySettings;
+  /**
+   * Registry of recently-opened projects.  Capped at 20 entries; oldest
+   * non-pinned entry is evicted when the cap is exceeded.
+   */
+  recentProjects: Array<ProjectEntry>;
+  /**
+   * The path of the project that was active when the app was last closed.
+   */
+  lastActiveProject: string | null;
+};

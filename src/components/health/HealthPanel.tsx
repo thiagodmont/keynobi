@@ -1,10 +1,4 @@
-import {
-  type JSX,
-  For,
-  Show,
-  createSignal,
-  onMount,
-} from "solid-js";
+import { type JSX, For, Show, createSignal, onMount } from "solid-js";
 import {
   healthChecks,
   healthState,
@@ -18,7 +12,9 @@ import { mcpState } from "@/stores/mcp.store";
 import {
   getMcpSetupStatus,
   configureMcpInClaude,
+  getLogcatStats,
   type McpSetupStatus,
+  type LogStats,
 } from "@/lib/tauri-api";
 
 // ── Panel visibility signal (module-level, like SettingsPanel) ────────────────
@@ -144,16 +140,18 @@ function CheckRow(props: { check: HealthCheck }): JSX.Element {
         <div
           style={{
             "font-size": "12px",
-            color: c().status === "error"
-              ? "var(--error)"
-              : c().status === "warning"
-              ? "var(--warning)"
-              : "var(--text-secondary)",
+            color:
+              c().status === "error"
+                ? "var(--error)"
+                : c().status === "warning"
+                  ? "var(--warning)"
+                  : "var(--text-secondary)",
             "margin-top": "2px",
             "word-break": "break-word",
-            "font-family": c().status === "ok" && c().detail.startsWith("/")
-              ? "var(--font-mono)"
-              : "var(--font-ui)",
+            "font-family":
+              c().status === "ok" && c().detail.startsWith("/")
+                ? "var(--font-mono)"
+                : "var(--font-ui)",
           }}
         >
           {c().detail}
@@ -163,10 +161,7 @@ function CheckRow(props: { check: HealthCheck }): JSX.Element {
   );
 }
 
-function CategorySection(props: {
-  category: string;
-  checks: HealthCheck[];
-}): JSX.Element {
+function CategorySection(props: { category: string; checks: HealthCheck[] }): JSX.Element {
   return (
     <div style={{ "margin-bottom": "20px" }}>
       <div
@@ -183,9 +178,7 @@ function CategorySection(props: {
         {CATEGORY_LABEL[props.category] ?? props.category}
       </div>
       <div style={{ display: "flex", "flex-direction": "column", gap: "6px" }}>
-        <For each={props.checks}>
-          {(check) => <CheckRow check={check} />}
-        </For>
+        <For each={props.checks}>{(check) => <CheckRow check={check} />}</For>
       </div>
     </div>
   );
@@ -312,12 +305,9 @@ function StudioSetupSection(): JSX.Element {
               <code style={{ "font-family": "var(--font-mono)" }}>
                 /Applications/Android Studio.app/Contents/MacOS
               </code>{" "}
-              to your{" "}
-              <code style={{ "font-family": "var(--font-mono)" }}>$PATH</code>{" "}
-              and use{" "}
-              <code style={{ "font-family": "var(--font-mono)" }}>studio</code>{" "}
-              to run commands. Once added, crash stack frames in Logcat will show a
-              jump-to-line button.
+              to your <code style={{ "font-family": "var(--font-mono)" }}>$PATH</code> and use{" "}
+              <code style={{ "font-family": "var(--font-mono)" }}>studio</code> to run commands.
+              Once added, crash stack frames in Logcat will show a jump-to-line button.
             </div>
           </div>
         </div>
@@ -385,9 +375,8 @@ function StudioSetupSection(): JSX.Element {
           }}
         >
           After editing the file run{" "}
-          <code style={{ "font-family": "var(--font-mono)" }}>source ~/.zshrc</code>{" "}
-          (or restart your terminal), then click{" "}
-          <strong>Refresh</strong> above to re-run health checks.
+          <code style={{ "font-family": "var(--font-mono)" }}>source ~/.zshrc</code> (or restart
+          your terminal), then click <strong>Refresh</strong> above to re-run health checks.
         </div>
       </Show>
 
@@ -536,12 +525,26 @@ function McpSetupSection(): JSX.Element {
           >
             <span style={{ "font-size": "14px" }}>⚠</span>
             <div>
-              <div style={{ "font-size": "12px", color: "var(--text-primary)", "font-weight": "500", "margin-bottom": "3px" }}>
+              <div
+                style={{
+                  "font-size": "12px",
+                  color: "var(--text-primary)",
+                  "font-weight": "500",
+                  "margin-bottom": "3px",
+                }}
+              >
                 Claude Code CLI not found
               </div>
-              <div style={{ "font-size": "11px", color: "var(--text-secondary)", "line-height": "1.5" }}>
+              <div
+                style={{
+                  "font-size": "11px",
+                  color: "var(--text-secondary)",
+                  "line-height": "1.5",
+                }}
+              >
                 Install Claude Code to enable one-click setup. The{" "}
-                <code style={{ "font-family": "var(--font-mono)" }}>claude</code> CLI must be accessible.
+                <code style={{ "font-family": "var(--font-mono)" }}>claude</code> CLI must be
+                accessible.
               </div>
             </div>
           </div>
@@ -579,12 +582,20 @@ function McpSetupSection(): JSX.Element {
             }}
           >
             {runningDot("var(--success)")}
-            <span style={{ "font-size": "13px", color: "var(--text-primary)", "font-weight": "500" }}>
+            <span
+              style={{ "font-size": "13px", color: "var(--text-primary)", "font-weight": "500" }}
+            >
               Registered in Claude Code
             </span>
           </div>
           <Show when={status()?.configuredCommand}>
-            <div style={{ "font-size": "11px", color: "var(--text-secondary)", "margin-bottom": "8px" }}>
+            <div
+              style={{
+                "font-size": "11px",
+                color: "var(--text-secondary)",
+                "margin-bottom": "8px",
+              }}
+            >
               Currently configured command:
             </div>
             <code
@@ -626,8 +637,16 @@ function McpSetupSection(): JSX.Element {
 
         {/* State 3: Claude found but not configured */}
         <Show when={status()?.claudeFound && !status()?.isConfigured}>
-          <div style={{ "font-size": "12px", color: "var(--text-secondary)", "margin-bottom": "12px", "line-height": "1.5" }}>
-            Claude Code is installed but this app is not registered yet. Click below to configure it automatically.
+          <div
+            style={{
+              "font-size": "12px",
+              color: "var(--text-secondary)",
+              "margin-bottom": "12px",
+              "line-height": "1.5",
+            }}
+          >
+            Claude Code is installed but this app is not registered yet. Click below to configure it
+            automatically.
           </div>
 
           {/* One-click configure button */}
@@ -660,7 +679,9 @@ function McpSetupSection(): JSX.Element {
 
         {/* Fallback: no status loaded (first-run or error) — always show manual command */}
         <Show when={!status()}>
-          <div style={{ "font-size": "12px", color: "var(--text-secondary)", "margin-bottom": "8px" }}>
+          <div
+            style={{ "font-size": "12px", color: "var(--text-secondary)", "margin-bottom": "8px" }}
+          >
             Run this command in your terminal to register the MCP server:
           </div>
         </Show>
@@ -686,8 +707,21 @@ function McpSetupSection(): JSX.Element {
         </Show>
 
         {/* Always show the manual command as a copy-able fallback */}
-        <div style={{ "margin-top": status()?.isConfigured ? "14px" : "4px", "border-top": status()?.isConfigured ? "1px solid var(--border)" : "none", "padding-top": status()?.isConfigured ? "12px" : "0" }}>
-          <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between", "margin-bottom": "6px" }}>
+        <div
+          style={{
+            "margin-top": status()?.isConfigured ? "14px" : "4px",
+            "border-top": status()?.isConfigured ? "1px solid var(--border)" : "none",
+            "padding-top": status()?.isConfigured ? "12px" : "0",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              "align-items": "center",
+              "justify-content": "space-between",
+              "margin-bottom": "6px",
+            }}
+          >
             <span style={{ "font-size": "11px", color: "var(--text-muted)" }}>
               Manual setup command:
             </span>
@@ -702,8 +736,12 @@ function McpSetupSection(): JSX.Element {
                 "font-size": "10px",
                 cursor: "pointer",
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text-primary)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = "var(--text-primary)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = "var(--text-muted)";
+              }}
             >
               Copy
             </button>
@@ -729,12 +767,67 @@ function McpSetupSection(): JSX.Element {
           <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-top": "6px" }}>
             The MCP will automatically use the project currently open in the companion app.
             Optionally append{" "}
-            <code style={{ "font-family": "var(--font-mono)" }}>--project /path/to/project</code>
-            {" "}to override.
+            <code style={{ "font-family": "var(--font-mono)" }}>--project /path/to/project</code> to
+            override.
           </div>
         </div>
       </Show>
     </div>
+  );
+}
+
+// ── Logcat Buffer Warning Section ─────────────────────────────────────────────
+
+function LogcatBufferWarningSection(): JSX.Element {
+  const [logcatStats, setLogcatStats] = createSignal<LogStats | null>(null);
+
+  onMount(async () => {
+    try {
+      const stats = await getLogcatStats();
+      setLogcatStats(stats);
+    } catch {
+      // Non-fatal: hide section on error
+    }
+  });
+
+  return (
+    <Show when={(logcatStats()?.bufferUsagePct ?? 0) > 80}>
+      <div
+        style={{
+          display: "flex",
+          "align-items": "flex-start",
+          gap: "10px",
+          padding: "10px",
+          background: "rgba(251,191,36,0.08)",
+          border: "1px solid rgba(251,191,36,0.25)",
+          "border-radius": "5px",
+          "margin-bottom": "16px",
+        }}
+      >
+        <span style={{ "font-size": "14px" }}>⚠</span>
+        <div>
+          <div
+            style={{
+              "font-size": "12px",
+              color: "var(--text-primary)",
+              "font-weight": "500",
+              "margin-bottom": "3px",
+            }}
+          >
+            Logcat ring buffer is {logcatStats()?.bufferUsagePct.toFixed(0)}% full
+          </div>
+          <div
+            style={{
+              "font-size": "11px",
+              color: "var(--text-secondary)",
+              "line-height": "1.5",
+            }}
+          >
+            Oldest entries may be lost. Consider clearing the logcat buffer.
+          </div>
+        </div>
+      </div>
+    </Show>
   );
 }
 
@@ -749,11 +842,7 @@ export function HealthPanel(): JSX.Element {
 
   const byCategory = () => {
     const checks = healthChecks();
-    const order: HealthCheck["category"][] = [
-      "project",
-      "environment",
-      "system",
-    ];
+    const order: HealthCheck["category"][] = ["project", "environment", "system"];
     return order
       .map((cat) => ({
         category: cat,
@@ -846,10 +935,10 @@ export function HealthPanel(): JSX.Element {
             {overall() === "ok"
               ? "✓"
               : overall() === "warning"
-              ? "⚠"
-              : overall() === "error"
-              ? "✗"
-              : "⟳"}
+                ? "⚠"
+                : overall() === "error"
+                  ? "✗"
+                  : "⟳"}
           </div>
 
           <div style={{ flex: "1" }}>
@@ -920,7 +1009,7 @@ export function HealthPanel(): JSX.Element {
             >
               <span
                 style={{
-                  "display": "inline-block",
+                  display: "inline-block",
                   animation: healthState.isRunning ? "lsp-spin 1s linear infinite" : "none",
                 }}
               >
@@ -967,13 +1056,11 @@ export function HealthPanel(): JSX.Element {
           }}
         >
           <For each={byCategory()}>
-            {(group) => (
-              <CategorySection
-                category={group.category}
-                checks={group.checks}
-              />
-            )}
+            {(group) => <CategorySection category={group.category} checks={group.checks} />}
           </For>
+
+          {/* Logcat ring buffer warning */}
+          <LogcatBufferWarningSection />
 
           {/* MCP Server section */}
           <McpSetupSection />
@@ -996,8 +1083,8 @@ export function HealthPanel(): JSX.Element {
             <button
               onClick={() => {
                 closeHealthPanel();
-                import("@/components/settings/SettingsPanel").then(
-                  ({ openSettings }) => openSettings()
+                import("@/components/settings/SettingsPanel").then(({ openSettings }) =>
+                  openSettings()
                 );
               }}
               style={{

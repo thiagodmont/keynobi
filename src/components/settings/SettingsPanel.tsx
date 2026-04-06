@@ -1,10 +1,6 @@
 import { type JSX, Show, For, createSignal, createResource } from "solid-js";
 import { getVersion } from "@tauri-apps/api/app";
-import {
-  settingsState,
-  updateSetting,
-  resetSettings,
-} from "@/stores/settings.store";
+import { settingsState, updateSetting, resetSettings } from "@/stores/settings.store";
 import {
   SettingRow,
   SettingToggle,
@@ -50,10 +46,7 @@ export function SettingsPanel(): JSX.Element {
   const matchesSearch = (label: string, desc?: string): boolean => {
     const q = search().toLowerCase();
     if (!q) return true;
-    return (
-      label.toLowerCase().includes(q) ||
-      (desc?.toLowerCase().includes(q) ?? false)
-    );
+    return label.toLowerCase().includes(q) || (desc?.toLowerCase().includes(q) ?? false);
   };
 
   return (
@@ -104,7 +97,9 @@ export function SettingsPanel(): JSX.Element {
         >
           <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
             <Icon name="gear" size={16} color="var(--text-secondary)" />
-            <span style={{ "font-size": "14px", "font-weight": "600", color: "var(--text-primary)" }}>
+            <span
+              style={{ "font-size": "14px", "font-weight": "600", color: "var(--text-primary)" }}
+            >
               Settings
             </span>
           </div>
@@ -141,7 +136,13 @@ export function SettingsPanel(): JSX.Element {
         </div>
 
         {/* Search */}
-        <div style={{ padding: "8px 16px", "border-bottom": "1px solid var(--border)", "flex-shrink": "0" }}>
+        <div
+          style={{
+            padding: "8px 16px",
+            "border-bottom": "1px solid var(--border)",
+            "flex-shrink": "0",
+          }}
+        >
           <input
             ref={searchRef}
             type="text"
@@ -187,7 +188,8 @@ export function SettingsPanel(): JSX.Element {
                     padding: "8px 12px",
                     background: category() === cat.id ? "var(--bg-active)" : "transparent",
                     border: "none",
-                    "border-left": category() === cat.id ? "2px solid var(--accent)" : "2px solid transparent",
+                    "border-left":
+                      category() === cat.id ? "2px solid var(--accent)" : "2px solid transparent",
                     color: category() === cat.id ? "var(--text-primary)" : "var(--text-muted)",
                     cursor: "pointer",
                     "font-size": "12px",
@@ -272,7 +274,8 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
         <SettingRow label="Font Size" description="Editor font size in pixels">
           <SettingNumberInput
             value={settingsState.editor.fontSize}
-            min={10} max={30}
+            min={10}
+            max={30}
             onChange={(v) => updateSetting("editor", "fontSize", v)}
           />
         </SettingRow>
@@ -327,7 +330,10 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
         </SettingRow>
       </Show>
       <Show when={m("Auto-close Brackets", "Automatically insert closing brackets")}>
-        <SettingRow label="Auto-close Brackets" description="Automatically insert closing brackets, quotes, etc.">
+        <SettingRow
+          label="Auto-close Brackets"
+          description="Automatically insert closing brackets, quotes, etc."
+        >
           <SettingToggle
             checked={settingsState.editor.autoCloseBrackets}
             onChange={(v) => updateSetting("editor", "autoCloseBrackets", v)}
@@ -337,10 +343,14 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
 
       <SectionHeader title="Appearance" />
       <Show when={m("UI Font Size", "Font size for UI elements")}>
-        <SettingRow label="UI Font Size" description="Font size for panels, sidebar, and status bar">
+        <SettingRow
+          label="UI Font Size"
+          description="Font size for panels, sidebar, and status bar"
+        >
           <SettingNumberInput
             value={settingsState.appearance.uiFontSize}
-            min={10} max={16}
+            min={10}
+            max={16}
             onChange={(v) => updateSetting("appearance", "uiFontSize", v)}
           />
         </SettingRow>
@@ -348,28 +358,42 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
 
       <SectionHeader title="Search" />
       <Show when={m("Context Lines", "Lines shown before and after each match")}>
-        <SettingRow label="Context Lines" description="Lines shown before and after each search match">
+        <SettingRow
+          label="Context Lines"
+          description="Lines shown before and after each search match"
+        >
           <SettingNumberInput
             value={settingsState.search.contextLines}
-            min={0} max={10}
+            min={0}
+            max={10}
             onChange={(v) => updateSetting("search", "contextLines", v)}
           />
         </SettingRow>
       </Show>
       <Show when={m("Max Results", "Maximum number of search matches")}>
-        <SettingRow label="Max Results" description="Maximum number of search matches before capping">
+        <SettingRow
+          label="Max Results"
+          description="Maximum number of search matches before capping"
+        >
           <SettingNumberInput
             value={settingsState.search.maxResults}
-            min={100} max={100000} step={1000}
+            min={100}
+            max={100000}
+            step={1000}
             onChange={(v) => updateSetting("search", "maxResults", v)}
           />
         </SettingRow>
       </Show>
       <Show when={m("Max Files", "Maximum number of files to search")}>
-        <SettingRow label="Max Files" description="Maximum number of files to include in search results">
+        <SettingRow
+          label="Max Files"
+          description="Maximum number of files to include in search results"
+        >
           <SettingNumberInput
             value={settingsState.search.maxFiles}
-            min={50} max={10000} step={100}
+            min={50}
+            max={10000}
+            step={100}
             onChange={(v) => updateSetting("search", "maxFiles", v)}
           />
         </SettingRow>
@@ -400,7 +424,10 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
 
       <SectionHeader title="Logcat" />
       <Show when={m("Auto-start Logcat", "Automatically start logcat when a device connects")}>
-        <SettingRow label="Auto-start on Connect" description="Automatically start logcat streaming when a device connects">
+        <SettingRow
+          label="Auto-start on Connect"
+          description="Automatically start logcat streaming when a device connects"
+        >
           <SettingToggle
             checked={settingsState.logcat.autoStart}
             onChange={(v) => updateSetting("logcat", "autoStart", v)}
@@ -468,17 +495,30 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
 
 // ── Advanced Settings ─────────────────────────────────────────────────────────
 
-function AdvancedSettings(props: { matchesSearch: (l: string, d?: string) => boolean }): JSX.Element {
+function AdvancedSettings(props: {
+  matchesSearch: (l: string, d?: string) => boolean;
+}): JSX.Element {
   const m = props.matchesSearch;
   return (
     <>
-      <div style={{ "font-size": "11px", color: "var(--text-muted)", padding: "8px 0 12px", "border-bottom": "1px solid var(--border)" }}>
-        These settings control internal limits and timing. Most users should leave these at their default values.
+      <div
+        style={{
+          "font-size": "11px",
+          color: "var(--text-muted)",
+          padding: "8px 0 12px",
+          "border-bottom": "1px solid var(--border)",
+        }}
+      >
+        These settings control internal limits and timing. Most users should leave these at their
+        default values.
       </div>
 
       <SectionHeader title="Build" />
       <Show when={m("Gradle Parallel Builds", "Run Gradle tasks in parallel")}>
-        <SettingRow label="Parallel Builds" description="Pass --parallel to Gradle for faster multi-module builds">
+        <SettingRow
+          label="Parallel Builds"
+          description="Pass --parallel to Gradle for faster multi-module builds"
+        >
           <SettingToggle
             checked={settingsState.build.gradleParallel}
             onChange={(v) => updateSetting("build", "gradleParallel", v)}
@@ -486,7 +526,10 @@ function AdvancedSettings(props: { matchesSearch: (l: string, d?: string) => boo
         </SettingRow>
       </Show>
       <Show when={m("Gradle Offline Mode", "Prevent Gradle from accessing the network")}>
-        <SettingRow label="Offline Mode" description="Pass --offline to Gradle to skip dependency downloads">
+        <SettingRow
+          label="Offline Mode"
+          description="Pass --offline to Gradle to skip dependency downloads"
+        >
           <SettingToggle
             checked={settingsState.build.gradleOffline}
             onChange={(v) => updateSetting("build", "gradleOffline", v)}
@@ -494,7 +537,10 @@ function AdvancedSettings(props: { matchesSearch: (l: string, d?: string) => boo
         </SettingRow>
       </Show>
       <Show when={m("Gradle JVM Args", "Extra JVM arguments for the Gradle daemon")}>
-        <SettingRow label="Gradle JVM Args" description='Extra JVM arguments passed to the Gradle daemon (e.g. "-Xmx4g")'>
+        <SettingRow
+          label="Gradle JVM Args"
+          description='Extra JVM arguments passed to the Gradle daemon (e.g. "-Xmx4g")'
+        >
           <SettingTextInput
             value={settingsState.build.gradleJvmArgs ?? ""}
             placeholder="-Xmx4g"
@@ -503,7 +549,10 @@ function AdvancedSettings(props: { matchesSearch: (l: string, d?: string) => boo
         </SettingRow>
       </Show>
       <Show when={m("Auto Install on Build", "Automatically install APK after a successful build")}>
-        <SettingRow label="Auto Install on Build" description="Automatically install and launch the app after a successful build">
+        <SettingRow
+          label="Auto Install on Build"
+          description="Automatically install and launch the app after a successful build"
+        >
           <SettingToggle
             checked={settingsState.build.autoInstallOnBuild}
             onChange={(v) => updateSetting("build", "autoInstallOnBuild", v)}
@@ -513,10 +562,7 @@ function AdvancedSettings(props: { matchesSearch: (l: string, d?: string) => boo
 
       <SectionHeader title="Logging" />
       <Show when={m("Log retention", "Days to keep log files")}>
-        <SettingRow
-          label="Log retention"
-          description="Days to keep log files in ~/.keynobi/logs/"
-        >
+        <SettingRow label="Log retention" description="Days to keep log files in ~/.keynobi/logs/">
           <input
             type="number"
             min={1}
@@ -525,6 +571,20 @@ function AdvancedSettings(props: { matchesSearch: (l: string, d?: string) => boo
             onInput={(e) =>
               updateSetting("advanced", "logRetentionDays", parseInt(e.currentTarget.value) || 7)
             }
+          />
+        </SettingRow>
+      </Show>
+
+      <SectionHeader title="Privacy" />
+      <Show when={m("Anonymous crash reporting", "Send crash reports to help improve the app")}>
+        <SettingRow
+          label="Anonymous crash reporting"
+          description="Send crash reports to help improve the app. No personal data is collected."
+        >
+          <input
+            type="checkbox"
+            checked={settingsState.telemetry?.enabled ?? false}
+            onChange={(e) => updateSetting("telemetry", "enabled", e.currentTarget.checked)}
           />
         </SettingRow>
       </Show>

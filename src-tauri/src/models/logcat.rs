@@ -139,6 +139,9 @@ pub struct LogStats {
     pub crash_count: u64,
     pub json_count: u64,
     pub packages_seen: usize,
+    /// Percentage of the ring buffer currently in use (0.0 – 100.0).
+    /// Computed as `(current_len / MAX_LOGCAT_ENTRIES) * 100`.
+    pub buffer_usage_pct: f32,
 }
 
 // ── LogcatFilterSpec ──────────────────────────────────────────────────────────

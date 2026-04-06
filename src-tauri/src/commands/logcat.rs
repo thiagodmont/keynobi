@@ -132,7 +132,11 @@ pub async fn set_logcat_filter(
 #[tauri::command]
 pub async fn get_logcat_stats(logcat_state: State<'_, LogcatState>) -> Result<LogStats, String> {
     let state = logcat_state.lock().await;
-    Ok(state.store.stats.clone())
+    let mut stats = state.store.stats.clone();
+    stats.buffer_usage_pct =
+        (state.store.len() as f32 / crate::services::log_store::MAX_LOGCAT_ENTRIES as f32)
+            * 100.0;
+    Ok(stats)
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

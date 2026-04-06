@@ -46,6 +46,11 @@ schemars = "1.2.1"
 base64 = "0.22.1"
 # Recursive directory walking for source file lookup
 walkdir = "2"
+# Optional Sentry crash reporting (enabled via --features telemetry)
+sentry = { version = "0.34", optional = true, default-features = false, features = ["backtrace", "contexts", "panic"] }
+
+[features]
+telemetry = ["sentry"]
 
 [dev-dependencies]
 # Atomic writes in tests
