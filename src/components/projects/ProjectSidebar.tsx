@@ -67,6 +67,7 @@ interface ProjectRowProps {
 function ProjectRow(props: ProjectRowProps): JSX.Element {
   const [hover, setHover] = createSignal(false);
   const [editing, setEditing] = createSignal(false);
+  // eslint-disable-next-line solid/reactivity
   const [editValue, setEditValue] = createSignal(props.entry.name);
 
   const color = () => avatarColor(props.entry.id);

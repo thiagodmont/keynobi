@@ -59,7 +59,7 @@ export function Resizable(props: ResizableProps): JSX.Element {
     props.onReset?.();
   }
 
-  const cursor = props.direction === "horizontal" ? "col-resize" : "row-resize";
+  const cursor = () => props.direction === "horizontal" ? "col-resize" : "row-resize";
 
   return (
     <div
@@ -67,7 +67,7 @@ export function Resizable(props: ResizableProps): JSX.Element {
       onMouseDown={onMouseDown}
       onDblClick={onDblClick}
       style={{
-        cursor,
+        cursor: cursor(),
         "flex-shrink": "0",
         background: isDragging() ? "var(--accent)" : "transparent",
         transition: "background 0.1s",

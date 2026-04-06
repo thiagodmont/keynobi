@@ -6,8 +6,8 @@ import { showToast } from "@/components/common/Toast";
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 function StatusBadge(props: { found: boolean; checking?: boolean }): JSX.Element {
-  const label = props.checking ? "Checking…" : props.found ? "Found" : "Not configured";
-  const colors = props.checking
+  const label = () => props.checking ? "Checking…" : props.found ? "Found" : "Not configured";
+  const colors = () => props.checking
     ? { bg: "rgba(251,191,36,0.15)", text: "#fbbf24" }
     : props.found
     ? { bg: "rgba(74,222,128,0.15)", text: "#4ade80" }
@@ -21,8 +21,8 @@ function StatusBadge(props: { found: boolean; checking?: boolean }): JSX.Element
         gap: "4px",
         padding: "2px 8px",
         "border-radius": "10px",
-        background: colors.bg,
-        color: colors.text,
+        background: colors().bg,
+        color: colors().text,
         "font-size": "11px",
         "font-weight": "500",
         "flex-shrink": "0",
@@ -33,10 +33,10 @@ function StatusBadge(props: { found: boolean; checking?: boolean }): JSX.Element
           width: "6px",
           height: "6px",
           "border-radius": "50%",
-          background: colors.text,
+          background: colors().text,
         }}
       />
-      {label}
+      {label()}
     </span>
   );
 }
@@ -51,6 +51,7 @@ function PathField(props: {
   validate: (path: string) => boolean;
   validNote: string;
 }): JSX.Element {
+  // eslint-disable-next-line solid/reactivity
   const [draft, setDraft] = createSignal(props.value ?? "");
 
   // Keep draft in sync with external changes (e.g. reset to defaults).

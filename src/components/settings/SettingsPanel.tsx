@@ -258,11 +258,10 @@ function SectionHeader(props: { title: string }): JSX.Element {
 // ── User Settings ─────────────────────────────────────────────────────────────
 
 function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean }): JSX.Element {
-  const m = props.matchesSearch;
   return (
     <>
       <SectionHeader title="Editor" />
-      <Show when={m("Font Family", "Editor font")}>
+      <Show when={props.matchesSearch("Font Family", "Editor font")}>
         <SettingRow label="Font Family" description="Editor font face">
           <SettingTextInput
             value={settingsState.editor.fontFamily}
@@ -270,7 +269,7 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
           />
         </SettingRow>
       </Show>
-      <Show when={m("Font Size", "Editor font size in pixels")}>
+      <Show when={props.matchesSearch("Font Size", "Editor font size in pixels")}>
         <SettingRow label="Font Size" description="Editor font size in pixels">
           <SettingNumberInput
             value={settingsState.editor.fontSize}
@@ -280,7 +279,7 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
           />
         </SettingRow>
       </Show>
-      <Show when={m("Tab Size", "Number of spaces per tab")}>
+      <Show when={props.matchesSearch("Tab Size", "Number of spaces per tab")}>
         <SettingRow label="Tab Size" description="Number of spaces per tab">
           <SettingSelect
             value={String(settingsState.editor.tabSize)}
@@ -289,7 +288,7 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
           />
         </SettingRow>
       </Show>
-      <Show when={m("Insert Spaces", "Use spaces instead of tabs")}>
+      <Show when={props.matchesSearch("Insert Spaces", "Use spaces instead of tabs")}>
         <SettingRow label="Insert Spaces" description="Use spaces instead of tabs">
           <SettingToggle
             checked={settingsState.editor.insertSpaces}
@@ -297,7 +296,7 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
           />
         </SettingRow>
       </Show>
-      <Show when={m("Word Wrap", "Wrap long lines")}>
+      <Show when={props.matchesSearch("Word Wrap", "Wrap long lines")}>
         <SettingRow label="Word Wrap" description="Wrap long lines instead of horizontal scrolling">
           <SettingToggle
             checked={settingsState.editor.wordWrap}
@@ -305,7 +304,7 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
           />
         </SettingRow>
       </Show>
-      <Show when={m("Line Numbers", "Show line numbers")}>
+      <Show when={props.matchesSearch("Line Numbers", "Show line numbers")}>
         <SettingRow label="Line Numbers" description="Show line numbers in the gutter">
           <SettingToggle
             checked={settingsState.editor.lineNumbers}
@@ -313,7 +312,7 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
           />
         </SettingRow>
       </Show>
-      <Show when={m("Bracket Matching", "Highlight matching brackets")}>
+      <Show when={props.matchesSearch("Bracket Matching", "Highlight matching brackets")}>
         <SettingRow label="Bracket Matching" description="Highlight matching brackets">
           <SettingToggle
             checked={settingsState.editor.bracketMatching}
@@ -321,7 +320,7 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
           />
         </SettingRow>
       </Show>
-      <Show when={m("Active Line Highlight", "Highlight the current line")}>
+      <Show when={props.matchesSearch("Active Line Highlight", "Highlight the current line")}>
         <SettingRow label="Active Line Highlight" description="Highlight the current line">
           <SettingToggle
             checked={settingsState.editor.highlightActiveLine}
@@ -329,7 +328,7 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
           />
         </SettingRow>
       </Show>
-      <Show when={m("Auto-close Brackets", "Automatically insert closing brackets")}>
+      <Show when={props.matchesSearch("Auto-close Brackets", "Automatically insert closing brackets")}>
         <SettingRow
           label="Auto-close Brackets"
           description="Automatically insert closing brackets, quotes, etc."
@@ -342,7 +341,7 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
       </Show>
 
       <SectionHeader title="Appearance" />
-      <Show when={m("UI Font Size", "Font size for UI elements")}>
+      <Show when={props.matchesSearch("UI Font Size", "Font size for UI elements")}>
         <SettingRow
           label="UI Font Size"
           description="Font size for panels, sidebar, and status bar"
@@ -357,7 +356,7 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
       </Show>
 
       <SectionHeader title="Search" />
-      <Show when={m("Context Lines", "Lines shown before and after each match")}>
+      <Show when={props.matchesSearch("Context Lines", "Lines shown before and after each match")}>
         <SettingRow
           label="Context Lines"
           description="Lines shown before and after each search match"
@@ -370,7 +369,7 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
           />
         </SettingRow>
       </Show>
-      <Show when={m("Max Results", "Maximum number of search matches")}>
+      <Show when={props.matchesSearch("Max Results", "Maximum number of search matches")}>
         <SettingRow
           label="Max Results"
           description="Maximum number of search matches before capping"
@@ -384,7 +383,7 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
           />
         </SettingRow>
       </Show>
-      <Show when={m("Max Files", "Maximum number of files to search")}>
+      <Show when={props.matchesSearch("Max Files", "Maximum number of files to search")}>
         <SettingRow
           label="Max Files"
           description="Maximum number of files to include in search results"
@@ -405,17 +404,16 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
 // ── Tools Settings ────────────────────────────────────────────────────────────
 
 function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolean }): JSX.Element {
-  const m = props.matchesSearch;
   return (
     <>
-      <Show when={m("Android SDK", "Android SDK path")}>
+      <Show when={props.matchesSearch("Android SDK", "Android SDK path")}>
         <SectionHeader title="Android SDK" />
         <SettingRow label="SDK Path" description="Path to the Android SDK installation">
           <AndroidSdkStatus />
         </SettingRow>
       </Show>
 
-      <Show when={m("Java JDK", "JAVA_HOME")}>
+      <Show when={props.matchesSearch("Java JDK", "JAVA_HOME")}>
         <SectionHeader title="Java / JDK" />
         <SettingRow label="JAVA_HOME" description="Path to the JDK (required for Gradle builds)">
           <JavaStatus />
@@ -423,7 +421,7 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
       </Show>
 
       <SectionHeader title="Logcat" />
-      <Show when={m("Auto-start Logcat", "Automatically start logcat when a device connects")}>
+      <Show when={props.matchesSearch("Auto-start Logcat", "Automatically start logcat when a device connects")}>
         <SettingRow
           label="Auto-start on Connect"
           description="Automatically start logcat streaming when a device connects"
@@ -436,7 +434,7 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
       </Show>
 
       <SectionHeader title="Claude Code (MCP)" />
-      <Show when={m("MCP Auto-start", "Start MCP server when the app launches")}>
+      <Show when={props.matchesSearch("MCP Auto-start", "Start MCP server when the app launches")}>
         <SettingRow
           label="Auto-start MCP Server"
           description="Automatically start the MCP stdio server when the app opens. Lets Claude Code connect without a manual trigger."
@@ -447,7 +445,7 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
           />
         </SettingRow>
       </Show>
-      <Show when={m("MCP Build Timeout", "Maximum seconds to wait for a Gradle build via MCP")}>
+      <Show when={props.matchesSearch("MCP Build Timeout", "Maximum seconds to wait for a Gradle build via MCP")}>
         <SettingRow
           label="Build Timeout (seconds)"
           description="Maximum time to wait for a Gradle build triggered via the run_gradle_task MCP tool. Increase for large projects."
@@ -461,7 +459,7 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
           />
         </SettingRow>
       </Show>
-      <Show when={m("MCP Logcat Count", "Default logcat entries returned by get_logcat_entries")}>
+      <Show when={props.matchesSearch("MCP Logcat Count", "Default logcat entries returned by get_logcat_entries")}>
         <SettingRow
           label="Default Logcat Count"
           description="Default number of logcat entries returned by get_logcat_entries when the AI agent does not specify a count."
@@ -475,7 +473,7 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
           />
         </SettingRow>
       </Show>
-      <Show when={m("MCP Build Log Lines", "Default build log lines returned by get_build_log")}>
+      <Show when={props.matchesSearch("MCP Build Log Lines", "Default build log lines returned by get_build_log")}>
         <SettingRow
           label="Default Build Log Lines"
           description="Default number of raw build output lines returned by get_build_log when the AI agent does not specify a count."
@@ -498,7 +496,6 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
 function AdvancedSettings(props: {
   matchesSearch: (l: string, d?: string) => boolean;
 }): JSX.Element {
-  const m = props.matchesSearch;
   return (
     <>
       <div
@@ -514,7 +511,7 @@ function AdvancedSettings(props: {
       </div>
 
       <SectionHeader title="Build" />
-      <Show when={m("Gradle Parallel Builds", "Run Gradle tasks in parallel")}>
+      <Show when={props.matchesSearch("Gradle Parallel Builds", "Run Gradle tasks in parallel")}>
         <SettingRow
           label="Parallel Builds"
           description="Pass --parallel to Gradle for faster multi-module builds"
@@ -525,7 +522,7 @@ function AdvancedSettings(props: {
           />
         </SettingRow>
       </Show>
-      <Show when={m("Gradle Offline Mode", "Prevent Gradle from accessing the network")}>
+      <Show when={props.matchesSearch("Gradle Offline Mode", "Prevent Gradle from accessing the network")}>
         <SettingRow
           label="Offline Mode"
           description="Pass --offline to Gradle to skip dependency downloads"
@@ -536,7 +533,7 @@ function AdvancedSettings(props: {
           />
         </SettingRow>
       </Show>
-      <Show when={m("Gradle JVM Args", "Extra JVM arguments for the Gradle daemon")}>
+      <Show when={props.matchesSearch("Gradle JVM Args", "Extra JVM arguments for the Gradle daemon")}>
         <SettingRow
           label="Gradle JVM Args"
           description='Extra JVM arguments passed to the Gradle daemon (e.g. "-Xmx4g")'
@@ -548,7 +545,7 @@ function AdvancedSettings(props: {
           />
         </SettingRow>
       </Show>
-      <Show when={m("Auto Install on Build", "Automatically install APK after a successful build")}>
+      <Show when={props.matchesSearch("Auto Install on Build", "Automatically install APK after a successful build")}>
         <SettingRow
           label="Auto Install on Build"
           description="Automatically install and launch the app after a successful build"
@@ -561,7 +558,7 @@ function AdvancedSettings(props: {
       </Show>
 
       <SectionHeader title="Logging" />
-      <Show when={m("Log retention", "Days to keep log files")}>
+      <Show when={props.matchesSearch("Log retention", "Days to keep log files")}>
         <SettingRow label="Log retention" description="Days to keep log files in ~/.keynobi/logs/">
           <input
             type="number"
@@ -576,7 +573,7 @@ function AdvancedSettings(props: {
       </Show>
 
       <SectionHeader title="Privacy" />
-      <Show when={m("Anonymous crash reporting", "Send crash reports to help improve the app")}>
+      <Show when={props.matchesSearch("Anonymous crash reporting", "Send crash reports to help improve the app")}>
         <SettingRow
           label="Anonymous crash reporting"
           description="Send crash reports to help improve the app. No personal data is collected."

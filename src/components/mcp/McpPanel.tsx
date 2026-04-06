@@ -55,16 +55,15 @@ function kindColor(kind: string): string {
 
 function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
   const [expanded, setExpanded] = createSignal(false);
-  const e = props.entry;
-  const isError = () => e.status === "error";
+  const isError = () => props.entry.status === "error";
 
   return (
     <div
       style={{
         "border-bottom": "1px solid rgba(255,255,255,0.06)",
-        cursor: e.summary ? "pointer" : "default",
+        cursor: props.entry.summary ? "pointer" : "default",
       }}
-      onClick={() => e.summary && setExpanded((v) => !v)}
+      onClick={() => props.entry.summary && setExpanded((v) => !v)}
     >
       <div
         style={{
@@ -78,20 +77,20 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
       >
         {/* Time */}
         <span style={{ color: "rgba(255,255,255,0.35)", "font-size": "10px", "font-family": "var(--font-mono)", "white-space": "nowrap" }}>
-          {formatTime(e.timestamp)}
+          {formatTime(props.entry.timestamp)}
         </span>
 
         {/* Kind badge */}
         <span
           style={{
-            color: kindColor(e.kind),
+            color: kindColor(props.entry.kind),
             "font-size": "10px",
             "font-weight": "600",
             "text-transform": "uppercase",
             "letter-spacing": "0.04em",
           }}
         >
-          {kindLabel(e.kind)}
+          {kindLabel(props.entry.kind)}
         </span>
 
         {/* Name */}
@@ -104,16 +103,16 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
             "text-overflow": "ellipsis",
             "white-space": "nowrap",
           }}
-          title={e.name}
+          title={props.entry.name}
         >
-          {e.name}
+          {props.entry.name}
         </span>
 
         {/* Duration + status */}
         <div style={{ display: "flex", "align-items": "center", gap: "6px", "flex-shrink": "0" }}>
-          <Show when={e.durationMs !== null && e.durationMs !== undefined}>
+          <Show when={props.entry.durationMs !== null && props.entry.durationMs !== undefined}>
             <span style={{ color: "rgba(255,255,255,0.3)", "font-size": "10px", "font-family": "var(--font-mono)" }}>
-              {String(e.durationMs)}ms
+              {String(props.entry.durationMs)}ms
             </span>
           </Show>
           <span
@@ -129,7 +128,7 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
       </div>
 
       {/* Expanded summary */}
-      <Show when={expanded() && e.summary}>
+      <Show when={expanded() && props.entry.summary}>
         <div
           style={{
             padding: "4px 12px 8px 144px",
@@ -141,7 +140,7 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
             "line-height": "1.4",
           }}
         >
-          {e.summary}
+          {props.entry.summary}
         </div>
       </Show>
     </div>
