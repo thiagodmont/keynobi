@@ -14,9 +14,10 @@ Merge all feature branches into `main` before cutting a release.
 ### 2. Create a release commit
 
 ```bash
-# a. Bump the version in package.json
-#    Edit the "version" field manually, then:
-npm run version:sync          # syncs Cargo.toml + tauri.conf.json
+# a. Bump the version (patch is the default and most common):
+npm run version:bump             # 0.1.0 → 0.1.1  (bug fixes, small improvements)
+npm run version:bump -- minor    # 0.1.0 → 0.2.0  (new user-visible features)
+npm run version:bump -- major    # 0.1.0 → 1.0.0  (breaking changes or milestones)
 
 # b. Update CHANGELOG.md with release notes for this version
 
