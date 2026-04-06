@@ -1,0 +1,185 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Required to create tags, releases, and push release/latest.json back to main.
+permissions:
+  contents: write
+
+jobs:
+  # ── Job 1: Detect whether package.json version changed ──────────────────────
+  check:
+    name: Check version bump
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # need HEAD and HEAD~1 to compare versions
+
+      - name: Detect version change
+        id: check
+        run: |
+          CURRENT=$(jq -r '.version' package.json)
+
+          # Guard: on the very first commit there is no HEAD~1.
+          if ! git rev-parse HEAD~1 > /dev/null 2>&1; then
+            echo "First commit on main — no HEAD~1, skipping release"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "version=$CURRENT"     >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          PREVIOUS=$(git show HEAD~1:package.json | jq -r '.version')
+
+          echo "Current version : $CURRENT"
+          echo "Previous version: $PREVIOUS"
+
+          if [ "$CURRENT" != "$PREVIOUS" ]; then
+            echo "Version bumped: $PREVIOUS → $CURRENT — will release"
+            echo "should_release=true"  >> "$GITHUB_OUTPUT"
+            echo "version=$CURRENT"     >> "$GITHUB_OUTPUT"
+          else
+            echo "No version change — skipping release"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "version=$CURRENT"     >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Job 2: Build DMGs in parallel for each architecture ─────────────────────
+  build:
+    name: Build DMG (${{ matrix.arch }})
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch: arm64
+          - target: x86_64-apple-darwin
+            arch: intel
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build DMG
+        env:
+          # Unsigned build — consistent with scripts/build-dmg.sh.
+          # Users bypass Gatekeeper once on first launch (right-click → Open).
+          APPLE_SIGNING_IDENTITY: "-"
+        run: |
+          npm run tauri build -- --target ${{ matrix.target }} --bundles dmg
+
+      - name: Locate and rename DMG
+        id: dmg
+        run: |
+          VERSION=${{ needs.check.outputs.version }}
+          DMG=$(find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -name "*.dmg" | head -1)
+          if [ -z "$DMG" ]; then
+            echo "ERROR: No DMG found after build" >&2
+            exit 1
+          fi
+          DEST="Android-Dev-Companion_${VERSION}_${{ matrix.arch }}.dmg"
+          mv "$DMG" "$DEST"
+          echo "path=$DEST" >> "$GITHUB_OUTPUT"
+          echo "Built: $DEST"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmg-${{ matrix.arch }}
+          path: ${{ steps.dmg.outputs.path }}
+          retention-days: 1
+
+  # ── Job 3: Create GitHub Release and update release/latest.json ─────────────
+  publish:
+    name: Publish release
+    needs: [check, build]
+    if: needs.check.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Apple Silicon DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: dmg-arm64
+
+      - name: Download Intel DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: dmg-intel
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push tag
+        run: |
+          VERSION=${{ needs.check.outputs.version }}
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ needs.check.outputs.version }}
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --generate-notes \
+            "Android-Dev-Companion_${VERSION}_arm64.dmg" \
+            "Android-Dev-Companion_${VERSION}_intel.dmg"
+
+      - name: Update release/latest.json
+        run: |
+          VERSION=${{ needs.check.outputs.version }}
+          REPO=${{ github.repository }}
+          DATE=$(date -u +%Y-%m-%d)
+
+          jq -n \
+            --arg version  "$VERSION" \
+            --arg tag      "v$VERSION" \
+            --arg date     "$DATE" \
+            --arg repo     "$REPO" \
+            '{
+              version:     $version,
+              tag:         $tag,
+              releaseDate: $date,
+              releaseUrl:  ("https://github.com/" + $repo + "/releases/tag/v" + $version),
+              downloads: {
+                applesilicon: ("https://github.com/" + $repo + "/releases/download/v" + $version + "/Android-Dev-Companion_" + $version + "_arm64.dmg"),
+                intel:        ("https://github.com/" + $repo + "/releases/download/v" + $version + "/Android-Dev-Companion_" + $version + "_intel.dmg")
+              }
+            }' > release/latest.json
+
+          git pull --rebase origin main
+          git add release/latest.json
+          git commit -m "chore: update release/latest.json to v${VERSION} [skip ci]"
+          git push origin main
