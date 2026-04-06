@@ -31,17 +31,16 @@ export function bumpVersion(current, type = "patch") {
     );
   }
 
-  const parts = current.split(".").map(Number);
-  if (
-    parts.length !== 3 ||
-    parts.some((p) => !Number.isInteger(p) || isNaN(p))
-  ) {
+  // Strict semver validation: three non-negative integers, no leading zeros,
+  // no whitespace, no other characters.
+  const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+  if (!SEMVER_RE.test(current)) {
     throw new Error(
       `could not parse version "${current}" from package.json. Expected semver (e.g. 1.2.3).`
     );
   }
 
-  let [major, minor, patch] = parts;
+  let [major, minor, patch] = current.split(".").map(Number);
   if (type === "patch") patch += 1;
   if (type === "minor") { minor += 1; patch = 0; }
   if (type === "major") { major += 1; minor = 0; patch = 0; }

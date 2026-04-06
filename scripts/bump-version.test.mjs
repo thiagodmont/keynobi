@@ -47,4 +47,22 @@ describe("bumpVersion", () => {
       'could not parse version "1.x.0" from package.json. Expected semver (e.g. 1.2.3).'
     );
   });
+
+  it("throws when version has a negative component", () => {
+    expect(() => bumpVersion("1.2.-1", "patch")).toThrow(
+      'could not parse version "1.2.-1" from package.json. Expected semver (e.g. 1.2.3).'
+    );
+  });
+
+  it("throws when version has whitespace padding", () => {
+    expect(() => bumpVersion(" 1.2.3", "patch")).toThrow(
+      'could not parse version " 1.2.3" from package.json. Expected semver (e.g. 1.2.3).'
+    );
+  });
+
+  it("throws when version has leading zeros", () => {
+    expect(() => bumpVersion("01.2.3", "patch")).toThrow(
+      'could not parse version "01.2.3" from package.json. Expected semver (e.g. 1.2.3).'
+    );
+  });
 });
