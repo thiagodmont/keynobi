@@ -1,4 +1,5 @@
-import { type JSX, Show, For, createSignal } from "solid-js";
+import { type JSX, Show, For, createSignal, createResource } from "solid-js";
+import { getVersion } from "@tauri-apps/api/app";
 import {
   settingsState,
   updateSetting,
@@ -29,6 +30,7 @@ export function closeSettings() {
 export function SettingsPanel(): JSX.Element {
   const [category, setCategory] = createSignal<Category>("user");
   const [search, setSearch] = createSignal("");
+  const [appVersion] = createResource(getVersion);
 
   let searchRef!: HTMLInputElement;
 
@@ -212,6 +214,21 @@ export function SettingsPanel(): JSX.Element {
               <AdvancedSettings matchesSearch={matchesSearch} />
             </Show>
           </div>
+        </div>
+
+        {/* Footer with version */}
+        <div
+          style={{
+            padding: "8px 16px",
+            "border-top": "1px solid var(--border)",
+            "background-color": "var(--bg-primary)",
+            "font-size": "11px",
+            color: "var(--text-muted)",
+            "text-align": "right",
+            "flex-shrink": "0",
+          }}
+        >
+          Android Dev Companion v{appVersion() ?? "—"}
         </div>
       </div>
     </Show>
