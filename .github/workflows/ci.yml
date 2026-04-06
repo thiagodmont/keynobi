@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run lint
+      - run: npx tsc --noEmit
+      - run: npm run test
+
+  rust:
+    name: Rust
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Check TypeScript bindings are up to date
+        run: |
+          cd src-tauri && cargo test --lib 2>/dev/null | grep -q "test result" || true
+          cd ..
+          git diff --exit-code src/bindings/ || \
+            (echo "ERROR: TypeScript bindings are stale. Run: npm run generate:bindings" && exit 1)
+      - name: Rust tests
+        run: cd src-tauri && cargo test --lib --tests
+      - name: Clippy
+        run: cd src-tauri && cargo clippy -- -D warnings
