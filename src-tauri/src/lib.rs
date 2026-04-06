@@ -339,3 +339,54 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod runtime_safety_tests {
+    /// Enforces that `lib.rs` never uses `tokio::spawn` directly.
+    ///
+    /// ## Why this rule exists
+    ///
+    /// Tauri's `.setup()` and `on_window_event` callbacks run synchronously from
+    /// macOS's `applicationDidFinishLaunching` — before the Tokio runtime is active.
+    /// Calling `tokio::spawn` there panics at startup with:
+    ///
+    ///   "there is no reactor running, must be called from the context of a Tokio 1.x runtime"
+    ///
+    /// Always use `tauri::async_runtime::spawn` in `lib.rs`. It delegates to Tauri's
+    /// own static runtime handle, which is initialized before those callbacks fire.
+    ///
+    /// Services and commands that are called from within async contexts may continue
+    /// using `tokio::spawn` freely — this constraint applies only to `lib.rs`.
+    #[test]
+    fn lib_rs_does_not_use_tokio_spawn_directly() {
+        let source = include_str!("lib.rs");
+
+        // Only scan production code — stop before #[cfg(test)] so the test's
+        // own strings (which mention "tokio::spawn") don't trigger a false positive.
+        let violations: Vec<(usize, &str)> = source
+            .lines()
+            .take_while(|l| !l.trim_start().starts_with("#[cfg(test)]"))
+            .enumerate()
+            .filter(|(_, line)| {
+                let trimmed = line.trim();
+                !trimmed.starts_with("//")              // skip comment lines
+                    && trimmed.contains("tokio::spawn")
+                    && !trimmed.contains("tokio::spawn_blocking") // allowed: blocking pool
+            })
+            .map(|(n, l)| (n, l))
+            .collect();
+
+        assert!(
+            violations.is_empty(),
+            "lib.rs must not use tokio::spawn ({} violation(s) found):\n{}\n\n\
+             Use tauri::async_runtime::spawn instead. See the doc comment on this \
+             test for the full explanation.",
+            violations.len(),
+            violations
+                .iter()
+                .map(|(n, l)| format!("  line {}: {}", n + 1, l.trim()))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+}
