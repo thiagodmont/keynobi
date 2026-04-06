@@ -127,149 +127,149 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
     <Show
       when={isPopover()}
       fallback={
-    <div
-      style={{
-        display: "flex",
-        "flex-direction": "column",
-        height: "100%",
-        overflow: "hidden",
-        background: "var(--bg-secondary)",
-      }}
-    >
-      {/* Toolbar */}
-      <div
-        style={{
-          display: "flex",
-          "align-items": "center",
-          gap: "4px",
-          padding: "4px 8px",
-          background: "var(--bg-tertiary)",
-          "border-bottom": "1px solid var(--border)",
-          "flex-shrink": "0",
-        }}
-      >
-        <ToolbarBtn
-          title="Refresh devices"
-          onClick={handleRefresh}
-          disabled={refreshing()}
-        >
-          <Show when={refreshing()} fallback={<Icon name="refresh" size={13} />}>
-            <span class="lsp-spinner">
-              <Icon name="spinner" size={13} color="var(--text-muted)" />
-            </span>
-          </Show>
-        </ToolbarBtn>
-
-        <div style={{ "flex": "1" }} />
-
-        <button
-          onClick={() => setShowCreateDialog(true)}
-          title="Create new virtual device"
+        <div
           style={{
             display: "flex",
-            "align-items": "center",
-            gap: "5px",
-            padding: "3px 10px",
-            background: "var(--accent)",
-            color: "#fff",
-            border: "none",
-            "border-radius": "4px",
-            "font-size": "11px",
-            "font-weight": "500",
-            cursor: "pointer",
-            "flex-shrink": "0",
-            transition: "opacity 0.1s",
+            "flex-direction": "column",
+            height: "100%",
+            overflow: "hidden",
+            background: "var(--bg-secondary)",
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.85"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
         >
-          <span style={{ "font-size": "14px", "line-height": "1", "margin-top": "-1px" }}>+</span>
-          New Device
-        </button>
-      </div>
-
-      {/* Content area */}
-      <div style={{ flex: "1", "overflow-y": "auto", padding: "12px 16px", display: "flex", "flex-direction": "column", gap: "20px" }}>
-
-        {/* Connected Devices section */}
-        <section>
-          <SectionHeader label="Connected Devices" count={deviceState.devices.length} />
-          <Show
-            when={deviceState.devices.length > 0}
-            fallback={
-              <EmptyState
-                icon="device"
-                title="No devices connected"
-                message="Connect a physical device via USB or launch a virtual device below."
-              />
-            }
+          {/* Toolbar */}
+          <div
+            style={{
+              display: "flex",
+              "align-items": "center",
+              gap: "4px",
+              padding: "4px 8px",
+              background: "var(--bg-tertiary)",
+              "border-bottom": "1px solid var(--border)",
+              "flex-shrink": "0",
+            }}
           >
-            <div style={{ display: "flex", "flex-direction": "column", gap: "2px", "margin-top": "6px" }}>
-              <For each={deviceState.devices}>
-                {(device) => (
-                  <DeviceRow
-                    device={device}
-                    selected={deviceState.selectedSerial === device.serial}
-                    compact={false}
-                    onSelect={() => pickDevice(device.serial)}
-                    onStop={() => handleStopDevice(device.serial)}
-                  />
-                )}
-              </For>
-            </div>
-          </Show>
-        </section>
+            <ToolbarBtn
+              title="Refresh devices"
+              onClick={handleRefresh}
+              disabled={refreshing()}
+            >
+              <Show when={refreshing()} fallback={<Icon name="refresh" size={13} />}>
+                <span class="lsp-spinner">
+                  <Icon name="spinner" size={13} color="var(--text-muted)" />
+                </span>
+              </Show>
+            </ToolbarBtn>
 
-        {/* Virtual Devices section */}
-        <section>
-          <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between" }}>
-            <SectionHeader label="Virtual Devices" count={deviceState.avds.length} />
+            <div style={{ "flex": "1" }} />
+
+            <button
+              onClick={() => setShowCreateDialog(true)}
+              title="Create new virtual device"
+              style={{
+                display: "flex",
+                "align-items": "center",
+                gap: "5px",
+                padding: "3px 10px",
+                background: "var(--accent)",
+                color: "#fff",
+                border: "none",
+                "border-radius": "4px",
+                "font-size": "11px",
+                "font-weight": "500",
+                cursor: "pointer",
+                "flex-shrink": "0",
+                transition: "opacity 0.1s",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.85"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+            >
+              <span style={{ "font-size": "14px", "line-height": "1", "margin-top": "-1px" }}>+</span>
+              New Device
+            </button>
           </div>
-          <Show
-            when={deviceState.avds.length > 0}
-            fallback={
-              <EmptyState
-                icon="device"
-                title="No virtual devices"
-                message='Create a virtual device to run your app in the emulator.'
-                action={{ label: "+ New Device", onClick: () => setShowCreateDialog(true) }}
-              />
-            }
-          >
-            <div style={{ display: "flex", "flex-direction": "column", gap: "2px", "margin-top": "6px" }}>
-              <For each={deviceState.avds}>
-                {(avd) => (
-                  <AvdRow
-                    avd={avd}
-                    isRunning={runningAvdNames().has(avd.name)}
-                    runningSerial={serialForAvd()(avd.name)}
-                    launching={launchingName() === avd.name}
-                    onLaunch={() => handleLaunchAvd(avd)}
-                    onStop={() => {
-                      const serial = serialForAvd()(avd.name);
-                      if (serial) handleStopDevice(serial);
-                    }}
-                    onDelete={() => handleDeleteAvd(avd)}
-                    onWipe={() => handleWipeAvd(avd)}
-                  />
-                )}
-              </For>
-            </div>
-          </Show>
-        </section>
-      </div>
 
-      {/* Create Device Dialog */}
-      <Show when={showCreateDialog()}>
-        <CreateDeviceDialog
-          onClose={() => setShowCreateDialog(false)}
-          onCreated={(avds) => {
-            setAvds(avds);
-            setShowCreateDialog(false);
-          }}
-        />
-      </Show>
-    </div>
+          {/* Content area */}
+          <div style={{ flex: "1", "overflow-y": "auto", padding: "12px 16px", display: "flex", "flex-direction": "column", gap: "20px" }}>
+
+            {/* Connected Devices section */}
+            <section>
+              <SectionHeader label="Connected Devices" count={deviceState.devices.length} />
+              <Show
+                when={deviceState.devices.length > 0}
+                fallback={
+                  <EmptyState
+                    icon="device"
+                    title="No devices connected"
+                    message="Connect a physical device via USB or launch a virtual device below."
+                  />
+                }
+              >
+                <div style={{ display: "flex", "flex-direction": "column", gap: "2px", "margin-top": "6px" }}>
+                  <For each={deviceState.devices}>
+                    {(device) => (
+                      <DeviceRow
+                        device={device}
+                        selected={deviceState.selectedSerial === device.serial}
+                        compact={false}
+                        onSelect={() => pickDevice(device.serial)}
+                        onStop={() => handleStopDevice(device.serial)}
+                      />
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </section>
+
+            {/* Virtual Devices section */}
+            <section>
+              <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between" }}>
+                <SectionHeader label="Virtual Devices" count={deviceState.avds.length} />
+              </div>
+              <Show
+                when={deviceState.avds.length > 0}
+                fallback={
+                  <EmptyState
+                    icon="device"
+                    title="No virtual devices"
+                    message='Create a virtual device to run your app in the emulator.'
+                    action={{ label: "+ New Device", onClick: () => setShowCreateDialog(true) }}
+                  />
+                }
+              >
+                <div style={{ display: "flex", "flex-direction": "column", gap: "2px", "margin-top": "6px" }}>
+                  <For each={deviceState.avds}>
+                    {(avd) => (
+                      <AvdRow
+                        avd={avd}
+                        isRunning={runningAvdNames().has(avd.name)}
+                        runningSerial={serialForAvd()(avd.name)}
+                        launching={launchingName() === avd.name}
+                        onLaunch={() => handleLaunchAvd(avd)}
+                        onStop={() => {
+                          const serial = serialForAvd()(avd.name);
+                          if (serial) handleStopDevice(serial);
+                        }}
+                        onDelete={() => handleDeleteAvd(avd)}
+                        onWipe={() => handleWipeAvd(avd)}
+                      />
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </section>
+          </div>
+
+          {/* Create Device Dialog */}
+          <Show when={showCreateDialog()}>
+            <CreateDeviceDialog
+              onClose={() => setShowCreateDialog(false)}
+              onCreated={(avds) => {
+                setAvds(avds);
+                setShowCreateDialog(false);
+              }}
+            />
+          </Show>
+        </div>
       }
     >
       {/* ── Popover mode ── */}
