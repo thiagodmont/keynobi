@@ -4,6 +4,7 @@ use crate::models::build::{
 };
 use crate::services::build_parser;
 use crate::services::process_manager::{self, ProcessId, ProcessManager};
+use crate::services::settings_manager::data_dir;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -14,6 +15,37 @@ pub use build_parser::{parse_build_duration, parse_build_line};
 
 /// Maximum number of build records kept in history (bounded collection).
 pub const MAX_HISTORY: usize = 10;
+
+const BUILD_HISTORY_FILE: &str = "build-history.json";
+/// Maximum number of build records to persist across sessions.
+const MAX_PERSISTED_HISTORY: usize = 20;
+
+/// Persist the most recent build summaries to ~/.keynobi/build-history.json.
+/// Uses atomic write (temp + rename) so a crash mid-save can't corrupt the file.
+pub fn save_build_history(history: &VecDeque<BuildRecord>) {
+    let path = data_dir().join(BUILD_HISTORY_FILE);
+    let recent: Vec<&BuildRecord> = history.iter().rev().take(MAX_PERSISTED_HISTORY).collect();
+    if let Ok(json) = serde_json::to_string_pretty(&recent) {
+        let tmp = path.with_extension("json.tmp");
+        if std::fs::write(&tmp, &json).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
+    }
+}
+
+/// Load build history from disk. Returns empty VecDeque if file is missing or corrupt.
+pub fn load_build_history() -> VecDeque<BuildRecord> {
+    let path = data_dir().join(BUILD_HISTORY_FILE);
+    if !path.exists() {
+        return VecDeque::new();
+    }
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str::<Vec<BuildRecord>>(&content)
+            .map(|v| v.into_iter().collect())
+            .unwrap_or_default(),
+        Err(_) => VecDeque::new(),
+    }
+}
 
 /// Maximum number of raw build output lines retained for MCP `get_build_log`.
 pub const MAX_BUILD_LOG: usize = 5_000;
@@ -42,7 +74,7 @@ impl BuildStateInner {
         Self {
             current_build: None,
             status: BuildStatus::Idle,
-            history: VecDeque::new(),
+            history: load_build_history(),  // Load from disk on startup
             current_errors: vec![],
             next_id: 1,
         }
@@ -265,6 +297,7 @@ pub async fn record_build_result(
     while bs.history.len() > MAX_HISTORY {
         bs.history.pop_front();
     }
+    save_build_history(&bs.history);
 }
 
 /// Build environment variables for a Gradle process, and ensure `gradlew` is executable.
@@ -780,5 +813,47 @@ mod tests {
     #[test]
     fn format_empty_errors_returns_empty_vec() {
         assert!(format_build_issues(&[]).is_empty());
+    }
+
+    #[test]
+    fn build_history_serializes_round_trip() {
+        use crate::models::build::{BuildRecord, BuildResult, BuildStatus};
+        let record = BuildRecord {
+            id: 1,
+            task: "assembleDebug".into(),
+            status: BuildStatus::Success(BuildResult {
+                success: true,
+                duration_ms: 5000,
+                error_count: 0,
+                warning_count: 0,
+            }),
+            errors: vec![],
+            started_at: "2026-04-06T12:00:00Z".into(),
+        };
+        let json = serde_json::to_string(&record).unwrap();
+        let parsed: BuildRecord = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.task, "assembleDebug");
+        assert_eq!(parsed.id, 1);
+    }
+
+    #[test]
+    fn save_and_load_history_round_trip() {
+        use crate::models::build::{BuildRecord, BuildStatus};
+
+        // We can't easily override data_dir() in tests, but we can test
+        // the serialization/deserialization logic directly.
+        let records: Vec<BuildRecord> = (1..=5u32).map(|i| BuildRecord {
+            id: i,
+            task: format!("task_{i}"),
+            status: BuildStatus::Idle,
+            errors: vec![],
+            started_at: "2026-04-06T12:00:00Z".into(),
+        }).collect();
+
+        let json = serde_json::to_string_pretty(&records).unwrap();
+        let loaded: Vec<BuildRecord> = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.len(), 5);
+        assert_eq!(loaded[0].task, "task_1");
+        assert_eq!(loaded[4].task, "task_5");
     }
 }
