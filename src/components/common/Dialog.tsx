@@ -9,7 +9,7 @@
  * at a time; subsequent calls while a dialog is visible will wait.
  */
 
-import { createSignal, Show, type JSX } from "solid-js";
+import { createSignal, For, Show, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -173,14 +173,13 @@ export function DialogHost(): JSX.Element {
                   "flex-wrap": "wrap",
                 }}
               >
-                {dialog()
-                  .buttons.slice()
-                  .reverse()
-                  .map((btn) => (
+                <For each={dialog().buttons.slice().reverse()}>
+                  {(btn) => (
                     <button style={BUTTON_STYLES[btn.style]} onClick={() => resolve(btn.value)}>
                       {btn.label}
                     </button>
-                  ))}
+                  )}
+                </For>
               </div>
             </div>
           </div>

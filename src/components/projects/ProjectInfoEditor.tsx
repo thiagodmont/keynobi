@@ -43,7 +43,7 @@ export function ProjectInfoEditor(): JSX.Element {
       .then((data) => {
         setInfo(data);
         setVersionName(data.versionName ?? "");
-        setVersionCode(data.versionCode != null ? String(data.versionCode) : "");
+        setVersionCode(data.versionCode !== null && data.versionCode !== undefined ? String(data.versionCode) : "");
       })
       .catch((err) => {
         showToast(`Failed to read app info: ${formatError(err)}`, "error");

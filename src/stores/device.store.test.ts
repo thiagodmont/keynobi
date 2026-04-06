@@ -67,7 +67,7 @@ describe("device.store", () => {
   it("setDevices does not override explicit selection", () => {
     setDevices(mockDevices);
     // Simulate user selecting the second device.
-    deviceState.selectedSerial; // force read
+    void deviceState.selectedSerial; // force read to trigger reactivity tracking
     // setDevices again with a new list
     setDevices([...mockDevices].reverse());
     // Selection should remain if the device is still present in the list.

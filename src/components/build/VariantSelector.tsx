@@ -216,7 +216,6 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
             placeholder="Filter variants…"
             value={search()}
             onInput={(e) => setSearch(e.currentTarget.value)}
-            // eslint-disable-next-line solid/reactivity
             ref={(el) => setTimeout(() => el?.focus(), 50)}
             style={{
               width: "100%",

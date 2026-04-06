@@ -62,7 +62,7 @@ export function BuildPanel(): JSX.Element {
     setViewMode("log");
     try {
       await runAndDeploy();
-    } catch (e) {
+    } catch (_e) {
       // Error is already logged to the build log inside runAndDeploy().
       // Nothing more to do here; the log is the source of truth.
     } finally {
@@ -76,7 +76,7 @@ export function BuildPanel(): JSX.Element {
     setViewMode("log");
     try {
       await runBuild();
-    } catch (e) {
+    } catch (_e) {
       // Spawn-level errors (e.g. gradlew not found) are logged in runBuild().
     } finally {
       setRunning(false);
@@ -391,7 +391,7 @@ function DiagnosticRow(props: { item: DiagnosticItem; showLocation: boolean }): 
       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.05))"; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
     >
-      <Show when={props.showLocation && item.line != null}>
+      <Show when={props.showLocation && item.line !== null && item.line !== undefined}>
         <span
           style={{
             "font-size": "10px",

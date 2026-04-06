@@ -259,7 +259,7 @@ async function resolveDevice(): Promise<string | null> {
 export async function jumpToBuildError(error: BuildError): Promise<void> {
   const { showToast } = await import("@/components/common/Toast");
   const location = error.file
-    ? `${error.file}${error.line != null ? `:${error.line}` : ""}${error.col != null ? `:${error.col}` : ""} — `
+    ? `${error.file}${error.line !== null && error.line !== undefined ? `:${error.line}` : ""}${error.col !== null && error.col !== undefined ? `:${error.col}` : ""} — `
     : "";
   showToast(`${location}${error.message}`, "info");
 }

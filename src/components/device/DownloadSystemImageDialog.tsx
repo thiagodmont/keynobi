@@ -229,11 +229,11 @@ export function DownloadSystemImageDialog(
                     <div
                       style={{
                         height: "100%",
-                        width: dl().percent != null ? `${dl().percent}%` : "100%",
+                        width: dl().percent !== null && dl().percent !== undefined ? `${dl().percent}%` : "100%",
                         background: dl().error ? "var(--error, #f87171)" : "var(--accent)",
                         "border-radius": "2px",
                         transition: "width 0.3s ease",
-                        animation: dl().percent == null && !dl().done ? "pulse 1.5s ease-in-out infinite" : "none",
+                        animation: (dl().percent === null || dl().percent === undefined) && !dl().done ? "pulse 1.5s ease-in-out infinite" : "none",
                       }}
                     />
                   </div>

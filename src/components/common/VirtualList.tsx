@@ -141,7 +141,7 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
 
   createEffect(() => {
     const idx = props.jumpTo;
-    if (idx == null || !outerRef) return;
+    if (idx === null || idx === undefined || !outerRef) return;
     // Center the target row in the viewport
     const targetTop = idx * props.rowHeight;
     const viewportMid = containerHeight() / 2;

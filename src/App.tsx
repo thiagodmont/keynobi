@@ -1,4 +1,4 @@
-import { type JSX, onMount, onCleanup } from "solid-js";
+import { type JSX, For, onMount, onCleanup } from "solid-js";
 import {
   uiState,
   setActiveTab,
@@ -259,33 +259,35 @@ export function App(): JSX.Element {
                 gap: "2px",
               }}
             >
-              {tabs.map((tab) => {
-                const isActive = () => uiState.activeTab === tab.id;
-                return (
-                  <button
-                    onClick={() => setActiveTab(tab.id)}
-                    style={{
-                      padding: "0 16px",
-                      height: "36px",
-                      "font-size": "12px",
-                      display: "flex",
-                      "align-items": "center",
-                      color: isActive() ? "var(--text-primary)" : "var(--text-muted)",
-                      background: isActive() ? "var(--bg-secondary)" : "none",
-                      "border-bottom": isActive() ? "2px solid var(--accent)" : "2px solid transparent",
-                      cursor: "pointer",
-                      border: "none",
-                      "border-top": "none",
-                      "border-left": "none",
-                      "border-right": "none",
-                      "font-weight": isActive() ? "500" : "normal",
-                      transition: "color 0.1s",
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                );
-              })}
+              <For each={tabs}>
+                {(tab) => {
+                  const isActive = () => uiState.activeTab === tab.id;
+                  return (
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      style={{
+                        padding: "0 16px",
+                        height: "36px",
+                        "font-size": "12px",
+                        display: "flex",
+                        "align-items": "center",
+                        color: isActive() ? "var(--text-primary)" : "var(--text-muted)",
+                        background: isActive() ? "var(--bg-secondary)" : "none",
+                        "border-bottom": isActive() ? "2px solid var(--accent)" : "2px solid transparent",
+                        cursor: "pointer",
+                        border: "none",
+                        "border-top": "none",
+                        "border-left": "none",
+                        "border-right": "none",
+                        "font-weight": isActive() ? "500" : "normal",
+                        transition: "color 0.1s",
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                }}
+              </For>
             </div>
 
             {/* Panel content area */}

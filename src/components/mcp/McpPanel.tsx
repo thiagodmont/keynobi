@@ -111,7 +111,7 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
 
         {/* Duration + status */}
         <div style={{ display: "flex", "align-items": "center", gap: "6px", "flex-shrink": "0" }}>
-          <Show when={e.durationMs != null}>
+          <Show when={e.durationMs !== null && e.durationMs !== undefined}>
             <span style={{ color: "rgba(255,255,255,0.3)", "font-size": "10px", "font-family": "var(--font-mono)" }}>
               {String(e.durationMs)}ms
             </span>
@@ -440,11 +440,13 @@ export function McpPanel(): JSX.Element {
               "flex-shrink": "0",
             }}
           >
-            {["Time", "Kind", "Name", "Status"].map((h) => (
-              <span style={{ "font-size": "10px", color: "rgba(255,255,255,0.3)", "text-transform": "uppercase", "letter-spacing": "0.05em" }}>
-                {h}
-              </span>
-            ))}
+            <For each={["Time", "Kind", "Name", "Status"]}>
+              {(h) => (
+                <span style={{ "font-size": "10px", color: "rgba(255,255,255,0.3)", "text-transform": "uppercase", "letter-spacing": "0.05em" }}>
+                  {h}
+                </span>
+              )}
+            </For>
           </div>
 
           {/* Log rows */}
