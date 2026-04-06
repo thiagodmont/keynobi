@@ -54,20 +54,17 @@ pub async fn open_in_studio(
     let found_path = find_source_file(&project_root, &class_dir_suffix, &filename)?;
 
     // ── Security: ensure the resolved path is inside the project root ──────────
-    let canonical_root = project_root
-        .canonicalize()
-        .map_err(|e| AppError::Io(format!("Cannot canonicalize project root: {e}")))?;
-    let canonical_file = found_path
-        .canonicalize()
-        .map_err(|e| AppError::Io(format!("Cannot canonicalize resolved path: {e}")))?;
-    if !canonical_file.starts_with(&canonical_root) {
-        return Err(AppError::PermissionDenied(format!(
-            "Resolved path is outside the project root: {}",
-            found_path.display()
-        )));
-    }
-
-    let abs_path = canonical_file.to_string_lossy().into_owned();
+    // Strip the project root prefix so validate_within_root receives a relative
+    // path (it rejects absolute paths as a defence-in-depth measure).
+    let relative = found_path
+        .strip_prefix(&project_root)
+        .unwrap_or(&found_path);
+    let abs_path = crate::utils::path::validate_within_root(
+        &project_root,
+        relative.to_str().unwrap_or(""),
+    )?
+    .to_string_lossy()
+    .into_owned();
 
     // ── Invoke studio ──────────────────────────────────────────────────────────
     // Use a login shell so macOS users' custom PATH (set in .zshrc / .zprofile)

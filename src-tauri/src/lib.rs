@@ -1,6 +1,7 @@
 mod commands;
 pub mod models;
 pub mod services;
+pub mod utils;
 
 use commands::build::{
     cancel_build, find_apk_path, finalize_build, get_build_errors, get_build_history,
