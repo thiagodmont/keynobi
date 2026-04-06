@@ -85,6 +85,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let result = validate_within_root(tmp.path(), "nonexistent.kt");
         assert!(result.is_err());
+        match result.unwrap_err() {
+            AppError::NotFound(_) => {}
+            e => panic!("expected NotFound for missing file, got {e:?}"),
+        }
     }
 
     #[test]

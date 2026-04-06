@@ -300,19 +300,18 @@ mod tests {
     }
 
     #[test]
-    fn unknown_top_level_field_is_detected() {
-        let known = ["editor", "appearance", "search", "android", "lsp", "java",
-                     "advanced", "build", "logcat", "mcp", "recentProjects", "lastActiveProject"];
-        let json = r#"{"editor": {"fontSize": 16}, "unknownField": true, "typoField": 42}"#;
-        let value: serde_json::Value = serde_json::from_str(json).unwrap();
-        let obj = value.as_object().unwrap();
-        let unknown: Vec<&str> = obj.keys()
-            .filter(|k| !known.contains(&k.as_str()))
-            .map(|k| k.as_str())
-            .collect();
-        assert_eq!(unknown.len(), 2, "should detect 2 unknown fields");
-        assert!(unknown.contains(&"unknownField"));
-        assert!(unknown.contains(&"typoField"));
+    fn unknown_top_level_field_triggers_no_corruption_flag() {
+        // Writing a file with an unknown key should:
+        // 1. Not be treated as corruption (bool = false)
+        // 2. Still load the valid fields correctly
+        // The warning is logged via tracing::warn — not directly assertable here,
+        // but the return value must be correct.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(&path, r#"{"editor": {"fontSize": 20}, "unknownKey": true}"#).unwrap();
+        let (settings, corrupted) = load_settings_from_path(&path);
+        assert!(!corrupted, "unknown field must not be treated as corruption");
+        assert_eq!(settings.editor.font_size, 20, "valid field must be loaded despite unknown key");
     }
 
     #[test]
