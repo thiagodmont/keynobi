@@ -170,7 +170,7 @@ export function DownloadSystemImageDialog(
               </div>
             </div>
             <button
-              onClick={props.onClose}
+              onClick={() => props.onClose()}
               disabled={!!(downloading() && !downloading()!.done)}
               style={{
                 background: "none", border: "none", cursor: "pointer",
@@ -349,7 +349,7 @@ export function DownloadSystemImageDialog(
               </Show>
             </span>
             <button
-              onClick={props.onClose}
+              onClick={() => props.onClose()}
               disabled={!!(downloading() && !downloading()!.done)}
               style={{
                 padding: "6px 16px",

@@ -761,7 +761,7 @@ function AvdContextMenu(props: {
     <>
       <div
         style={{ position: "fixed", inset: "0", "z-index": "1999" }}
-        onClick={props.onClose}
+        onClick={() => props.onClose()}
       />
       <div
         style={{
@@ -793,7 +793,7 @@ function ContextMenuItem(props: {
 }): JSX.Element {
   return (
     <button
-      onClick={props.onClick}
+      onClick={() => props.onClick()}
       style={{
         display: "block",
         width: "100%",

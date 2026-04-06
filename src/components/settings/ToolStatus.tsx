@@ -91,7 +91,7 @@ function PathField(props: {
         />
 
         <button
-          onClick={props.onDetect}
+          onClick={() => props.onDetect()}
           disabled={props.detecting}
           title="Detect from process environment, login shell, and default locations"
           style={{

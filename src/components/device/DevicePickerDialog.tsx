@@ -276,7 +276,7 @@ function DeviceRow(props: {
 }): JSX.Element {
   return (
     <button
-      onClick={props.launching ? undefined : props.onClick}
+      onClick={props.launching ? undefined : () => props.onClick()}
       disabled={props.launching}
       style={{
         display: "flex",

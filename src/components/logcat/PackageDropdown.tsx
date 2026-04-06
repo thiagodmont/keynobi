@@ -248,7 +248,7 @@ function PackageRow(props: {
 }): JSX.Element {
   return (
     <div
-      onClick={props.onClick}
+      onClick={() => props.onClick()}
       style={{
         display: "flex",
         "align-items": "center",

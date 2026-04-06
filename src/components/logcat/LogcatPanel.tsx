@@ -1336,7 +1336,7 @@ function LogcatRow(props: {
 
   return (
     <div
-      onClick={props.onClick}
+      onClick={(e) => props.onClick(e)}
       title="Click to copy · Shift+click to select range"
       style={{
         display: "flex",
@@ -1401,7 +1401,7 @@ function LogcatRow(props: {
       {/* JSON badge — clickable to open detail panel */}
       <Show when={hasJson()}>
         <span
-          onClick={props.onJsonClick}
+          onClick={(e) => props.onJsonClick(e)}
           title="Click to view formatted JSON"
           style={{
             "font-size": "9px",
@@ -1516,7 +1516,7 @@ function JsonDetailPanel(props: {
           {copied() ? "Copied!" : "Copy"}
         </button>
         <button
-          onClick={props.onClose}
+          onClick={() => props.onClose()}
           title="Close JSON viewer"
           style={{
             background: "none", border: "none",

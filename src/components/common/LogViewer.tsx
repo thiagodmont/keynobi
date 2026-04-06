@@ -96,7 +96,7 @@ function ToolbarButton(props: {
   return (
     <button
       title={props.title}
-      onClick={props.onClick}
+      onClick={() => props.onClick()}
       style={{
         display: "flex",
         "align-items": "center",

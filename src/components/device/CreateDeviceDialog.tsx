@@ -111,7 +111,7 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
       {/* Backdrop */}
       <div
         onKeyDown={handleKeyDown}
-        onClick={props.onClose}
+        onClick={() => props.onClose()}
         style={{
           position: "fixed",
           inset: "0",
@@ -173,7 +173,7 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
               </div>
             </div>
             <button
-              onClick={props.onClose}
+              onClick={() => props.onClose()}
               style={{
                 background: "none", border: "none", cursor: "pointer",
                 color: "var(--text-muted)", "font-size": "16px",
@@ -320,7 +320,7 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
               }}
             >
               <button
-                onClick={props.onClose}
+                onClick={() => props.onClose()}
                 style={{
                   padding: "7px 16px",
                   background: "transparent",

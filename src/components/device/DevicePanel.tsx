@@ -602,7 +602,7 @@ function AvdRow(props: {
           }
         >
           <button
-            onClick={props.onLaunch}
+            onClick={() => props.onLaunch()}
             disabled={props.launching}
             title={`Launch ${props.avd.displayName}`}
             style={{
@@ -687,7 +687,7 @@ function AvdContextMenu(props: {
       {/* Click-away backdrop */}
       <div
         style={{ position: "fixed", inset: "0", "z-index": "1999" }}
-        onClick={props.onClose}
+        onClick={() => props.onClose()}
       />
       <div
         style={{
@@ -727,7 +727,7 @@ function ContextMenuItem(props: {
 }): JSX.Element {
   return (
     <button
-      onClick={props.onClick}
+      onClick={() => props.onClick()}
       style={{
         display: "block",
         width: "100%",
@@ -850,7 +850,7 @@ function ToolbarBtn(props: {
 }): JSX.Element {
   return (
     <button
-      onClick={props.onClick}
+      onClick={() => props.onClick()}
       disabled={props.disabled}
       title={props.title}
       style={{

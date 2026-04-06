@@ -430,7 +430,7 @@ function ToolbarBtn(props: {
   return (
     <button
       title={props.title}
-      onClick={props.onClick}
+      onClick={() => props.onClick()}
       disabled={props.disabled ?? false}
       style={{
         display: "flex",
@@ -465,7 +465,7 @@ function ViewToggleBtn(props: {
 }): JSX.Element {
   return (
     <button
-      onClick={props.onClick}
+      onClick={() => props.onClick()}
       style={{
         padding: "2px 8px",
         "border-radius": "3px",
