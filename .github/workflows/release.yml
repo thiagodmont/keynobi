@@ -48,3 +48,67 @@ jobs:
             echo "should_release=false" >> "$GITHUB_OUTPUT"
             echo "version=$CURRENT"     >> "$GITHUB_OUTPUT"
           fi
+
+  # ── Job 2: Build DMGs in parallel for each architecture ─────────────────────
+  build:
+    name: Build DMG (${{ matrix.arch }})
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            arch: arm64
+          - target: x86_64-apple-darwin
+            arch: intel
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build DMG
+        env:
+          # Unsigned build — consistent with scripts/build-dmg.sh.
+          # Users bypass Gatekeeper once on first launch (right-click → Open).
+          APPLE_SIGNING_IDENTITY: "-"
+        run: |
+          npm run tauri build -- --target ${{ matrix.target }} --bundles dmg
+
+      - name: Locate and rename DMG
+        id: dmg
+        run: |
+          VERSION=${{ needs.check.outputs.version }}
+          DMG=$(find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -name "*.dmg" | head -1)
+          if [ -z "$DMG" ]; then
+            echo "ERROR: No DMG found after build" >&2
+            exit 1
+          fi
+          DEST="Android-Dev-Companion_${VERSION}_${{ matrix.arch }}.dmg"
+          mv "$DMG" "$DEST"
+          echo "path=$DEST" >> "$GITHUB_OUTPUT"
+          echo "Built: $DEST"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dmg-${{ matrix.arch }}
+          path: ${{ steps.dmg.outputs.path }}
+          retention-days: 1
