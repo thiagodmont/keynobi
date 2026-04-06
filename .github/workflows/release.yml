@@ -179,6 +179,7 @@ jobs:
               }
             }' > release/latest.json
 
+          git pull --rebase origin main
           git add release/latest.json
           git commit -m "chore: update release/latest.json to v${VERSION} [skip ci]"
           git push origin main
