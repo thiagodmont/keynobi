@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Required to create tags, releases, and push release/latest.json back to main.
+permissions:
+  contents: write
+
+jobs:
+  # ── Job 1: Detect whether package.json version changed ──────────────────────
+  check:
+    name: Check version bump
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # need HEAD and HEAD~1 to compare versions
+
+      - name: Detect version change
+        id: check
+        run: |
+          CURRENT=$(jq -r '.version' package.json)
+          PREVIOUS=$(git show HEAD~1:package.json | jq -r '.version')
+
+          echo "Current version : $CURRENT"
+          echo "Previous version: $PREVIOUS"
+
+          if [ "$CURRENT" != "$PREVIOUS" ]; then
+            echo "Version bumped: $PREVIOUS → $CURRENT — will release"
+            echo "should_release=true"  >> "$GITHUB_OUTPUT"
+            echo "version=$CURRENT"     >> "$GITHUB_OUTPUT"
+          else
+            echo "No version change — skipping release"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
