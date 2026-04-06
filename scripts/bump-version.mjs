@@ -47,3 +47,53 @@ export function bumpVersion(current, type = "patch") {
 
   return `${major}.${minor}.${patch}`;
 }
+
+// ── File sync helpers (same logic as sync-version.mjs) ──────────────────────
+
+function syncToFiles(newVersion) {
+  // Cargo.toml — replace `version = "..."` (first occurrence, the package version)
+  const cargoPath = resolve(root, "src-tauri/Cargo.toml");
+  const cargo = readFileSync(cargoPath, "utf-8");
+  const updatedCargo = cargo.replace(
+    /^version = ".+?"/m,
+    `version = "${newVersion}"`
+  );
+  writeFileSync(cargoPath, updatedCargo);
+
+  // tauri.conf.json — replace the top-level "version" field
+  const tauriPath = resolve(root, "src-tauri/tauri.conf.json");
+  const tauri = JSON.parse(readFileSync(tauriPath, "utf-8"));
+  tauri.version = newVersion;
+  writeFileSync(tauriPath, JSON.stringify(tauri, null, 2) + "\n");
+}
+
+// ── CLI entry point ──────────────────────────────────────────────────────────
+
+// Only run when executed directly (not when imported by tests).
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const type = process.argv[2] ?? "patch";
+
+  // Read current version
+  const pkgPath = resolve(root, "package.json");
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+  const current = pkg.version;
+
+  // Bump (throws on invalid input)
+  let next;
+  try {
+    next = bumpVersion(current, type);
+  } catch (err) {
+    console.error(`Error: ${err.message}`);
+    process.exit(1);
+  }
+
+  // Write package.json
+  pkg.version = next;
+  writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+
+  // Sync Cargo.toml + tauri.conf.json
+  syncToFiles(next);
+
+  // Print the result
+  console.log(`${current} → ${next}`);
+}
