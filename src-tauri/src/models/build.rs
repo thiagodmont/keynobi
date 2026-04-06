@@ -82,8 +82,10 @@ pub struct BuildResult {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase", tag = "state")]
 #[ts(export, export_to = "../../src/bindings/")]
+#[derive(Default)]
 pub enum BuildStatus {
     /// No build running or queued.
+    #[default]
     Idle,
     /// A build is currently executing.
     Running {
@@ -98,11 +100,6 @@ pub enum BuildStatus {
     Cancelled,
 }
 
-impl Default for BuildStatus {
-    fn default() -> Self {
-        Self::Idle
-    }
-}
 
 /// A record of a past build kept in the build history ring-buffer.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]

@@ -434,12 +434,12 @@ pub fn parse_logcat_line(line: &str) -> Option<RawLogLine> {
     let timestamp = format!("{} {}", date, time);
 
     // PID
-    let mut rest_parts = rest.splitn(2, |c: char| c == ' ');
+    let mut rest_parts = rest.splitn(2, ' ');
     let pid: i32 = rest_parts.next()?.trim().parse().ok()?;
     let rest = rest_parts.next()?.trim_start();
 
     // TID
-    let mut rest_parts = rest.splitn(2, |c: char| c == ' ');
+    let mut rest_parts = rest.splitn(2, ' ');
     let tid: i32 = rest_parts.next()?.trim().parse().ok()?;
     let rest = rest_parts.next()?.trim_start();
 
@@ -481,7 +481,7 @@ pub fn extract_pid_package(tag: &str, message: &str) -> Option<(i32, String)> {
             if let Ok(pid) = pid_str.trim().parse::<i32>() {
                 let after_pid = &rest[colon_pos + 1..];
                 let end = after_pid
-                    .find(|c| c == '/' || c == ' ')
+                    .find(['/', ' '])
                     .unwrap_or(after_pid.len());
                 let raw_pkg = &after_pid[..end];
                 let pkg = strip_process_suffix(raw_pkg);
@@ -515,7 +515,7 @@ pub fn extract_process_death(tag: &str, message: &str) -> Option<String> {
     if let Some(rest) = message.strip_prefix("Killing ") {
         if let Some(colon) = rest.find(':') {
             let after = &rest[colon + 1..];
-            let end = after.find(|c| c == '/' || c == ' ' || c == ':').unwrap_or(after.len());
+            let end = after.find(['/', ' ', ':']).unwrap_or(after.len());
             let pkg = strip_process_suffix(&after[..end]);
             if looks_like_package(pkg) {
                 return Some(pkg.to_owned());

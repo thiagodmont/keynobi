@@ -388,7 +388,7 @@ pub async fn start_logcat_stream(
 
                     for entry in processed {
                         // Clone only if this entry will be emitted.
-                        let passes = filter.as_ref().map_or(true, |f| f.matches(&entry));
+                        let passes = filter.as_ref().is_none_or(|f| f.matches(&entry));
                         if passes {
                             to_emit.push(entry.clone());
                         }
@@ -426,7 +426,7 @@ pub async fn start_logcat_stream(
                         let filter = state.stream_state.clone_filter();
                         let mut to_emit = Vec::with_capacity(remaining.len());
                         for entry in remaining {
-                            let passes = filter.as_ref().map_or(true, |f| f.matches(&entry));
+                            let passes = filter.as_ref().is_none_or(|f| f.matches(&entry));
                             if passes {
                                 to_emit.push(entry.clone());
                             }

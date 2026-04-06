@@ -31,6 +31,12 @@ pub struct BuildStateInner {
     next_id: u32,
 }
 
+impl Default for BuildStateInner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BuildStateInner {
     pub fn new() -> Self {
         Self {
@@ -317,6 +323,7 @@ pub fn format_build_issues(errors: &[crate::models::build::BuildError]) -> Vec<S
     }).collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_task(
     task: &str,
     extra_args: &[&str],

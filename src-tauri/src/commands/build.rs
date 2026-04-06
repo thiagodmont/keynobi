@@ -189,7 +189,7 @@ pub async fn run_gradle_task(
         },
     )
     .await
-    .map_err(|e| AppError::ProcessFailed(e))?;
+    .map_err(AppError::ProcessFailed)?;
 
     // Mark build as running in the managed state and clear the log for this run.
     {

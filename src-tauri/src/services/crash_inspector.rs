@@ -133,8 +133,7 @@ fn parse_crash_lines(
         if line.starts_with("at ") {
             let frame_str = line.trim_start_matches("at ").trim();
             frames.push(parse_frame(frame_str));
-        } else if line.starts_with("Caused by: ") {
-            let cb_rest = &line["Caused by: ".len()..];
+        } else if let Some(cb_rest) = line.strip_prefix("Caused by: ") {
             let (cb_et, cb_msg) = split_exception_line(cb_rest);
             let mut cb_frames: Vec<StackFrame> = Vec::new();
             i += 1;

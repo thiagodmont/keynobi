@@ -37,6 +37,7 @@ pub struct MemoryInfo {
     pub raw: String,
 }
 
+#[allow(clippy::ptr_arg)]
 pub async fn get_device_info(adb: &PathBuf, serial: &str) -> Result<DeviceInfo, String> {
     let mk_getprop = |prop: &'static str| {
         tokio::process::Command::new(adb.clone())
@@ -96,6 +97,7 @@ pub async fn get_device_info(adb: &PathBuf, serial: &str) -> Result<DeviceInfo, 
     })
 }
 
+#[allow(clippy::ptr_arg)]
 pub async fn dump_app_info(adb: &PathBuf, serial: &str, package: &str) -> Result<DumpedAppInfo, String> {
     let (path_res, dump_res) = tokio::join!(
         tokio::process::Command::new(adb.clone())

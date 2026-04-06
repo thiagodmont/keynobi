@@ -30,7 +30,7 @@ pub async fn save_settings(
     tokio::task::spawn_blocking(move || settings_manager::save_settings(&settings))
         .await
         .map_err(|e| AppError::SettingsError(format!("Failed to save settings: {e}")))?
-        .map_err(|e| AppError::SettingsError(e))
+        .map_err(AppError::SettingsError)
 }
 
 #[tauri::command]

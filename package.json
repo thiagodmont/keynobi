@@ -22,7 +22,8 @@
     "version:check": "node scripts/sync-version.mjs --check",
     "build:dmg": "tauri build --target aarch64-apple-darwin --bundles dmg",
     "build:dmg:intel": "tauri build --target x86_64-apple-darwin --bundles dmg",
-    "build:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg"
+    "build:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg",
+    "prepare": "husky"
   },
   "license": "MIT",
   "dependencies": {
@@ -49,5 +50,11 @@
     "vite": "^6.0.3",
     "vite-plugin-solid": "^2.11.0",
     "vitest": "^4.1.1"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   }
 }

@@ -53,6 +53,12 @@ pub struct ProcessManagerInner {
     pub(crate) processes: HashMap<ProcessId, ProcessRecord>,
 }
 
+impl Default for ProcessManagerInner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ProcessManagerInner {
     pub fn new() -> Self {
         Self { processes: HashMap::new() }

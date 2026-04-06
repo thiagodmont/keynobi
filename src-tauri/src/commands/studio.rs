@@ -1,6 +1,6 @@
 use crate::models::error::AppError;
 use crate::FsState;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 /// Open the given source file at a specific line in Android Studio.
@@ -110,8 +110,8 @@ pub async fn open_in_studio(
 ///
 /// Returns the first match or an error.
 fn find_source_file(
-    project_root: &PathBuf,
-    class_dir_suffix: &PathBuf,
+    project_root: &Path,
+    class_dir_suffix: &Path,
     filename: &str,
 ) -> Result<PathBuf, AppError> {
     // Build the suffix we expect: "com/example/app/MainActivity.kt"

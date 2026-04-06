@@ -75,7 +75,7 @@ pub async fn select_device(
     device_state.0.lock().await.selected_serial = Some(serial.clone());
     let (mut settings, _) = settings_manager::load_settings();
     settings.build.selected_device = Some(serial);
-    settings_manager::save_settings(&settings).map_err(|e| AppError::SettingsError(e))
+    settings_manager::save_settings(&settings).map_err(AppError::SettingsError)
 }
 
 /// Return the currently selected device serial.
@@ -98,7 +98,7 @@ pub async fn install_apk_on_device(
     }
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    install_apk(&adb, &serial, &apk_path).await.map_err(|e| AppError::Io(e))
+    install_apk(&adb, &serial, &apk_path).await.map_err(AppError::Io)
 }
 
 /// Launch an app on the given device.
@@ -111,7 +111,7 @@ pub async fn launch_app_on_device(
     validate_device_serial(&serial)?;
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    launch_app(&adb, &serial, &package, activity.as_deref()).await.map_err(|e| AppError::ProcessFailed(e))
+    launch_app(&adb, &serial, &package, activity.as_deref()).await.map_err(AppError::ProcessFailed)
 }
 
 /// Force-stop an app on the given device.
@@ -123,7 +123,7 @@ pub async fn stop_app_on_device(
     validate_device_serial(&serial)?;
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    stop_app(&adb, &serial, &package).await.map_err(|e| AppError::ProcessFailed(e))
+    stop_app(&adb, &serial, &package).await.map_err(AppError::ProcessFailed)
 }
 
 /// Return the list of installed AVDs.
@@ -164,7 +164,7 @@ pub async fn stop_avd(serial: String) -> Result<(), AppError> {
     validate_device_serial(&serial)?;
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    stop_emulator(&adb, &serial).await.map_err(|e| AppError::ProcessFailed(e))
+    stop_emulator(&adb, &serial).await.map_err(AppError::ProcessFailed)
 }
 
 /// Start background polling for device connections (every 3 seconds).
