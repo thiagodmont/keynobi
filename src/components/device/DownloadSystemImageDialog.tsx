@@ -74,6 +74,8 @@ export function DownloadSystemImageDialog(
       error: false,
     });
 
+    const onDownloaded = props.onDownloaded;
+
     try {
       await downloadSystemImage(img.sdkId, (progress) => {
         setDownloading((prev) => ({
@@ -89,7 +91,7 @@ export function DownloadSystemImageDialog(
           setImages((prev) =>
             prev.map((i) => (i.sdkId === img.sdkId ? { ...i, installed: true } : i))
           );
-          props.onDownloaded();
+          onDownloaded();
         }
       });
     } catch (err) {

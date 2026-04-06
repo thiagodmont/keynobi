@@ -494,6 +494,7 @@ export function LogcatPanel(): JSX.Element {
       setLogcatStore("streaming", streaming);
     } catch { /* ignore */ }
 
+    // eslint-disable-next-line solid/reactivity
     unlistenEntries = await listenLogcatEntries((newEntries) => {
       if (paused()) return;
       const n = Date.now();
@@ -546,6 +547,7 @@ export function LogcatPanel(): JSX.Element {
     });
 
     // Auto-start on device connect
+    // eslint-disable-next-line solid/reactivity
     unlistenDevices = await listenDeviceListChanged((devices) => {
       if (logcatStore.streaming) return;
       const hasAutoStart = settingsState.logcat?.autoStart !== false;

@@ -10,6 +10,7 @@
     "serve": "vite preview",
     "tauri": "tauri",
     "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "test": "vitest run",
     "generate:bindings": "cd src-tauri && cargo test && echo 'TypeScript bindings regenerated in src/bindings/'",
