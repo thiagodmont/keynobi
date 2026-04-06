@@ -4,7 +4,7 @@ use crate::models::build::{
 };
 use crate::models::error::AppError;
 use crate::services::build_runner::{self, build_env_vars, BuildState, find_output_apk};
-use crate::services::process_manager::{self, ProcessManager, SpawnOptions};
+use crate::services::process_manager::{self, ProcessManager, ProcessTermination, SpawnOptions};
 use crate::services::settings_manager;
 use crate::FsState;
 use chrono::Utc;
@@ -20,6 +20,7 @@ use tauri::ipc::Channel;
 #[serde(rename_all = "camelCase")]
 pub struct BuildCompleteEvent {
     pub success: bool,
+    pub cancelled: bool,
     pub duration_ms: u64,
     pub error_count: u32,
     pub warning_count: u32,
@@ -154,12 +155,14 @@ pub async fn run_gradle_task(
             on_exit: Box::new({
                 let app = app_handle.clone();
                 let task_name = task.clone();
-                move |_pid, exit_code| {
+                move |_pid, termination| {
                     // std::sync::Mutex::lock() — safe to call from any context.
                     let errs = errors_buf.lock().map(|g| g.clone()).unwrap_or_default();
                     let dur = duration_ms.lock().map(|g| *g).unwrap_or(0);
                     let flag = success_flag.lock().map(|g| *g).unwrap_or(false);
-                    let success = flag || exit_code == Some(0);
+
+                    let cancelled = matches!(termination, ProcessTermination::Cancelled);
+                    let success = !cancelled && (flag || matches!(termination, ProcessTermination::ExitCode(0)));
 
                     let error_count = errs
                         .iter()
@@ -174,6 +177,7 @@ pub async fn run_gradle_task(
                         "build:complete",
                         BuildCompleteEvent {
                             success,
+                            cancelled,
                             duration_ms: dur,
                             error_count,
                             warning_count: warn_count,

@@ -193,6 +193,7 @@ export async function findApkPath(variant: string): Promise<string | null> {
 export function listenBuildComplete(
   cb: (e: {
     success: boolean;
+    cancelled: boolean;
     durationMs: number;
     errorCount: number;
     warningCount: number;
@@ -201,6 +202,7 @@ export function listenBuildComplete(
 ): Promise<UnlistenFn> {
   return listen<{
     success: boolean;
+    cancelled: boolean;
     durationMs: number;
     errorCount: number;
     warningCount: number;
