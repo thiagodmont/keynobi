@@ -2,8 +2,9 @@ use crate::models::build::{
     BuildError, BuildErrorSeverity, BuildLine, BuildLineKind, BuildRecord, BuildResult,
     BuildStatus,
 };
+use crate::models::error::AppError;
 use crate::services::build_runner::{self, build_env_vars, BuildState, find_output_apk};
-use crate::services::process_manager::{self, ProcessManager, SpawnOptions};
+use crate::services::process_manager::{self, ProcessManager, ProcessTermination, SpawnOptions};
 use crate::services::settings_manager;
 use crate::FsState;
 use chrono::Utc;
@@ -19,10 +20,30 @@ use tauri::ipc::Channel;
 #[serde(rename_all = "camelCase")]
 pub struct BuildCompleteEvent {
     pub success: bool,
+    pub cancelled: bool,
     pub duration_ms: u64,
     pub error_count: u32,
     pub warning_count: u32,
     pub task: String,
+}
+
+// ── Validation helpers ─────────────────────────────────────────────────────────
+
+/// Validate a Gradle task name against an allowlist.
+/// Allowed: alphanumeric, colon, hyphen, underscore, dot. Max 256 chars.
+fn validate_gradle_task(task: &str) -> Result<(), AppError> {
+    if task.is_empty() {
+        return Err(AppError::InvalidInput("Gradle task name must not be empty".to_string()));
+    }
+    if task.len() > 256 {
+        return Err(AppError::InvalidInput("Gradle task name is too long (max 256 characters)".to_string()));
+    }
+    if !task.chars().all(|c| c.is_alphanumeric() || matches!(c, ':' | '-' | '_' | '.')) {
+        return Err(AppError::InvalidInput(format!(
+            "Invalid Gradle task name '{task}': only alphanumeric, ':', '-', '_', '.' are allowed"
+        )));
+    }
+    Ok(())
 }
 
 // ── Build commands ─────────────────────────────────────────────────────────────
@@ -40,20 +61,22 @@ pub async fn run_gradle_task(
     fs_state: State<'_, FsState>,
     build_state: State<'_, BuildState>,
     process_manager: State<'_, ProcessManager>,
-) -> Result<u32, String> {
+) -> Result<u32, AppError> {
+    validate_gradle_task(&task)?;
+
     let gradle_root: PathBuf = {
         let fs = fs_state.0.lock().await;
         fs.gradle_root
             .as_ref()
             .or(fs.project_root.as_ref())
             .cloned()
-            .ok_or("No project open")?
+            .ok_or_else(|| AppError::NotFound("No project is open".into()))?
     };
 
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
 
     let gradlew = build_runner::find_gradlew(&gradle_root)
-        .ok_or_else(|| "gradlew not found at project root".to_string())?;
+        .ok_or_else(|| AppError::NotFound("gradlew not found at project root".into()))?;
 
     let mut args = vec![task.clone(), "--console=plain".to_owned()];
     if settings.build.gradle_parallel {
@@ -132,12 +155,14 @@ pub async fn run_gradle_task(
             on_exit: Box::new({
                 let app = app_handle.clone();
                 let task_name = task.clone();
-                move |_pid, exit_code| {
+                move |_pid, termination| {
                     // std::sync::Mutex::lock() — safe to call from any context.
                     let errs = errors_buf.lock().map(|g| g.clone()).unwrap_or_default();
                     let dur = duration_ms.lock().map(|g| *g).unwrap_or(0);
                     let flag = success_flag.lock().map(|g| *g).unwrap_or(false);
-                    let success = flag || exit_code == Some(0);
+
+                    let cancelled = matches!(termination, ProcessTermination::Cancelled);
+                    let success = !cancelled && (flag || matches!(termination, ProcessTermination::ExitCode(0)));
 
                     let error_count = errs
                         .iter()
@@ -152,6 +177,7 @@ pub async fn run_gradle_task(
                         "build:complete",
                         BuildCompleteEvent {
                             success,
+                            cancelled,
                             duration_ms: dur,
                             error_count,
                             warning_count: warn_count,
@@ -162,7 +188,8 @@ pub async fn run_gradle_task(
             }),
         },
     )
-    .await?;
+    .await
+    .map_err(AppError::ProcessFailed)?;
 
     // Mark build as running in the managed state and clear the log for this run.
     {
@@ -260,5 +287,29 @@ pub async fn find_apk_path(
     };
     Ok(find_output_apk(&gradle_root, &variant)
         .map(|p| p.to_string_lossy().into_owned()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_gradle_tasks_pass() {
+        assert!(validate_gradle_task(":app:assembleDebug").is_ok());
+        assert!(validate_gradle_task("assembleRelease").is_ok());
+        assert!(validate_gradle_task("test").is_ok());
+        assert!(validate_gradle_task(":app:bundleRelease").is_ok());
+        assert!(validate_gradle_task("lint-check").is_ok());
+        assert!(validate_gradle_task("app.assemble").is_ok());
+    }
+
+    #[test]
+    fn invalid_gradle_tasks_rejected() {
+        assert!(validate_gradle_task("").is_err());
+        assert!(validate_gradle_task(":app:assemble; rm -rf /").is_err());
+        assert!(validate_gradle_task("assemble$(evil)").is_err());
+        assert!(validate_gradle_task("assemble\necho pwned").is_err());
+        assert!(validate_gradle_task(&"a".repeat(257)).is_err());
+    }
 }
 

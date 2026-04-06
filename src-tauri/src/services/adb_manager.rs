@@ -343,7 +343,7 @@ pub fn list_avds() -> Vec<AvdInfo> {
         let abi = parse_ini_value(&config, "abi.type").map(str::to_owned);
         let api_level = target.as_deref().and_then(|t| {
             // "android-35" → 35
-            t.split('-').last().and_then(|n| n.parse().ok())
+            t.split('-').next_back().and_then(|n| n.parse().ok())
         });
         let display_name = parse_ini_value(&config, "avd.ini.displayname")
             .map(str::to_owned)
@@ -913,6 +913,12 @@ pub struct DeviceStateInner {
     pub devices: Vec<Device>,
     pub selected_serial: Option<String>,
     pub polling: bool,
+}
+
+impl Default for DeviceStateInner {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DeviceStateInner {

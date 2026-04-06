@@ -154,16 +154,14 @@ impl LogStore {
     // is guaranteed to be at the *front* of that index deque. O(1) pop instead
     // of O(n) linear scan.
     fn remove_from_indexes(&mut self, id: u64, flags: u32) {
-        if flags & EntryFlags::CRASH != 0 {
-            if self.crash_ids.front() == Some(&id) {
+        if flags & EntryFlags::CRASH != 0
+            && self.crash_ids.front() == Some(&id) {
                 self.crash_ids.pop_front();
             }
-        }
-        if flags & EntryFlags::JSON_BODY != 0 {
-            if self.json_ids.front() == Some(&id) {
+        if flags & EntryFlags::JSON_BODY != 0
+            && self.json_ids.front() == Some(&id) {
                 self.json_ids.pop_front();
             }
-        }
     }
 }
 

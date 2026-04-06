@@ -13,13 +13,17 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "test": "vitest run",
     "generate:bindings": "cd src-tauri && cargo test && echo 'TypeScript bindings regenerated in src/bindings/'",
+    "check:bindings": "npm run generate:bindings && git diff --exit-code src/bindings/",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "perf:collect": "node scripts/collect-metrics.mjs",
     "perf:report": "node scripts/collect-metrics.mjs --report",
+    "version:sync": "node scripts/sync-version.mjs",
+    "version:check": "node scripts/sync-version.mjs --check",
     "build:dmg": "tauri build --target aarch64-apple-darwin --bundles dmg",
     "build:dmg:intel": "tauri build --target x86_64-apple-darwin --bundles dmg",
-    "build:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg"
+    "build:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg",
+    "prepare": "husky"
   },
   "license": "MIT",
   "dependencies": {
@@ -38,11 +42,19 @@
     "@vitest/ui": "^4.1.1",
     "eslint": "^9.0.0",
     "eslint-plugin-solid": "^0.14.0",
+    "husky": "^9.1.7",
     "jsdom": "^29.0.1",
+    "lint-staged": "^16.4.0",
     "prettier": "^3.0.0",
     "typescript": "~5.6.2",
     "vite": "^6.0.3",
     "vite-plugin-solid": "^2.11.0",
     "vitest": "^4.1.1"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   }
 }

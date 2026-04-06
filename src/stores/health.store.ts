@@ -67,7 +67,8 @@ export async function refreshHealthChecks(): Promise<void> {
   try {
     const report = await runHealthChecks();
     setSystemReport(report);
-  } catch {
+  } catch (err) {
+    console.error("[health] Failed to run health checks:", err);
     setHealthChecking(false);
   }
 }

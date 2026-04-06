@@ -21,9 +21,14 @@
     "fs:allow-rename",
     "fs:allow-exists",
     "fs:allow-stat",
-    "fs:scope-home-recursive",
+    {
+      "identifier": "fs:scope",
+      "allow": [
+        { "path": "$HOME/.keynobi" },
+        { "path": "$HOME/.keynobi/**" }
+      ]
+    },
     "shell:default",
-    "shell:allow-execute",
     "shell:allow-open"
   ]
 }

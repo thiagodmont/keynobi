@@ -1,7 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+import * as tauriApi from "@/lib/tauri-api";
 import {
   settingsState,
   updateSetting,
+  loadSettings,
   getDefaults,
 } from "@/stores/settings.store";
 
@@ -79,10 +81,51 @@ describe("settings.store", () => {
     updateSetting("android", "sdkPath", null);
   });
 
-  it("getDefaults returns a new object each time", () => {
+  it("getDefaults returns the same constant reference", () => {
     const d1 = getDefaults();
     const d2 = getDefaults();
     expect(d1).toEqual(d2);
     expect(d1).toBe(d2);
+  });
+});
+
+describe("settings.store error state transitions", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("keeps defaults when getSettings rejects with unexpected error", async () => {
+    vi.spyOn(tauriApi, "getSettings").mockRejectedValue(
+      new Error("IPC channel unexpectedly closed")
+    );
+    await loadSettings();
+    // State should still reflect defaults — loadSettings must not throw.
+    expect(settingsState.editor.fontSize).toBe(13);
+    expect(settingsState.editor.tabSize).toBe(4);
+    expect(settingsState.appearance.uiFontSize).toBe(12);
+    vi.restoreAllMocks();
+  });
+
+  it("keeps defaults when getSettings rejects with file-not-found error", async () => {
+    vi.spyOn(tauriApi, "getSettings").mockRejectedValue(
+      new Error("No such file or directory (os error 2)")
+    );
+    await loadSettings();
+    expect(settingsState.editor.fontSize).toBe(13);
+    expect(settingsState.search.contextLines).toBe(2);
+    vi.restoreAllMocks();
+  });
+
+  it("applies loaded settings when getSettings resolves with partial overrides", async () => {
+    const customSettings = {
+      ...getDefaults(),
+      editor: { ...getDefaults().editor, fontSize: 16 },
+    };
+    vi.spyOn(tauriApi, "getSettings").mockResolvedValue(customSettings);
+    await loadSettings();
+    expect(settingsState.editor.fontSize).toBe(16);
+    // Restore to default for subsequent tests.
+    updateSetting("editor", "fontSize", 13);
+    vi.restoreAllMocks();
   });
 });

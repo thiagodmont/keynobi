@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
@@ -20,12 +20,25 @@ pub struct ProcessLine {
     pub text: String,
 }
 
+/// How a managed process ended.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ProcessTermination {
+    /// Process exited with this exit code.
+    ExitCode(i32),
+    /// Process was killed by a Unix signal (15=SIGTERM, 9=SIGKILL).
+    Signal(i32),
+    /// Process was explicitly cancelled via `cancel()`.
+    Cancelled,
+}
+
 /// Internal tracking record for a running process.
-struct ProcessRecord {
+pub(crate) struct ProcessRecord {
     /// OS-level PID for sending signals. Captured before child is moved into reader task.
     os_pid: Option<u32>,
     /// Background task that streams output lines and waits for process exit.
     _reader_task: JoinHandle<()>,
+    /// Set to true before sending a signal so the reader task can report Cancelled.
+    pub(crate) cancelled: Arc<AtomicBool>,
 }
 
 /// Per-process callbacks dispatched from the reader task.
@@ -33,11 +46,17 @@ pub struct SpawnOptions {
     /// Called with each output line (stdout or stderr), on a tokio task.
     pub on_line: Box<dyn Fn(ProcessLine) + Send + Sync + 'static>,
     /// Called once when the process exits.
-    pub on_exit: Box<dyn Fn(ProcessId, Option<i32>) + Send + Sync + 'static>,
+    pub on_exit: Box<dyn Fn(ProcessId, ProcessTermination) + Send + Sync + 'static>,
 }
 
 pub struct ProcessManagerInner {
-    processes: HashMap<ProcessId, ProcessRecord>,
+    pub(crate) processes: HashMap<ProcessId, ProcessRecord>,
+}
+
+impl Default for ProcessManagerInner {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ProcessManagerInner {
@@ -106,12 +125,15 @@ pub async fn spawn(
     let on_line = std::sync::Arc::new(options.on_line);
     let on_exit = std::sync::Arc::new(options.on_exit);
 
+    let cancelled = Arc::new(AtomicBool::new(false));
+
     // Spawn the reader task that merges stdout and stderr.
     // We move `child` into this task so we can call child.wait() after both
     // streams are fully drained — capturing the real exit code.
     let reader_task = {
         let on_line = on_line.clone();
         let on_exit = on_exit.clone();
+        let cancelled_flag = cancelled.clone();
 
         tokio::spawn(async move {
             let stdout_reader = BufReader::new(stdout);
@@ -145,15 +167,41 @@ pub async fn spawn(
             }
 
             // Both streams are exhausted — wait for the process to exit and
-            // capture its exit code so on_exit can report success/failure correctly.
-            let exit_code = child.wait().await.ok().and_then(|s| s.code());
-            on_exit(id, exit_code);
+            // determine how it terminated.
+            let termination = match child.wait().await {
+                Ok(status) => {
+                    if let Some(code) = status.code() {
+                        ProcessTermination::ExitCode(code)
+                    } else {
+                        // Killed by a signal (Unix). Try to read the signal number.
+                        #[cfg(unix)]
+                        {
+                            use std::os::unix::process::ExitStatusExt;
+                            ProcessTermination::Signal(status.signal().unwrap_or(0))
+                        }
+                        #[cfg(not(unix))]
+                        ProcessTermination::Signal(0)
+                    }
+                }
+                Err(_) => ProcessTermination::Signal(0),
+            };
+
+            // If the process was explicitly cancelled, report that instead of
+            // the raw signal so callers can distinguish user cancellation from
+            // unexpected termination.
+            let final_termination = if cancelled_flag.load(Ordering::SeqCst) {
+                ProcessTermination::Cancelled
+            } else {
+                termination
+            };
+            on_exit(id, final_termination);
         })
     };
 
     let record = ProcessRecord {
         os_pid,
         _reader_task: reader_task,
+        cancelled,
     };
 
     let mut inner = manager.lock().await;
@@ -170,8 +218,15 @@ pub async fn spawn(
 ///
 /// No-op if the process ID is unknown (already exited or never created).
 pub async fn cancel(manager: &Mutex<ProcessManagerInner>, id: ProcessId) {
-    let mut inner = manager.lock().await;
-    if let Some(record) = inner.processes.remove(&id) {
+    let record = {
+        let mut inner = manager.lock().await;
+        // Mark as cancelled before removing so the reader task sees the flag.
+        if let Some(rec) = inner.processes.get(&id) {
+            rec.cancelled.store(true, Ordering::SeqCst);
+        }
+        inner.processes.remove(&id)
+    };
+    if let Some(record) = record {
         if let Some(os_pid) = record.os_pid {
             // Try graceful termination first.
             #[cfg(unix)]
@@ -215,7 +270,7 @@ mod tests {
                 on_line: Box::new(move |l| {
                     lines_clone.lock().unwrap().push(l.text);
                 }),
-                on_exit: Box::new(move |_, _| {
+                on_exit: Box::new(move |_, _termination| {
                     exited_clone.store(true, Ordering::SeqCst);
                 }),
             },
@@ -236,5 +291,60 @@ mod tests {
         let manager = ProcessManager::new();
         // Should not panic.
         cancel(&manager.0, 99999).await;
+    }
+
+    #[test]
+    fn process_termination_cancelled_flag_works() {
+        // Verify that ExitCode, Signal, Cancelled are distinct
+        let exit = ProcessTermination::ExitCode(0);
+        let signal = ProcessTermination::Signal(15);
+        let cancelled = ProcessTermination::Cancelled;
+        assert!(matches!(exit, ProcessTermination::ExitCode(0)));
+        assert!(matches!(signal, ProcessTermination::Signal(15)));
+        assert!(matches!(cancelled, ProcessTermination::Cancelled));
+        assert_ne!(exit, cancelled);
+        assert_ne!(signal, cancelled);
+    }
+
+    #[tokio::test]
+    async fn cancel_sets_flag_before_removing_record() {
+        use std::sync::atomic::Ordering;
+
+        let manager = ProcessManager::new();
+
+        // Spawn a long-running process.
+        let id = spawn(
+            &manager.0,
+            "sleep",
+            &["10"],
+            std::env::temp_dir(),
+            vec![],
+            SpawnOptions {
+                on_line: Box::new(|_| {}),
+                on_exit: Box::new(|_, _| {}),
+            },
+        )
+        .await
+        .unwrap();
+
+        // Before cancel: process is in the map.
+        {
+            let inner = manager.0.lock().await;
+            assert!(inner.processes.contains_key(&id), "process must be in map before cancel");
+            // Flag should be false initially.
+            assert!(!inner.processes[&id].cancelled.load(Ordering::SeqCst), "cancelled must be false initially");
+        }
+
+        // Cancel it. The cancel() function sets the flag before removing the record.
+        cancel(&manager.0, id).await;
+
+        // After cancel: record is removed from the map (the cancel function removes it).
+        {
+            let inner = manager.0.lock().await;
+            assert!(!inner.processes.contains_key(&id), "process must be removed after cancel");
+        }
+
+        // Give the reader task time to observe the flag and call on_exit.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
 }

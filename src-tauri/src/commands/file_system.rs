@@ -1,3 +1,4 @@
+use crate::models::error::AppError;
 use crate::models::settings::{ProjectAppInfo, ProjectEntry, MAX_RECENT_PROJECTS};
 use crate::services::{fs_manager, settings_manager};
 use crate::FsState;
@@ -18,7 +19,7 @@ fn project_id(path: &std::path::Path) -> String {
 /// Upsert a `ProjectEntry` into `settings.recent_projects` and persist.
 /// Evicts the oldest non-pinned entry when the list exceeds `MAX_RECENT_PROJECTS`.
 fn upsert_project(path: &std::path::Path, gradle_root: Option<&std::path::Path>) {
-    let mut settings = settings_manager::load_settings();
+    let (mut settings, _) = settings_manager::load_settings();
 
     let id = project_id(path);
     let name = path
@@ -78,42 +79,56 @@ fn upsert_project(path: &std::path::Path, gradle_root: Option<&std::path::Path>)
 /// Returns the detected project name on success.
 #[tauri::command]
 pub async fn open_project(
+    app_handle: tauri::AppHandle,
     path: String,
     state: State<'_, FsState>,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     let root = PathBuf::from(&path);
 
     if !root.exists() {
-        return Err(format!("Directory does not exist: {path}"));
+        return Err(AppError::NotFound(format!("Directory does not exist: {path}")));
     }
     if !root.is_dir() {
-        return Err(format!("Path is not a directory: {path}"));
+        return Err(AppError::InvalidInput(format!("Path is not a directory: {path}")));
     }
 
-    let gradle_root = fs_manager::find_gradle_root(&root);
+    let canonical_root = root
+        .canonicalize()
+        .map_err(|e| AppError::Io(format!("Failed to canonicalize path: {e}")))?;
+
+    let gradle_root = fs_manager::find_gradle_root(&canonical_root);
     if let Some(ref gr) = gradle_root {
         tracing::info!(
             "Gradle root detected: {} (opened: {})",
             gr.display(),
-            root.display()
+            canonical_root.display()
         );
     } else {
         tracing::info!(
             "No Gradle root found above {}; using it as workspace root",
-            root.display()
+            canonical_root.display()
         );
     }
 
-    let project_name = root
+    let project_name = canonical_root
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| path.clone());
 
     // Persist before holding the state lock.
-    upsert_project(&root, gradle_root.as_deref());
+    upsert_project(&canonical_root, gradle_root.as_deref());
+
+    // Register the opened project directory as an allowed fs scope so the
+    // frontend can read project files. This is tighter than home-recursive.
+    use tauri_plugin_fs::FsExt;
+    if let Some(scope) = app_handle.try_fs_scope() {
+        if let Err(e) = scope.allow_directory(&canonical_root, true) {
+            tracing::warn!("Failed to register project fs scope: {e}");
+        }
+    }
 
     let mut guard = state.0.lock().await;
-    guard.project_root = Some(root);
+    guard.project_root = Some(canonical_root);
     guard.gradle_root = gradle_root;
 
     Ok(project_name)
@@ -177,7 +192,7 @@ fn extract_application_id(content: &str) -> Option<String> {
 /// `last_opened` descending (most recent first).
 #[tauri::command]
 pub async fn list_projects() -> Result<Vec<ProjectEntry>, String> {
-    let settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
 
@@ -195,7 +210,7 @@ pub async fn list_projects() -> Result<Vec<ProjectEntry>, String> {
 /// Does *not* delete the project from disk.
 #[tauri::command]
 pub async fn remove_project(id: String) -> Result<(), String> {
-    let mut settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (mut settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
 
@@ -217,7 +232,7 @@ pub async fn remove_project(id: String) -> Result<(), String> {
 /// Toggle the `pinned` flag for a project entry.
 #[tauri::command]
 pub async fn pin_project(id: String, pinned: bool) -> Result<(), String> {
-    let mut settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (mut settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
 
@@ -233,7 +248,7 @@ pub async fn pin_project(id: String, pinned: bool) -> Result<(), String> {
 /// Return the path of the last-active project (used on startup to restore the session).
 #[tauri::command]
 pub async fn get_last_active_project() -> Result<Option<String>, String> {
-    let settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
     Ok(settings.last_active_project)
@@ -376,7 +391,7 @@ pub async fn update_project_meta(
     last_build_variant: Option<String>,
     last_device: Option<String>,
 ) -> Result<(), String> {
-    let mut settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (mut settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
 
@@ -399,7 +414,7 @@ pub async fn rename_project(id: String, new_name: String) -> Result<(), String> 
         return Err("Project name cannot be empty".to_string());
     }
 
-    let mut settings = tokio::task::spawn_blocking(settings_manager::load_settings)
+    let (mut settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
 
@@ -412,4 +427,31 @@ pub async fn rename_project(id: String, new_name: String) -> Result<(), String> 
     tokio::task::spawn_blocking(move || settings_manager::save_settings(&settings))
         .await
         .map_err(|e| format!("Failed to save settings: {e}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    #[test]
+    fn empty_path_would_fail_is_dir_check() {
+        // Verify that an empty path doesn't exist as a directory
+        let path = PathBuf::from("");
+        assert!(!path.is_dir(), "empty path should not be a directory");
+    }
+
+    #[test]
+    fn nonexistent_path_would_fail_exists_check() {
+        let path = PathBuf::from("/this/path/definitely/does/not/exist/on/any/machine/12345");
+        assert!(!path.exists(), "clearly nonexistent path should not exist");
+    }
+
+    #[test]
+    fn valid_temp_dir_would_pass_checks() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path();
+        assert!(path.exists(), "tempdir must exist");
+        assert!(path.is_dir(), "tempdir must be a directory");
+    }
 }

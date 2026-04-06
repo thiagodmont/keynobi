@@ -193,6 +193,7 @@ export async function findApkPath(variant: string): Promise<string | null> {
 export function listenBuildComplete(
   cb: (e: {
     success: boolean;
+    cancelled: boolean;
     durationMs: number;
     errorCount: number;
     warningCount: number;
@@ -201,6 +202,7 @@ export function listenBuildComplete(
 ): Promise<UnlistenFn> {
   return listen<{
     success: boolean;
+    cancelled: boolean;
     durationMs: number;
     errorCount: number;
     warningCount: number;
@@ -457,6 +459,13 @@ export async function getMcpServerStatus(): Promise<McpServerStatus> {
 /** Truncate the MCP activity log. */
 export async function clearMcpActivity(): Promise<void> {
   return invoke<void>("clear_mcp_activity");
+}
+
+/** Listen for MCP server startup failures (auto-start mode). */
+export function listenMcpStartupFailed(
+  cb: (errorMessage: string) => void
+): Promise<UnlistenFn> {
+  return listen<string>("mcp:startup-failed", (event) => cb(event.payload));
 }
 
 // ── Android Studio integration ────────────────────────────────────────────────

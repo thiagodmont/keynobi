@@ -1,4 +1,5 @@
 use crate::models::device::{AvailableSystemImage, AvdInfo, Device, DeviceDefinition, SdkDownloadProgress, SystemImageInfo};
+use crate::models::error::AppError;
 use crate::services::adb_manager::{
     DeviceState, create_avd, delete_avd, download_system_image, enrich_device_props,
     get_adb_path, get_avdmanager_path, get_emulator_path, get_sdkmanager_path,
@@ -20,6 +21,25 @@ pub struct DeviceListChangedEvent {
     pub devices: Vec<Device>,
 }
 
+// ── Validation helpers ─────────────────────────────────────────────────────────
+
+/// Validate an ADB device serial against an allowlist.
+/// Allowed: alphanumeric, colon, dot, hyphen, underscore. Max 64 chars.
+fn validate_device_serial(serial: &str) -> Result<(), AppError> {
+    if serial.is_empty() {
+        return Err(AppError::InvalidInput("Device serial must not be empty".to_string()));
+    }
+    if serial.len() > 64 {
+        return Err(AppError::InvalidInput("Device serial is too long (max 64 characters)".to_string()));
+    }
+    if !serial.chars().all(|c| c.is_alphanumeric() || matches!(c, ':' | '.' | '-' | '_')) {
+        return Err(AppError::InvalidInput(format!(
+            "Invalid device serial '{serial}': only alphanumeric, ':', '.', '-', '_' are allowed"
+        )));
+    }
+    Ok(())
+}
+
 // ── Device commands ────────────────────────────────────────────────────────────
 
 /// Return the current list of connected ADB devices (physical + emulators).
@@ -35,7 +55,7 @@ pub async fn list_adb_devices(
 pub async fn refresh_devices(
     device_state: State<'_, DeviceState>,
 ) -> Result<Vec<Device>, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     let mut devices = list_devices(&adb).await;
     for d in &mut devices {
@@ -50,11 +70,12 @@ pub async fn refresh_devices(
 pub async fn select_device(
     serial: String,
     device_state: State<'_, DeviceState>,
-) -> Result<(), String> {
+) -> Result<(), AppError> {
+    validate_device_serial(&serial)?;
     device_state.0.lock().await.selected_serial = Some(serial.clone());
-    let mut settings = settings_manager::load_settings();
+    let (mut settings, _) = settings_manager::load_settings();
     settings.build.selected_device = Some(serial);
-    settings_manager::save_settings(&settings)
+    settings_manager::save_settings(&settings).map_err(AppError::SettingsError)
 }
 
 /// Return the currently selected device serial.
@@ -70,10 +91,14 @@ pub async fn get_selected_device(
 pub async fn install_apk_on_device(
     serial: String,
     apk_path: String,
-) -> Result<String, String> {
-    let settings = settings_manager::load_settings();
+) -> Result<String, AppError> {
+    validate_device_serial(&serial)?;
+    if !std::path::Path::new(&apk_path).exists() {
+        return Err(AppError::NotFound(format!("APK file not found: {apk_path}")));
+    }
+    let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    install_apk(&adb, &serial, &apk_path).await
+    install_apk(&adb, &serial, &apk_path).await.map_err(AppError::Io)
 }
 
 /// Launch an app on the given device.
@@ -82,10 +107,11 @@ pub async fn launch_app_on_device(
     serial: String,
     package: String,
     activity: Option<String>,
-) -> Result<String, String> {
-    let settings = settings_manager::load_settings();
+) -> Result<String, AppError> {
+    validate_device_serial(&serial)?;
+    let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    launch_app(&adb, &serial, &package, activity.as_deref()).await
+    launch_app(&adb, &serial, &package, activity.as_deref()).await.map_err(AppError::ProcessFailed)
 }
 
 /// Force-stop an app on the given device.
@@ -93,10 +119,11 @@ pub async fn launch_app_on_device(
 pub async fn stop_app_on_device(
     serial: String,
     package: String,
-) -> Result<(), String> {
-    let settings = settings_manager::load_settings();
+) -> Result<(), AppError> {
+    validate_device_serial(&serial)?;
+    let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    stop_app(&adb, &serial, &package).await
+    stop_app(&adb, &serial, &package).await.map_err(AppError::ProcessFailed)
 }
 
 /// Return the list of installed AVDs.
@@ -114,7 +141,7 @@ pub async fn launch_avd(
     app_handle: AppHandle,
     device_state: State<'_, DeviceState>,
 ) -> Result<String, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     let emulator = get_emulator_path(&settings);
 
@@ -133,10 +160,11 @@ pub async fn launch_avd(
 
 /// Kill an emulator.
 #[tauri::command]
-pub async fn stop_avd(serial: String) -> Result<(), String> {
-    let settings = settings_manager::load_settings();
+pub async fn stop_avd(serial: String) -> Result<(), AppError> {
+    validate_device_serial(&serial)?;
+    let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    stop_emulator(&adb, &serial).await
+    stop_emulator(&adb, &serial).await.map_err(AppError::ProcessFailed)
 }
 
 /// Start background polling for device connections (every 3 seconds).
@@ -161,13 +189,20 @@ pub async fn start_device_polling(
     }
 
     let app = app_handle.clone();
+    let device_state_bg = device_state.0.clone();
     tokio::spawn(async move {
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let adb = get_adb_path(&settings);
         let mut last_serials: Vec<String> = vec![];
 
         loop {
             tokio::time::sleep(Duration::from_secs(3)).await;
+
+            // Exit cleanly when stop_device_polling or graceful shutdown sets this to false.
+            if !device_state_bg.lock().await.polling {
+                tracing::debug!("Device polling stopped");
+                break;
+            }
 
             let mut current = list_devices(&adb).await;
             let current_serials: Vec<String> = current.iter().map(|d| d.serial.clone()).collect();
@@ -206,14 +241,14 @@ pub async fn stop_device_polling(
 /// Return all installed system images from `$ANDROID_HOME/system-images/`.
 #[tauri::command]
 pub async fn list_system_images_cmd() -> Result<Vec<SystemImageInfo>, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     Ok(list_system_images(&settings))
 }
 
 /// Return hardware device definitions from `avdmanager list device -c`.
 #[tauri::command]
 pub async fn list_device_definitions_cmd() -> Result<Vec<DeviceDefinition>, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let avdmanager = get_avdmanager_path(&settings);
     Ok(list_device_definitions(&avdmanager).await)
 }
@@ -225,7 +260,7 @@ pub async fn create_avd_device(
     system_image: String,
     device: Option<String>,
 ) -> Result<Vec<AvdInfo>, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let avdmanager = get_avdmanager_path(&settings);
     create_avd(&avdmanager, &name, &system_image, device.as_deref()).await?;
     Ok(list_avds())
@@ -234,7 +269,7 @@ pub async fn create_avd_device(
 /// Delete an existing AVD using avdmanager.
 #[tauri::command]
 pub async fn delete_avd_device(name: String) -> Result<Vec<AvdInfo>, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let avdmanager = get_avdmanager_path(&settings);
     delete_avd(&avdmanager, &name).await?;
     Ok(list_avds())
@@ -243,7 +278,7 @@ pub async fn delete_avd_device(name: String) -> Result<Vec<AvdInfo>, String> {
 /// Wipe an AVD's user data by relaunching it with -wipe-data.
 #[tauri::command]
 pub async fn wipe_avd_data_cmd(name: String) -> Result<(), String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let emulator = get_emulator_path(&settings);
     let adb = get_adb_path(&settings);
     wipe_avd_data(&emulator, &adb, &name).await
@@ -253,7 +288,7 @@ pub async fn wipe_avd_data_cmd(name: String) -> Result<(), String> {
 /// Cross-references installed images so the frontend can show installed/not-installed state.
 #[tauri::command]
 pub async fn list_available_system_images_cmd() -> Result<Vec<AvailableSystemImage>, String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let sdkmanager = get_sdkmanager_path(&settings);
     Ok(list_available_system_images(&sdkmanager, &settings).await)
 }
@@ -264,7 +299,7 @@ pub async fn download_system_image_cmd(
     sdk_id: String,
     on_progress: Channel<SdkDownloadProgress>,
 ) -> Result<(), String> {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     let sdkmanager = get_sdkmanager_path(&settings);
 
     let channel_clone = on_progress.clone();
@@ -286,4 +321,43 @@ pub async fn download_system_image_cmd(
     });
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn valid_serials_pass() {
+        assert!(validate_device_serial("emulator-5554").is_ok());
+        assert!(validate_device_serial("192.168.1.100:5555").is_ok());
+        assert!(validate_device_serial("R5CNA0ZVXXX").is_ok());
+        assert!(validate_device_serial("ce121507d0e5de0e03").is_ok());
+    }
+
+    #[test]
+    fn invalid_serials_rejected() {
+        assert!(validate_device_serial("").is_err());
+        assert!(validate_device_serial("serial; rm -rf /").is_err());
+        assert!(validate_device_serial("$(evil)").is_err());
+        assert!(validate_device_serial(&"a".repeat(65)).is_err());
+        assert!(validate_device_serial("emulator 5554").is_err()); // space
+        assert!(validate_device_serial("emulator\n5554").is_err());
+    }
+
+    #[test]
+    fn serial_exactly_64_chars_passes() {
+        let serial = "a".repeat(64);
+        assert!(validate_device_serial(&serial).is_ok());
+    }
+
+    #[test]
+    fn serial_tab_char_is_rejected() {
+        assert!(validate_device_serial("emulator\t5554").is_err());
+    }
+
+    #[test]
+    fn serial_carriage_return_is_rejected() {
+        assert!(validate_device_serial("emulator\r5554").is_err());
+    }
 }

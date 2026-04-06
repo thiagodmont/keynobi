@@ -7,6 +7,8 @@ import {
   type AppSettings,
   formatError,
 } from "@/lib/tauri-api";
+import { listen } from "@tauri-apps/api/event";
+import { showToast } from "@/components/common/Toast";
 
 export type { AppSettings };
 
@@ -36,6 +38,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     hoverDelayMs: 500,
     navigationHistoryDepth: 50,
     recentFilesLimit: 20,
+    logRetentionDays: 7,
   },
   build: {
     gradleJvmArgs: null,
@@ -54,6 +57,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     logcatDefaultCount: 200,
     buildLogDefaultLines: 200,
   },
+  telemetry: { enabled: false },
   recentProjects: [],
   lastActiveProject: null,
 };
@@ -72,7 +76,9 @@ function scheduleSave() {
     try {
       await saveSettingsIpc(settingsState);
     } catch (err) {
-      console.error("Failed to save settings:", formatError(err));
+      const msg = formatError(err);
+      console.error("Failed to save settings:", msg);
+      showToast(`Settings could not be saved: ${msg}`, "error");
     }
   }, 500);
 }
@@ -81,15 +87,21 @@ export async function loadSettings(): Promise<void> {
   try {
     const loaded = await getSettings();
     setSettingsState(loaded);
-  } catch {
-    // First launch or Tauri not available — use defaults
+  } catch (err) {
+    // First launch: settings file doesn't exist yet — expected, use defaults.
+    // For other unexpected errors, log but don't Toast (app still works with defaults).
+    const msg = formatError(err);
+    if (!msg.includes("No such file") && !msg.includes("os error 2")) {
+      console.error("[settings] Unexpected error loading settings:", msg);
+    }
   }
 }
 
-export function updateSetting<
-  S extends keyof AppSettings,
-  K extends keyof AppSettings[S],
->(section: S, key: K, value: AppSettings[S][K]): void {
+export function updateSetting<S extends keyof AppSettings, K extends keyof AppSettings[S]>(
+  section: S,
+  key: K,
+  value: AppSettings[S][K]
+): void {
   setSettingsState(section, key as never, value as never);
   scheduleSave();
 }
@@ -98,8 +110,13 @@ export async function resetSettings(): Promise<void> {
   try {
     const defaults = await resetSettingsToDefaults();
     setSettingsState(defaults);
-  } catch {
+  } catch (err) {
+    const msg = formatError(err);
+    console.error("[settings] Failed to reset settings via backend:", msg);
+    // Fall back to in-memory defaults — the user still gets a reset, but
+    // the file on disk may be out of sync.
     setSettingsState(structuredClone(DEFAULT_SETTINGS));
+    showToast(`Settings reset to defaults (backend error: ${msg})`, "error");
   }
 }
 
@@ -107,18 +124,25 @@ export function getDefaults(): AppSettings {
   return DEFAULT_SETTINGS;
 }
 
+// Listen for settings corruption detected by the Rust backend on startup.
+// Guard with typeof window to avoid running in test environments.
+if (typeof window !== "undefined") {
+  listen("settings:corrupted", () => {
+    showToast(
+      "Settings file was corrupted and has been reset to defaults. Your previous settings have been lost.",
+      "error"
+    );
+  }).catch(() => {
+    // Non-critical: if listen fails (e.g., in tests), ignore silently.
+  });
+}
+
 // Apply CSS variable effects when appearance/editor settings change
 if (typeof document !== "undefined") {
   createEffect(() => {
     const root = document.documentElement;
-    root.style.setProperty(
-      "--font-size-editor",
-      `${settingsState.editor.fontSize}px`
-    );
-    root.style.setProperty(
-      "--font-size-ui",
-      `${settingsState.appearance.uiFontSize}px`
-    );
+    root.style.setProperty("--font-size-editor", `${settingsState.editor.fontSize}px`);
+    root.style.setProperty("--font-size-ui", `${settingsState.appearance.uiFontSize}px`);
     root.style.setProperty("--font-mono", settingsState.editor.fontFamily);
   });
 }

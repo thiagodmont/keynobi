@@ -41,9 +41,13 @@ export type { SdkDownloadProgress } from "./SdkDownloadProgress";
 export type { BuildVariant } from "./BuildVariant";
 export type { VariantList } from "./VariantList";
 
+// Errors
+export type { AppError } from "./AppError";
+
 // Settings (keep only what the frontend actively uses)
 export type { AppSettings } from "./AppSettings";
 export type { McpSettings } from "./McpSettings";
+export type { TelemetrySettings } from "./TelemetrySettings";
 
 // Projects
 export type { ProjectEntry } from "./ProjectEntry";

@@ -6,6 +6,7 @@ use ts_rs::TS;
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
 #[serde(rename_all = "camelCase", default)]
 #[ts(export, export_to = "../../src/bindings/")]
+#[derive(Default)]
 pub struct ProjectEntry {
     /// Deterministic hex ID derived from the canonical project path.
     pub id: String,
@@ -28,20 +29,6 @@ pub struct ProjectEntry {
     pub last_device: Option<String>,
 }
 
-impl Default for ProjectEntry {
-    fn default() -> Self {
-        Self {
-            id: String::new(),
-            path: String::new(),
-            name: String::new(),
-            gradle_root: None,
-            last_opened: String::new(),
-            pinned: false,
-            last_build_variant: None,
-            last_device: None,
-        }
-    }
-}
 
 /// All app settings persisted to `~/.keynobi/settings.json`.
 /// Every field uses `#[serde(default)]` so the file is forward-compatible —
@@ -49,6 +36,7 @@ impl Default for ProjectEntry {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
 #[serde(rename_all = "camelCase", default)]
 #[ts(export, export_to = "../../src/bindings/")]
+#[derive(Default)]
 pub struct AppSettings {
     pub editor: EditorSettings,
     pub appearance: AppearanceSettings,
@@ -60,6 +48,7 @@ pub struct AppSettings {
     pub build: BuildSettings,
     pub logcat: LogcatSettings,
     pub mcp: McpSettings,
+    pub telemetry: TelemetrySettings,
     /// Registry of recently-opened projects.  Capped at 20 entries; oldest
     /// non-pinned entry is evicted when the cap is exceeded.
     pub recent_projects: Vec<ProjectEntry>,
@@ -101,6 +90,7 @@ pub struct SearchSettings {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
 #[serde(rename_all = "camelCase", default)]
 #[ts(export, export_to = "../../src/bindings/")]
+#[derive(Default)]
 pub struct AndroidSettings {
     pub sdk_path: Option<String>,
 }
@@ -116,6 +106,7 @@ pub struct LspSettings {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
 #[serde(rename_all = "camelCase", default)]
 #[ts(export, export_to = "../../src/bindings/")]
+#[derive(Default)]
 pub struct JavaSettings {
     pub home: Option<String>,
 }
@@ -132,6 +123,8 @@ pub struct AdvancedSettings {
     pub hover_delay_ms: u32,
     pub navigation_history_depth: u32,
     pub recent_files_limit: u32,
+    /// Number of days to retain log files in ~/.keynobi/logs/ (default: 7).
+    pub log_retention_days: u32,
 }
 
 /// Build system settings: Gradle flags, auto-deploy behaviour, last-used selections.
@@ -162,6 +155,16 @@ pub struct LogcatSettings {
     pub auto_start: bool,
 }
 
+/// Telemetry / crash-reporting settings.
+#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct TelemetrySettings {
+    /// Whether to send anonymous crash reports to help improve the app.
+    /// Default: false — user must opt in.
+    pub enabled: bool,
+}
+
 /// Settings for the MCP (Model Context Protocol) server integration.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
 #[serde(rename_all = "camelCase", default)]
@@ -185,24 +188,6 @@ pub struct McpSettings {
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
-impl Default for AppSettings {
-    fn default() -> Self {
-        Self {
-            editor: EditorSettings::default(),
-            appearance: AppearanceSettings::default(),
-            search: SearchSettings::default(),
-            android: AndroidSettings::default(),
-            lsp: LspSettings::default(),
-            java: JavaSettings::default(),
-            advanced: AdvancedSettings::default(),
-            build: BuildSettings::default(),
-            logcat: LogcatSettings::default(),
-            mcp: McpSettings::default(),
-            recent_projects: Vec::new(),
-            last_active_project: None,
-        }
-    }
-}
 
 /// Maximum number of entries kept in `AppSettings.recent_projects`.
 /// The oldest non-pinned entry is evicted when this limit is exceeded.
@@ -240,11 +225,6 @@ impl Default for SearchSettings {
     }
 }
 
-impl Default for AndroidSettings {
-    fn default() -> Self {
-        Self { sdk_path: None }
-    }
-}
 
 impl Default for LspSettings {
     fn default() -> Self {
@@ -255,11 +235,6 @@ impl Default for LspSettings {
     }
 }
 
-impl Default for JavaSettings {
-    fn default() -> Self {
-        Self { home: None }
-    }
-}
 
 impl Default for AdvancedSettings {
     fn default() -> Self {
@@ -272,6 +247,7 @@ impl Default for AdvancedSettings {
             hover_delay_ms: 500,
             navigation_history_depth: 50,
             recent_files_limit: 20,
+            log_retention_days: 7,
         }
     }
 }
@@ -366,5 +342,6 @@ mod tests {
         assert_eq!(d.lsp_max_message_size_mb, 64);
         assert_eq!(d.hover_delay_ms, 500);
         assert_eq!(d.recent_files_limit, 20);
+        assert_eq!(d.log_retention_days, 7);
     }
 }

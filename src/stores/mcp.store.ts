@@ -96,7 +96,8 @@ export async function loadMcpActivity(limit = 200): Promise<void> {
         s.activityLoading = false;
       })
     );
-  } catch {
+  } catch (err) {
+    console.error("[mcp] Failed to load MCP activity:", err);
     setMcpState("activityLoading", false);
   }
 }

@@ -22,17 +22,13 @@ pub struct BuildVariant {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/bindings/")]
+#[derive(Default)]
 pub struct VariantList {
     pub variants: Vec<BuildVariant>,
     /// Currently selected variant name.
     pub active: Option<String>,
 }
 
-impl Default for VariantList {
-    fn default() -> Self {
-        Self { variants: vec![], active: None }
-    }
-}
 
 #[cfg(test)]
 mod tests {

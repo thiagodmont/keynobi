@@ -16,7 +16,7 @@ async fn resolve_gradle_root(fs_state: &State<'_, FsState>) -> Result<PathBuf, S
 }
 
 fn restore_active(mut list: VariantList) -> VariantList {
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
     list.active = settings.build.build_variant;
     list
 }
@@ -84,7 +84,7 @@ pub async fn get_variants_from_gradle(
         return Err("gradlew not found — cannot detect variants".to_string());
     }
 
-    let settings = settings_manager::load_settings();
+    let (settings, _) = settings_manager::load_settings();
 
     // Ensure gradlew is executable before spawning it (on macOS/Linux the file
     // may not have execute permission set, causing Permission denied errors).
@@ -150,7 +150,7 @@ pub async fn get_variants_from_gradle(
 /// Persist the active build variant to settings.
 #[tauri::command]
 pub async fn set_active_variant(variant: String) -> Result<(), String> {
-    let mut settings = settings_manager::load_settings();
+    let (mut settings, _) = settings_manager::load_settings();
     settings.build.build_variant = Some(variant);
     settings_manager::save_settings(&settings)
 }

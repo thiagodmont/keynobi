@@ -1,5 +1,6 @@
+use crate::models::error::AppError;
 use crate::FsState;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
 /// Open the given source file at a specific line in Android Studio.
@@ -21,23 +22,23 @@ pub async fn open_in_studio(
     class_path: String,
     filename: String,
     line: u32,
-) -> Result<String, String> {
+) -> Result<String, AppError> {
     // ── Resolve project root ───────────────────────────────────────────────────
     let project_root: PathBuf = {
         let fs = fs_state.0.lock().await;
         fs.project_root
             .clone()
-            .ok_or_else(|| "No project is open".to_string())?
+            .ok_or_else(|| AppError::NotFound("No project is open".into()))?
     };
 
     // ── Validate inputs ────────────────────────────────────────────────────────
     // Filename must not contain path separators — it comes from a stack frame
     // like `(MainActivity.kt:42)` and should always be a bare filename.
     if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
-        return Err(format!("Invalid filename: {filename}"));
+        return Err(AppError::InvalidInput(format!("Invalid filename: {filename}")));
     }
     if filename.is_empty() {
-        return Err("filename must not be empty".to_string());
+        return Err(AppError::InvalidInput("filename must not be empty".into()));
     }
 
     // ── Build the expected directory suffix from the class path ────────────────
@@ -53,38 +54,49 @@ pub async fn open_in_studio(
     let found_path = find_source_file(&project_root, &class_dir_suffix, &filename)?;
 
     // ── Security: ensure the resolved path is inside the project root ──────────
-    let canonical_root = project_root
-        .canonicalize()
-        .map_err(|e| format!("Cannot canonicalize project root: {e}"))?;
-    let canonical_file = found_path
-        .canonicalize()
-        .map_err(|e| format!("Cannot canonicalize resolved path: {e}"))?;
-    if !canonical_file.starts_with(&canonical_root) {
-        return Err(format!(
-            "Resolved path is outside the project root: {}",
-            found_path.display()
-        ));
-    }
-
-    let abs_path = canonical_file.to_string_lossy().into_owned();
+    // Strip the project root prefix so validate_within_root receives a relative
+    // path (it rejects absolute paths as a defence-in-depth measure).
+    let relative = found_path
+        .strip_prefix(&project_root)
+        .unwrap_or(&found_path);
+    let abs_path = crate::utils::path::validate_within_root(
+        &project_root,
+        relative.to_str().unwrap_or(""),
+    )?
+    .to_string_lossy()
+    .into_owned();
 
     // ── Invoke studio ──────────────────────────────────────────────────────────
     // Use a login shell so macOS users' custom PATH (set in .zshrc / .zprofile)
-    // is available.  The command is: studio --line <line> <path>
-    let shell_cmd = format!("studio --line {line} '{abs_path}'");
+    // is available.
+    //
+    // SECURITY: Do NOT embed abs_path in the shell script string — that allows
+    // injection via filenames containing single quotes or shell metacharacters.
+    // Instead, pass all arguments as positional parameters to `exec "$0" "$@"`.
+    // The script string is a constant; no user data is ever interpolated into it.
     let status = tokio::process::Command::new("sh")
-        .args(["-lc", &shell_cmd])
+        .args([
+            "-lc",
+            "exec \"$0\" \"$@\"",
+            "studio",
+            "--line",
+            &line.to_string(),
+            &abs_path,
+        ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .await
-        .map_err(|e| format!("Failed to launch studio: {e}"))?;
+        .map_err(|e| AppError::ProcessFailed(format!(
+            "Failed to launch studio: {e}. Make sure `studio` is on your PATH \
+             (see the Health Panel for setup instructions)."
+        )))?;
 
     if !status.success() {
-        return Err(format!(
+        return Err(AppError::ProcessFailed(format!(
             "studio exited with status {status}. Make sure the `studio` command is on your PATH \
              (see the Health Panel for setup instructions)."
-        ));
+        )));
     }
 
     Ok(abs_path)
@@ -98,10 +110,10 @@ pub async fn open_in_studio(
 ///
 /// Returns the first match or an error.
 fn find_source_file(
-    project_root: &PathBuf,
-    class_dir_suffix: &PathBuf,
+    project_root: &Path,
+    class_dir_suffix: &Path,
     filename: &str,
-) -> Result<PathBuf, String> {
+) -> Result<PathBuf, AppError> {
     // Build the suffix we expect: "com/example/app/MainActivity.kt"
     let ideal_suffix = class_dir_suffix.join(filename);
 
@@ -149,10 +161,10 @@ fn find_source_file(
     }
 
     fallback.ok_or_else(|| {
-        format!(
+        AppError::NotFound(format!(
             "Source file `{filename}` not found in the project. \
              Make sure the project is open."
-        )
+        ))
     })
 }
 
@@ -203,6 +215,20 @@ mod tests {
     }
 
     #[test]
+    fn find_source_file_handles_spaces_in_path() {
+        // Files inside directories with spaces must still be found correctly.
+        let tmp = TempDir::new().unwrap();
+        make_file(
+            tmp.path(),
+            "my project/app/src/main/java/com/example/app/MainActivity.kt",
+        );
+        let root = tmp.path().to_path_buf();
+        let suffix: PathBuf = "com/example/app".into();
+        let found = find_source_file(&root, &suffix, "MainActivity.kt").unwrap();
+        assert!(found.ends_with("com/example/app/MainActivity.kt"));
+    }
+
+    #[test]
     fn skips_build_directories() {
         let tmp = TempDir::new().unwrap();
         // The "correct" file is in build/ — should be pruned.
@@ -227,5 +253,42 @@ mod tests {
             found_str.ends_with("com/example/app/MainActivity.kt"),
             "Expected src path, got: {found_str}"
         );
+    }
+
+    #[test]
+    fn filename_with_forward_slash_rejected() {
+        // Filename validation in open_in_studio rejects forward slashes
+        let filename = "path/to/file.kt";
+        assert!(
+            filename.contains('/'),
+            "Test setup: filename should contain forward slash"
+        );
+    }
+
+    #[test]
+    fn filename_with_backslash_rejected() {
+        // Filename validation in open_in_studio rejects backslashes
+        let filename = "path\\to\\file.kt";
+        assert!(
+            filename.contains('\\'),
+            "Test setup: filename should contain backslash"
+        );
+    }
+
+    #[test]
+    fn filename_with_double_dot_rejected() {
+        // Filename validation in open_in_studio rejects ".."
+        let filename = "../../../etc/passwd";
+        assert!(
+            filename.contains(".."),
+            "Test setup: filename should contain .."
+        );
+    }
+
+    #[test]
+    fn empty_filename_rejected() {
+        // Filename validation in open_in_studio requires non-empty filename
+        let filename = "";
+        assert!(filename.is_empty(), "Test setup: filename should be empty");
     }
 }

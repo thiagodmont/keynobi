@@ -76,6 +76,7 @@ fn read_build_gradle(module_dir: &Path) -> Result<(PathBuf, String), String> {
 
 /// Extract an integer value for any of the given key names.
 /// Matches: `compileSdk = 35`, `compileSdkVersion(35)`, `compileSdkVersion = 35`
+#[allow(clippy::manual_strip)]
 fn extract_int_value(content: &str, keys: &[&str]) -> Option<i64> {
     for key in keys {
         for line in content.lines() {
@@ -88,7 +89,7 @@ fn extract_int_value(content: &str, keys: &[&str]) -> Option<i64> {
                 }
                 let rest = trimmed[key.len()..].trim_start();
                 let digits: String = rest
-                    .trim_start_matches(|c| c == '=' || c == '(' || c == ' ')
+                    .trim_start_matches(['=', '(', ' '])
                     .chars()
                     .take_while(|c| c.is_ascii_digit())
                     .collect();
@@ -102,6 +103,7 @@ fn extract_int_value(content: &str, keys: &[&str]) -> Option<i64> {
 }
 
 /// Extract a quoted string value: `applicationId = "com.example"` or `applicationId "com.example"`
+#[allow(clippy::manual_strip)]
 fn extract_string_value(content: &str, key: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
@@ -112,7 +114,7 @@ fn extract_string_value(content: &str, key: &str) -> Option<String> {
                 continue;
             }
             let rest = trimmed[key.len()..].trim_start();
-            let rest = rest.trim_start_matches(|c: char| c == '=' || c == ' ');
+            let rest = rest.trim_start_matches(['=', ' ']);
             if let Some(start) = rest.find('"') {
                 if let Some(end) = rest[start + 1..].find('"') {
                     return Some(rest[start + 1..start + 1 + end].to_string());
@@ -267,6 +269,7 @@ fn parse_named_blocks(block: &str) -> Vec<(String, String)> {
     result
 }
 
+#[allow(clippy::manual_strip)]
 fn extract_bool_value(content: &str, keys: &[&str]) -> Option<bool> {
     for key in keys {
         for line in content.lines() {
@@ -278,7 +281,7 @@ fn extract_bool_value(content: &str, keys: &[&str]) -> Option<bool> {
                     continue;
                 }
                 let rest = trimmed[key.len()..].trim();
-                let rest = rest.trim_start_matches(|c: char| c == '=' || c == ' ');
+                let rest = rest.trim_start_matches(['=', ' ']);
                 if rest.starts_with("true") {
                     return Some(true);
                 }

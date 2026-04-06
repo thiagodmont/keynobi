@@ -1,11 +1,13 @@
 mod commands;
 pub mod models;
 pub mod services;
+pub mod utils;
 
 use commands::build::{
     cancel_build, find_apk_path, finalize_build, get_build_errors, get_build_history,
     get_build_status, run_gradle_task,
 };
+use tauri::{Emitter, Manager};
 use commands::device::{
     create_avd_device, delete_avd_device, download_system_image_cmd, get_selected_device,
     install_apk_on_device, launch_app_on_device, launch_avd, list_adb_devices, list_avd_devices,
@@ -82,15 +84,97 @@ pub type LogBuffer = Arc<Mutex<VecDeque<LogEntry>>>;
 /// Maximum entries kept in [`LogBuffer`] before the oldest is evicted.
 pub const MAX_LOG_ENTRIES: usize = 50_000;
 
+fn cleanup_old_logs(log_dir: &std::path::Path, retention_days: u32) {
+    let cutoff = std::time::SystemTime::now()
+        .checked_sub(std::time::Duration::from_secs(u64::from(retention_days) * 86_400))
+        .unwrap_or(std::time::UNIX_EPOCH);
+
+    let Ok(entries) = std::fs::read_dir(log_dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // Only touch files matching app.log.* pattern.
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !name.starts_with("app.log") {
+            continue;
+        }
+        if let Ok(meta) = entry.metadata() {
+            if let Ok(modified) = meta.modified() {
+                if modified < cutoff {
+                    let _ = std::fs::remove_file(&path);
+                    tracing::info!("Removed old log file: {}", path.display());
+                }
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+    // ── Logging setup ─────────────────────────────────────────────────────────
+    let log_dir = dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".keynobi")
+        .join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+
+    // Daily rotating file appender. Old files are named app.log.YYYY-MM-DD.
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "app.log");
+    let (non_blocking_file, file_guard) = tracing_appender::non_blocking(file_appender);
+
+    let env_filter = tracing_subscriber::EnvFilter::try_from_env("KEYNOBI_LOG")
+        .unwrap_or_else(|_| {
+            if cfg!(debug_assertions) {
+                tracing_subscriber::EnvFilter::new("debug")
+            } else {
+                tracing_subscriber::EnvFilter::new("warn")
+            }
+        });
+
+    use tracing_subscriber::prelude::*;
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(non_blocking_file)
+                .with_ansi(false)
+                .with_target(true),
         )
-        .with_target(false)
+        .with(
+            // In debug builds, also log to stderr for developer convenience.
+            #[cfg(debug_assertions)]
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_target(false),
+            #[cfg(not(debug_assertions))]
+            tracing_subscriber::layer::Identity::new(),
+        )
+        .with(env_filter)
         .init();
+
+    // Keep the guard alive for the process lifetime so logs are flushed on exit.
+    std::mem::forget(file_guard);
+
+    // ── Sentry crash reporting (optional) ────────────────────────────────────
+    // Only initialized when:
+    //   1. SENTRY_DSN is embedded at build time (distribution builds only)
+    //   2. The user has enabled telemetry in Settings
+    #[cfg(feature = "telemetry")]
+    let _sentry_guard = {
+        let (settings, _) = services::settings_manager::load_settings();
+        option_env!("SENTRY_DSN")
+            .filter(|_| settings.telemetry.enabled)
+            .map(|dsn| {
+                sentry::init((
+                    dsn,
+                    sentry::ClientOptions {
+                        release: sentry::release_name!(),
+                        traces_sample_rate: 0.1,
+                        ..Default::default()
+                    },
+                ))
+            })
+    };
+
+    let log_dir = log_dir.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -103,19 +187,81 @@ pub fn run() {
         .manage(DeviceState::new())
         .manage(new_logcat_state())
         .manage(Arc::new(Mutex::new(VecDeque::<LogEntry>::new())) as LogBuffer)
-        .setup(|app| {
+        .setup(move |app| {
+            let (settings, settings_corrupted) = services::settings_manager::load_settings();
+
+            if settings_corrupted {
+                let handle = app.handle().clone();
+                tokio::spawn(async move {
+                    // Small delay to let the frontend finish mounting before showing Toast.
+                    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
+                    if let Some(win) = handle.get_webview_window("main") {
+                        let _ = win.emit("settings:corrupted", ());
+                    }
+                });
+            }
+
+            // Clean up log files older than the configured retention period.
+            let retention_days = settings.advanced.log_retention_days;
+            let log_dir_cleanup = log_dir.clone();
+            tokio::spawn(async move {
+                cleanup_old_logs(&log_dir_cleanup, retention_days);
+            });
+
             // Auto-start MCP server if the user has enabled it in settings.
-            if services::settings_manager::load_settings().mcp.auto_start {
+            if settings.mcp.auto_start {
                 let handle = app.handle().clone();
                 tokio::spawn(async move {
                     // Small delay so the window finishes initialising first.
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    if let Err(e) = services::mcp_server::start_mcp_server(handle).await {
+                    if let Err(e) = services::mcp_server::start_mcp_server(handle.clone()).await {
                         tracing::warn!("MCP auto-start failed: {}", e);
+                        // Notify the frontend so it can disable MCP UI and show an error.
+                        if let Some(win) = handle.get_webview_window("main") {
+                            let _ = win.emit("mcp:startup-failed", e.to_string());
+                        }
                     }
                 });
             }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let app = window.app_handle().clone();
+                tokio::spawn(async move {
+                    let cleanup = async {
+                        // 1. Cancel any running Gradle build.
+                        let build_state = app.state::<BuildState>();
+                        let process_manager = app.state::<ProcessManager>();
+                        services::build_runner::cancel_build(&build_state, &process_manager).await;
+
+                        // 2. Stop logcat streaming (best-effort).
+                        let logcat_state = app.state::<services::logcat::LogcatState>();
+                        logcat_state.lock().await.streaming = false;
+
+                        // 3. Stop ADB device polling.
+                        let device_state = app.state::<DeviceState>();
+                        device_state.0.lock().await.polling = false;
+                    };
+
+                    // Never block shutdown longer than 3 seconds.
+                    if tokio::time::timeout(
+                        std::time::Duration::from_secs(3),
+                        cleanup,
+                    )
+                    .await
+                    .is_err()
+                    {
+                        tracing::warn!("Graceful shutdown timed out after 3s — forcing close");
+                    }
+
+                    // Allow the window to actually close.
+                    if let Some(win) = app.get_webview_window("main") {
+                        let _ = win.destroy();
+                    }
+                });
+            }
         })
         .invoke_handler(tauri::generate_handler![
             // File system

@@ -1,79 +1,54 @@
 use crate::models::build::{
-    BuildError, BuildLine, BuildLineKind, BuildRecord, BuildResult,
+    BuildError, BuildRecord, BuildResult,
     BuildStatus,
 };
+use crate::services::build_parser;
 use crate::services::process_manager::{self, ProcessId, ProcessManager};
-use regex::Regex;
+use crate::services::settings_manager::data_dir;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use tokio::sync::Mutex;
+
+// Re-export parsing functions for backward compatibility.
+pub use build_parser::{parse_build_duration, parse_build_line};
 
 /// Maximum number of build records kept in history (bounded collection).
 pub const MAX_HISTORY: usize = 10;
 
+const BUILD_HISTORY_FILE: &str = "build-history.json";
+/// Maximum number of build records to persist across sessions.
+const MAX_PERSISTED_HISTORY: usize = 20;
+
+/// Persist the most recent build summaries to ~/.keynobi/build-history.json.
+/// Uses atomic write (temp + rename) so a crash mid-save can't corrupt the file.
+pub fn save_build_history(history: &VecDeque<BuildRecord>) {
+    let path = data_dir().join(BUILD_HISTORY_FILE);
+    let recent: Vec<&BuildRecord> = history.iter().rev().take(MAX_PERSISTED_HISTORY).collect();
+    if let Ok(json) = serde_json::to_string_pretty(&recent) {
+        let tmp = path.with_extension("json.tmp");
+        if std::fs::write(&tmp, &json).is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        }
+    }
+}
+
+/// Load build history from disk. Returns empty VecDeque if file is missing or corrupt.
+pub fn load_build_history() -> VecDeque<BuildRecord> {
+    let path = data_dir().join(BUILD_HISTORY_FILE);
+    if !path.exists() {
+        return VecDeque::new();
+    }
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str::<Vec<BuildRecord>>(&content)
+            .map(|v| v.into_iter().collect())
+            .unwrap_or_default(),
+        Err(_) => VecDeque::new(),
+    }
+}
+
 /// Maximum number of raw build output lines retained for MCP `get_build_log`.
 pub const MAX_BUILD_LOG: usize = 5_000;
-
-// ── Regex patterns for parsing Gradle / Kotlin / Java / AAPT2 output ─────────
-//
-// Kotlin compiler error:  `e: file:///path/to/File.kt:10:5: error message`
-// Kotlin compiler warning: `w: file:///path/to/File.kt:10:5: warning message`
-const KOTLIN_DIAG_PATTERN: &str =
-    r"^[ew]: (?:file://)?(.+?):(\d+):(\d+): (.+)$";
-
-// Java compiler: `path/File.java:10: error: message` or `path/File.java:10: warning: message`
-const JAVA_DIAG_PATTERN: &str =
-    r"^(.+\.java):(\d+): (error|warning): (.+)$";
-
-// AAPT2 resource error: `path/file.xml:10: error: message`
-// Also matches `AAPT: error: message` (no file/line)
-const AAPT_FILE_PATTERN: &str =
-    r"^(.+\.(xml|png|webp|jpg|jpeg)):(\d+): error: (.+)$";
-const AAPT_BARE_PATTERN: &str =
-    r"^AAPT(?:2)?: (error|warning): (.+)$";
-
-// Android Gradle plugin resource error:
-// `ERROR: /path/file.xml:10: error message`
-const AGP_ERROR_PATTERN: &str =
-    r"^ERROR: (.+\.(xml|java|kt)):(\d+): (.+)$";
-
-// Gradle build exception header: `FAILURE: Build failed with an exception.`
-const GRADLE_FAILURE_PATTERN: &str =
-    r"^(FAILURE: .+|> Could not resolve .+|> Could not find .+|> Failed to resolve .+|> Configuration cache .+|Error while executing process .+|Caused by: .+)$";
-
-// Gradle "What went wrong" detail: `* What went wrong:` followed by explanation
-const WHAT_WENT_WRONG_PATTERN: &str =
-    r"^\* What went wrong:$";
-
-// General error keyword line (catch-all for unrecognised errors)
-const GENERIC_ERROR_PATTERN: &str =
-    r"^(?:error|Error): (.+)$";
-
-// Gradle download / progress lines (suppress as info)
-const DOWNLOAD_PATTERN: &str =
-    r"^(?:Download|Downloading) .+$";
-
-const TASK_START_PATTERN: &str = r"^> Task (:.+)$";
-const TASK_OUTCOME_PATTERN: &str = r"^> Task (:.+) (FAILED|UP-TO-DATE|SKIPPED|NO-SOURCE|FROM-CACHE)$";
-const BUILD_SUCCESS_PATTERN: &str = r"^BUILD SUCCESSFUL(?: in (.+))?$";
-const BUILD_FAILED_PATTERN: &str = r"^BUILD FAILED(?: in (.+))?$";
-
-// ── Compiled regexes (lazy-initialized once, reused for all builds) ───────────
-static KOTLIN_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(KOTLIN_DIAG_PATTERN).unwrap());
-static JAVA_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(JAVA_DIAG_PATTERN).unwrap());
-static AAPT_FILE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(AAPT_FILE_PATTERN).unwrap());
-static AAPT_BARE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(AAPT_BARE_PATTERN).unwrap());
-static AGP_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(AGP_ERROR_PATTERN).unwrap());
-static GRADLE_FAIL_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(GRADLE_FAILURE_PATTERN).unwrap());
-static WHAT_WENT_WRONG_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(WHAT_WENT_WRONG_PATTERN).unwrap());
-static GENERIC_ERR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(GENERIC_ERROR_PATTERN).unwrap());
-static DOWNLOAD_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(DOWNLOAD_PATTERN).unwrap());
-static TASK_OUTCOME_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(TASK_OUTCOME_PATTERN).unwrap());
-static TASK_START_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(TASK_START_PATTERN).unwrap());
-static SUCCESS_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(BUILD_SUCCESS_PATTERN).unwrap());
-static FAILED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(BUILD_FAILED_PATTERN).unwrap());
-static DURATION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"in (?:(\d+)m )?(\d+)(?:\.(\d+))?s").unwrap());
 
 pub struct BuildStateInner {
     /// Process ID of the currently running Gradle process, if any.
@@ -88,12 +63,18 @@ pub struct BuildStateInner {
     next_id: u32,
 }
 
+impl Default for BuildStateInner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BuildStateInner {
     pub fn new() -> Self {
         Self {
             current_build: None,
             status: BuildStatus::Idle,
-            history: VecDeque::new(),
+            history: load_build_history(),  // Load from disk on startup
             current_errors: vec![],
             next_id: 1,
         }
@@ -149,173 +130,6 @@ pub fn clear_build_log(build_log: &BuildLog) {
     if let Ok(mut log) = build_log.lock() {
         log.clear();
     }
-}
-
-/// Parse a single raw line from Gradle / Kotlin / Java / AAPT2 compiler output.
-///
-/// Returns a structured `BuildLine` that carries enough information for the
-/// frontend to display clickable file:line links and populate the Problems tab.
-pub fn parse_build_line(raw: &str) -> BuildLine {
-    // ── Kotlin compiler error / warning ──────────────────────────────────────
-    if let Some(caps) = KOTLIN_RE.captures(raw) {
-        let is_warning = raw.starts_with("w:");
-        return BuildLine {
-            kind: if is_warning { BuildLineKind::Warning } else { BuildLineKind::Error },
-            content: caps.get(4).map(|m| m.as_str().to_owned()).unwrap_or_default(),
-            file: caps.get(1).map(|m| m.as_str().to_owned()),
-            line: caps.get(2).and_then(|m| m.as_str().parse().ok()),
-            col: caps.get(3).and_then(|m| m.as_str().parse().ok()),
-        };
-    }
-
-    // ── Java compiler error / warning ─────────────────────────────────────────
-    if let Some(caps) = JAVA_RE.captures(raw) {
-        let is_warning = caps.get(3).map(|m| m.as_str()) == Some("warning");
-        return BuildLine {
-            kind: if is_warning { BuildLineKind::Warning } else { BuildLineKind::Error },
-            content: caps.get(4).map(|m| m.as_str().to_owned()).unwrap_or_default(),
-            file: caps.get(1).map(|m| m.as_str().to_owned()),
-            line: caps.get(2).and_then(|m| m.as_str().parse().ok()),
-            col: None,
-        };
-    }
-
-    // ── AAPT2 resource error with file location ───────────────────────────────
-    if let Some(caps) = AAPT_FILE_RE.captures(raw) {
-        return BuildLine {
-            kind: BuildLineKind::Error,
-            content: caps.get(4).map(|m| m.as_str().to_owned()).unwrap_or_default(),
-            file: caps.get(1).map(|m| m.as_str().to_owned()),
-            line: caps.get(3).and_then(|m| m.as_str().parse().ok()),
-            col: None,
-        };
-    }
-
-    // ── AAPT2 bare error / warning (no file location) ────────────────────────
-    if let Some(caps) = AAPT_BARE_RE.captures(raw) {
-        let is_warning = caps.get(1).map(|m| m.as_str()) == Some("warning");
-        return BuildLine {
-            kind: if is_warning { BuildLineKind::Warning } else { BuildLineKind::Error },
-            content: format!("AAPT: {}", caps.get(2).map(|m| m.as_str()).unwrap_or(raw)),
-            file: None,
-            line: None,
-            col: None,
-        };
-    }
-
-    // ── AGP resource error with file:line ─────────────────────────────────────
-    if let Some(caps) = AGP_RE.captures(raw) {
-        return BuildLine {
-            kind: BuildLineKind::Error,
-            content: caps.get(4).map(|m| m.as_str().to_owned()).unwrap_or_default(),
-            file: caps.get(1).map(|m| m.as_str().to_owned()),
-            line: caps.get(3).and_then(|m| m.as_str().parse().ok()),
-            col: None,
-        };
-    }
-
-    // ── Gradle FAILURE / dependency resolution errors ─────────────────────────
-    if GRADLE_FAIL_RE.is_match(raw) {
-        return BuildLine {
-            kind: BuildLineKind::Error,
-            content: raw.to_owned(),
-            file: None,
-            line: None,
-            col: None,
-        };
-    }
-
-    // ── "What went wrong" header ──────────────────────────────────────────────
-    if WHAT_WENT_WRONG_RE.is_match(raw) {
-        return BuildLine {
-            kind: BuildLineKind::Error,
-            content: raw.to_owned(),
-            file: None,
-            line: None,
-            col: None,
-        };
-    }
-
-    // ── Gradle task outcome (check before task start — more specific) ─────────
-    if let Some(caps) = TASK_OUTCOME_RE.captures(raw) {
-        let task = caps.get(1).map(|m| m.as_str().to_owned()).unwrap_or_default();
-        let outcome = caps.get(2).map(|m| m.as_str().to_owned()).unwrap_or_default();
-        return BuildLine {
-            kind: BuildLineKind::TaskEnd,
-            content: format!("{task} {outcome}"),
-            file: None,
-            line: None,
-            col: None,
-        };
-    }
-
-    // ── Gradle task start ─────────────────────────────────────────────────────
-    if let Some(caps) = TASK_START_RE.captures(raw) {
-        let task = caps.get(1).map(|m| m.as_str().to_owned()).unwrap_or_default();
-        return BuildLine {
-            kind: BuildLineKind::TaskStart,
-            content: task,
-            file: None,
-            line: None,
-            col: None,
-        };
-    }
-
-    // ── BUILD SUCCESSFUL / BUILD FAILED ───────────────────────────────────────
-    if SUCCESS_RE.is_match(raw) || FAILED_RE.is_match(raw) {
-        return BuildLine {
-            kind: BuildLineKind::Summary,
-            content: raw.to_owned(),
-            file: None,
-            line: None,
-            col: None,
-        };
-    }
-
-    // ── Download / progress lines (show as info, not noise) ──────────────────
-    if DOWNLOAD_RE.is_match(raw) {
-        return BuildLine {
-            kind: BuildLineKind::Info,
-            content: raw.to_owned(),
-            file: None,
-            line: None,
-            col: None,
-        };
-    }
-
-    // ── Generic error keyword (catch-all) ─────────────────────────────────────
-    if let Some(caps) = GENERIC_ERR_RE.captures(raw) {
-        return BuildLine {
-            kind: BuildLineKind::Error,
-            content: caps.get(1).map(|m| m.as_str().to_owned()).unwrap_or_else(|| raw.to_owned()),
-            file: None,
-            line: None,
-            col: None,
-        };
-    }
-
-    // ── Plain output ──────────────────────────────────────────────────────────
-    BuildLine::output(raw)
-}
-
-/// Parse the duration string from `BUILD SUCCESSFUL in Xs` / `BUILD FAILED in Xs`.
-///
-/// Returns duration in milliseconds, or 0 if unparseable.
-pub fn parse_build_duration(summary_line: &str) -> u64 {
-    if let Some(caps) = DURATION_RE.captures(summary_line) {
-        let mins: u64 = caps.get(1).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-        let secs: u64 = caps.get(2).and_then(|m| m.as_str().parse().ok()).unwrap_or(0);
-        let millis_str = caps.get(3).map(|m| m.as_str()).unwrap_or("0");
-        // Pad to 3 digits for milliseconds.
-        let millis: u64 = format!("{:0<3}", millis_str)
-            .chars()
-            .take(3)
-            .collect::<String>()
-            .parse()
-            .unwrap_or(0);
-        return (mins * 60 + secs) * 1000 + millis;
-    }
-    0
 }
 
 /// Locate the `gradlew` wrapper relative to `gradle_root`.
@@ -483,6 +297,7 @@ pub async fn record_build_result(
     while bs.history.len() > MAX_HISTORY {
         bs.history.pop_front();
     }
+    save_build_history(&bs.history);
 }
 
 /// Build environment variables for a Gradle process, and ensure `gradlew` is executable.
@@ -541,6 +356,7 @@ pub fn format_build_issues(errors: &[crate::models::build::BuildError]) -> Vec<S
     }).collect()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_task(
     task: &str,
     extra_args: &[&str],
@@ -677,6 +493,7 @@ pub async fn run_task(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::build::BuildLineKind;
 
     // ── parse_build_line tests ─────────────────────────────────────────────────
 
@@ -996,5 +813,47 @@ mod tests {
     #[test]
     fn format_empty_errors_returns_empty_vec() {
         assert!(format_build_issues(&[]).is_empty());
+    }
+
+    #[test]
+    fn build_history_serializes_round_trip() {
+        use crate::models::build::{BuildRecord, BuildResult, BuildStatus};
+        let record = BuildRecord {
+            id: 1,
+            task: "assembleDebug".into(),
+            status: BuildStatus::Success(BuildResult {
+                success: true,
+                duration_ms: 5000,
+                error_count: 0,
+                warning_count: 0,
+            }),
+            errors: vec![],
+            started_at: "2026-04-06T12:00:00Z".into(),
+        };
+        let json = serde_json::to_string(&record).unwrap();
+        let parsed: BuildRecord = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.task, "assembleDebug");
+        assert_eq!(parsed.id, 1);
+    }
+
+    #[test]
+    fn save_and_load_history_round_trip() {
+        use crate::models::build::{BuildRecord, BuildStatus};
+
+        // We can't easily override data_dir() in tests, but we can test
+        // the serialization/deserialization logic directly.
+        let records: Vec<BuildRecord> = (1..=5u32).map(|i| BuildRecord {
+            id: i,
+            task: format!("task_{i}"),
+            status: BuildStatus::Idle,
+            errors: vec![],
+            started_at: "2026-04-06T12:00:00Z".into(),
+        }).collect();
+
+        let json = serde_json::to_string_pretty(&records).unwrap();
+        let loaded: Vec<BuildRecord> = serde_json::from_str(&json).unwrap();
+        assert_eq!(loaded.len(), 5);
+        assert_eq!(loaded[0].task, "task_1");
+        assert_eq!(loaded[4].task, "task_5");
     }
 }

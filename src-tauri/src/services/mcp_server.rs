@@ -86,6 +86,16 @@ impl AndroidMcpServer {
         }
     }
 
+    /// Emit a Tauri event to the main window.
+    /// No-ops silently in headless mode (no app_handle).
+    fn emit_event<S: serde::Serialize + Clone>(&self, event: &str, payload: S) {
+        if let Some(handle) = &self.app_handle {
+            if let Some(win) = handle.get_webview_window("main") {
+                let _ = win.emit(event, payload);
+            }
+        }
+    }
+
     /// Construct standalone, for headless `--mcp` mode.
     pub fn new_headless(
         build_state: BuildState,
@@ -261,7 +271,7 @@ impl AndroidMcpServer {
         validate_gradle_task(&p.task)?;
 
         if let Some(ref variant) = p.variant {
-            let mut settings = settings_manager::load_settings();
+            let (mut settings, _) = settings_manager::load_settings();
             settings.build.build_variant = Some(variant.clone());
             settings_manager::save_settings(&settings)
                 .map_err(|e| McpError::internal_error(e, None))?;
@@ -277,7 +287,7 @@ impl AndroidMcpServer {
                 "gradlew not found. Is this an Android project?", None,
             ))?;
 
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let mut extra: Vec<&str> = Vec::new();
         if settings.build.gradle_parallel { extra.push("--parallel"); }
         if settings.build.gradle_offline { extra.push("--offline"); }
@@ -388,7 +398,8 @@ impl AndroidMcpServer {
         &self,
         Parameters(p): Parameters<GetBuildLogParams>,
     ) -> Result<CallToolResult, McpError> {
-        let mcp_settings = settings_manager::load_settings().mcp;
+        let (settings_for_mcp, _) = settings_manager::load_settings();
+        let mcp_settings = settings_for_mcp.mcp;
         let lines_req = p.lines.unwrap_or(mcp_settings.build_log_default_lines as usize).min(2000);
         let log = self.build_state.build_log.lock()
             .map_err(|_| McpError::internal_error("Lock poisoned", None))?;
@@ -427,7 +438,7 @@ impl AndroidMcpServer {
                 if let Ok(content) = std::fs::read_to_string(path) {
                     if let Some(list) = variant_manager::parse_variants_from_gradle(path, &content) {
                         if !list.variants.is_empty() {
-                            let settings = settings_manager::load_settings();
+                            let (settings, _) = settings_manager::load_settings();
                             let active = settings.build.build_variant.as_deref().unwrap_or("debug");
                             let names: Vec<&str> = list.variants.iter().map(|v| v.name.as_str()).collect();
                             return Ok(CallToolResult::structured(json!({
@@ -448,7 +459,7 @@ impl AndroidMcpServer {
         &self,
         Parameters(p): Parameters<SetVariantParams>,
     ) -> Result<CallToolResult, McpError> {
-        let mut settings = settings_manager::load_settings();
+        let (mut settings, _) = settings_manager::load_settings();
         settings.build.build_variant = Some(p.variant.clone());
         settings_manager::save_settings(&settings)
             .map_err(|e| McpError::internal_error(e, None))?;
@@ -464,7 +475,7 @@ impl AndroidMcpServer {
         let gradle_root = self.get_gradle_root().await
             .ok_or_else(|| McpError::invalid_params("No project open", None))?;
 
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let variant = p.variant.as_deref()
             .or(settings.build.build_variant.as_deref())
             .unwrap_or("debug");
@@ -561,7 +572,7 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
 
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
         let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
@@ -590,7 +601,7 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
 
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
         let serial = adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await;
@@ -652,7 +663,7 @@ impl AndroidMcpServer {
             state.device_serial = serial.clone();
         }
 
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let adb_bin = crate::services::logcat::find_adb_binary(settings.android.sdk_path.as_deref());
         let logcat_state = self.logcat_state.clone();
         let app_handle = self.app_handle.clone();
@@ -678,7 +689,8 @@ impl AndroidMcpServer {
         &self,
         Parameters(p): Parameters<GetLogcatParams>,
     ) -> Result<CallToolResult, McpError> {
-        let mcp_settings = settings_manager::load_settings().mcp;
+        let (settings_for_logcat, _) = settings_manager::load_settings();
+        let mcp_settings = settings_for_logcat.mcp;
         let count = p.count.unwrap_or(mcp_settings.logcat_default_count as usize).min(10_000);
         let only_crashes = p.only_crashes.unwrap_or(false);
         let min_level = p.min_level.as_deref().map(logcat::parse_level_str);
@@ -774,7 +786,7 @@ impl AndroidMcpServer {
     /// List connected ADB devices (always queries ADB for fresh results).
     #[tool(description = "List all connected Android devices and running emulators. Queries ADB directly for fresh results.")]
     async fn list_devices(&self) -> Result<CallToolResult, McpError> {
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
         let mut devices = adb_manager::list_devices(&adb).await;
@@ -813,7 +825,7 @@ impl AndroidMcpServer {
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.device_serial)?;
 
-        let adb = adb_manager::get_adb_path(&settings_manager::load_settings());
+        let adb = { let (s, _) = settings_manager::load_settings(); adb_manager::get_adb_path(&s) };
         match device_inspector::take_screenshot(&adb, &p.device_serial).await {
             Ok(bytes) => Ok(CallToolResult::success(vec![
                 Content::image(BASE64.encode(&bytes), "image/png"),
@@ -832,7 +844,7 @@ impl AndroidMcpServer {
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.device_serial)?;
 
-        let adb = adb_manager::get_adb_path(&settings_manager::load_settings());
+        let adb = { let (s, _) = settings_manager::load_settings(); adb_manager::get_adb_path(&s) };
         match device_inspector::get_device_info(&adb, &p.device_serial).await {
             Ok(info) => Ok(CallToolResult::structured(json!(info))),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -848,7 +860,7 @@ impl AndroidMcpServer {
         validate_device_serial(&p.device_serial)?;
         validate_package_name(&p.package)?;
 
-        let adb = adb_manager::get_adb_path(&settings_manager::load_settings());
+        let adb = { let (s, _) = settings_manager::load_settings(); adb_manager::get_adb_path(&s) };
         match device_inspector::dump_app_info(&adb, &p.device_serial, &p.package).await {
             Ok(info) => Ok(CallToolResult::structured(json!(info))),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -864,7 +876,7 @@ impl AndroidMcpServer {
         validate_device_serial(&p.device_serial)?;
         validate_package_name(&p.package)?;
 
-        let adb = adb_manager::get_adb_path(&settings_manager::load_settings());
+        let adb = { let (s, _) = settings_manager::load_settings(); adb_manager::get_adb_path(&s) };
         match device_inspector::get_memory_info(&adb, &p.device_serial, &p.package).await {
             Ok(info) => Ok(CallToolResult::structured(json!(info))),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -880,7 +892,7 @@ impl AndroidMcpServer {
         validate_device_serial(&p.device_serial)?;
         self.validate_apk_path(&p.apk_path).await?;
 
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
         let result = adb_manager::install_apk(&adb, &p.device_serial, &p.apk_path)
@@ -899,7 +911,7 @@ impl AndroidMcpServer {
         validate_device_serial(&p.device_serial)?;
         validate_package_name(&p.package)?;
 
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
         let result = adb_manager::launch_app(&adb, &p.device_serial, &p.package, p.activity.as_deref())
@@ -918,7 +930,7 @@ impl AndroidMcpServer {
         validate_device_serial(&p.device_serial)?;
         validate_package_name(&p.package)?;
 
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
         adb_manager::stop_app(&adb, &p.device_serial, &p.package)
@@ -952,7 +964,7 @@ impl AndroidMcpServer {
         &self,
         Parameters(p): Parameters<LaunchAvdParams>,
     ) -> Result<CallToolResult, McpError> {
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let emulator = adb_manager::get_emulator_path(&settings);
         let adb = adb_manager::get_adb_path(&settings);
 
@@ -971,7 +983,7 @@ impl AndroidMcpServer {
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.serial)?;
 
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
         adb_manager::stop_emulator(&adb, &p.serial)
@@ -1011,7 +1023,7 @@ impl AndroidMcpServer {
     /// Run system health checks.
     #[tool(description = "Run system health checks: Java, Android SDK, ADB, emulator, and Gradle wrapper availability.")]
     async fn run_health_check(&self) -> Result<CallToolResult, McpError> {
-        let settings = settings_manager::load_settings();
+        let (settings, _) = settings_manager::load_settings();
         let (project_root, gradle_root) = {
             let fs = self.fs_state.0.lock().await;
             (fs.project_root.clone(), fs.gradle_root.clone())
@@ -1204,13 +1216,11 @@ impl ServerHandler for AndroidMcpServer {
             self.tool_router.list_all().len(),
             self.prompt_router.list_all().len()
         );
-        // Emit lifecycle event to Tauri GUI if running.
-        if let Some(ref handle) = self.app_handle {
-            let _ = handle.emit("mcp:client_connected", serde_json::json!({
-                "clientName": client_name,
-                "connectedAt": chrono::Utc::now().to_rfc3339(),
-            }));
-        }
+        // Emit lifecycle event to Tauri GUI if running (no-op in headless mode).
+        self.emit_event("mcp:client_connected", serde_json::json!({
+            "clientName": client_name,
+            "connectedAt": chrono::Utc::now().to_rfc3339(),
+        }));
     }
 
     async fn list_resources(
@@ -1572,7 +1582,7 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
     // Priority: --project arg > last_active_project from settings > current_dir.
     let project_root = project_path
         .or_else(|| {
-            let settings = settings_manager::load_settings();
+            let (settings, _) = settings_manager::load_settings();
             settings.last_active_project.and_then(|p| {
                 let path = PathBuf::from(&p);
                 if path.is_dir() {

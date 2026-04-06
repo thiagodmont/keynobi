@@ -1,0 +1,11 @@
+#!/bin/sh
+set -e
+
+# Lint and format staged frontend files.
+npx lint-staged
+
+# TypeScript type-check (fast, no emit).
+npx tsc --noEmit
+
+# Clippy on Rust — treat warnings as errors.
+(cd src-tauri && cargo clippy --quiet -- -D warnings)

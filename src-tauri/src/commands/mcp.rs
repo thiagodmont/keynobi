@@ -196,9 +196,9 @@ fn is_executable_on_path(name: &str) -> bool {
 #[tauri::command]
 pub async fn get_mcp_activity(limit: Option<u32>) -> Result<Vec<McpActivityEntry>, String> {
     let n = limit.unwrap_or(200).min(2000) as usize;
-    Ok(tokio::task::spawn_blocking(move || mcp_activity::read_activity(n))
+    tokio::task::spawn_blocking(move || mcp_activity::read_activity(n))
         .await
-        .map_err(|e| format!("Failed to read MCP activity log: {e}"))?)
+        .map_err(|e| format!("Failed to read MCP activity log: {e}"))
 }
 
 /// Return the live status of the MCP server: whether a headless process is alive and its PID.

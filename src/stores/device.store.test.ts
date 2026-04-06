@@ -5,6 +5,8 @@ import {
   setAvds,
   pickDevice,
   setLaunchingAvd,
+  onlineDevices,
+  selectedDevice,
   resetDeviceState,
 } from "@/stores/device.store";
 import type { Device, AvdInfo } from "@/bindings";
@@ -97,6 +99,82 @@ describe("device.store", () => {
     resetDeviceState();
     expect(deviceState.devices).toHaveLength(0);
     expect(deviceState.avds).toHaveLength(0);
+    expect(deviceState.selectedSerial).toBeNull();
+  });
+});
+
+describe("device store error state transitions", () => {
+  beforeEach(() => {
+    resetDeviceState();
+  });
+
+  it("onlineDevices excludes offline devices after disconnect update", () => {
+    setDevices(mockDevices);
+    // Simulate a device going offline — its connectionState changes.
+    const updatedDevices: Device[] = [
+      { ...mockDevices[0], connectionState: "offline" },
+      mockDevices[1],
+    ];
+    setDevices(updatedDevices);
+    expect(onlineDevices()).toHaveLength(1);
+    expect(onlineDevices()[0].serial).toBe("ZX1G22ABCD");
+  });
+
+  it("selectedDevice memo returns null when the selected serial is no longer in the device list", () => {
+    setDevices(mockDevices);
+    // Auto-select fires for the first online device.
+    expect(deviceState.selectedSerial).toBe("emulator-5554");
+    // Device list is replaced with a completely different set — selected serial gone.
+    const differentDevice: Device[] = [
+      {
+        serial: "new-device-001",
+        name: "Pixel 8",
+        model: "Pixel 8",
+        deviceKind: "physical",
+        connectionState: "online",
+        apiLevel: 35,
+        androidVersion: "15",
+      },
+    ];
+    // setDevices does NOT auto-select when selectedSerial is already set,
+    // so selectedSerial remains "emulator-5554" while that device is gone.
+    setDevices(differentDevice);
+    // selectedDevice() resolves against the current device list — serial not found → null.
+    expect(selectedDevice()).toBeNull();
+    expect(deviceState.selectedSerial).toBe("emulator-5554");
+  });
+
+  it("onlineDevices returns empty list when all devices go offline", () => {
+    setDevices(mockDevices);
+    expect(onlineDevices()).toHaveLength(2);
+    const allOffline: Device[] = mockDevices.map((d) => ({
+      ...d,
+      connectionState: "offline",
+    }));
+    setDevices(allOffline);
+    expect(onlineDevices()).toHaveLength(0);
+  });
+
+  it("setDevices with empty list clears device list but preserves selectedSerial", () => {
+    setDevices(mockDevices);
+    expect(deviceState.selectedSerial).toBe("emulator-5554");
+    setDevices([]);
+    expect(deviceState.devices).toHaveLength(0);
+    // selectedSerial is NOT cleared — the store does not auto-clear on empty list.
+    expect(deviceState.selectedSerial).toBe("emulator-5554");
+    // selectedDevice() returns null because the serial is not in the (empty) list.
+    expect(selectedDevice()).toBeNull();
+  });
+
+  it("setDevices auto-selects first online device when list changes and none selected", () => {
+    // Start with no selection.
+    expect(deviceState.selectedSerial).toBeNull();
+    // Provide only offline devices — nothing should be auto-selected.
+    const offlineDevices: Device[] = mockDevices.map((d) => ({
+      ...d,
+      connectionState: "offline",
+    }));
+    setDevices(offlineDevices);
     expect(deviceState.selectedSerial).toBeNull();
   });
 });

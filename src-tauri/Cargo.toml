@@ -26,6 +26,7 @@ thiserror = "2"
 # Structured async-aware logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
 # Auto-generate TypeScript interfaces from Rust types
 ts-rs = "12"
 # Home directory resolution (settings, ADB paths)
@@ -45,6 +46,11 @@ schemars = "1.2.1"
 base64 = "0.22.1"
 # Recursive directory walking for source file lookup
 walkdir = "2"
+# Optional Sentry crash reporting (enabled via --features telemetry)
+sentry = { version = "0.34", optional = true, default-features = false, features = ["backtrace", "contexts", "panic"] }
+
+[features]
+telemetry = ["sentry"]
 
 [dev-dependencies]
 # Atomic writes in tests
