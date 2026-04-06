@@ -3,10 +3,9 @@
 /**
  * Telemetry / crash-reporting settings.
  */
-export type TelemetrySettings = {
-  /**
-   * Whether to send anonymous crash reports to help improve the app.
-   * Default: false — user must opt in.
-   */
-  enabled: boolean;
-};
+export type TelemetrySettings = { 
+/**
+ * Whether to send anonymous crash reports to help improve the app.
+ * Default: false — user must opt in.
+ */
+enabled: boolean, };

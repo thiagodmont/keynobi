@@ -4,18 +4,13 @@
  * Running statistics for the current logcat session.
  * Maintained in O(1) per entry by the LogStore.
  */
-export type LogStats = {
-  totalIngested: bigint;
-  /**
-   * Counts indexed by `LogcatLevel::priority()` (0 = Verbose … 5 = Fatal, 6 = Unknown).
-   */
-  countsByLevel: [bigint, bigint, bigint, bigint, bigint, bigint, bigint];
-  crashCount: bigint;
-  jsonCount: bigint;
-  packagesSeen: number;
-  /**
-   * Percentage of the ring buffer currently in use (0.0 – 100.0).
-   * Computed as `(current_len / MAX_LOGCAT_ENTRIES) * 100`.
-   */
-  bufferUsagePct: number;
-};
+export type LogStats = { totalIngested: bigint, 
+/**
+ * Counts indexed by `LogcatLevel::priority()` (0 = Verbose … 5 = Fatal, 6 = Unknown).
+ */
+countsByLevel: [bigint, bigint, bigint, bigint, bigint, bigint, bigint], crashCount: bigint, jsonCount: bigint, packagesSeen: number, 
+/**
+ * Percentage of the ring buffer currently in use (0.0 – 100.0).
+ * Computed as `(current_len / MAX_LOGCAT_ENTRIES) * 100`.
+ */
+bufferUsagePct: number, };
