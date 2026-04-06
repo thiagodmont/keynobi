@@ -192,7 +192,7 @@ pub fn run() {
 
             if settings_corrupted {
                 let handle = app.handle().clone();
-                tokio::spawn(async move {
+                tauri::async_runtime::spawn(async move {
                     // Small delay to let the frontend finish mounting before showing Toast.
                     tokio::time::sleep(std::time::Duration::from_millis(800)).await;
                     if let Some(win) = handle.get_webview_window("main") {
@@ -202,16 +202,13 @@ pub fn run() {
             }
 
             // Clean up log files older than the configured retention period.
-            let retention_days = settings.advanced.log_retention_days;
-            let log_dir_cleanup = log_dir.clone();
-            tokio::spawn(async move {
-                cleanup_old_logs(&log_dir_cleanup, retention_days);
-            });
+            // cleanup_old_logs is synchronous — no spawn needed.
+            cleanup_old_logs(&log_dir, settings.advanced.log_retention_days);
 
             // Auto-start MCP server if the user has enabled it in settings.
             if settings.mcp.auto_start {
                 let handle = app.handle().clone();
-                tokio::spawn(async move {
+                tauri::async_runtime::spawn(async move {
                     // Small delay so the window finishes initialising first.
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                     if let Err(e) = services::mcp_server::start_mcp_server(handle.clone()).await {
@@ -229,7 +226,7 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let app = window.app_handle().clone();
-                tokio::spawn(async move {
+                tauri::async_runtime::spawn(async move {
                     let cleanup = async {
                         // 1. Cancel any running Gradle build.
                         let build_state = app.state::<BuildState>();
