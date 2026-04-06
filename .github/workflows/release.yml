@@ -163,18 +163,21 @@ jobs:
           REPO=${{ github.repository }}
           DATE=$(date -u +%Y-%m-%d)
 
-          cat > release/latest.json << EOF
-          {
-            "version": "${VERSION}",
-            "tag": "v${VERSION}",
-            "releaseDate": "${DATE}",
-            "releaseUrl": "https://github.com/${REPO}/releases/tag/v${VERSION}",
-            "downloads": {
-              "applesilicon": "https://github.com/${REPO}/releases/download/v${VERSION}/Android-Dev-Companion_${VERSION}_arm64.dmg",
-              "intel": "https://github.com/${REPO}/releases/download/v${VERSION}/Android-Dev-Companion_${VERSION}_intel.dmg"
-            }
-          }
-          EOF
+          jq -n \
+            --arg version  "$VERSION" \
+            --arg tag      "v$VERSION" \
+            --arg date     "$DATE" \
+            --arg repo     "$REPO" \
+            '{
+              version:     $version,
+              tag:         $tag,
+              releaseDate: $date,
+              releaseUrl:  ("https://github.com/" + $repo + "/releases/tag/v" + $version),
+              downloads: {
+                applesilicon: ("https://github.com/" + $repo + "/releases/download/v" + $version + "/Android-Dev-Companion_" + $version + "_arm64.dmg"),
+                intel:        ("https://github.com/" + $repo + "/releases/download/v" + $version + "/Android-Dev-Companion_" + $version + "_intel.dmg")
+              }
+            }' > release/latest.json
 
           git add release/latest.json
           git commit -m "chore: update release/latest.json to v${VERSION} [skip ci]"
