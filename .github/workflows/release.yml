@@ -112,3 +112,70 @@ jobs:
           name: dmg-${{ matrix.arch }}
           path: ${{ steps.dmg.outputs.path }}
           retention-days: 1
+
+  # ── Job 3: Create GitHub Release and update release/latest.json ─────────────
+  publish:
+    name: Publish release
+    needs: [check, build]
+    if: needs.check.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download Apple Silicon DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: dmg-arm64
+
+      - name: Download Intel DMG
+        uses: actions/download-artifact@v4
+        with:
+          name: dmg-intel
+
+      - name: Configure git identity
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push tag
+        run: |
+          VERSION=${{ needs.check.outputs.version }}
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${{ needs.check.outputs.version }}
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --generate-notes \
+            "Android-Dev-Companion_${VERSION}_arm64.dmg" \
+            "Android-Dev-Companion_${VERSION}_intel.dmg"
+
+      - name: Update release/latest.json
+        run: |
+          VERSION=${{ needs.check.outputs.version }}
+          REPO=${{ github.repository }}
+          DATE=$(date -u +%Y-%m-%d)
+
+          cat > release/latest.json << EOF
+          {
+            "version": "${VERSION}",
+            "tag": "v${VERSION}",
+            "releaseDate": "${DATE}",
+            "releaseUrl": "https://github.com/${REPO}/releases/tag/v${VERSION}",
+            "downloads": {
+              "applesilicon": "https://github.com/${REPO}/releases/download/v${VERSION}/Android-Dev-Companion_${VERSION}_arm64.dmg",
+              "intel": "https://github.com/${REPO}/releases/download/v${VERSION}/Android-Dev-Companion_${VERSION}_intel.dmg"
+            }
+          }
+          EOF
+
+          git add release/latest.json
+          git commit -m "chore: update release/latest.json to v${VERSION} [skip ci]"
+          git push origin main
