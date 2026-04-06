@@ -622,7 +622,7 @@ export function LogcatPanel(): JSX.Element {
     setAutoScroll(false);
   }
 
-  createMemo(() => {
+  createEffect(() => {
     filteredEntries();
     setCrashCursor((c) => Math.min(c, Math.max(0, crashIndices().length - 1)));
   });

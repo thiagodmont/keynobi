@@ -132,7 +132,7 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
   };
 
   // Watch items length changes for auto-scroll.
-  createMemo(() => {
+  createEffect(() => {
     const count = props.items.length;
     if (count > 0) scheduleAutoScroll();
   });
