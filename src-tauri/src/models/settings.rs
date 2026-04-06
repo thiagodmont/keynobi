@@ -132,6 +132,8 @@ pub struct AdvancedSettings {
     pub hover_delay_ms: u32,
     pub navigation_history_depth: u32,
     pub recent_files_limit: u32,
+    /// Number of days to retain log files in ~/.keynobi/logs/ (default: 7).
+    pub log_retention_days: u32,
 }
 
 /// Build system settings: Gradle flags, auto-deploy behaviour, last-used selections.
@@ -272,6 +274,7 @@ impl Default for AdvancedSettings {
             hover_delay_ms: 500,
             navigation_history_depth: 50,
             recent_files_limit: 20,
+            log_retention_days: 7,
         }
     }
 }
@@ -366,5 +369,6 @@ mod tests {
         assert_eq!(d.lsp_max_message_size_mb, 64);
         assert_eq!(d.hover_delay_ms, 500);
         assert_eq!(d.recent_files_limit, 20);
+        assert_eq!(d.log_retention_days, 7);
     }
 }

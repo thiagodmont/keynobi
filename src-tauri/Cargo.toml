@@ -26,6 +26,7 @@ thiserror = "2"
 # Structured async-aware logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
 # Auto-generate TypeScript interfaces from Rust types
 ts-rs = "12"
 # Home directory resolution (settings, ADB paths)

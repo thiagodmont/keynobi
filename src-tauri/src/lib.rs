@@ -84,15 +84,76 @@ pub type LogBuffer = Arc<Mutex<VecDeque<LogEntry>>>;
 /// Maximum entries kept in [`LogBuffer`] before the oldest is evicted.
 pub const MAX_LOG_ENTRIES: usize = 50_000;
 
+fn cleanup_old_logs(log_dir: &std::path::Path, retention_days: u32) {
+    let cutoff = std::time::SystemTime::now()
+        .checked_sub(std::time::Duration::from_secs(u64::from(retention_days) * 86_400))
+        .unwrap_or(std::time::UNIX_EPOCH);
+
+    let Ok(entries) = std::fs::read_dir(log_dir) else { return };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // Only touch files matching app.log.* pattern.
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !name.starts_with("app.log") {
+            continue;
+        }
+        if let Ok(meta) = entry.metadata() {
+            if let Ok(modified) = meta.modified() {
+                if modified < cutoff {
+                    let _ = std::fs::remove_file(&path);
+                    tracing::info!("Removed old log file: {}", path.display());
+                }
+            }
+        }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
+    // ── Logging setup ─────────────────────────────────────────────────────────
+    let log_dir = dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".keynobi")
+        .join("logs");
+    let _ = std::fs::create_dir_all(&log_dir);
+
+    // Daily rotating file appender. Old files are named app.log.YYYY-MM-DD.
+    let file_appender = tracing_appender::rolling::daily(&log_dir, "app.log");
+    let (non_blocking_file, file_guard) = tracing_appender::non_blocking(file_appender);
+
+    let env_filter = tracing_subscriber::EnvFilter::try_from_env("KEYNOBI_LOG")
+        .unwrap_or_else(|_| {
+            if cfg!(debug_assertions) {
+                tracing_subscriber::EnvFilter::new("debug")
+            } else {
+                tracing_subscriber::EnvFilter::new("warn")
+            }
+        });
+
+    use tracing_subscriber::prelude::*;
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(non_blocking_file)
+                .with_ansi(false)
+                .with_target(true),
         )
-        .with_target(false)
+        .with(
+            // In debug builds, also log to stderr for developer convenience.
+            #[cfg(debug_assertions)]
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_target(false),
+            #[cfg(not(debug_assertions))]
+            tracing_subscriber::layer::Identity::new(),
+        )
+        .with(env_filter)
         .init();
+
+    // Keep the guard alive for the process lifetime so logs are flushed on exit.
+    std::mem::forget(file_guard);
+
+    let log_dir = log_dir.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -105,7 +166,7 @@ pub fn run() {
         .manage(DeviceState::new())
         .manage(new_logcat_state())
         .manage(Arc::new(Mutex::new(VecDeque::<LogEntry>::new())) as LogBuffer)
-        .setup(|app| {
+        .setup(move |app| {
             let (settings, settings_corrupted) = services::settings_manager::load_settings();
 
             if settings_corrupted {
@@ -118,6 +179,13 @@ pub fn run() {
                     }
                 });
             }
+
+            // Clean up log files older than the configured retention period.
+            let retention_days = settings.advanced.log_retention_days;
+            let log_dir_cleanup = log_dir.clone();
+            tokio::spawn(async move {
+                cleanup_old_logs(&log_dir_cleanup, retention_days);
+            });
 
             // Auto-start MCP server if the user has enabled it in settings.
             if settings.mcp.auto_start {

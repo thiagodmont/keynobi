@@ -510,6 +510,24 @@ function AdvancedSettings(props: { matchesSearch: (l: string, d?: string) => boo
           />
         </SettingRow>
       </Show>
+
+      <SectionHeader title="Logging" />
+      <Show when={m("Log retention", "Days to keep log files")}>
+        <SettingRow
+          label="Log retention"
+          description="Days to keep log files in ~/.keynobi/logs/"
+        >
+          <input
+            type="number"
+            min={1}
+            max={365}
+            value={settingsState.advanced.logRetentionDays}
+            onInput={(e) =>
+              updateSetting("advanced", "logRetentionDays", parseInt(e.currentTarget.value) || 7)
+            }
+          />
+        </SettingRow>
+      </Show>
     </>
   );
 }

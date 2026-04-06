@@ -38,6 +38,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     hoverDelayMs: 500,
     navigationHistoryDepth: 50,
     recentFilesLimit: 20,
+    logRetentionDays: 7,
   },
   build: {
     gradleJvmArgs: null,
