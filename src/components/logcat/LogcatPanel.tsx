@@ -548,7 +548,7 @@ export function LogcatPanel(): JSX.Element {
     // Auto-start on device connect
     unlistenDevices = await listenDeviceListChanged((devices) => {
       if (logcatStore.streaming) return;
-      const hasAutoStart = (settingsState as any).logcat?.autoStart !== false;
+      const hasAutoStart = settingsState.logcat?.autoStart !== false;
       if (!hasAutoStart) return;
       const online = devices.find((d) => d.connectionState === "online");
       if (online) {

@@ -807,7 +807,7 @@ function EmptyState(props: {
         "text-align": "center",
       }}
     >
-      <Icon name={props.icon as any} size={28} color="var(--text-muted)" />
+      <Icon name={props.icon} size={28} color="var(--text-muted)" />
       <div>
         <div style={{ "font-size": "13px", "font-weight": "500", color: "var(--text-secondary)", "margin-bottom": "4px" }}>
           {props.title}

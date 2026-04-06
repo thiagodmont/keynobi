@@ -46,8 +46,9 @@ export function DownloadSystemImageDialog(
     try {
       const list = await listAvailableSystemImages();
       setImages(list);
-    } catch (e: any) {
-      setLoadError(typeof e === "string" ? e : `Failed to fetch image list: ${e?.message ?? e}`);
+    } catch (err) {
+      const e = err as { message?: string };
+      setLoadError(typeof err === "string" ? err : `Failed to fetch image list: ${e?.message ?? String(err)}`);
     } finally {
       setLoading(false);
     }
@@ -91,10 +92,11 @@ export function DownloadSystemImageDialog(
           props.onDownloaded();
         }
       });
-    } catch (e: any) {
+    } catch (err) {
+      const e = err as { message?: string };
       setDownloading((prev) =>
         prev
-          ? { ...prev, done: true, error: true, message: typeof e === "string" ? e : `Error: ${e?.message ?? e}` }
+          ? { ...prev, done: true, error: true, message: typeof err === "string" ? err : `Error: ${e?.message ?? String(err)}` }
           : null
       );
     }

@@ -92,8 +92,9 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
     try {
       const avds = await createAvdDevice(n, img.sdkId, selectedDeviceId() || undefined);
       props.onCreated(avds);
-    } catch (e: any) {
-      setError(typeof e === "string" ? e : `Creation failed: ${e?.message ?? e}`);
+    } catch (err) {
+      const e = err as { message?: string };
+      setError(typeof err === "string" ? err : `Creation failed: ${e?.message ?? String(err)}`);
     } finally {
       setCreating(false);
     }
