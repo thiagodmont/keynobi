@@ -167,6 +167,9 @@ async fn record_build_result_success_updates_state() {
     use keynobi_lib::models::build::BuildStatus;
 
     let state = BuildState::new();
+    // Capture history length before recording — startup may load persisted history from disk.
+    let initial_len = state.inner.lock().await.history.len();
+
     let result = BuildResult {
         success: true,
         duration_ms: 3_000,
@@ -189,7 +192,13 @@ async fn record_build_result_success_updates_state() {
         "expected Success status, got: {:?}",
         inner.status
     );
-    assert_eq!(inner.history.len(), 1);
+    // History grows by 1, but is bounded by MAX_HISTORY (evicts oldest when full).
+    let expected_len = (initial_len + 1).min(keynobi_lib::services::build_runner::MAX_HISTORY);
+    assert_eq!(inner.history.len(), expected_len, "history must contain the new record");
+    // The most recent entry must be the one we just recorded.
+    let last = inner.history.back().expect("history must not be empty");
+    assert_eq!(last.task, "assembleDebug");
+    assert!(matches!(last.status, BuildStatus::Success(_)));
     assert_eq!(inner.current_errors.len(), 0);
 }
 
