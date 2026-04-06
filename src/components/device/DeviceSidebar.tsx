@@ -349,7 +349,7 @@ export function DeviceSidebar(): JSX.Element {
                 collapsed={collapsed()}
                 onLaunch={() => handleLaunchAvd(avd)}
                 onStop={() => {
-                  const serial = serialForAvd()(avd.name);
+                  const serial = serialForAvd(avd.name);
                   if (serial) handleStopDevice(serial);
                 }}
                 onDelete={() => handleDeleteAvd(avd)}

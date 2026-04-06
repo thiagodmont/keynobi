@@ -218,6 +218,7 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
          */}
         <For each={visibleItems()}>
           {(item, getLocalIndex) =>
+            // eslint-disable-next-line solid/reactivity
             props.renderItem(item, startIndex() + getLocalIndex())
           }
         </For>

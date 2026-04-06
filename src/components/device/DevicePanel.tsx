@@ -242,11 +242,11 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
                       <AvdRow
                         avd={avd}
                         isRunning={runningAvdNames().has(avd.name)}
-                        runningSerial={serialForAvd()(avd.name)}
+                        runningSerial={serialForAvd(avd.name)}
                         launching={launchingName() === avd.name}
                         onLaunch={() => handleLaunchAvd(avd)}
                         onStop={() => {
-                          const serial = serialForAvd()(avd.name);
+                          const serial = serialForAvd(avd.name);
                           if (serial) handleStopDevice(serial);
                         }}
                         onDelete={() => handleDeleteAvd(avd)}

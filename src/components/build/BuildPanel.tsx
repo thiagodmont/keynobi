@@ -373,10 +373,9 @@ function GeneralErrorGroup(props: { items: DiagnosticItem[] }): JSX.Element {
 }
 
 function DiagnosticRow(props: { item: DiagnosticItem; showLocation: boolean }): JSX.Element {
-  const item = props.item;
   return (
     <button
-      onClick={() => jumpToBuildError(item).catch(console.error)}
+      onClick={() => jumpToBuildError(props.item).catch(console.error)}
       style={{
         display: "flex",
         "align-items": "flex-start",
@@ -387,12 +386,12 @@ function DiagnosticRow(props: { item: DiagnosticItem; showLocation: boolean }): 
         border: "none",
         cursor: "pointer",
         "text-align": "left",
-        "border-left": `3px solid ${item._kind === "error" ? "var(--error, #f87171)" : "var(--warning, #fbbf24)"}`,
+        "border-left": `3px solid ${props.item._kind === "error" ? "var(--error, #f87171)" : "var(--warning, #fbbf24)"}`,
       }}
       onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.05))"; }}
       onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
     >
-      <Show when={props.showLocation && item.line !== null && item.line !== undefined}>
+      <Show when={props.showLocation && props.item.line !== null && props.item.line !== undefined}>
         <span
           style={{
             "font-size": "10px",
@@ -402,19 +401,19 @@ function DiagnosticRow(props: { item: DiagnosticItem; showLocation: boolean }): 
             "padding-top": "1px",
           }}
         >
-          {item.line}:{item.col ?? 1}
+          {props.item.line}:{props.item.col ?? 1}
         </span>
       </Show>
       <span
         style={{
-          color: item._kind === "error" ? "var(--error, #f87171)" : "var(--warning, #fbbf24)",
+          color: props.item._kind === "error" ? "var(--error, #f87171)" : "var(--warning, #fbbf24)",
           "word-break": "break-word",
           "white-space": "pre-wrap",
           "font-size": "11px",
           "line-height": "1.4",
         }}
       >
-        {item.message}
+        {props.item.message}
       </span>
     </button>
   );

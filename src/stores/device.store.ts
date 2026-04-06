@@ -73,7 +73,7 @@ export const runningAvdNames = createMemo((): Set<string> => {
 });
 
 /** Running serial for a given AVD name, if it's currently online. */
-export const serialForAvd = createMemo(() => (avdName: string): string | null => {
+export function serialForAvd(avdName: string): string | null {
   const normalized = avdName.toLowerCase().replace(/[\s_-]/g, "");
   for (const d of deviceState.devices) {
     if (d.deviceKind !== "emulator" || d.connectionState !== "online") continue;
@@ -83,7 +83,7 @@ export const serialForAvd = createMemo(() => (avdName: string): string | null =>
     }
   }
   return null;
-});
+}
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
@@ -149,6 +149,7 @@ export async function initDevices(): Promise<void> {
     await startDevicePolling().catch((err) => {
       console.error("[device] Failed to start device polling:", err);
     });
+    // eslint-disable-next-line solid/reactivity
     await listenDeviceListChanged((newDevices) => {
       setDevices(newDevices);
     });
