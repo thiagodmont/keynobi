@@ -121,102 +121,12 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
     }
   }
 
-  // ── Popover mode ─────────────────────────────────────────────────────────────
-
-  if (isPopover()) {
-    return (
-      <div
-        style={{
-          width: "280px",
-          background: "var(--bg-secondary)",
-          border: "1px solid var(--border)",
-          "border-radius": "6px",
-          "box-shadow": "0 4px 16px rgba(0,0,0,0.4)",
-          overflow: "hidden",
-          display: "flex",
-          "flex-direction": "column",
-          "max-height": "400px",
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            "align-items": "center",
-            padding: "8px 12px",
-            background: "var(--bg-tertiary)",
-            "border-bottom": "1px solid var(--border)",
-            gap: "8px",
-          }}
-        >
-          <span style={{ flex: "1", "font-size": "12px", "font-weight": "600", color: "var(--text-secondary)" }}>
-            Select Device
-          </span>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing()}
-            title="Refresh"
-            style={{
-              background: "none", border: "none", cursor: refreshing() ? "default" : "pointer",
-              color: "var(--text-muted)", "font-size": "14px", opacity: refreshing() ? "0.4" : "1",
-              display: "flex", "align-items": "center",
-            }}
-          >
-            {refreshing() ? "…" : "↻"}
-          </button>
-        </div>
-
-        <div style={{ "overflow-y": "auto", flex: "1" }}>
-          <Show
-            when={deviceState.devices.length > 0}
-            fallback={
-              <div style={{ padding: "16px 12px", color: "var(--text-muted)", "font-size": "11px", "text-align": "center" }}>
-                No devices connected
-              </div>
-            }
-          >
-            <For each={deviceState.devices}>
-              {(device) => (
-                <DeviceRow
-                  device={device}
-                  selected={deviceState.selectedSerial === device.serial}
-                  compact={true}
-                  onSelect={() => { pickDevice(device.serial); props.onClose?.(); }}
-                  onStop={() => handleStopDevice(device.serial)}
-                />
-              )}
-            </For>
-          </Show>
-        </div>
-
-        {/* Footer: Manage Devices link */}
-        <div
-          style={{
-            padding: "6px 12px",
-            "border-top": "1px solid var(--border)",
-            background: "var(--bg-tertiary)",
-          }}
-        >
-          <button
-            onClick={() => { props.onClose?.(); toggleDeviceSidebar(); }}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              color: "var(--accent)", "font-size": "11px", padding: "0",
-              width: "100%", "text-align": "left",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.7"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-          >
-            Manage Virtual Devices →
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // ── Panel mode ───────────────────────────────────────────────────────────────
+  // ── Popover mode / Panel mode ────────────────────────────────────────────────
 
   return (
+    <Show
+      when={isPopover()}
+      fallback={
     <div
       style={{
         display: "flex",
@@ -360,6 +270,96 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
         />
       </Show>
     </div>
+      }
+    >
+      {/* ── Popover mode ── */}
+      <div
+        style={{
+          width: "280px",
+          background: "var(--bg-secondary)",
+          border: "1px solid var(--border)",
+          "border-radius": "6px",
+          "box-shadow": "0 4px 16px rgba(0,0,0,0.4)",
+          overflow: "hidden",
+          display: "flex",
+          "flex-direction": "column",
+          "max-height": "400px",
+        }}
+      >
+        {/* Header */}
+        <div
+          style={{
+            display: "flex",
+            "align-items": "center",
+            padding: "8px 12px",
+            background: "var(--bg-tertiary)",
+            "border-bottom": "1px solid var(--border)",
+            gap: "8px",
+          }}
+        >
+          <span style={{ flex: "1", "font-size": "12px", "font-weight": "600", color: "var(--text-secondary)" }}>
+            Select Device
+          </span>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing()}
+            title="Refresh"
+            style={{
+              background: "none", border: "none", cursor: refreshing() ? "default" : "pointer",
+              color: "var(--text-muted)", "font-size": "14px", opacity: refreshing() ? "0.4" : "1",
+              display: "flex", "align-items": "center",
+            }}
+          >
+            {refreshing() ? "…" : "↻"}
+          </button>
+        </div>
+
+        <div style={{ "overflow-y": "auto", flex: "1" }}>
+          <Show
+            when={deviceState.devices.length > 0}
+            fallback={
+              <div style={{ padding: "16px 12px", color: "var(--text-muted)", "font-size": "11px", "text-align": "center" }}>
+                No devices connected
+              </div>
+            }
+          >
+            <For each={deviceState.devices}>
+              {(device) => (
+                <DeviceRow
+                  device={device}
+                  selected={deviceState.selectedSerial === device.serial}
+                  compact={true}
+                  onSelect={() => { pickDevice(device.serial); props.onClose?.(); }}
+                  onStop={() => handleStopDevice(device.serial)}
+                />
+              )}
+            </For>
+          </Show>
+        </div>
+
+        {/* Footer: Manage Devices link */}
+        <div
+          style={{
+            padding: "6px 12px",
+            "border-top": "1px solid var(--border)",
+            background: "var(--bg-tertiary)",
+          }}
+        >
+          <button
+            onClick={() => { props.onClose?.(); toggleDeviceSidebar(); }}
+            style={{
+              background: "none", border: "none", cursor: "pointer",
+              color: "var(--accent)", "font-size": "11px", padding: "0",
+              width: "100%", "text-align": "left",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.7"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+          >
+            Manage Virtual Devices →
+          </button>
+        </div>
+      </div>
+    </Show>
   );
 }
 

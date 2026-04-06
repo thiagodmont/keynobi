@@ -246,36 +246,37 @@ function ProblemsView(props: {
     return Array.from(map.entries());
   });
 
-  if (all().length === 0) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          "align-items": "center",
-          "justify-content": "center",
-          height: "100%",
-          color: "var(--text-muted)",
-          "font-size": "12px",
-        }}
-      >
-        No build errors or warnings
-      </div>
-    );
-  }
-
   return (
-    <div style={{ "overflow-y": "auto", height: "100%", "font-size": "12px" }}>
-      {/* File-located diagnostics grouped by file */}
-      <For each={byFile()}>
-        {([file, items]) => (
-          <FileErrorGroup file={file} items={items} />
-        )}
-      </For>
-      {/* General/unlocated errors (dependency failures, AAPT bare errors, etc.) */}
-      <Show when={general().length > 0}>
-        <GeneralErrorGroup items={general()} />
-      </Show>
-    </div>
+    <Show
+      when={all().length > 0}
+      fallback={
+        <div
+          style={{
+            display: "flex",
+            "align-items": "center",
+            "justify-content": "center",
+            height: "100%",
+            color: "var(--text-muted)",
+            "font-size": "12px",
+          }}
+        >
+          No build errors or warnings
+        </div>
+      }
+    >
+      <div style={{ "overflow-y": "auto", height: "100%", "font-size": "12px" }}>
+        {/* File-located diagnostics grouped by file */}
+        <For each={byFile()}>
+          {([file, items]) => (
+            <FileErrorGroup file={file} items={items} />
+          )}
+        </For>
+        {/* General/unlocated errors (dependency failures, AAPT bare errors, etc.) */}
+        <Show when={general().length > 0}>
+          <GeneralErrorGroup items={general()} />
+        </Show>
+      </div>
+    </Show>
   );
 }
 
