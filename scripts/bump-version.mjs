@@ -8,6 +8,7 @@
  *   npm run version:bump -- major    # major:           0.1.0 → 1.0.0
  */
 import { readFileSync, writeFileSync } from "fs";
+import { createInterface } from "readline";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -71,28 +72,49 @@ function syncToFiles(newVersion) {
 
 // Only run when executed directly (not when imported by tests).
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const type = process.argv[2] ?? "patch";
+  (async () => {
+    const type = process.argv[2] ?? "patch";
 
-  // Read current version
-  const pkgPath = resolve(root, "package.json");
-  const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
-  const current = pkg.version;
+    // Read current version
+    const pkgPath = resolve(root, "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    const current = pkg.version;
 
-  // Bump and sync versions (throws on invalid input or I/O errors)
-  try {
-    const next = bumpVersion(current, type);
+    let next;
+    try {
+      next = bumpVersion(current, type);
+    } catch (err) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
 
-    // Write package.json
-    pkg.version = next;
-    writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+    // Show the proposed change and ask for confirmation before writing anything.
+    console.log(`\n  ${current} → ${next}\n`);
 
-    // Sync Cargo.toml + tauri.conf.json
-    syncToFiles(next);
+    await new Promise((resolve) => {
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      // Let Ctrl+C cancel cleanly without a stack trace.
+      rl.on("SIGINT", () => {
+        rl.close();
+        console.log("\nCancelled.");
+        process.exit(0);
+      });
+      rl.question("Press Enter to confirm, or Ctrl+C to cancel: ", () => {
+        rl.close();
+        resolve();
+      });
+    });
 
-    // Print the result
-    console.log(`${current} → ${next}`);
-  } catch (err) {
-    console.error(`Error: ${err.message}`);
-    process.exit(1);
-  }
+    // Write all three files.
+    try {
+      pkg.version = next;
+      writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+      syncToFiles(next);
+    } catch (err) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+
+    console.log(`Done.`);
+  })();
 }
