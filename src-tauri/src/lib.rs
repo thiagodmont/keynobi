@@ -205,6 +205,16 @@ pub fn run() {
             // cleanup_old_logs is synchronous — no spawn needed.
             cleanup_old_logs(&log_dir, settings.advanced.log_retention_days);
 
+            // Spawn monitor: polls memory + log folder size every 5s.
+            {
+                let handle = app.handle().clone();
+                let log_dir_monitor = log_dir.clone();
+                let log_max_bytes = u64::from(settings.advanced.log_max_size_mb) * 1024 * 1024;
+                tauri::async_runtime::spawn(async move {
+                    services::monitor::run_monitor(handle, log_dir_monitor, log_max_bytes).await;
+                });
+            }
+
             // Auto-start MCP server if the user has enabled it in settings.
             if settings.mcp.auto_start {
                 let handle = app.handle().clone();

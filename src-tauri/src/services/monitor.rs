@@ -1,10 +1,6 @@
 use serde::Serialize;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
-// Duration, AppHandle, Emitter are used by run_monitor (implemented in Task 3)
-#[allow(unused_imports)]
-use std::time::Duration;
-#[allow(unused_imports)]
+use std::time::{Duration, SystemTime};
 use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,13 +48,49 @@ pub fn rotate_logs(mut files: Vec<(PathBuf, SystemTime, u64)>, limit: u64) -> bo
             tracing::info!("Size-based log rotation: removed {}", path.display());
             total = total.saturating_sub(*size);
             rotated = true;
+        } else {
+            tracing::warn!("Size-based log rotation: could not remove {}, skipping", path.display());
+            // Subtract anyway so we don't retry this file on every poll tick.
+            total = total.saturating_sub(*size);
         }
     }
     rotated
 }
 
-pub async fn run_monitor(_app_handle: AppHandle, _log_dir: PathBuf, _log_max_size_bytes: u64) {
-    todo!()
+pub async fn run_monitor(app_handle: AppHandle, log_dir: PathBuf, log_max_size_bytes: u64) {
+    use sysinfo::{Pid, ProcessesToUpdate, System};
+
+    let pid = Pid::from(std::process::id() as usize);
+    let mut sys = System::new();
+
+    let mut interval = tokio::time::interval(Duration::from_secs(5));
+    interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    loop {
+        interval.tick().await;
+
+        // 1. Read app process RSS memory
+        sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), false);
+        let app_memory_bytes = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+
+        // 2. Scan log folder
+        let (log_folder_bytes, files) = collect_log_files(&log_dir);
+
+        // 3. Rotate if needed
+        let rotation_triggered = if log_folder_bytes > log_max_size_bytes {
+            rotate_logs(files, log_max_size_bytes)
+        } else {
+            false
+        };
+
+        // 4. Emit stats to frontend
+        let stats = MonitorStats {
+            app_memory_bytes,
+            log_folder_bytes,
+            rotation_triggered,
+        };
+        let _ = app_handle.emit("monitor://stats", stats);
+    }
 }
 
 #[cfg(test)]
