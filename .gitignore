@@ -6,8 +6,10 @@ dist/
 .superpowers/
 .env
 .env.local
-/src-tauri/gen/
+src-tauri/gen/
 .worktrees/
+
+docs/superpowers
 
 # repowise
 .repowise
