@@ -9,5 +9,6 @@ dist/
 /src-tauri/gen/
 .worktrees/
 
-# repowise API keys (local)
-.repowise/.env
+# repowise
+.repowise
+.mcp.json
