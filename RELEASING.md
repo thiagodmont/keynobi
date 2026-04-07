@@ -57,6 +57,37 @@ The most common case is a `patch` bump.
 
 ---
 
+## Sentry (optional crash reporting)
+
+Release DMGs are built with the Rust `telemetry` Cargo feature and compile-time `SENTRY_DSN` so the app *can* upload crash reports when the user turns **Anonymous crash reporting** on in Settings.
+
+- Add a repository secret named **`SENTRY_DSN`** (Settings → Secrets and variables → Actions) with your Sentry DSN. The release workflow passes it into the build; it is not committed to the repo.
+- If the secret is absent, the build still succeeds, but no DSN is embedded (users can opt in, yet nothing is uploaded until a build with a DSN is installed).
+
+Local release-like builds:
+
+```bash
+SENTRY_DSN='https://…@….ingest.sentry.io/…' npm run tauri build -- -f telemetry --bundles dmg
+```
+
+### Smoke test (verify the Sentry project receives events)
+
+Use the **same** `SENTRY_DSN` value in the environment when compiling so `option_env!("SENTRY_DSN")` embeds it. Turn **Anonymous crash reporting** on in Settings and restart so the backend initializes Sentry.
+
+```bash
+export SENTRY_DSN='https://YOUR_KEY@YOUR_ORG.ingest.sentry.io/YOUR_PROJECT'
+export KEYNOBI_SENTRY_SMOKE=1
+npm run tauri dev -- --features telemetry
+```
+
+You should see one info-level event in Sentry. Unset `KEYNOBI_SENTRY_SMOKE` when finished.
+
+Optional (debug builds only): `KEYNOBI_SENTRY_SMOKE_PANIC=1` triggers a panic after the message for crash-event verification.
+
+We keep **`send_default_pii: false`** and path scrubbing in code; do not paste a real DSN into the repository.
+
+---
+
 ## Notes
 
 - **Only version bumps trigger a release.** Pushing doc updates, lint fixes, or

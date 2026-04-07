@@ -16,4 +16,6 @@ pub mod mcp_server;
 pub mod monitor;
 pub mod process_manager;
 pub mod settings_manager;
+#[cfg(feature = "telemetry")]
+pub mod telemetry_sentry;
 pub mod variant_manager;

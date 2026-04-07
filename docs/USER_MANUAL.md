@@ -31,7 +31,7 @@
 ### First Launch
 
 1. Launch **Android Dev Companion**. A **Setup** wizard runs once: it can auto-detect your **Android SDK** and **Java** home (or you can enter paths manually), asks whether to enable **anonymous crash reporting** (off by default), and offers optional defaults (MCP auto-start, logcat auto-start). You can **Skip setup** and finish later in **Settings** (Cmd+,).
-2. If you enable crash reporting, it takes effect after the **next app restart** (the setting is saved immediately).
+2. If you enable crash reporting, it takes effect after the **next app restart** (the setting is saved immediately). Reports are limited to **app-side** diagnostics (e.g. crash type and sanitized stack information) so we can fix stability issues. They do **not** include your project paths, source code, Gradle or log output, or device identifiers.
 3. Press **Cmd+O** or click the title bar to open the project switcher and select your Android project folder.
 4. The app detects your Gradle root, saves the project to the registry, and initializes build variants.
 5. If you skipped the wizard or need to change paths later, open **Settings** (Cmd+,) and configure:
@@ -318,6 +318,10 @@ Use **Auto-detect** to find Java from your shell environment.
 - **Gradle JVM args** — passed to the Gradle daemon
 - **Parallel builds** — `--parallel` flag
 - **Offline mode** — `--offline` flag
+
+### Telemetry (crash reporting)
+
+Under **Privacy**, **Anonymous crash reporting** is **off** by default. When enabled, the app may send **minimal, non-identifying** crash reports from the desktop app itself (for example, panic and error summaries with paths stripped) to help fix bugs. It does **not** send your Android project files, Gradle log content, logcat, MCP traffic, or personal identifiers. Changing the toggle applies fully after **restart** (same as in the setup wizard).
 
 ---
 

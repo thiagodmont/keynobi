@@ -153,25 +153,18 @@ pub fn run() {
     // Keep the guard alive for the process lifetime so logs are flushed on exit.
     std::mem::forget(file_guard);
 
-    // ── Sentry crash reporting (optional) ────────────────────────────────────
-    // Only initialized when:
-    //   1. SENTRY_DSN is embedded at build time (distribution builds only)
-    //   2. The user has enabled telemetry in Settings
+    // ── Sentry (optional) ─────────────────────────────────────────────────────
+    // Initialized after logging so startup diagnostics still hit the log file first.
+    // Requires `--features telemetry`, compile-time `SENTRY_DSN`, and
+    // `settings.telemetry.enabled` (see `services::telemetry_sentry`).
     #[cfg(feature = "telemetry")]
     let _sentry_guard = {
         let (settings, _) = services::settings_manager::load_settings();
-        option_env!("SENTRY_DSN")
-            .filter(|_| settings.telemetry.enabled)
-            .map(|dsn| {
-                sentry::init((
-                    dsn,
-                    sentry::ClientOptions {
-                        release: sentry::release_name!(),
-                        traces_sample_rate: 0.1,
-                        ..Default::default()
-                    },
-                ))
-            })
+        let guard = services::telemetry_sentry::init_if_enabled(&settings);
+        if guard.is_some() {
+            services::telemetry_sentry::run_optional_smoke_test();
+        }
+        guard
     };
 
     let log_dir = log_dir.clone();

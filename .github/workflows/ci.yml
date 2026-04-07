@@ -41,5 +41,11 @@ jobs:
             (echo "ERROR: TypeScript bindings are stale. Run: npm run generate:bindings" && exit 1)
       - name: Rust tests
         run: cd src-tauri && cargo test --lib --tests
+      - name: Rust telemetry feature (Sentry compile-time paths)
+        run: |
+          cd src-tauri
+          cargo check --features telemetry
+          cargo clippy --features telemetry -- -D warnings
+          cargo test --lib --tests --features telemetry
       - name: Clippy
         run: cd src-tauri && cargo clippy -- -D warnings

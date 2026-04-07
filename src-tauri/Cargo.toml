@@ -49,7 +49,8 @@ walkdir = "2"
 # Process memory monitoring (RSS) for the status bar monitor
 sysinfo = "0.33"
 # Optional Sentry crash reporting (enabled via --features telemetry)
-sentry = { version = "0.34", optional = true, default-features = false, features = ["backtrace", "contexts", "panic"] }
+# `transport` is required for HTTPS submission; without it the client is inert.
+sentry = { version = "0.47", optional = true, default-features = false, features = ["backtrace", "contexts", "panic", "transport"] }
 
 [features]
 telemetry = ["sentry"]

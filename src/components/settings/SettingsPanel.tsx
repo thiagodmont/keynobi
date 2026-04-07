@@ -630,18 +630,63 @@ function AdvancedSettings(props: {
       <Show
         when={props.matchesSearch(
           "Anonymous crash reporting",
-          "Send crash reports to help improve the app"
+          "Send minimal app crash diagnostics Enable Do not send"
         )}
       >
         <SettingRow
           label="Anonymous crash reporting"
-          description="Send crash reports to help improve the app. No personal data is collected."
+          description="Send minimal app crash diagnostics (no project paths, source, or Gradle/log output). Restart required to apply."
         >
-          <input
-            type="checkbox"
-            checked={settingsState.telemetry?.enabled ?? false}
-            onChange={(e) => updateSetting("telemetry", "enabled", e.currentTarget.checked)}
-          />
+          <div
+            role="radiogroup"
+            aria-label="Anonymous crash reporting"
+            style={{
+              display: "flex",
+              "flex-direction": "row",
+              "flex-wrap": "wrap",
+              gap: "14px",
+              "justify-content": "flex-end",
+            }}
+          >
+            <label
+              style={{
+                display: "flex",
+                "align-items": "center",
+                gap: "6px",
+                cursor: "pointer",
+                "font-size": "12px",
+                color: "var(--text-primary)",
+                "user-select": "none",
+              }}
+            >
+              <input
+                type="radio"
+                name="settings-telemetry"
+                checked={settingsState.telemetry?.enabled === true}
+                onChange={() => updateSetting("telemetry", "enabled", true)}
+              />
+              Enable
+            </label>
+            <label
+              style={{
+                display: "flex",
+                "align-items": "center",
+                gap: "6px",
+                cursor: "pointer",
+                "font-size": "12px",
+                color: "var(--text-primary)",
+                "user-select": "none",
+              }}
+            >
+              <input
+                type="radio"
+                name="settings-telemetry"
+                checked={settingsState.telemetry?.enabled !== true}
+                onChange={() => updateSetting("telemetry", "enabled", false)}
+              />
+              Do not send
+            </label>
+          </div>
         </SettingRow>
       </Show>
     </>

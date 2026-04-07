@@ -1,10 +1,14 @@
 {
-    "command": "repowise",
-    "args": [
-        "mcp",
-        "/Users/thiagodmont/Documents/projects/keynobi",
-        "--transport",
-        "stdio"
-    ],
-    "description": "repowise: codebase intelligence docs, graph, git signals, dead code, decisions"
+    "mcpServers": {
+        "repowise": {
+            "command": "repowise",
+            "args": [
+                "mcp",
+                "/Users/thiagodmont/Documents/projects/keynobi",
+                "--transport",
+                "stdio"
+            ],
+            "description": "repowise: codebase intelligence docs, graph, git signals, dead code, decisions"
+        }
+    }
 }

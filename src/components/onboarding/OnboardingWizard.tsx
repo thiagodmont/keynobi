@@ -233,8 +233,8 @@ export function OnboardingWizard(): JSX.Element {
             <Show when={step() === 2}>
               <div style={{ display: "flex", "flex-direction": "column", gap: "14px" }}>
                 <p style={{ margin: "0", "font-size": "13px", color: "var(--text-primary)", "line-height": "1.5" }}>
-                  Optional anonymous crash reports help fix bugs. No personal data or project source is collected. You can
-                  change this anytime in Settings.
+                  Optional anonymous crash reports help fix bugs. Only app-side diagnostics are sent — not your project
+                  paths, source, or logs. You can change this anytime in Settings.
                 </p>
                 <div style={{ display: "flex", "flex-direction": "column", gap: "8px" }}>
                   <button
