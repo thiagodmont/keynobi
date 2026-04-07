@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Android Dev Companion",
+  "productName": "Keynobi",
   "version": "0.1.2",
   "identifier": "com.keynobi.app",
   "build": {
