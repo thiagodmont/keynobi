@@ -34,27 +34,29 @@ pub fn collect_log_files(log_dir: &Path) -> (u64, Vec<(PathBuf, SystemTime, u64)
     (total, files)
 }
 
-/// Deletes oldest app.log* files until total_bytes <= limit. Returns true if any files deleted.
+/// Deletes oldest app.log* files until total_bytes <= limit. Returns true if rotation was attempted (over limit).
 pub fn rotate_logs(mut files: Vec<(PathBuf, SystemTime, u64)>, limit: u64) -> bool {
     // Sort oldest-first
     files.sort_by_key(|(_, modified, _)| *modified);
     let mut total: u64 = files.iter().map(|(_, _, size)| size).sum();
-    let mut rotated = false;
+    if total <= limit {
+        return false;
+    }
+    // Over the limit — attempt rotation.
     for (path, _, size) in &files {
         if total <= limit {
             break;
         }
         if std::fs::remove_file(path).is_ok() {
             tracing::info!("Size-based log rotation: removed {}", path.display());
-            total = total.saturating_sub(*size);
-            rotated = true;
         } else {
             tracing::warn!("Size-based log rotation: could not remove {}, skipping", path.display());
-            // Subtract anyway so we don't retry this file on every poll tick.
-            total = total.saturating_sub(*size);
         }
+        // Subtract either way so we don't retry the same file on the next tick.
+        total = total.saturating_sub(*size);
     }
-    rotated
+    // Return true to signal that rotation was triggered (regardless of deletion success).
+    true
 }
 
 pub async fn run_monitor(app_handle: AppHandle, log_dir: PathBuf, log_max_size_bytes: u64) {

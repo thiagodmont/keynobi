@@ -614,7 +614,7 @@ function AdvancedSettings(props: {
       >
         <SettingRow
           label="Max log folder size (MB)"
-          description="Size limit for ~/.keynobi/logs/ before oldest files are deleted"
+          description="Size limit for ~/.keynobi/logs/ before oldest files are deleted. Takes effect on next app restart."
         >
           <SettingNumberInput
             value={settingsState.advanced.logMaxSizeMb}
