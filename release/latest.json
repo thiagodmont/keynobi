@@ -1,10 +1,10 @@
 {
-  "version": null,
-  "tag": null,
-  "releaseDate": null,
-  "releaseUrl": null,
+  "version": "0.1.2",
+  "tag": "v0.1.2",
+  "releaseDate": "2026-04-07",
+  "releaseUrl": "https://github.com/thiagodmont/keynobi/releases/tag/v0.1.2",
   "downloads": {
-    "applesilicon": null,
-    "intel": null
+    "applesilicon": "https://github.com/thiagodmont/keynobi/releases/download/v0.1.2/Android-Dev-Companion_0.1.2_arm64.dmg",
+    "intel": "https://github.com/thiagodmont/keynobi/releases/download/v0.1.2/Android-Dev-Companion_0.1.2_intel.dmg"
   }
 }
