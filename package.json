@@ -1,6 +1,6 @@
 {
   "name": "keynobi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI-First Android Companion App",
   "type": "module",
   "scripts": {
@@ -13,6 +13,7 @@
     "lint:fix": "eslint src --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
     "test": "vitest run",
+    "rust:check": "cd src-tauri && cargo check",
     "generate:bindings": "cd src-tauri && cargo test && echo 'TypeScript bindings regenerated in src/bindings/'",
     "check:bindings": "npm run generate:bindings && git diff --exit-code src/bindings/",
     "test:watch": "vitest",
