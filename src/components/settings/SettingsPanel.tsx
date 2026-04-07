@@ -328,7 +328,9 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
           />
         </SettingRow>
       </Show>
-      <Show when={props.matchesSearch("Auto-close Brackets", "Automatically insert closing brackets")}>
+      <Show
+        when={props.matchesSearch("Auto-close Brackets", "Automatically insert closing brackets")}
+      >
         <SettingRow
           label="Auto-close Brackets"
           description="Automatically insert closing brackets, quotes, etc."
@@ -421,7 +423,12 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
       </Show>
 
       <SectionHeader title="Logcat" />
-      <Show when={props.matchesSearch("Auto-start Logcat", "Automatically start logcat when a device connects")}>
+      <Show
+        when={props.matchesSearch(
+          "Auto-start Logcat",
+          "Automatically start logcat when a device connects"
+        )}
+      >
         <SettingRow
           label="Auto-start on Connect"
           description="Automatically start logcat streaming when a device connects"
@@ -445,7 +452,12 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
           />
         </SettingRow>
       </Show>
-      <Show when={props.matchesSearch("MCP Build Timeout", "Maximum seconds to wait for a Gradle build via MCP")}>
+      <Show
+        when={props.matchesSearch(
+          "MCP Build Timeout",
+          "Maximum seconds to wait for a Gradle build via MCP"
+        )}
+      >
         <SettingRow
           label="Build Timeout (seconds)"
           description="Maximum time to wait for a Gradle build triggered via the run_gradle_task MCP tool. Increase for large projects."
@@ -459,7 +471,12 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
           />
         </SettingRow>
       </Show>
-      <Show when={props.matchesSearch("MCP Logcat Count", "Default logcat entries returned by get_logcat_entries")}>
+      <Show
+        when={props.matchesSearch(
+          "MCP Logcat Count",
+          "Default logcat entries returned by get_logcat_entries"
+        )}
+      >
         <SettingRow
           label="Default Logcat Count"
           description="Default number of logcat entries returned by get_logcat_entries when the AI agent does not specify a count."
@@ -473,7 +490,12 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
           />
         </SettingRow>
       </Show>
-      <Show when={props.matchesSearch("MCP Build Log Lines", "Default build log lines returned by get_build_log")}>
+      <Show
+        when={props.matchesSearch(
+          "MCP Build Log Lines",
+          "Default build log lines returned by get_build_log"
+        )}
+      >
         <SettingRow
           label="Default Build Log Lines"
           description="Default number of raw build output lines returned by get_build_log when the AI agent does not specify a count."
@@ -522,7 +544,12 @@ function AdvancedSettings(props: {
           />
         </SettingRow>
       </Show>
-      <Show when={props.matchesSearch("Gradle Offline Mode", "Prevent Gradle from accessing the network")}>
+      <Show
+        when={props.matchesSearch(
+          "Gradle Offline Mode",
+          "Prevent Gradle from accessing the network"
+        )}
+      >
         <SettingRow
           label="Offline Mode"
           description="Pass --offline to Gradle to skip dependency downloads"
@@ -533,7 +560,9 @@ function AdvancedSettings(props: {
           />
         </SettingRow>
       </Show>
-      <Show when={props.matchesSearch("Gradle JVM Args", "Extra JVM arguments for the Gradle daemon")}>
+      <Show
+        when={props.matchesSearch("Gradle JVM Args", "Extra JVM arguments for the Gradle daemon")}
+      >
         <SettingRow
           label="Gradle JVM Args"
           description='Extra JVM arguments passed to the Gradle daemon (e.g. "-Xmx4g")'
@@ -545,7 +574,12 @@ function AdvancedSettings(props: {
           />
         </SettingRow>
       </Show>
-      <Show when={props.matchesSearch("Auto Install on Build", "Automatically install APK after a successful build")}>
+      <Show
+        when={props.matchesSearch(
+          "Auto Install on Build",
+          "Automatically install APK after a successful build"
+        )}
+      >
         <SettingRow
           label="Auto Install on Build"
           description="Automatically install and launch the app after a successful build"
@@ -572,8 +606,33 @@ function AdvancedSettings(props: {
         </SettingRow>
       </Show>
 
+      <Show
+        when={props.matchesSearch(
+          "Max log folder size",
+          "Size limit for log files before rotation"
+        )}
+      >
+        <SettingRow
+          label="Max log folder size (MB)"
+          description="Size limit for ~/.keynobi/logs/ before oldest files are deleted"
+        >
+          <SettingNumberInput
+            value={settingsState.advanced.logMaxSizeMb}
+            min={50}
+            max={10000}
+            step={50}
+            onChange={(v) => updateSetting("advanced", "logMaxSizeMb", v)}
+          />
+        </SettingRow>
+      </Show>
+
       <SectionHeader title="Privacy" />
-      <Show when={props.matchesSearch("Anonymous crash reporting", "Send crash reports to help improve the app")}>
+      <Show
+        when={props.matchesSearch(
+          "Anonymous crash reporting",
+          "Send crash reports to help improve the app"
+        )}
+      >
         <SettingRow
           label="Anonymous crash reporting"
           description="Send crash reports to help improve the app. No personal data is collected."
