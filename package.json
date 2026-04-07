@@ -23,6 +23,7 @@
     "version:sync": "node scripts/sync-version.mjs",
     "version:check": "node scripts/sync-version.mjs --check",
     "version:bump": "node scripts/bump-version.mjs",
+    "release": "node scripts/release.mjs",
     "build:dmg": "tauri build --target aarch64-apple-darwin --bundles dmg",
     "build:dmg:intel": "tauri build --target x86_64-apple-darwin --bundles dmg",
     "build:dmg:universal": "tauri build --target universal-apple-darwin --bundles dmg",
