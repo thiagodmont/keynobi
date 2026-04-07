@@ -3,7 +3,11 @@ target/
 dist/
 .DS_Store
 *.log
+.superpowers/
 .env
 .env.local
 /src-tauri/gen/
 .worktrees/
+
+# repowise API keys (local)
+.repowise/.env
