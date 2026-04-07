@@ -13,6 +13,7 @@ pub mod log_stream;
 pub mod logcat;
 pub mod mcp_activity;
 pub mod mcp_server;
+pub mod monitor;
 pub mod process_manager;
 pub mod settings_manager;
 pub mod variant_manager;
