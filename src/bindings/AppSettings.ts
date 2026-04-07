@@ -19,6 +19,10 @@ import type { TelemetrySettings } from "./TelemetrySettings";
  */
 export type AppSettings = { editor: EditorSettings, appearance: AppearanceSettings, search: SearchSettings, android: AndroidSettings, lsp: LspSettings, java: JavaSettings, advanced: AdvancedSettings, build: BuildSettings, logcat: LogcatSettings, mcp: McpSettings, telemetry: TelemetrySettings, 
 /**
+ * When true, the first-run setup wizard has been completed (or dismissed).
+ */
+onboardingCompleted: boolean, 
+/**
  * Registry of recently-opened projects.  Capped at 20 entries; oldest
  * non-pinned entry is evicted when the cap is exceeded.
  */

@@ -30,12 +30,15 @@
 
 ### First Launch
 
-1. Launch **Android Dev Companion**
-2. Press **Cmd+O** or click the title bar to open the project switcher and select your Android project folder
-3. The app detects your Gradle root, saves the project to the registry, and initializes build variants
-4. Open **Settings** (Cmd+,) and configure:
+1. Launch **Android Dev Companion**. A **Setup** wizard runs once: it can auto-detect your **Android SDK** and **Java** home (or you can enter paths manually), asks whether to enable **anonymous crash reporting** (off by default), and offers optional defaults (MCP auto-start, logcat auto-start). You can **Skip setup** and finish later in **Settings** (Cmd+,).
+2. If you enable crash reporting, it takes effect after the **next app restart** (the setting is saved immediately).
+3. Press **Cmd+O** or click the title bar to open the project switcher and select your Android project folder.
+4. The app detects your Gradle root, saves the project to the registry, and initializes build variants.
+5. If you skipped the wizard or need to change paths later, open **Settings** (Cmd+,) and configure:
    - **Android SDK Path** — path to `$ANDROID_HOME` (e.g. `~/Library/Android/sdk`)
    - **Java Home** — path to JDK (e.g. `/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home`)
+
+To open the setup wizard again, use the Command Palette (**Cmd+Shift+P** → “Open Setup Wizard”) or **Cmd+Shift+W**.
 
 ### Subsequent Launches
 
@@ -350,10 +353,12 @@ Click **Refresh** to re-run all checks.
 | **Cmd+2** | Switch to Logcat panel |
 | **Cmd+3** | Switch to Devices panel |
 | **Cmd+,** | Open Settings |
+| **Cmd+Shift+W** | Open Setup Wizard |
 | **Cmd+Shift+H** | Open Health Center |
 | **Cmd+Shift+P** | Command Palette |
 
 **Command Palette actions** (Cmd+Shift+P, then type):
+- `Open Setup Wizard` — environment paths, privacy, and workflow defaults
 - `Project App Info` — open the version name/code editor
 - `Open Folder` — browse for a new project
 

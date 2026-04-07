@@ -49,6 +49,9 @@ pub struct AppSettings {
     pub logcat: LogcatSettings,
     pub mcp: McpSettings,
     pub telemetry: TelemetrySettings,
+    /// When true, the first-run setup wizard has been completed (or dismissed).
+    #[serde(default)]
+    pub onboarding_completed: bool,
     /// Registry of recently-opened projects.  Capped at 20 entries; oldest
     /// non-pinned entry is evicted when the cap is exceeded.
     pub recent_projects: Vec<ProjectEntry>,
@@ -324,6 +327,19 @@ mod tests {
         assert_eq!(parsed.editor.font_size, 16);
         assert_eq!(parsed.editor.tab_size, 4); // default preserved
         assert_eq!(parsed.search.context_lines, 2); // other section defaults
+    }
+
+    #[test]
+    fn onboarding_completed_defaults_false() {
+        assert!(!AppSettings::default().onboarding_completed);
+    }
+
+    #[test]
+    fn partial_json_onboarding_completed() {
+        let json = r#"{"onboardingCompleted": true}"#;
+        let parsed: AppSettings = serde_json::from_str(json).unwrap();
+        assert!(parsed.onboarding_completed);
+        assert_eq!(parsed.editor.font_size, 13); // rest from defaults
     }
 
     #[test]

@@ -3,7 +3,8 @@ use std::path::PathBuf;
 
 const KNOWN_SETTINGS_FIELDS: &[&str] = &[
     "editor", "appearance", "search", "android", "lsp", "java",
-    "advanced", "build", "logcat", "mcp", "recentProjects", "lastActiveProject",
+    "advanced", "build", "logcat", "mcp", "telemetry", "onboardingCompleted",
+    "recentProjects", "lastActiveProject",
 ];
 
 /// Log a warning for each top-level key in the JSON that isn't a known settings field.
@@ -317,7 +318,8 @@ mod tests {
     #[test]
     fn all_known_fields_pass_validation() {
         let known = ["editor", "appearance", "search", "android", "lsp", "java",
-                     "advanced", "build", "logcat", "mcp", "telemetry", "recentProjects", "lastActiveProject"];
+                     "advanced", "build", "logcat", "mcp", "telemetry", "onboardingCompleted",
+                     "recentProjects", "lastActiveProject"];
         let settings = AppSettings::default();
         let json = serde_json::to_string(&settings).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();

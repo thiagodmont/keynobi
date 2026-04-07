@@ -24,6 +24,8 @@ import { DevicePickerDialog } from "@/components/device/DevicePickerDialog";
 import { registerKeybinding, initKeybindings } from "@/lib/keybindings";
 import { registerAction, type ActionCategory } from "@/lib/action-registry";
 import { loadSettings } from "@/stores/settings.store";
+import { tryOpenOnboardingAfterLoad, openOnboardingWizard } from "@/stores/onboarding.store";
+import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { openProjectFolder, refreshProjectsList, restoreLastProject } from "@/services/project.service";
 import { initBuildService, runBuild, runAndDeploy, cancelBuild } from "@/services/build.service";
 import { initDevices } from "@/stores/device.store";
@@ -74,7 +76,8 @@ export function App(): JSX.Element {
 
   onMount(async () => {
     initKeybindings();
-    loadSettings();
+    await loadSettings();
+    tryOpenOnboardingAfterLoad();
 
     // Initialize MCP lifecycle event listeners.
     import("@/stores/mcp.store").then(({ initMcpListeners, loadMcpActivity }) => {
@@ -95,6 +98,15 @@ export function App(): JSX.Element {
 
     // ── Settings ─────────────────────────────────────────────────────────────
     registerKeyAndAction({ id: "general.settings", key: ",", metaKey: true, label: "Open Settings", category: "General", action: () => openSettings() });
+    registerKeyAndAction({
+      id: "general.setupWizard",
+      key: "w",
+      metaKey: true,
+      shiftKey: true,
+      label: "Open Setup Wizard",
+      category: "General",
+      action: () => openOnboardingWizard(),
+    });
 
     // ── View ─────────────────────────────────────────────────────────────────
     registerKeyAndAction({ id: "view.healthCenter", key: "h", metaKey: true, shiftKey: true, label: "Open Health Center", category: "View", action: openHealthPanel });
@@ -315,6 +327,7 @@ export function App(): JSX.Element {
       <ProjectInfoEditor />
       <DevicePickerDialog />
       <DialogHost />
+      <OnboardingWizard />
     </div>
   );
 }

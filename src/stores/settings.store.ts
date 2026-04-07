@@ -59,6 +59,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     buildLogDefaultLines: 200,
   },
   telemetry: { enabled: false },
+  onboardingCompleted: false,
   recentProjects: [],
   lastActiveProject: null,
 };
@@ -104,6 +105,12 @@ export function updateSetting<S extends keyof AppSettings, K extends keyof AppSe
   value: AppSettings[S][K]
 ): void {
   setSettingsState(section, key as never, value as never);
+  scheduleSave();
+}
+
+/** Update a top-level `AppSettings` field (e.g. `onboardingCompleted`). */
+export function setAppSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]): void {
+  setSettingsState(key as never, value as never);
   scheduleSave();
 }
 

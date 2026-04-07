@@ -5,6 +5,7 @@ import {
   updateSetting,
   loadSettings,
   getDefaults,
+  setAppSetting,
 } from "@/stores/settings.store";
 
 describe("settings.store", () => {
@@ -87,6 +88,17 @@ describe("settings.store", () => {
     expect(d1).toEqual(d2);
     expect(d1).toBe(d2);
   });
+
+  it("defaults onboardingCompleted to false", () => {
+    expect(getDefaults().onboardingCompleted).toBe(false);
+  });
+
+  it("setAppSetting updates onboardingCompleted", () => {
+    setAppSetting("onboardingCompleted", true);
+    expect(settingsState.onboardingCompleted).toBe(true);
+    setAppSetting("onboardingCompleted", false);
+    expect(settingsState.onboardingCompleted).toBe(false);
+  });
 });
 
 describe("settings.store error state transitions", () => {
@@ -126,6 +138,17 @@ describe("settings.store error state transitions", () => {
     expect(settingsState.editor.fontSize).toBe(16);
     // Restore to default for subsequent tests.
     updateSetting("editor", "fontSize", 13);
+    vi.restoreAllMocks();
+  });
+
+  it("applies onboardingCompleted from getSettings", async () => {
+    vi.spyOn(tauriApi, "getSettings").mockResolvedValue({
+      ...getDefaults(),
+      onboardingCompleted: true,
+    });
+    await loadSettings();
+    expect(settingsState.onboardingCompleted).toBe(true);
+    setAppSetting("onboardingCompleted", false);
     vi.restoreAllMocks();
   });
 });
