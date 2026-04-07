@@ -19,7 +19,10 @@ npm run version:bump             # 0.1.0 → 0.1.1  (bug fixes, small improvemen
 npm run version:bump -- minor    # 0.1.0 → 0.2.0  (new user-visible features)
 npm run version:bump -- major    # 0.1.0 → 1.0.0  (breaking changes or milestones)
 
-# b. Stage and commit
+# b. Run cargo check
+npm run rust:check
+
+# c. Stage and commit
 git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
 git commit -m "chore: release v0.1.1"
 git push origin main
