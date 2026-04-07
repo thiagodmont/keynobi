@@ -39,6 +39,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     navigationHistoryDepth: 50,
     recentFilesLimit: 20,
     logRetentionDays: 7,
+    logMaxSizeMb: 500,
   },
   build: {
     gradleJvmArgs: null,

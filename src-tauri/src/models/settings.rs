@@ -125,6 +125,8 @@ pub struct AdvancedSettings {
     pub recent_files_limit: u32,
     /// Number of days to retain log files in ~/.keynobi/logs/ (default: 7).
     pub log_retention_days: u32,
+    /// Max total size of ~/.keynobi/logs/ in MB before size-based rotation triggers (default: 500).
+    pub log_max_size_mb: u32,
 }
 
 /// Build system settings: Gradle flags, auto-deploy behaviour, last-used selections.
@@ -248,6 +250,7 @@ impl Default for AdvancedSettings {
             navigation_history_depth: 50,
             recent_files_limit: 20,
             log_retention_days: 7,
+            log_max_size_mb: 500,
         }
     }
 }
@@ -343,5 +346,6 @@ mod tests {
         assert_eq!(d.hover_delay_ms, 500);
         assert_eq!(d.recent_files_limit, 20);
         assert_eq!(d.log_retention_days, 7);
+        assert_eq!(d.log_max_size_mb, 500);
     }
 }
