@@ -51,7 +51,7 @@ export function bumpVersion(current, type = "patch") {
 
 // ── File sync helpers (same logic as sync-version.mjs) ──────────────────────
 
-function syncToFiles(newVersion) {
+export function syncToFiles(newVersion) {
   // Cargo.toml — replace `version = "..."` (first occurrence, the package version)
   const cargoPath = resolve(root, "src-tauri/Cargo.toml");
   const cargo = readFileSync(cargoPath, "utf-8");

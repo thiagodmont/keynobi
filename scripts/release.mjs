@@ -18,7 +18,7 @@ import { resolve } from "path";
 import { fileURLToPath } from "url";
 import { createInterface } from "readline";
 import { execSync } from "child_process";
-import { bumpVersion } from "./bump-version.mjs";
+import { bumpVersion, syncToFiles } from "./bump-version.mjs";
 
 const root = resolve(fileURLToPath(import.meta.url), "../..");
 
@@ -71,26 +71,6 @@ function confirm(prompt) {
       resolve();
     });
   });
-}
-
-/**
- * Write the new version into Cargo.toml and tauri.conf.json.
- * Mirrors the syncToFiles logic in bump-version.mjs.
- *
- * @param {string} newVersion
- */
-function syncToFiles(newVersion) {
-  const cargoPath = resolve(root, "src-tauri/Cargo.toml");
-  const cargo = readFileSync(cargoPath, "utf-8");
-  writeFileSync(
-    cargoPath,
-    cargo.replace(/^version = ".+?"/m, `version = "${newVersion}"`)
-  );
-
-  const tauriPath = resolve(root, "src-tauri/tauri.conf.json");
-  const tauri = JSON.parse(readFileSync(tauriPath, "utf-8"));
-  tauri.version = newVersion;
-  writeFileSync(tauriPath, JSON.stringify(tauri, null, 2) + "\n");
 }
 
 // ── CLI entry point (skipped when imported by tests) ─────────────────────────
@@ -160,14 +140,17 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       );
       execSync(`git commit -m "chore: release v${next}"`, { stdio: "inherit" });
       info(`Committed: chore: release v${next}`);
+    } catch {
+      fatal("git commit failed. Files are updated but not committed — run git status to inspect.");
+      process.exit(1);
+    }
 
+    try {
       execSync("git push origin main", { stdio: "inherit" });
       info("Pushed to main");
       info(`CI will create tag v${next} and build the release`);
     } catch {
-      fatal(
-        "Git operation failed. Files are updated but not committed — run git status to inspect."
-      );
+      fatal(`git push failed. Commit exists locally — run: git push origin main`);
       process.exit(1);
     }
   })();
