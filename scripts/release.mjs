@@ -114,11 +114,21 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       process.exit(1);
     }
 
+    // ── Update Cargo.lock ─────────────────────────────────────────────────────
+    step("Updating Cargo.lock");
+    try {
+      execSync("npm run rust:check", { stdio: "inherit" });
+      info("Cargo.lock updated");
+    } catch (err) {
+      fatal(err.message);
+      process.exit(1);
+    }
+
     // ── Show diff ────────────────────────────────────────────────────────────
     step("Changes");
     try {
       const stat = execSync(
-        "git diff --stat HEAD package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json",
+        "git diff --stat HEAD package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json src-tauri/Cargo.lock",
         { encoding: "utf-8" }
       );
       stat.trim().split("\n").forEach((l) => console.log("  " + l));
@@ -135,7 +145,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     step("Releasing");
     try {
       execSync(
-        "git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json",
+        "git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json src-tauri/Cargo.lock",
         { stdio: "inherit" }
       );
       execSync(`git commit -m "chore: release v${next}"`, { stdio: "inherit" });
