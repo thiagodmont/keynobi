@@ -49,3 +49,126 @@ export function parseBumpType(argv) {
   }
   return type;
 }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Display a prompt and wait for Enter. Ctrl+C exits cleanly.
+ *
+ * @param {string} prompt
+ * @returns {Promise<void>}
+ */
+function confirm(prompt) {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.on("SIGINT", () => {
+      rl.close();
+      console.log("\nCancelled.");
+      process.exit(0);
+    });
+    rl.question(prompt, () => {
+      rl.close();
+      resolve();
+    });
+  });
+}
+
+/**
+ * Write the new version into Cargo.toml and tauri.conf.json.
+ * Mirrors the syncToFiles logic in bump-version.mjs.
+ *
+ * @param {string} newVersion
+ */
+function syncToFiles(newVersion) {
+  const cargoPath = resolve(root, "src-tauri/Cargo.toml");
+  const cargo = readFileSync(cargoPath, "utf-8");
+  writeFileSync(
+    cargoPath,
+    cargo.replace(/^version = ".+?"/m, `version = "${newVersion}"`)
+  );
+
+  const tauriPath = resolve(root, "src-tauri/tauri.conf.json");
+  const tauri = JSON.parse(readFileSync(tauriPath, "utf-8"));
+  tauri.version = newVersion;
+  writeFileSync(tauriPath, JSON.stringify(tauri, null, 2) + "\n");
+}
+
+// ── CLI entry point (skipped when imported by tests) ─────────────────────────
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  (async () => {
+    // ── Parse args ──────────────────────────────────────────────────────────
+    let type;
+    try {
+      type = parseBumpType(process.argv);
+    } catch (err) {
+      fatal(err.message);
+      console.log("Usage: node scripts/release.mjs [patch|minor|major]");
+      process.exit(1);
+    }
+
+    // ── Read current version ─────────────────────────────────────────────────
+    const pkgPath = resolve(root, "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8"));
+    const current = pkg.version;
+
+    let next;
+    try {
+      next = bumpVersion(current, type);
+    } catch (err) {
+      fatal(err.message);
+      process.exit(1);
+    }
+
+    // ── Gate 1: confirm version bump ─────────────────────────────────────────
+    step("Bump version");
+    console.log(`  ${current} → ${next}  (${type})\n`);
+    await confirm("Press Enter to confirm, or Ctrl+C to cancel: ");
+
+    // ── Write files ──────────────────────────────────────────────────────────
+    try {
+      pkg.version = next;
+      writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+      syncToFiles(next);
+    } catch (err) {
+      fatal(err.message);
+      process.exit(1);
+    }
+
+    // ── Show diff ────────────────────────────────────────────────────────────
+    step("Changes");
+    try {
+      const stat = execSync(
+        "git diff --stat HEAD package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json",
+        { encoding: "utf-8" }
+      );
+      stat.trim().split("\n").forEach((l) => console.log("  " + l));
+    } catch {
+      // Non-fatal — diff display is informational only.
+      console.log("  (could not read diff)");
+    }
+
+    // ── Gate 2: confirm commit + push ─────────────────────────────────────────
+    console.log();
+    await confirm("Press Enter to commit and push, or Ctrl+C to cancel: ");
+
+    // ── Git operations ────────────────────────────────────────────────────────
+    step("Releasing");
+    try {
+      execSync(
+        "git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json",
+        { stdio: "inherit" }
+      );
+      execSync(`git commit -m "chore: release v${next}"`, { stdio: "inherit" });
+      info(`Committed: chore: release v${next}`);
+
+      execSync("git push origin main", { stdio: "inherit" });
+      info("Pushed to main");
+      info(`CI will create tag v${next} and build the release`);
+    } catch {
+      fatal(
+        "Git operation failed. Files are updated but not committed — run git status to inspect."
+      );
+      process.exit(1);
+    }
+  })();
+}
