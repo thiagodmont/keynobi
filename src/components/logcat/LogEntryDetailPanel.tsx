@@ -1,4 +1,4 @@
-import { onCleanup } from "solid-js";
+import { onCleanup, onMount } from "solid-js";
 import { showToast } from "@/components/common/Toast";
 import type { LogcatEntry } from "@/lib/tauri-api";
 
@@ -144,7 +144,7 @@ function MetaCell(props: {
   });
 
   return (
-    <div style={cellStyle()}>
+    <div style={cellStyle}>
       <div style={LABEL_STYLE}>{props.label}</div>
       <div style={{ ...VALUE_STYLE, ...(props.valueStyle ?? {}) }}>{props.value}</div>
     </div>
@@ -162,7 +162,9 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
       props.onClose();
     }
   }
-  document.addEventListener("keydown", handleKeyDown);
+  onMount(() => {
+    document.addEventListener("keydown", handleKeyDown);
+  });
   onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
 
   async function handleCopy() {
