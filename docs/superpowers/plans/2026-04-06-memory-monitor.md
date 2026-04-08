@@ -615,7 +615,7 @@ function LogSizeIndicator(): JSX.Element {
 
 - [ ] **Step 5: Replace the right-side div in `StatusBar` to include both indicators**
 
-Find the right-side `<div>` (around line 335) that currently contains `<span>Android Dev Companion</span>`:
+Find the right-side `<div>` (around line 335) that currently contains `<span>Keynobi</span>`:
 
 ```tsx
       {/* Right side */}
