@@ -72,7 +72,7 @@ export function filterUserFacing(commits) {
   return commits.filter((c) => {
     if (!USER_FACING_TYPES.has(c.type)) return false;
     if (/\[skip ci\]/i.test(c.description)) return false;
-    if (c.type === "chore" && /^release v/i.test(c.description)) return false;
+    if (/^release v/i.test(c.description)) return false;
     return true;
   });
 }
