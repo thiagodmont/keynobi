@@ -14,13 +14,13 @@ describe("scrubWebFrameFilename", () => {
 
 describe("scrubBrowserEvent", () => {
   it("removes user and request and clears breadcrumbs", () => {
-    const event: ErrorEvent = {
+    const event = {
       message: "test",
       user: { id: "x" },
       request: { url: "file:///secret" } as ErrorEvent["request"],
       breadcrumbs: [{ message: "nav", level: "info" } as never],
       extra: { leak: "data" },
-    };
+    } as unknown as ErrorEvent;
     const out = scrubBrowserEvent(event);
     expect(out.user).toBeUndefined();
     expect(out.request).toBeUndefined();
@@ -29,7 +29,7 @@ describe("scrubBrowserEvent", () => {
   });
 
   it("scrubs stack frame filenames that look like local paths", () => {
-    const event: ErrorEvent = {
+    const event = {
       message: "e",
       exception: {
         values: [
@@ -44,7 +44,7 @@ describe("scrubBrowserEvent", () => {
           },
         ],
       },
-    };
+    } as unknown as ErrorEvent;
     const out = scrubBrowserEvent(event);
     const fn = out.exception?.values?.[0]?.stacktrace?.frames?.[0]?.filename;
     expect(fn).toBe("app.js");
