@@ -53,6 +53,7 @@ pub async fn clear_logcat(
     let mut state = logcat_state.lock().await;
     state.store.clear();
     state.known_packages.clear();
+    state.clear_epoch = state.clear_epoch.wrapping_add(1);
     let _ = app_handle.emit("logcat:cleared", ());
     Ok(())
 }
@@ -78,7 +79,7 @@ pub async fn get_logcat_entries(
     );
 
     let state = logcat_state.lock().await;
-    let limit = count.unwrap_or(1000).min(10_000);
+    let limit = count.unwrap_or(1000).min(20_000);
     Ok(state.store.query(&filter, limit))
 }
 
