@@ -94,13 +94,13 @@ export function App(): JSX.Element {
     });
 
     // Load project registry into the sidebar store.
-    refreshProjectsList().catch(e => { console.error(e); showToast(`Failed to load projects: ${e}`, "error"); });
+    refreshProjectsList().catch(e => { console.error(e); showToast(`Failed to load projects: ${formatError(e)}`, "error"); });
 
     // Restore last-active project, then initialize build/devices.
     const restored = await restoreLastProject().catch(() => false);
     if (!restored) {
-      initBuildService().catch(e => { console.error(e); showToast(`Failed to initialise build service: ${e}`, "error"); });
-      initDevices().catch(e => { console.error(e); showToast(`Failed to initialise devices: ${e}`, "error"); });
+      initBuildService().catch(e => { console.error(e); showToast(`Failed to initialise build service: ${formatError(e)}`, "error"); });
+      initDevices().catch(e => { console.error(e); showToast(`Failed to initialise devices: ${formatError(e)}`, "error"); });
     }
 
     // ── Settings ─────────────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ export function App(): JSX.Element {
         try {
           await runAndDeploy();
         } catch (e) {
-          showToast(typeof e === "string" ? e : (e as Error).message ?? "Run failed", "error");
+          showToast(formatError(e) || "Run failed", "error");
         }
       },
     });
@@ -170,7 +170,7 @@ export function App(): JSX.Element {
         try {
           await runBuild();
         } catch (e) {
-          showToast(typeof e === "string" ? e : (e as Error).message ?? "Build failed", "error");
+          showToast(formatError(e) || "Build failed", "error");
         }
       },
     });
@@ -179,7 +179,7 @@ export function App(): JSX.Element {
       label: "Cancel Build",
       category: "Build" as ActionCategory,
       action: async () => {
-        await cancelBuild().catch(e => { console.error(e); showToast(`Failed to cancel build: ${e}`, "error"); });
+        await cancelBuild().catch(e => { console.error(e); showToast(`Failed to cancel build: ${formatError(e)}`, "error"); });
       },
     });
     registerAction({

@@ -5,6 +5,7 @@ import {
   listSystemImages,
   listDeviceDefinitions,
   createAvdDevice,
+  formatError,
 } from "@/lib/tauri-api";
 import {
   deviceState,
@@ -76,7 +77,7 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
       }
       // selectedImageIdx stays 0 (highest API, already sorted).
     } catch (e) {
-      setError(`Failed to load device data: ${e}`);
+      setError(`Failed to load device data: ${formatError(e)}`);
     } finally {
       setLoading(false);
     }

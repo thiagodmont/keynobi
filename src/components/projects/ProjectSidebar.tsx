@@ -14,6 +14,7 @@ import { projectState } from "@/stores/project.store";
 import { projectsState } from "@/stores/projects.store";
 import { uiState, toggleSidebar } from "@/stores/ui.store";
 import { showToast } from "@/components/common/Toast";
+import { formatError } from "@/lib/tauri-api";
 import {
   selectProject,
   openProjectFolder,
@@ -83,7 +84,7 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
   function commitEdit() {
     const trimmed = editValue().trim();
     if (trimmed && trimmed !== props.entry.name) {
-      renameProjectEntry(props.entry.id, trimmed).catch(e => { console.error(e); showToast(`Failed to rename project: ${e}`, "error"); });
+      renameProjectEntry(props.entry.id, trimmed).catch(e => { console.error(e); showToast(`Failed to rename project: ${formatError(e)}`, "error"); });
     }
     setEditing(false);
   }
@@ -97,7 +98,7 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={() => { if (!editing()) selectProject(props.entry).catch(e => { console.error(e); showToast(`Failed to open project: ${e}`, "error"); }); }}
+      onClick={() => { if (!editing()) selectProject(props.entry).catch(e => { console.error(e); showToast(`Failed to open project: ${formatError(e)}`, "error"); }); }}
       title={props.collapsed ? props.entry.name : undefined}
       style={{
         display: "flex",
@@ -259,7 +260,7 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  removeProjectEntry(props.entry.id).catch(e => { console.error(e); showToast(`Failed to remove project: ${e}`, "error"); });
+                  removeProjectEntry(props.entry.id).catch(e => { console.error(e); showToast(`Failed to remove project: ${formatError(e)}`, "error"); });
                 }}
                 title="Remove from list"
                 style={{
@@ -412,7 +413,7 @@ export function ProjectSidebar(): JSX.Element {
         }}
       >
         <button
-          onClick={() => openProjectFolder().catch(e => { console.error(e); showToast(`Failed to open folder: ${e}`, "error"); })}
+          onClick={() => openProjectFolder().catch(e => { console.error(e); showToast(`Failed to open folder: ${formatError(e)}`, "error"); })}
           title={collapsed() ? "Add Project" : undefined}
           style={{
             width: "100%",

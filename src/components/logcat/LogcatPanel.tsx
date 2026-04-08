@@ -19,6 +19,7 @@ import {
   listenLogcatEntries,
   listenLogcatCleared,
   listenDeviceListChanged,
+  formatError,
   type LogcatEntry,
   type LogcatFilterSpec,
 } from "@/lib/tauri-api";
@@ -581,7 +582,7 @@ export function LogcatPanel(): JSX.Element {
       await startLogcat(device?.serial ?? undefined);
       setLogcatStore("streaming", true);
     } catch (e) {
-      showToast(`Failed to start logcat: ${e}`, "error");
+      showToast(`Failed to start logcat: ${formatError(e)}`, "error");
     }
   }
 
@@ -590,7 +591,7 @@ export function LogcatPanel(): JSX.Element {
       await stopLogcat();
       setLogcatStore("streaming", false);
     } catch (e) {
-      showToast(`Failed to stop logcat: ${e}`, "error");
+      showToast(`Failed to stop logcat: ${formatError(e)}`, "error");
     }
   }
 
@@ -600,7 +601,7 @@ export function LogcatPanel(): JSX.Element {
       setSelectionAnchor(null);
       setSelectionEnd(null);
     } catch (e) {
-      showToast(`Failed to clear logcat: ${e}`, "error");
+      showToast(`Failed to clear logcat: ${formatError(e)}`, "error");
     }
   }
 
@@ -687,7 +688,7 @@ export function LogcatPanel(): JSX.Element {
       await writeTextFile(path, text);
       showToast(`Exported ${filteredEntries().length} entries`, "success");
     } catch (e) {
-      showToast(`Export failed: ${e}`, "error");
+      showToast(`Export failed: ${formatError(e)}`, "error");
     }
   }
 

@@ -21,6 +21,7 @@ import {
   listAvdDevices,
   deleteAvdDevice,
   wipeAvdData,
+  formatError,
 } from "@/lib/tauri-api";
 import type { Device, AvdInfo } from "@/bindings";
 import { toggleDeviceSidebar } from "@/stores/ui.store";
@@ -58,7 +59,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
       setAvds(avds);
     } catch (e) {
       console.error("Device refresh failed:", e);
-      showToast(`Device refresh failed: ${e}`, "error");
+      showToast(`Device refresh failed: ${formatError(e)}`, "error");
     } finally {
       setRefreshing(false);
     }
@@ -72,7 +73,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
       await handleRefresh();
     } catch (e) {
       console.error("Failed to launch emulator:", e);
-      showToast(`Failed to launch emulator: ${e}`, "error");
+      showToast(`Failed to launch emulator: ${formatError(e)}`, "error");
     } finally {
       setLaunchingName(null);
       setLaunchingAvd(null);
@@ -85,7 +86,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
       await handleRefresh();
     } catch (e) {
       console.error("Failed to stop emulator:", e);
-      showToast(`Failed to stop emulator: ${e}`, "error");
+      showToast(`Failed to stop emulator: ${formatError(e)}`, "error");
     }
   }
 
@@ -104,7 +105,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
       setAvds(avds);
     } catch (e) {
       console.error("Failed to delete AVD:", e);
-      showToast(`Failed to delete AVD: ${e}`, "error");
+      showToast(`Failed to delete AVD: ${formatError(e)}`, "error");
     }
   }
 
@@ -123,7 +124,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
       await handleRefresh();
     } catch (e) {
       console.error("Failed to wipe AVD data:", e);
-      showToast(`Failed to wipe AVD data: ${e}`, "error");
+      showToast(`Failed to wipe AVD data: ${formatError(e)}`, "error");
     }
   }
 

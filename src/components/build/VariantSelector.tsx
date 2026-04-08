@@ -14,6 +14,7 @@ import {
 import { projectState } from "@/stores/project.store";
 import Icon from "@/components/common/Icon";
 import { showToast } from "@/components/common/Toast";
+import { formatError } from "@/lib/tauri-api";
 
 // ── Variant picker signal ─────────────────────────────────────────────────────
 
@@ -35,7 +36,7 @@ export function VariantSelectorPill(): JSX.Element {
 
   onMount(() => {
     if (projectState.gradleRoot || projectState.projectRoot) {
-      loadVariants().catch(e => { console.error(e); showToast(`Failed to load build variants: ${e}`, "error"); });
+      loadVariants().catch(e => { console.error(e); showToast(`Failed to load build variants: ${formatError(e)}`, "error"); });
     }
   });
 

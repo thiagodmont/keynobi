@@ -13,6 +13,7 @@ import type { BuildError } from "@/bindings";
 import Icon from "@/components/common/Icon";
 import { projectState } from "@/stores/project.store";
 import { showToast } from "@/components/common/Toast";
+import { formatError } from "@/lib/tauri-api";
 
 type ViewMode = "log" | "problems";
 
@@ -85,7 +86,7 @@ export function BuildPanel(): JSX.Element {
   }
 
   async function handleCancel() {
-    await cancelBuild().catch(e => { console.error(e); showToast(`Failed to cancel build: ${e}`, "error"); });
+    await cancelBuild().catch(e => { console.error(e); showToast(`Failed to cancel build: ${formatError(e)}`, "error"); });
   }
 
   return (
@@ -376,7 +377,7 @@ function GeneralErrorGroup(props: { items: DiagnosticItem[] }): JSX.Element {
 function DiagnosticRow(props: { item: DiagnosticItem; showLocation: boolean }): JSX.Element {
   return (
     <button
-      onClick={() => jumpToBuildError(props.item).catch(e => { console.error(e); showToast(`Failed to open build error in Studio: ${e}`, "error"); })}
+      onClick={() => jumpToBuildError(props.item).catch(e => { console.error(e); showToast(`Failed to open build error in Studio: ${formatError(e)}`, "error"); })}
       style={{
         display: "flex",
         "align-items": "flex-start",
