@@ -1,6 +1,6 @@
 # Best Practices
 
-This is a living document covering architectural principles, design decisions, and industry-standard practices for Keynobi Android Dev Companion. It explains **why** we do things, while `CODE_PATTERN.md` explains **how**.
+This is a living document covering architectural principles, design decisions, and industry-standard practices for Keynobi. It explains **why** we do things, while `CODE_PATTERN.md` explains **how**.
 
 Update this document when foundational architecture or design decisions change.
 

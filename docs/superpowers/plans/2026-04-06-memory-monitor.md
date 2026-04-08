@@ -629,7 +629,7 @@ Find the right-side `<div>` (around line 335) that currently contains `<span>And
           opacity: "0.8",
         }}
       >
-        <span>Android Dev Companion</span>
+        <span>Keynobi</span>
       </div>
 ```
 
