@@ -18,7 +18,7 @@ setupCommand: string,
  */
 claudeFound: boolean, 
 /**
- * Whether `android-companion` is already registered in Claude Code.
+ * Whether `keynobi` is already registered in Claude Code.
  */
 isConfigured: boolean, 
 /**

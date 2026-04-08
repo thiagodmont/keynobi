@@ -111,7 +111,7 @@ jobs:
             echo "ERROR: No DMG found after build" >&2
             exit 1
           fi
-          DEST="Android-Dev-Companion_${VERSION}_${{ matrix.arch }}.dmg"
+          DEST="Keynobi_${VERSION}_${{ matrix.arch }}.dmg"
           mv "$DMG" "$DEST"
           echo "path=$DEST" >> "$GITHUB_OUTPUT"
           echo "Built: $DEST"
@@ -164,8 +164,8 @@ jobs:
           gh release create "v${VERSION}" \
             --title "v${VERSION}" \
             --generate-notes \
-            "Android-Dev-Companion_${VERSION}_arm64.dmg" \
-            "Android-Dev-Companion_${VERSION}_intel.dmg"
+            "Keynobi_${VERSION}_arm64.dmg" \
+            "Keynobi_${VERSION}_intel.dmg"
 
       - name: Update release/latest.json
         run: |
@@ -186,8 +186,8 @@ jobs:
               releaseDate: $date,
               releaseUrl:  ("https://github.com/" + $repo + "/releases/tag/v" + $version),
               downloads: {
-                applesilicon: ("https://github.com/" + $repo + "/releases/download/v" + $version + "/Android-Dev-Companion_" + $version + "_arm64.dmg"),
-                intel:        ("https://github.com/" + $repo + "/releases/download/v" + $version + "/Android-Dev-Companion_" + $version + "_intel.dmg")
+                applesilicon: ("https://github.com/" + $repo + "/releases/download/v" + $version + "/Keynobi_" + $version + "_arm64.dmg"),
+                intel:        ("https://github.com/" + $repo + "/releases/download/v" + $version + "/Keynobi_" + $version + "_intel.dmg")
               }
             }' > release/latest.json
 

@@ -195,7 +195,7 @@ export function OnboardingWizard(): JSX.Element {
             <Show when={step() === 0}>
               <div style={{ display: "flex", "flex-direction": "column", gap: "12px" }}>
                 <h2 style={{ margin: "0", "font-size": "17px", color: "var(--text-primary)" }}>
-                  Welcome to Android Dev Companion
+                  Welcome to Keynobi
                 </h2>
                 <p style={{ margin: "0", "font-size": "13px", color: "var(--text-muted)", "line-height": "1.5" }}>
                   Build logs, logcat, and device management for your Android projects. This short setup finds your Android

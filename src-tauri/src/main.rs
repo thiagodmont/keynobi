@@ -5,7 +5,7 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
 
     // Check for --mcp flag: run as a headless MCP stdio server without a GUI.
-    // Usage: android-dev-companion --mcp [--project /path/to/project]
+    // Usage: keynobi --mcp [--project /path/to/project]
     if args.iter().any(|a| a == "--mcp") {
         let project_path = args.windows(2)
             .find(|w| w[0] == "--project")

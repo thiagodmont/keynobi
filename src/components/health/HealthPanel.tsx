@@ -430,7 +430,7 @@ function McpSetupSection(): JSX.Element {
   const handleCopy = async () => {
     const s = status();
     if (!s) return;
-    const cmd = `claude mcp add --transport stdio android-companion -- "${s.exePath}" --mcp`;
+    const cmd = `claude mcp add --transport stdio keynobi -- "${s.exePath}" --mcp`;
     await navigator.clipboard.writeText(cmd).catch(() => {});
   };
 
@@ -761,8 +761,8 @@ function McpSetupSection(): JSX.Element {
             }}
           >
             {status()
-              ? `claude mcp add --transport stdio android-companion -- "${status()!.exePath}" --mcp`
-              : `claude mcp add --transport stdio android-companion -- "/Applications/AndroidDevCompanion.app/Contents/MacOS/android-dev-companion" --mcp`}
+              ? `claude mcp add --transport stdio keynobi -- "${status()!.exePath}" --mcp`
+              : `claude mcp add --transport stdio keynobi -- "/Applications/Keynobi.app/Contents/MacOS/keynobi" --mcp`}
           </code>
           <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-top": "6px" }}>
             The MCP will automatically use the project currently open in the companion app.

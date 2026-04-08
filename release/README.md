@@ -15,8 +15,8 @@ the release workflow on every new version.
   "releaseDate": "2026-04-06",
   "releaseUrl": "https://github.com/owner/repo/releases/tag/v0.1.1",
   "downloads": {
-    "applesilicon": "https://github.com/owner/repo/releases/download/v0.1.1/Android-Dev-Companion_0.1.1_arm64.dmg",
-    "intel": "https://github.com/owner/repo/releases/download/v0.1.1/Android-Dev-Companion_0.1.1_intel.dmg"
+    "applesilicon": "https://github.com/owner/repo/releases/download/v0.1.1/Keynobi_0.1.1_arm64.dmg",
+    "intel": "https://github.com/owner/repo/releases/download/v0.1.1/Keynobi_0.1.1_intel.dmg"
   }
 }
 ```

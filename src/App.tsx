@@ -237,7 +237,7 @@ export function App(): JSX.Element {
         try {
           const { getMcpSetupStatus } = await import("@/lib/tauri-api");
           const s = await getMcpSetupStatus();
-          const cmd = `claude mcp add --transport stdio android-companion -- "${s.exePath}" --mcp`;
+          const cmd = `claude mcp add --transport stdio keynobi -- "${s.exePath}" --mcp`;
           await navigator.clipboard.writeText(cmd);
           showToast("MCP setup command copied — paste it in your terminal to register with Claude Code", "success");
         } catch (e) {

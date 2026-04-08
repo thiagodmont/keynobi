@@ -1,9 +1,11 @@
-# Android Dev Companion
+# Keynobi
 
 A focused **Android development companion** built with Tauri 2.0 + SolidJS. Not a full IDE — designed to run *alongside* Android Studio and Claude Code, providing best-in-class build logs, logcat streaming, device management, and an MCP server so AI agents can trigger builds, read crash logs, and control devices directly.
 
 **Platform:** macOS only (v0.x beta)  
 **Language support:** Kotlin + Gradle projects
+
+Product pitch for developers: [PITCH.md](PITCH.md). End-user guide (UI, shortcuts, MCP): [docs/USER_MANUAL.md](docs/USER_MANUAL.md).
 
 ---
 
@@ -36,7 +38,7 @@ A focused **Android development companion** built with Tauri 2.0 + SolidJS. Not 
 | System health checks (Java, SDK, ADB, Gradle, disk) | ✅ |
 | Command palette (`Cmd+Shift+P`) with action registry | ✅ |
 | Project app info editor (versionName / versionCode) | ✅ |
-| MCP server — Claude Code integration | 🔜 Phase 4 |
+| MCP server — Claude Code / `keynobi` transport (`--mcp`) | ✅ |
 
 ---
 
@@ -171,11 +173,7 @@ npm run build:dmg:intel     # Intel x86_64
 npm run build:dmg:universal # Universal
 ```
 
-Output location:
-
-```
-src-tauri/target/<arch>/release/bundle/dmg/Android Dev Companion_0.1.0_<arch>.dmg
-```
+Output: a `.dmg` under `src-tauri/target/<rust-triple>/release/bundle/dmg/`. The filename follows `productName` and version from [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) (e.g. `Keynobi_0.1.x_*.dmg`). CI releases rename artifacts to `Keynobi_<version>_arm64.dmg` / `Keynobi_<version>_intel.dmg`.
 
 > **Unsigned builds:** The DMG is built without a Developer ID certificate. On first launch, testers must right-click the app → **Open** to bypass Gatekeeper. See [Apple's documentation](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac) for details.
 
@@ -214,9 +212,15 @@ keynobi/
 │   │   │   ├── SettingsPanel.tsx
 │   │   │   ├── SettingRow.tsx
 │   │   │   └── ToolStatus.tsx         # SDK/Java path pickers
+│   │   ├── projects/
+│   │   │   ├── ProjectSidebar.tsx     # Project registry, Add Project (Cmd+O)
+│   │   │   ├── WelcomePanel.tsx       # Empty state when no project is open
+│   │   │   └── ProjectInfoEditor.tsx  # versionName / versionCode
+│   │   ├── mcp/
+│   │   │   └── McpPanel.tsx           # MCP setup + activity log (Cmd+Shift+M)
 │   │   ├── layout/
-│   │   │   ├── TitleBar.tsx           # Custom macOS title bar + project switcher
-│   │   │   └── StatusBar.tsx          # Health, build status, variant, device
+│   │   │   ├── TitleBar.tsx           # Custom title bar (app + project name)
+│   │   │   └── StatusBar.tsx          # Settings, project, health, build, MCP, variant…
 │   │   └── common/
 │   │       ├── CommandPalette.tsx     # Cmd+Shift+P action palette
 │   │       ├── LogViewer.tsx          # Shared ANSI log renderer
@@ -248,8 +252,10 @@ keynobi/
 │       │   ├── health.rs             # Health check commands
 │       │   ├── logcat.rs             # Logcat streaming commands
 │       │   ├── settings.rs           # Settings persistence commands
-│       │   └── variant.rs            # Build variant commands
+│       │   ├── variant.rs            # Build variant commands
+│       │   └── mcp.rs                # MCP setup status, Claude registration helpers
 │       ├── services/
+│       │   ├── mcp_server.rs         # MCP stdio server (tools, prompts, resources)
 │       │   ├── adb_manager.rs        # ADB device polling
 │       │   ├── build_runner.rs       # ./gradlew execution, output parsing
 │       │   ├── fs_manager.rs         # Gradle root detection
@@ -294,9 +300,9 @@ keynobi/
 │  │  │  50K ring buffer   │  │  │   variant_manager            │  │
 │  │  │  Level/tag filters │  │  │   adb_manager (poll 2s)      │  │
 │  │  ├────────────────────┤  │  │   logcat (ring buffer 50K)   │  │
-│  │  │ DevicePanel        │  │  │                              │  │
-│  │  │  Devices + AVDs    │  │  │  [Phase 4]                   │  │
-│  │  ├────────────────────┤  │  │   mcp_server (stdio + HTTP)  │  │
+│  │  │ DevicePanel        │  │  │   mcp_server (stdio MCP)     │  │
+│  │  │  Devices + AVDs    │  │  │                              │  │
+│  │  ├────────────────────┤  │  │                              │  │
 │  │  │ HealthPanel        │  │  │                              │  │
 │  │  │ SettingsPanel      │  │  └──────────────────────────────┘  │
 │  │  │ CommandPalette     │  │                ▲                   │
@@ -306,7 +312,7 @@ keynobi/
 └──────────────────────────────────────────────────────────────────┘
          │                                    │
          ▼                                    ▼
-Android Device / Emulator          Claude Code (Phase 4)
+Android Device / Emulator          Claude Code / MCP clients
 adb logcat + build output          run_gradle_task, get_build_errors,
                                    get_logcat_entries, list_devices…
 ```
@@ -325,16 +331,21 @@ adb logcat + build output          run_gradle_task, get_build_errors,
 
 | Shortcut | Action |
 |---|---|
-| `Cmd+Shift+P` | Open command palette |
-| `Cmd+O` | Open project folder |
-| `Cmd+R` | Run (build → install → launch) |
-| `Cmd+Shift+R` | Run with variant picker |
-| `Cmd+.` | Cancel current build |
-| `Cmd+B` | Toggle Build panel |
-| `Cmd+L` | Toggle Logcat panel |
-| `Cmd+D` | Toggle Device panel |
-| `Cmd+H` | Toggle Health panel |
-| `Cmd+,` | Open Settings |
+| `Cmd+Shift+P` | Command palette |
+| `Cmd+Shift+W` | Setup wizard |
+| `Cmd+,` | Settings |
+| `Cmd+O` | Open / add project folder |
+| `Cmd+R` | Run App (build → install → launch) |
+| `Cmd+Shift+R` | Build only (no deploy) |
+| `Cmd+Shift+V` | Select build variant |
+| `Cmd+1` | Build tab |
+| `Cmd+2` | Logcat tab |
+| `Cmd+3` | Toggle Devices sidebar |
+| `Cmd+B` | Toggle Projects sidebar |
+| `Cmd+Shift+H` | Health Center |
+| `Cmd+Shift+M` | MCP activity panel |
+
+Use the command palette for **Cancel Build**, **Clean Project**, **Copy MCP Setup Command**, and other actions without default shortcuts.
 
 ---
 
@@ -364,7 +375,7 @@ Expected — Rust compiles all dependencies from source on first run (~3–8 min
 
 ### ADB not found / devices not appearing
 
-Open **Settings** (`Cmd+,`) and set the Android SDK path. The Health panel (`Cmd+H`) will show which tools are missing and suggest fixes.
+Open **Settings** (`Cmd+,`) and set the Android SDK path. **Health Center** (`Cmd+Shift+H`) shows which tools are missing and suggest fixes.
 
 ### `App can't be opened because it is from an unidentified developer`
 
@@ -373,18 +384,3 @@ The build is unsigned. Right-click the app in Applications → **Open**, then cl
 ### White flash on launch
 
 Ensure `index.html` has `background: #1e1e1e` on `body`. If you see a flash after a fresh build, verify `global.css` is imported before any component renders.
-
----
-
-## Roadmap
-
-| Phase | Status | Scope |
-|---|---|---|
-| **1 — Foundation** | ✅ Complete | Project open, settings, health checks, command palette, toast system |
-| **2 — Build + Devices** | ✅ Complete | Gradle builds, build variants, ADB device management, Run cycle |
-| **3 — Logcat** | ✅ Complete | Real-time logcat streaming, filters, crash detection, ring buffer |
-| **4 — MCP Server** | 🔜 Next | `claude mcp add android-companion` — build, logcat, and device tools for Claude |
-| **5 — Polish + UX** | Planned | Logcat export, emulator controls (GPS/network/battery), screenshots, onboarding |
-| **6 — Multi-Project** | Partially done | Project registry, title-bar switcher, ProjectInfoEditor; per-project variant/device persistence pending |
-
-See [`PLAN.md`](PLAN.md) for the full architecture and [`TASK.md`](TASK.md) for the detailed task checklist.

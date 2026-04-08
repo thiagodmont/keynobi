@@ -17,7 +17,7 @@ pub struct McpSetupStatus {
     pub setup_command: String,
     /// Whether the `claude` CLI was found (via PATH or login shell).
     pub claude_found: bool,
-    /// Whether `android-companion` is already registered in Claude Code.
+    /// Whether `keynobi` is already registered in Claude Code.
     pub is_configured: bool,
     /// The command that is currently registered (if any).
     pub configured_command: Option<String>,
@@ -32,7 +32,7 @@ pub async fn get_mcp_setup_status() -> Result<McpSetupStatus, String> {
     // ── 1. Resolve the real binary path ──────────────────────────────────────
     let exe_path = std::env::current_exe()
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "android-dev-companion".to_string());
+        .unwrap_or_else(|_| "keynobi".to_string());
 
     let setup_command = format!("{} --mcp", exe_path);
 
@@ -57,7 +57,7 @@ pub async fn get_mcp_setup_status() -> Result<McpSetupStatus, String> {
     })
 }
 
-/// Run `claude mcp add --transport stdio android-companion -- "<exe_path>" --mcp`.
+/// Run `claude mcp add --transport stdio keynobi -- "<exe_path>" --mcp`.
 ///
 /// Returns a human-readable success/error message.
 #[tauri::command]
@@ -72,7 +72,7 @@ pub async fn configure_mcp_in_claude() -> Result<String, String> {
 
     // Remove any existing entry first so re-configuring works cleanly.
     let _ = tokio::process::Command::new(&claude)
-        .args(["mcp", "remove", "android-companion"])
+        .args(["mcp", "remove", "keynobi"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
@@ -81,7 +81,7 @@ pub async fn configure_mcp_in_claude() -> Result<String, String> {
     let output = tokio::time::timeout(
         std::time::Duration::from_secs(15),
         tokio::process::Command::new(&claude)
-            .args(["mcp", "add", "--transport", "stdio", "android-companion", "--", &exe_path, "--mcp"])
+            .args(["mcp", "add", "--transport", "stdio", "keynobi", "--", &exe_path, "--mcp"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output(),
@@ -92,7 +92,7 @@ pub async fn configure_mcp_in_claude() -> Result<String, String> {
 
     if output.status.success() {
         Ok(format!(
-            "MCP server registered successfully!\nCommand: claude mcp add --transport stdio android-companion -- \"{}\" --mcp",
+            "MCP server registered successfully!\nCommand: claude mcp add --transport stdio keynobi -- \"{}\" --mcp",
             exe_path
         ))
     } else {
@@ -154,13 +154,13 @@ async fn find_claude_binary() -> Option<String> {
     None
 }
 
-/// Check whether `android-companion` is already registered in Claude Code.
+/// Check whether `keynobi` is already registered in Claude Code.
 /// Returns `(is_configured, configured_command_if_any)`.
 async fn check_mcp_configured(claude: &str) -> (bool, Option<String>) {
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(5),
         tokio::process::Command::new(claude)
-            .args(["mcp", "get", "android-companion"])
+            .args(["mcp", "get", "keynobi"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .output(),
@@ -172,7 +172,7 @@ async fn check_mcp_configured(claude: &str) -> (bool, Option<String>) {
             let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
             // Extract the command from the output if possible
             let cmd = stdout.lines()
-                .find(|l| l.contains("--mcp") || l.contains("android-dev-companion") || l.contains("Command:"))
+                .find(|l| l.contains("--mcp") || l.contains("keynobi") || l.contains("Command:"))
                 .map(|l| l.trim().trim_start_matches("Command:").trim().to_string());
             (true, cmd.or(Some(stdout)))
         }

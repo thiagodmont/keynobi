@@ -120,7 +120,7 @@ export function WelcomePanel(): JSX.Element {
             margin: "0 0 6px 0",
           }}
         >
-          Android Dev Companion
+          Keynobi
         </h1>
         <p
           style={{

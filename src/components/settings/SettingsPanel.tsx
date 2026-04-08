@@ -230,7 +230,7 @@ export function SettingsPanel(): JSX.Element {
             "flex-shrink": "0",
           }}
         >
-          Android Dev Companion v{appVersion() ?? "—"}
+          Keynobi v{appVersion() ?? "—"}
         </div>
       </div>
     </Show>

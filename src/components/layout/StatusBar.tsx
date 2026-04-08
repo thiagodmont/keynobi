@@ -438,7 +438,7 @@ export function StatusBar(): JSX.Element {
             "max-width": "160px",
           }}
         >
-          {projectState.projectName ?? "Android Dev Companion"}
+          {projectState.projectName ?? "Keynobi"}
         </span>
 
         <Show when={projectState.projectName}>

@@ -1,5 +1,5 @@
 /**
- * MCP Server for Android Dev Companion
+ * MCP Server for Keynobi
  *
  * Exposes build, logcat, device, and project tools to Claude Code (or any
  * MCP-compatible client) via the Model Context Protocol (2025-11-25 spec).
@@ -12,7 +12,7 @@
  *
  * Transport: stdio (newline-delimited JSON-RPC 2.0).
  *
- * Setup: `claude mcp add --transport stdio android-companion -- "/path/to/android-dev-companion" --mcp`
+ * Setup: `claude mcp add --transport stdio keynobi -- "/path/to/keynobi" --mcp`
  */
 use crate::services::adb_manager::{self, DeviceState};
 use crate::services::build_runner::{self, BuildState};
@@ -1196,10 +1196,10 @@ impl ServerHandler for AndroidMcpServer {
         )
         .with_server_info(Implementation::from_build_env())
         .with_instructions(
-            "Android Dev Companion MCP Server — the best AI companion for Android development. \
-             Tools: build (run_gradle_task, get_build_errors, get_build_log, find_apk_path, run_tests), \
-             logcat (start_logcat, get_logcat_entries, get_crash_logs), \
-             devices (list_devices, screenshot, get_device_info, install_apk, launch_app, dump_app_info, get_memory_info), \
+            "Keynobi MCP Server — AI-first companion for Android development. \
+             Tools: build (run_gradle_task, get_build_errors, get_build_log, get_build_config, find_apk_path, run_tests), \
+             logcat (start_logcat, get_logcat_entries, get_crash_logs, get_crash_stack_trace), \
+             devices (list_devices, screenshot, get_device_info, install_apk, launch_app, restart_app, dump_app_info, get_memory_info, get_app_runtime_state), \
              project (get_project_info, run_health_check). \
              Prompts: diagnose-crash, full-deploy, build-and-fix. \
              Start with get_project_info and run_health_check to verify the environment.".to_string()

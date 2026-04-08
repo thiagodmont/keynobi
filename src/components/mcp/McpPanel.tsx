@@ -163,7 +163,7 @@ export function McpPanel(): JSX.Element {
 
     try {
       const s = await getMcpSetupStatus();
-      setSetupCmd(`claude mcp add --transport stdio android-companion -- "${s.exePath}" --mcp`);
+      setSetupCmd(`claude mcp add --transport stdio keynobi -- "${s.exePath}" --mcp`);
     } catch {
       // non-fatal
     }

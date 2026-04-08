@@ -1,7 +1,9 @@
-# Android Dev Companion — User Manual
+# Keynobi — User Manual
 
 > A focused Android development companion for build logs, logcat, and device management.  
 > Works alongside Android Studio and Claude Code.
+
+The distributed app and installer are named **Keynobi**.
 
 ---
 
@@ -11,7 +13,7 @@
 2. [Layout Overview](#2-layout-overview)
 3. [Build Panel](#3-build-panel)
 4. [Logcat Panel](#4-logcat-panel)
-5. [Devices Panel](#5-devices-panel)
+5. [Devices Sidebar](#5-devices-sidebar)
 6. [Status Bar](#6-status-bar)
 7. [Settings](#7-settings)
 8. [Health Center](#8-health-center)
@@ -30,9 +32,9 @@
 
 ### First Launch
 
-1. Launch **Android Dev Companion**. A **Setup** wizard runs once: it can auto-detect your **Android SDK** and **Java** home (or you can enter paths manually), asks whether to enable **anonymous crash reporting** (off by default), and offers optional defaults (MCP auto-start, logcat auto-start). You can **Skip setup** and finish later in **Settings** (Cmd+,).
+1. Launch **Keynobi**. A **Setup** wizard runs once: it can auto-detect your **Android SDK** and **Java** home (or you can enter paths manually), asks whether to enable **anonymous crash reporting** (off by default), and offers optional defaults (MCP auto-start, logcat auto-start). You can **Skip setup** and finish later in **Settings** (Cmd+,).
 2. If you enable crash reporting, it takes effect after the **next app restart** (the setting is saved immediately). Reports are limited to **app-side** diagnostics (e.g. crash type and sanitized stack information) so we can fix stability issues. They do **not** include your project paths, source code, Gradle or log output, or device identifiers.
-3. Press **Cmd+O** or click the title bar to open the project switcher and select your Android project folder.
+3. Add a project: press **Cmd+O** or click **Add Project…** at the bottom of the left **Projects** sidebar, then choose your Android project folder.
 4. The app detects your Gradle root, saves the project to the registry, and initializes build variants.
 5. If you skipped the wizard or need to change paths later, open **Settings** (Cmd+,) and configure:
    - **Android SDK Path** — path to `$ANDROID_HOME` (e.g. `~/Library/Android/sdk`)
@@ -48,50 +50,55 @@ The app automatically restores the last-active project. No need to re-open the f
 
 ## 2. Layout Overview
 
+The window has a **title bar** (draggable; shows the app name and current project), a **tab bar** with two tabs, **sidebars** on the left and right, and a **status bar** at the bottom.
+
 ```
-┌──────────────────────────────────────────────────────┐
-│  TitleBar (project name)                              │
-├──[Build]──[Logcat]──[Devices]─────────────────────────│
-│                                                       │
-│  Active Panel Content                                 │
-│  (fills all available space)                          │
-│                                                       │
-├──────────────────────────────────────────────────────┤
-│  StatusBar: Health | Build Status | Variant | Device  │
-└──────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│  Title bar (app name — project name)                                        │
+├───┬──[ Build ]──[ Logcat ]──────────────────────────────────────────────┬───┤
+│ P │                                                                      │ D │
+│ r │  Active tab content (Build or Logcat)                                 │ e │
+│ o │                                                                      │ v │
+│ j │                                                                      │ i │
+│ e │                                                                      │ c │
+│ c │                                                                      │ e │
+│ t │                                                                      │ s │
+│ s │                                                                      │   │
+├───┴──────────────────────────────────────────────────────────────────────┴───┤
+│  Status bar: Settings · project · Health · Build · MCP · variant · memory…  │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
-Three main panels — always accessible, no toggling required:
-- **Build** — Gradle build output and error list
-- **Logcat** — Android device log streaming
-- **Devices** — Connected devices and emulator management
+- **Build** tab — Gradle build output and error list
+- **Logcat** tab — Android device log streaming
+- **Projects** sidebar (left) — project registry, open/switch projects (**Cmd+B** toggles collapse)
+- **Devices** sidebar (right) — connected devices and emulators (**Cmd+3** toggles visibility)
 
 ---
 
-## 2a. Project Switcher
+## 2a. Projects sidebar
 
-The **title bar** doubles as a project switcher. Click the project name (or "Android Dev Companion" when no project is open) to open the dropdown.
+Use the **Projects** sidebar on the left to work with saved projects. The title bar only shows the current project name; it does not open a menu.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  ●  ○  ○   Android Dev Companion — MyApp ▾                   │
-└─────────────────────────────────────────────────────────────┘
-                │
-                ▼
-  ┌──────────────────────────────┐
-  │ ★ MyApp          ~/code/...  │  ← pinned / active (highlighted)
-  │   OtherProject   ~/dev/...   │
-  │   ThirdProject   ~/work/...  │
-  │ ─────────────────────────── │
-  │   Open Folder…  Cmd+O        │
-  └──────────────────────────────┘
+┌────────────────────┐
+│ PROJECTS        ‹› │  ← collapse/expand
+│ ┌────────────────┐ │
+│ │ MyApp  gradlew │ │  ← active row highlighted
+│ │ ~/code/...     │ │
+│ └────────────────┘ │
+│   OtherProject …  │
+│ ─────────────────  │
+│  ⊕ Add Project…    │  ← same as Cmd+O
+└────────────────────┘
 ```
 
 ### Actions
-- **Click a project** — switch to it (cancels any running build, stops logcat, opens the new project)
-- **★ star icon** — pin/unpin a project (pinned entries stay at the top)
-- **× button** (appears on hover for non-active projects) — remove from the list (does NOT delete from disk)
-- **Open Folder…** — browse for a new project folder
+- **Click a project row** — switch the active project (cancels a running build for the previous project; **does not stop logcat**)
+- **Pencil** (on hover) — rename the project in the list (does not rename the folder on disk)
+- **×** (on hover, non-active projects only) — remove from the list (**does not** delete the project from disk)
+- **Add Project…** — browse for a new folder (same as **Cmd+O**)
+- **Sidebar header control** — collapse or expand the sidebar; **Cmd+B** toggles the same
 
 ### Project App Info
 
@@ -138,7 +145,7 @@ The Logcat panel streams Android device log output in real time through a multi-
 
 ### Starting Logcat
 
-1. Connect an Android device or start an emulator (see Devices panel)
+1. Connect an Android device or start an emulator (see [Devices Sidebar](#5-devices-sidebar))
 2. Click **Start** in the Logcat toolbar, or the app will auto-connect to the selected device
 3. Log entries appear immediately as they arrive, enriched with package resolution and category detection
 
@@ -254,9 +261,9 @@ The pipeline automatically classifies entries by tag into categories (visible in
 
 ---
 
-## 5. Devices Panel
+## 5. Devices Sidebar
 
-The Devices panel shows connected physical devices and available emulators.
+The **Devices** sidebar on the right lists connected physical devices and available emulators. **Cmd+3** toggles this sidebar open and closed.
 
 ### Physical Devices
 
@@ -273,22 +280,24 @@ The Devices panel shows connected physical devices and available emulators.
 
 ### Device Selection
 
-The selected device is shown in the status bar. Builds use this device for install and launch operations.
+The selected device is used for installs and launches from the Build panel. When no suitable device is available, the app may prompt you to pick one. Device choice is not shown as a separate pill on the status bar—use the Devices sidebar (or the picker when prompted).
 
 ---
 
 ## 6. Status Bar
 
-The status bar at the bottom shows:
+The status bar at the bottom shows (left to right on the main strip, then indicators on the right):
 
 | Item | Description |
 |------|-------------|
 | ⚙ | Settings gear — click to open settings |
-| Project name | Name of the open Android project |
+| Project name | Name of the open Android project (or app name when none is open) |
 | Health | App health indicator — click to open Health Center |
-| Build status | Last build result — click to switch to Build panel |
-| Variant pill | Active build variant — click to change |
-| Device pill | Selected device — click to open device selector |
+| Build status | Current or last build — click to switch to the Build tab |
+| MCP | MCP integration — click to open the MCP activity panel (setup, copy command, activity log) |
+| Variant pill | Active build variant (when a project is open) — click to change |
+| App memory | Approximate app memory use (right side) |
+| Log folder size | Log folder size vs configured cap (right side); tooltip shows rotation when applicable |
 
 ---
 
@@ -349,28 +358,34 @@ Click **Refresh** to re-run all checks.
 
 | Shortcut | Action |
 |----------|--------|
-| **Cmd+O** | Open Android project folder |
+| **Cmd+O** | Open / add Android project folder |
 | **Cmd+R** | Run App (build → install → launch) |
 | **Cmd+Shift+R** | Build Only (no deploy) |
 | **Cmd+Shift+V** | Select Build Variant |
-| **Cmd+1** | Switch to Build panel |
-| **Cmd+2** | Switch to Logcat panel |
-| **Cmd+3** | Switch to Devices panel |
+| **Cmd+1** | Open Build tab |
+| **Cmd+2** | Open Logcat tab |
+| **Cmd+3** | Toggle Device Sidebar |
+| **Cmd+B** | Toggle Project Sidebar |
 | **Cmd+,** | Open Settings |
 | **Cmd+Shift+W** | Open Setup Wizard |
 | **Cmd+Shift+H** | Open Health Center |
+| **Cmd+Shift+M** | Open MCP Activity Panel |
 | **Cmd+Shift+P** | Command Palette |
 
 **Command Palette actions** (Cmd+Shift+P, then type):
 - `Open Setup Wizard` — environment paths, privacy, and workflow defaults
 - `Project App Info` — open the version name/code editor
 - `Open Folder` — browse for a new project
+- `Cancel Build` — stop the current Gradle run
+- `Clean Project` — run `./gradlew clean`
+- `Manage Virtual Devices` — toggle the Device Sidebar
+- `Copy MCP Setup Command` — copy the `claude mcp add …` line (uses this app’s real binary path)
 
 ---
 
 ## 10. Claude Code Integration
 
-Android Dev Companion exposes an **MCP server** that Claude Code can connect to. This lets Claude Code:
+Keynobi exposes an **MCP server** that Claude Code can connect to. This lets Claude Code:
 - Trigger builds and read structured errors
 - Read logcat output and crash logs
 - Manage devices, install APKs, and launch apps
@@ -381,60 +396,65 @@ Android Dev Companion exposes an **MCP server** that Claude Code can connect to.
 
 **Option A — Headless mode (recommended for Claude Code)**
 
-The companion binary can run as a headless MCP server with no GUI window:
+The app binary can run as a headless MCP server with no GUI window. Register it once with Claude Code using the **exact path** to the installed binary (the Health Center shows the command with your real path). A typical install location looks like:
 
 ```bash
-claude mcp add --transport stdio android-companion -- "/Applications/AndroidDevCompanion.app/Contents/MacOS/android-dev-companion" --mcp
+claude mcp add --transport stdio keynobi -- "/Applications/Keynobi.app/Contents/MacOS/keynobi" --mcp
 ```
 
-The MCP server automatically uses whichever Android project is currently open in the companion app. No extra configuration is needed — just open your project and the MCP will pick it up.
+Always prefer the command copied from **Health Center** (Cmd+Shift+H) or **Copy MCP Setup Command** in the command palette—paths vary by machine and install location.
 
-To override and point at a specific project regardless of what the companion app has open:
+The MCP server uses whichever Android project is currently open in Keynobi. No extra configuration is needed — open your project in the app and the MCP session will see it.
+
+To override and point at a specific project regardless of what the app has open, append `--project`:
 
 ```bash
-claude mcp add --transport stdio android-companion -- "/path/to/android-dev-companion" --mcp --project /path/to/MyAndroidProject
+claude mcp add --transport stdio keynobi -- "/Applications/Keynobi.app/Contents/MacOS/keynobi" --mcp --project /path/to/MyAndroidProject
 ```
 
 **Option B — GUI mode**
 
-1. Open the companion app and load your project
-2. Open the command palette (Cmd+Shift+P) and run `Start MCP Server (for Claude Code)`
-3. The MCP indicator in the status bar turns blue
-4. Add to Claude Code using the setup command shown in the Health panel (Cmd+Shift+H)
+1. Open Keynobi and load your project
+2. Use **Cmd+Shift+M** or click the **MCP** pill in the status bar to open the MCP panel
+3. Run **Copy MCP Setup Command** from the command palette (Cmd+Shift+P) and paste the line in your terminal to register with Claude Code, or copy the same command from **Health Center** (Cmd+Shift+H)
+4. The MCP pill updates to reflect server/client state (see [MCP Status Indicator](#mcp-status-indicator) below)
 
 ### Available MCP Tools
 
 | Tool | Description |
 |------|-------------|
 | `run_gradle_task` | Run a Gradle task (e.g. `assembleDebug`), returns result + structured errors |
-| `get_build_status` | Current build status with duration and error counts |
-| `get_build_errors` | Structured compiler errors with file:line locations (JSON) |
-| `get_build_log` | Raw build output lines (last N lines) |
-| `cancel_build` | Cancel a running build |
-| `list_build_variants` | List variants and show the active one (JSON) |
-| `set_active_variant` | Switch to a different build variant |
-| `find_apk_path` | Find the output APK path after a build |
-| `run_tests` | Run unit or connected tests |
-| `start_logcat` | Start logcat streaming (required in headless mode) |
+| `get_build_status` | Current build status (idle, running, success, failed, cancelled) |
+| `get_build_errors` | Structured compiler errors and warnings from the last build (JSON) |
+| `get_build_log` | Raw Gradle output lines (last N lines, capped) |
+| `cancel_build` | Cancel the running Gradle build |
+| `list_build_variants` | List variants and active variant (JSON) |
+| `set_active_variant` | Set the active build variant (persists in settings) |
+| `find_apk_path` | Output APK path for a variant after a build |
+| `get_build_config` | Parse `build.gradle(.kts)` for SDK levels, `applicationId`, build types, flavors (no Gradle run) |
+| `run_tests` | Run unit tests (`testDebug`), connected tests, or a custom test task |
+| `get_crash_stack_trace` | Parsed crash from logcat buffer (frames, caused-by); needs logcat streaming |
+| `restart_app` | Force-stop or clear data, relaunch, wait for display |
+| `get_app_runtime_state` | Processes, threads, RSS for an app package |
+| `start_logcat` | Start logcat streaming (required in headless mode before reads) |
 | `stop_logcat` | Stop the logcat stream |
-| `get_logcat_entries` | Recent logcat entries with level/tag/text/package filter (JSON) |
+| `get_logcat_entries` | Recent logcat entries with filters (JSON) |
 | `get_crash_logs` | FATAL EXCEPTION, ANR, and native crash entries (JSON) |
 | `clear_logcat` | Clear the in-memory logcat buffer |
 | `get_logcat_stats` | Logcat statistics (counts by level, crashes, packages) |
-| `list_devices` | Connected ADB devices — always queries ADB fresh (JSON) |
-| `refresh_devices` | Force-refresh device list from ADB |
-| `screenshot` | Capture a screenshot — returns inline image |
-| `get_device_info` | SDK level, model, screen size, battery |
+| `list_devices` | Connected ADB devices (JSON) |
+| `screenshot` | Capture a screenshot (inline image) |
+| `get_device_info` | SDK level, model, screen, battery |
 | `dump_app_info` | App version, install path, activities |
-| `get_memory_info` | PSS, heap, native, graphics memory breakdown |
-| `install_apk` | Install an APK on a device (path-validated) |
-| `launch_app` | Launch an app with `am start` |
+| `get_memory_info` | Memory breakdown (PSS, heap, native, graphics) |
+| `install_apk` | Install an APK (path-validated) |
+| `launch_app` | Launch an app (`am start`) |
 | `stop_app` | Force-stop an app |
-| `list_avds` | List configured Android Virtual Devices (JSON) |
+| `list_avds` | List AVDs (JSON) |
 | `launch_avd` | Start an emulator |
 | `stop_avd` | Stop a running emulator |
-| `get_project_info` | Project name, path, and Gradle root |
-| `run_health_check` | Java, SDK, ADB, Gradle wrapper status (JSON) |
+| `get_project_info` | Project name, path, Gradle root |
+| `run_health_check` | Java, SDK, ADB, Gradle wrapper, disk, app dir (JSON) |
 
 ### MCP Prompts
 
@@ -468,9 +488,11 @@ The server exposes project files as readable resources:
 
 ### MCP Status Indicator
 
-The status bar shows an **MCP pill** that:
-- Is grey when the server is not started
-- Turns blue when the MCP server is running (stdio transport)
-- Click to start the server (if not running) or copy the setup command
+The status bar shows an **MCP** pill:
+- **Dim** when idle (no server process or client activity detected)
+- **Blue** when an MCP server process is alive (stdio transport)
+- **Amber** when the GUI believes a server run is in progress
+- **Green** when a client (e.g. Claude Code) is connected — the pill may show the client name
+- **Click** opens the MCP activity panel (setup, copied command reminder, activity log)
 
-The **Health panel** (Cmd+Shift+H) shows the MCP server status and the exact `claude mcp add` command to run.
+The **Health Center** (Cmd+Shift+H) shows MCP integration status and the exact `claude mcp add` command with your real binary path.

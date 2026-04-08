@@ -4,7 +4,7 @@
   "releaseDate": "2026-04-08",
   "releaseUrl": "https://github.com/thiagodmont/keynobi/releases/tag/v0.1.4",
   "downloads": {
-    "applesilicon": "https://github.com/thiagodmont/keynobi/releases/download/v0.1.4/Android-Dev-Companion_0.1.4_arm64.dmg",
-    "intel": "https://github.com/thiagodmont/keynobi/releases/download/v0.1.4/Android-Dev-Companion_0.1.4_intel.dmg"
+    "applesilicon": "https://github.com/thiagodmont/keynobi/releases/download/v0.1.4/Keynobi_0.1.4_arm64.dmg",
+    "intel": "https://github.com/thiagodmont/keynobi/releases/download/v0.1.4/Keynobi_0.1.4_intel.dmg"
   }
 }

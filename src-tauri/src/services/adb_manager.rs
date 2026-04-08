@@ -44,7 +44,7 @@ fn expand_tilde(path: &str) -> PathBuf {
 /// Parse the output of `adb devices -l` into a list of `Device`s.
 ///
 /// The output format is:
-/// ```
+/// ```text
 /// List of devices attached
 /// emulator-5554          device product:sdk_gphone64_x86_64 model:sdk_gphone64_x86_64 device:emu64x transport_id:1
 /// ZX1G22ABCD             device usb:338690048X product:redfin model:Pixel_5 device:redfin transport_id:2
@@ -559,7 +559,7 @@ pub async fn list_device_definitions(avdmanager: &Path) -> Vec<DeviceDefinition>
 /// Parse `avdmanager list device -c` compact output.
 ///
 /// Format (one device per line):
-/// ```
+/// ```text
 /// id: 0 or "pixel_7"
 /// Name: Pixel 7
 /// OEM : Google
@@ -825,7 +825,7 @@ fn parse_sdkmanager_list(
 /// via a Tauri `Channel<SdkDownloadProgress>`.
 ///
 /// sdkmanager outputs lines like:
-/// ```
+/// ```text
 /// [=====                                 ] 14% Downloading sdk-tools-linux-...
 /// [=======================================] 100% Computing updates...
 /// ```

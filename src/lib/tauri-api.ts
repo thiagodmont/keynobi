@@ -444,7 +444,7 @@ export async function getMcpSetupStatus(): Promise<McpSetupStatus> {
 }
 
 /**
- * Run `claude mcp add android-companion --command "<real_path> --mcp"`.
+ * Run `claude mcp add keynobi --command "<real_path> --mcp"`.
  * Returns a success message or throws with an error description.
  */
 export async function configureMcpInClaude(): Promise<string> {

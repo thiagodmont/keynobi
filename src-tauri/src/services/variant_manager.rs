@@ -118,7 +118,7 @@ pub fn parse_variants_from_gradle(
 /// Extract the names of entries inside a named block.
 ///
 /// Looks for patterns like:
-/// ```
+/// ```text
 /// buildTypes {
 ///     debug { ... }
 ///     release { ... }
@@ -185,7 +185,7 @@ fn is_identifier(s: &str) -> bool {
 /// Extract flavor dimensions and the flavors per dimension.
 ///
 /// Looks for:
-/// ```
+/// ```text
 /// flavorDimensions("api", "mode")
 /// productFlavors {
 ///     demo { dimension "mode" }
