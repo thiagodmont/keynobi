@@ -285,6 +285,7 @@ export function LogcatPanel(): JSX.Element {
   const [scrollCompensate, setScrollCompensate] = createSignal(0);
   let virtualListRef: VirtualListHandle | undefined;
   const [paused, setPaused] = createSignal(false);
+  const [restarting, setRestarting] = createSignal(false);
 
   // Crash navigation
   const [jumpTarget, setJumpTarget] = createSignal<number | null>(null);
@@ -626,6 +627,22 @@ export function LogcatPanel(): JSX.Element {
     }
   }
 
+  async function handleRestart() {
+    if (restarting()) return;
+    setRestarting(true);
+    try {
+      await stopLogcat();
+      await clearLogcat();         // emits logcat:cleared → entries cleared + scroll to bottom
+      const device = selectedDevice();
+      await startLogcat(device?.serial ?? undefined);
+      setLogcatStore("streaming", true);
+    } catch (e) {
+      showToast(`Failed to restart logcat: ${formatError(e)}`, "error");
+    } finally {
+      setRestarting(false);
+    }
+  }
+
   // ── Crash navigation ──────────────────────────────────────────────────────────
 
   function jumpToCrash(direction: 1 | -1) {
@@ -825,6 +842,16 @@ export function LogcatPanel(): JSX.Element {
           style={btnStyle(paused() ? "#fbbf24" : "var(--text-muted)")}
         >
           {paused() ? "▶" : "⏸"}
+        </button>
+
+        {/* Restart */}
+        <button
+          onClick={handleRestart}
+          title="Stop, clear and restart logcat"
+          disabled={restarting()}
+          style={btnStyle("var(--text-muted)")}
+        >
+          ↺ Restart
         </button>
 
         {/* Clear */}
