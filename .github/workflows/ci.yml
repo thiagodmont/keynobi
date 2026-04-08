@@ -21,7 +21,7 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run lint
-      - run: npx tsc --noEmit
+      - run: npm run typescript:check
       - run: npm run test
 
   rust:
