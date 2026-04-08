@@ -94,13 +94,13 @@ export function App(): JSX.Element {
     });
 
     // Load project registry into the sidebar store.
-    refreshProjectsList().catch(console.error);
+    refreshProjectsList().catch(e => { console.error(e); showToast(`Failed to load projects: ${e}`, "error"); });
 
     // Restore last-active project, then initialize build/devices.
     const restored = await restoreLastProject().catch(() => false);
     if (!restored) {
-      initBuildService().catch(console.error);
-      initDevices().catch(console.error);
+      initBuildService().catch(e => { console.error(e); showToast(`Failed to initialise build service: ${e}`, "error"); });
+      initDevices().catch(e => { console.error(e); showToast(`Failed to initialise devices: ${e}`, "error"); });
     }
 
     // ── Settings ─────────────────────────────────────────────────────────────
@@ -179,7 +179,7 @@ export function App(): JSX.Element {
       label: "Cancel Build",
       category: "Build" as ActionCategory,
       action: async () => {
-        await cancelBuild().catch(console.error);
+        await cancelBuild().catch(e => { console.error(e); showToast(`Failed to cancel build: ${e}`, "error"); });
       },
     });
     registerAction({

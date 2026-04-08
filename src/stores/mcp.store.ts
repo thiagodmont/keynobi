@@ -12,6 +12,7 @@ import {
   getMcpActivity,
   getMcpServerStatus,
 } from "@/lib/tauri-api";
+import { showToast } from "@/stores/ui.store";
 
 export type { McpActivityEntry };
 
@@ -98,6 +99,7 @@ export async function loadMcpActivity(limit = 200): Promise<void> {
     );
   } catch (err) {
     console.error("[mcp] Failed to load MCP activity:", err);
+    showToast(`MCP activity failed to load: ${err}`, "error");
     setMcpState("activityLoading", false);
   }
 }

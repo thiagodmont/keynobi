@@ -24,6 +24,7 @@ import {
 } from "@/lib/tauri-api";
 import type { Device, AvdInfo } from "@/bindings";
 import { toggleDeviceSidebar } from "@/stores/ui.store";
+import { showToast } from "@/components/common/Toast";
 import Icon from "@/components/common/Icon";
 import { showDialog } from "@/components/common/Dialog";
 import { CreateDeviceDialog } from "./CreateDeviceDialog";
@@ -57,6 +58,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
       setAvds(avds);
     } catch (e) {
       console.error("Device refresh failed:", e);
+      showToast(`Device refresh failed: ${e}`, "error");
     } finally {
       setRefreshing(false);
     }
@@ -70,6 +72,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
       await handleRefresh();
     } catch (e) {
       console.error("Failed to launch emulator:", e);
+      showToast(`Failed to launch emulator: ${e}`, "error");
     } finally {
       setLaunchingName(null);
       setLaunchingAvd(null);
@@ -82,6 +85,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
       await handleRefresh();
     } catch (e) {
       console.error("Failed to stop emulator:", e);
+      showToast(`Failed to stop emulator: ${e}`, "error");
     }
   }
 
@@ -100,6 +104,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
       setAvds(avds);
     } catch (e) {
       console.error("Failed to delete AVD:", e);
+      showToast(`Failed to delete AVD: ${e}`, "error");
     }
   }
 
@@ -118,6 +123,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
       await handleRefresh();
     } catch (e) {
       console.error("Failed to wipe AVD data:", e);
+      showToast(`Failed to wipe AVD data: ${e}`, "error");
     }
   }
 

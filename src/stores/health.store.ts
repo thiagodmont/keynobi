@@ -15,6 +15,7 @@ import { createMemo } from "solid-js";
 import { settingsState } from "@/stores/settings.store";
 import { runHealthChecks } from "@/lib/tauri-api";
 import type { SystemHealthReport } from "@/bindings";
+import { showToast } from "@/stores/ui.store";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -69,6 +70,7 @@ export async function refreshHealthChecks(): Promise<void> {
     setSystemReport(report);
   } catch (err) {
     console.error("[health] Failed to run health checks:", err);
+    showToast(`Health check failed: ${err}`, "error");
     setHealthChecking(false);
   }
 }

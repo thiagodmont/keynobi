@@ -47,10 +47,10 @@ import type { ProjectEntry } from "@/bindings";
 // Register callbacks so stores can notify this service without circular imports.
 // This runs once when the module is first imported (hoisted function refs are safe here).
 onVariantChange((_variant) => {
-  saveActiveProjectMeta().catch(console.error);
+  saveActiveProjectMeta().catch(e => { console.error(e); showToast(`Failed to save project state: ${e}`, "error"); });
 });
 onDeviceChange((_serial) => {
-  saveActiveProjectMeta().catch(console.error);
+  saveActiveProjectMeta().catch(e => { console.error(e); showToast(`Failed to save project state: ${e}`, "error"); });
 });
 
 export interface OpenProjectResult {

@@ -8,6 +8,7 @@ import {
   listenDeviceListChanged,
   startDevicePolling,
 } from "@/lib/tauri-api";
+import { showToast } from "@/stores/ui.store";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -148,6 +149,7 @@ export async function initDevices(): Promise<void> {
     setDeviceState("polling", true);
     await startDevicePolling().catch((err) => {
       console.error("[device] Failed to start device polling:", err);
+      showToast(`Device polling failed: ${err}`, "error");
     });
     // eslint-disable-next-line solid/reactivity
     await listenDeviceListChanged((newDevices) => {

@@ -13,6 +13,7 @@ import {
 } from "@/stores/variant.store";
 import { projectState } from "@/stores/project.store";
 import Icon from "@/components/common/Icon";
+import { showToast } from "@/components/common/Toast";
 
 // ── Variant picker signal ─────────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ export function VariantSelectorPill(): JSX.Element {
 
   onMount(() => {
     if (projectState.gradleRoot || projectState.projectRoot) {
-      loadVariants().catch(console.error);
+      loadVariants().catch(e => { console.error(e); showToast(`Failed to load build variants: ${e}`, "error"); });
     }
   });
 

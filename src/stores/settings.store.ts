@@ -95,6 +95,7 @@ export async function loadSettings(): Promise<void> {
     const msg = formatError(err);
     if (!msg.includes("No such file") && !msg.includes("os error 2")) {
       console.error("[settings] Unexpected error loading settings:", msg);
+      showToast(`Settings failed to load: ${msg}`, "error");
     }
   }
 }
