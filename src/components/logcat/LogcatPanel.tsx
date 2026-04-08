@@ -46,6 +46,7 @@ import {
   type FilterGroup,
 } from "@/lib/logcat-query";
 import { PackageDropdown } from "@/components/logcat/PackageDropdown";
+import { LogEntryDetailPanel } from "./LogEntryDetailPanel";
 import {
   loadFilterStorage,
   addSavedFilter,
@@ -421,7 +422,7 @@ export function LogcatPanel(): JSX.Element {
 
       // Fetch backfill from stored buffer with the same filter.
       const entries = await getLogcatEntries({
-        count: 2000,
+        count: MAX_UI_ENTRIES,
         minLevel: spec.minLevel ?? undefined,
         tag: spec.tag ?? undefined,
         text: spec.text ?? undefined,
@@ -478,7 +479,7 @@ export function LogcatPanel(): JSX.Element {
 
     try {
       const entries = await getLogcatEntries({
-        count: 2000,
+        count: MAX_UI_ENTRIES,
         // Apply the restored spec so the backfill is already filtered
         minLevel: restoredSpec?.minLevel ?? undefined,
         tag: restoredSpec?.tag ?? undefined,
@@ -690,7 +691,13 @@ export function LogcatPanel(): JSX.Element {
     } else {
       setSelectionAnchor(idx);
       setSelectionEnd(null);
-      copyRow(idx);
+      // Plain click (no shift) — toggle detail panel
+      const entry = filteredEntries()[idx];
+      if (entry) {
+        setSelectedDetailEntry((prev) =>
+          prev?.id === entry.id ? null : entry
+        );
+      }
     }
   }
 
@@ -785,6 +792,10 @@ export function LogcatPanel(): JSX.Element {
   // ── JSON viewer state ─────────────────────────────────────────────────────────
 
   const [selectedJsonEntry, setSelectedJsonEntry] = createSignal<LogcatEntry | null>(null);
+
+  // ── Detail panel state ────────────────────────────────────────────────────────
+
+  const [selectedDetailEntry, setSelectedDetailEntry] = createSignal<LogcatEntry | null>(null);
 
   function handleJsonBadgeClick(e: MouseEvent, entry: LogcatEntry) {
     e.stopPropagation();
@@ -1241,6 +1252,16 @@ export function LogcatPanel(): JSX.Element {
           entry={selectedJsonEntry()!}
           onClose={() => setSelectedJsonEntry(null)}
         />
+      </Show>
+
+      {/* ── Entry Detail Panel ────────────────────────────────────────────── */}
+      <Show when={selectedDetailEntry()}>
+        {(entry) => (
+          <LogEntryDetailPanel
+            entry={entry()}
+            onClose={() => setSelectedDetailEntry(null)}
+          />
+        )}
       </Show>
     </div>
   );
