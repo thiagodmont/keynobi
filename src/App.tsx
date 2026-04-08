@@ -77,7 +77,7 @@ export function App(): JSX.Element {
 
   // Start/stop browser Sentry only when Anonymous crash reporting is on (after settings are known).
   createEffect(() => {
-    settingsState.telemetry.enabled;
+    const _trackTelemetry = settingsState.telemetry.enabled;
     initSentryWeb();
   });
 
