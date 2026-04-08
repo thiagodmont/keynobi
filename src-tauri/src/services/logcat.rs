@@ -154,6 +154,10 @@ pub struct LogcatStateInner {
     pub device_serial: Option<String>,
     /// All distinct package names seen in this session.
     pub known_packages: HashSet<String>,
+    /// Incremented each time `clear_logcat` is called. The pipeline task
+    /// watches this and flushes any buffered-but-unprocessed lines when it
+    /// changes, preventing stale entries from reappearing after a clear.
+    pub clear_epoch: u64,
 }
 
 impl LogcatStateInner {
@@ -164,6 +168,7 @@ impl LogcatStateInner {
             streaming: false,
             device_serial: None,
             known_packages: HashSet::new(),
+            clear_epoch: 0,
         }
     }
 
@@ -304,7 +309,7 @@ pub async fn start_logcat_stream(
         if let Some(ref serial) = device_serial {
             cmd.args(["-s", serial]);
         }
-        cmd.args(["logcat", "-v", "threadtime"])
+        cmd.args(["logcat", "-v", "threadtime", "-T", "1"])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
             .kill_on_drop(true);
@@ -375,6 +380,10 @@ pub async fn start_logcat_stream(
             let pipeline = LogPipeline::default_pipeline();
             let mut ctx = PipelineContext::with_initial_pids(initial_pid_map);
 
+            // Track the clear epoch so we can discard buffered-but-unprocessed
+            // lines when the user clicks "clear" while streaming.
+            let mut my_epoch = { logcat_state.lock().await.clear_epoch };
+
             let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
@@ -382,11 +391,21 @@ pub async fn start_logcat_stream(
                 interval.tick().await;
 
                 // Exit cleanly on graceful shutdown or stop_logcat.
+                // Also check whether a clear happened since the last tick.
                 {
                     let state = logcat_state.lock().await;
                     if !state.streaming {
                         debug!("Logcat pipeline stopped");
                         break;
+                    }
+                    if state.clear_epoch != my_epoch {
+                        // A clear_logcat() call happened — flush any lines that the
+                        // reader task had already pushed into the channel so they do
+                        // not reappear on the frontend after the clear.
+                        while rx.try_recv().is_ok() {}
+                        my_epoch = state.clear_epoch;
+                        ctx = PipelineContext::new();
+                        continue;
                     }
                 }
 
