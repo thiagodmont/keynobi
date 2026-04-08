@@ -47,6 +47,7 @@ import {
 } from "@/lib/logcat-query";
 import { PackageDropdown } from "@/components/logcat/PackageDropdown";
 import { LogEntryDetailPanel } from "./LogEntryDetailPanel";
+import { LEVEL_CONFIG } from "./logcat-levels";
 import {
   loadFilterStorage,
   addSavedFilter,
@@ -66,18 +67,6 @@ const ENTRY_FLAGS = {
   ANR: 1 << 1,
   JSON_BODY: 1 << 2,
   NATIVE_CRASH: 1 << 3,
-} as const;
-
-// ── Level config ──────────────────────────────────────────────────────────────
-
-const LEVEL_CONFIG = {
-  verbose: { label: "V", color: "#9ca3af", bg: "transparent" },
-  debug:   { label: "D", color: "#60a5fa", bg: "transparent" },
-  info:    { label: "I", color: "#4ade80", bg: "transparent" },
-  warn:    { label: "W", color: "#fbbf24", bg: "rgba(251,191,36,0.08)" },
-  error:   { label: "E", color: "#f87171", bg: "rgba(248,113,113,0.10)" },
-  fatal:   { label: "F", color: "#e879f9", bg: "rgba(232,121,249,0.12)" },
-  unknown: { label: "?", color: "#9ca3af", bg: "transparent" },
 } as const;
 
 // ── Store ─────────────────────────────────────────────────────────────────────
