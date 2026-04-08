@@ -578,7 +578,7 @@ export function LogcatPanel(): JSX.Element {
     // unexpected ADB server restart (e.g. Android Studio opening Logcat).
     // The backend never sets streaming=false in this case, so the UI stays
     // consistent; this listener is purely for future indicator use.
-    // eslint-disable-next-line solid/reactivity
+     
     unlistenReconnecting = await listenLogcatReconnecting(() => {
       setLogcatStore("streaming", true);
     });
@@ -674,15 +674,6 @@ export function LogcatPanel(): JSX.Element {
   function formatEntry(e: LogcatEntry): string {
     const pkg = e.package ? `[${e.package}] ` : "";
     return `${e.timestamp}  ${e.level.toUpperCase()}  ${pkg}${e.tag}: ${e.message}`;
-  }
-
-  async function copyRow(idx: number) {
-    const entry = filteredEntries()[idx];
-    if (!entry) return;
-    try {
-      await navigator.clipboard.writeText(formatEntry(entry));
-      showToast("Copied to clipboard", "success");
-    } catch { /* ignore */ }
   }
 
   function handleRowClick(idx: number, e: MouseEvent) {

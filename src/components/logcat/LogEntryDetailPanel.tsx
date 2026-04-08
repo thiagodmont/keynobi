@@ -144,6 +144,7 @@ function MetaCell(props: {
   });
 
   return (
+    // eslint-disable-next-line solid/reactivity
     <div style={cellStyle}>
       <div style={LABEL_STYLE}>{props.label}</div>
       <div style={{ ...VALUE_STYLE, ...(props.valueStyle ?? {}) }}>{props.value}</div>
@@ -193,7 +194,7 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
           <button
             style={{ ...ICON_BTN_STYLE, "font-size": "14px", padding: "2px 4px" }}
             title="Close detail panel (Esc)"
-            onClick={props.onClose}
+            onClick={() => props.onClose()}
             aria-label="Close"
           >
             ✕
