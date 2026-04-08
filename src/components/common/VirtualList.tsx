@@ -31,6 +31,10 @@ import {
   onMount,
 } from "solid-js";
 
+export interface VirtualListHandle {
+  scrollToBottom: () => void;
+}
+
 export interface VirtualListProps<T> {
   /** The full (filtered) array to display. */
   items: T[];
@@ -64,6 +68,18 @@ export interface VirtualListProps<T> {
    * trigger a scroll.  The list sets `autoScroll` to false on jump.
    */
   jumpTo?: number | null;
+  /**
+   * Imperative handle callback. The parent receives a `VirtualListHandle`
+   * object on mount, enabling programmatic `scrollToBottom()` calls.
+   */
+  handle?: (api: VirtualListHandle) => void;
+  /**
+   * Cumulative pixel offset used to compensate for front-eviction scroll
+   * jumps. Each time entries are removed from the front of the list the
+   * parent increments this value by `removedCount × rowHeight`; the list
+   * applies only the delta to `scrollTop` so the viewport stays stable.
+   */
+  scrollCompensate?: number;
 }
 
 export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
@@ -87,6 +103,13 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
     });
     ro.observe(outerRef);
     onCleanup(() => ro.disconnect());
+
+    // Expose imperative scroll-to-bottom API to the parent.
+    props.handle?.({
+      scrollToBottom: () => {
+        outerRef.scrollTop = outerRef.scrollHeight;
+      },
+    });
   });
 
   // ── Windowing memos ───────────────────────────────────────────────────────
@@ -147,6 +170,20 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
     const viewportMid = containerHeight() / 2;
     outerRef.scrollTop = Math.max(0, targetTop - viewportMid + props.rowHeight / 2);
     wasAtBottom = false;
+  });
+
+  // ── Front-eviction scroll compensation ───────────────────────────────────
+
+  // Each instance keeps its own counter so compensation is not shared across
+  // multiple VirtualList renders in the same page.
+  let prevCompensate = 0;
+  createEffect(() => {
+    const current = props.scrollCompensate ?? 0;
+    const delta = current - prevCompensate;
+    prevCompensate = current;
+    if (delta !== 0 && outerRef) {
+      outerRef.scrollTop += delta;
+    }
   });
 
   // ── Scroll handler ────────────────────────────────────────────────────────
