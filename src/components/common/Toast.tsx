@@ -1,66 +1,32 @@
-import { createSignal, For, type JSX } from "solid-js";
+import { For } from "solid-js";
+import { toasts, dismissToast, showToast, type Toast } from "../../stores/ui.store";
 
-export type ToastType = "success" | "error" | "warning" | "info";
+export { showToast };
 
-interface ToastItem {
-  id: number;
-  message: string;
-  type: ToastType;
+export function ToastContainer() {
+  return (
+    <div class="toast-container" aria-live="polite" aria-atomic="false">
+      <For each={toasts()}>
+        {(toast) => <ToastItem toast={toast} />}
+      </For>
+    </div>
+  );
 }
 
-const [toasts, setToasts] = createSignal<ToastItem[]>([]);
-let nextId = 0;
-
-export function showToast(message: string, type: ToastType = "info") {
-  const id = nextId++;
-  setToasts((prev) => [...prev, { id, message, type }]);
-  setTimeout(() => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, 4000);
-}
-
-const typeColors: Record<ToastType, string> = {
-  success: "#4caf50",
-  error: "#f14c4c",
-  warning: "#cca700",
-  info: "#007acc",
-};
-
-export function ToastContainer(): JSX.Element {
+function ToastItem(props: { toast: Toast }) {
   return (
     <div
-      style={{
-        position: "fixed",
-        bottom: "32px",
-        right: "16px",
-        display: "flex",
-        "flex-direction": "column",
-        gap: "8px",
-        "z-index": "9999",
-        "pointer-events": "none",
-      }}
+      class={`toast toast--${props.toast.kind}`}
+      role={props.toast.kind === "error" ? "alert" : "status"}
     >
-      <For each={toasts()}>
-        {(toast) => (
-          <div
-            style={{
-              background: "var(--bg-tertiary)",
-              border: `1px solid ${typeColors[toast.type]}`,
-              "border-left": `3px solid ${typeColors[toast.type]}`,
-              "border-radius": "4px",
-              padding: "8px 12px",
-              "font-size": "12px",
-              color: "var(--text-primary)",
-              "max-width": "320px",
-              "word-break": "break-word",
-              "pointer-events": "all",
-              "box-shadow": "0 2px 8px rgba(0,0,0,0.4)",
-            }}
-          >
-            {toast.message}
-          </div>
-        )}
-      </For>
+      <span class="toast__message">{props.toast.message}</span>
+      <button
+        class="toast__close"
+        aria-label="Dismiss"
+        onClick={() => dismissToast(props.toast.id)}
+      >
+        ×
+      </button>
     </div>
   );
 }

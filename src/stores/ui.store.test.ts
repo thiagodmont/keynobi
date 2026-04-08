@@ -3,6 +3,9 @@ import {
   uiState,
   setUIState,
   setActiveTab,
+  showToast,
+  toasts,
+  dismissToast,
 } from "./ui.store";
 
 // Reset state to defaults before each test.
@@ -47,5 +50,32 @@ describe("bottomPanelHeight", () => {
   it("can be updated", () => {
     setUIState("bottomPanelHeight", 400);
     expect(uiState.bottomPanelHeight).toBe(400);
+  });
+});
+
+// ── toast store ───────────────────────────────────────────────────────────────
+
+describe("toast store", () => {
+  beforeEach(() => {
+    toasts().forEach(t => dismissToast(t.id));
+  });
+
+  it("adds an error toast", () => {
+    showToast("Something went wrong", "error");
+    expect(toasts()).toHaveLength(1);
+    expect(toasts()[0].message).toBe("Something went wrong");
+    expect(toasts()[0].kind).toBe("error");
+  });
+
+  it("adds an info toast", () => {
+    showToast("Done", "info");
+    expect(toasts()[0].kind).toBe("info");
+  });
+
+  it("dismisses by id", () => {
+    showToast("Temp", "info");
+    const id = toasts()[0].id;
+    dismissToast(id);
+    expect(toasts()).toHaveLength(0);
   });
 });

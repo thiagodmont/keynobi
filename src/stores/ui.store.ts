@@ -1,7 +1,6 @@
 import { createStore } from "solid-js/store";
 import { createSignal } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
-import { showToast } from "@/components/common/Toast";
 
 export type MainTab = "build" | "logcat";
 
@@ -53,4 +52,31 @@ if (typeof window !== "undefined") {
       "error"
     );
   }).catch(() => {});
+}
+
+// ── Toast notifications ───────────────────────────────────────────────────────
+
+export type ToastKind = "error" | "info" | "success" | "warning";
+
+export interface Toast {
+  id: string;
+  message: string;
+  kind: ToastKind;
+}
+
+const [_toasts, setToasts] = createSignal<Toast[]>([]);
+
+export const toasts = _toasts;
+
+export function showToast(message: string, kind: ToastKind = "info"): void {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  setToasts(prev => [...prev, { id, message, kind }]);
+  // Auto-dismiss after 5 s for non-error toasts; errors stay until dismissed.
+  if (kind !== "error") {
+    setTimeout(() => dismissToast(id), 5000);
+  }
+}
+
+export function dismissToast(id: string): void {
+  setToasts(prev => prev.filter(t => t.id !== id));
 }
