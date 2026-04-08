@@ -180,10 +180,14 @@ pub async fn get_application_id(state: State<'_, FsState>) -> Result<Option<Stri
     Ok(None)
 }
 
+static RE_APPLICATION_ID: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"applicationId\s*=?\s*"([^"]+)""#)
+        .expect("RE_APPLICATION_ID: invalid regex")
+});
+
 fn extract_application_id(content: &str) -> Option<String> {
     // Matches: applicationId "com.example" or applicationId = "com.example"
-    let re = regex::Regex::new(r#"applicationId\s*=?\s*"([^"]+)""#).ok()?;
-    let caps = re.captures(content)?;
+    let caps = RE_APPLICATION_ID.captures(content)?;
     Some(caps.get(1)?.as_str().to_owned())
 }
 
@@ -364,15 +368,23 @@ static RE_VERSION_CODE: LazyLock<regex::Regex> = LazyLock::new(|| {
         .expect("RE_VERSION_CODE: invalid regex")
 });
 
+static RE_EXTRACT_VERSION_NAME: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"versionName\s*=?\s*"([^"]+)""#)
+        .expect("RE_EXTRACT_VERSION_NAME: invalid regex")
+});
+
 fn extract_version_name(content: &str) -> Option<String> {
-    let re = regex::Regex::new(r#"versionName\s*=?\s*"([^"]+)""#).ok()?;
-    let caps = re.captures(content)?;
+    let caps = RE_EXTRACT_VERSION_NAME.captures(content)?;
     Some(caps.get(1)?.as_str().to_owned())
 }
 
+static RE_EXTRACT_VERSION_CODE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"versionCode\s*=?\s*(\d+)")
+        .expect("RE_EXTRACT_VERSION_CODE: invalid regex")
+});
+
 fn extract_version_code(content: &str) -> Option<i64> {
-    let re = regex::Regex::new(r"versionCode\s*=?\s*(\d+)").ok()?;
-    let caps = re.captures(content)?;
+    let caps = RE_EXTRACT_VERSION_CODE.captures(content)?;
     caps.get(1)?.as_str().parse().ok()
 }
 
