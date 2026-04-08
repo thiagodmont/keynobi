@@ -19,6 +19,14 @@ import { fileURLToPath } from "url";
 import { createInterface } from "readline";
 import { execSync } from "child_process";
 import { bumpVersion, syncToFiles } from "./bump-version.mjs";
+import {
+  getCommitsSinceTag,
+  parseCommits,
+  filterUserFacing,
+  groupBySection,
+  formatEntry,
+  prependToChangelog,
+} from "./changelog.mjs";
 
 const root = resolve(fileURLToPath(import.meta.url), "../..");
 
@@ -31,6 +39,11 @@ const RESET = "\x1b[0m";
 function step(msg)  { console.log(`\n${BOLD}▶ ${msg}${RESET}`); }
 function info(msg)  { console.log(`${BOLD}${GREEN}  ✓${RESET} ${msg}`); }
 function fatal(msg) { console.error(`${BOLD}${RED}  ✗${RESET} ${msg}`); }
+
+/** @returns {string} Today as YYYY-MM-DD */
+function todayDate() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 // ── Exported pure helpers (for tests) ────────────────────────────────────────
 
@@ -104,6 +117,27 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.log(`  ${current} → ${next}  (${type})\n`);
     await confirm("Press Enter to confirm, or Ctrl+C to cancel: ");
 
+    // ── Generate CHANGELOG entry ─────────────────────────────────────────────
+    step("Generate CHANGELOG entry");
+    const changelogPath = resolve(root, "CHANGELOG.md");
+    const rawLines   = getCommitsSinceTag();
+    const parsed     = parseCommits(rawLines);
+    const userFacing = filterUserFacing(parsed);
+    const sections   = groupBySection(userFacing);
+    const entry      = formatEntry(next, todayDate(), sections);
+
+    if (userFacing.length === 0) {
+      console.log(`\n  ${BOLD}\x1b[33m⚠${RESET}  No user-facing commits found since the last tag.`);
+      console.log("     CHANGELOG.md will receive a minimal entry (version + date only).\n");
+    } else {
+      entry.split("\n").forEach((l) => console.log("  " + l));
+      console.log();
+    }
+
+    await confirm("Press Enter to add to CHANGELOG.md, or Ctrl+C to cancel: ");
+    prependToChangelog(changelogPath, entry);
+    info("CHANGELOG.md updated");
+
     // ── Write files ──────────────────────────────────────────────────────────
     try {
       pkg.version = next;
@@ -128,7 +162,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     step("Changes");
     try {
       const stat = execSync(
-        "git diff --stat HEAD package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json src-tauri/Cargo.lock",
+        "git diff --stat HEAD package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json src-tauri/Cargo.lock CHANGELOG.md",
         { encoding: "utf-8" }
       );
       stat.trim().split("\n").forEach((l) => console.log("  " + l));
@@ -145,7 +179,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     step("Releasing");
     try {
       execSync(
-        "git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json src-tauri/Cargo.lock",
+        "git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json src-tauri/Cargo.lock CHANGELOG.md",
         { stdio: "inherit" }
       );
       execSync(`git commit -m "chore: release v${next}"`, { stdio: "inherit" });
