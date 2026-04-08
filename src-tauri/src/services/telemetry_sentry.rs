@@ -13,10 +13,9 @@
 //!
 //! ## One-off dashboard verification (local)
 //!
-//! After `init_if_enabled` has run successfully (telemetry on + `SENTRY_DSN` at compile time):
-//! - Set `KEYNOBI_SENTRY_SMOKE=1` to send a single **info** event (scrubbed like any other).
-//! - Optionally set `KEYNOBI_SENTRY_SMOKE_PANIC=1` in **debug** builds only to trigger a panic
-//!   for crash ingestion testing. Unset these when done.
+//! With telemetry on at launch and a compile-time `SENTRY_DSN`, use the in-app command palette
+//! (dev build): **Send test native (Rust) Sentry event** — sends a single **info** event (scrubbed
+//! like any other). See `commands::telemetry::send_native_sentry_test_event`.
 //!
 //! Do **not** commit a DSN or enable `send_default_pii` in source; keep the DSN in env / CI secrets.
 
@@ -216,24 +215,6 @@ pub fn init_if_enabled(settings: &AppSettings) -> Option<sentry::ClientInitGuard
             ..Default::default()
         },
     )))
-}
-
-/// Send a test message (and optionally panic in debug) when env vars request it.
-/// Call only after [`init_if_enabled`] returned `Some` in the same process.
-pub fn run_optional_smoke_test() {
-    if std::env::var("KEYNOBI_SENTRY_SMOKE").as_deref() != Ok("1") {
-        return;
-    }
-    sentry::capture_message(
-        "Keynobi Sentry smoke test — unset KEYNOBI_SENTRY_SMOKE after verifying the dashboard.",
-        Level::Info,
-    );
-    #[cfg(debug_assertions)]
-    if std::env::var("KEYNOBI_SENTRY_SMOKE_PANIC").as_deref() == Ok("1") {
-        panic!(
-            "Keynobi Sentry panic smoke test (debug only; unset KEYNOBI_SENTRY_SMOKE_PANIC)"
-        );
-    }
 }
 
 /// Capture a handled internal error (sanitized). Call only for invariant / unexpected failures

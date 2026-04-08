@@ -92,8 +92,13 @@ jobs:
           # Unsigned build — consistent with scripts/build-dmg.sh.
           # Users bypass Gatekeeper once on first launch (right-click → Open).
           APPLE_SIGNING_IDENTITY: "-"
-          # Embed Sentry DSN at compile time (optional crash reporting; still gated by user Settings).
+          # Sentry DSNs at compile time (optional; still gated by user Settings in-app).
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
+          # Web bundle source maps → Sentry (same release as import.meta.env.VITE_APP_VERSION / package.json).
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: keynobi
+          SENTRY_PROJECT: javascript-solid
         run: |
           npm run tauri build -- --target ${{ matrix.target }} --bundles dmg -f telemetry
 

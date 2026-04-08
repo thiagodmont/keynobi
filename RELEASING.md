@@ -59,32 +59,35 @@ The most common case is a `patch` bump.
 
 ## Sentry (optional crash reporting)
 
-Release DMGs are built with the Rust `telemetry` Cargo feature and compile-time `SENTRY_DSN` so the app *can* upload crash reports when the user turns **Anonymous crash reporting** on in Settings.
+Release DMGs are built with the Rust `telemetry` Cargo feature and compile-time `SENTRY_DSN` so the app *can* upload crash reports when the user turns **Anonymous crash reporting** on in Settings. The **frontend** bundle can include a separate browser DSN via **`VITE_SENTRY_DSN`** (Sentry project for the Solid/WebView layer).
 
-- Add a repository secret named **`SENTRY_DSN`** (Settings → Secrets and variables → Actions) with your Sentry DSN. The release workflow passes it into the build; it is not committed to the repo.
-- If the secret is absent, the build still succeeds, but no DSN is embedded (users can opt in, yet nothing is uploaded until a build with a DSN is installed).
+- Add repository secrets **`SENTRY_DSN`** (Rust) and **`VITE_SENTRY_DSN`** (browser). These are injected at build time only; they are not committed to the repo.
+- Add **`SENTRY_AUTH_TOKEN`** (Organization Settings → Developer Settings → Auth Tokens, scope `project:releases` and `org:read` as needed) so the release workflow can upload **frontend source maps** to the `javascript-solid` project. Without it, the DMG build still succeeds; maps are simply not uploaded.
+- If a DSN secret is absent, the build still succeeds, but that layer has no DSN embedded (users can opt in, yet nothing is uploaded for that layer until a build that embeds the DSN).
 
 Local release-like builds:
 
 ```bash
-SENTRY_DSN='https://…@….ingest.sentry.io/…' npm run tauri build -- -f telemetry --bundles dmg
+SENTRY_DSN='https://…@….ingest.sentry.io/…' \
+VITE_SENTRY_DSN='https://…@….ingest.sentry.io/…' \
+npm run tauri build -- -f telemetry --bundles dmg
 ```
 
 ### Smoke test (verify the Sentry project receives events)
 
-Use the **same** `SENTRY_DSN` value in the environment when compiling so `option_env!("SENTRY_DSN")` embeds it. Turn **Anonymous crash reporting** on in Settings and restart so the backend initializes Sentry.
+Use the **Rust** `SENTRY_DSN` when compiling so `option_env!("SENTRY_DSN")` embeds it. Optionally set **`VITE_SENTRY_DSN`** for the browser SDK (can be a separate Sentry project). Turn **Anonymous crash reporting** on in Settings and restart so the native client initializes; the web client gates on the same setting without restart.
 
 ```bash
 export SENTRY_DSN='https://YOUR_KEY@YOUR_ORG.ingest.sentry.io/YOUR_PROJECT'
-export KEYNOBI_SENTRY_SMOKE=1
+export VITE_SENTRY_DSN='https://YOUR_BROWSER_KEY@YOUR_ORG.ingest.sentry.io/YOUR_BROWSER_PROJECT'
 npm run tauri dev -- --features telemetry
 ```
 
-You should see one info-level event in Sentry. Unset `KEYNOBI_SENTRY_SMOKE` when finished.
-
-Optional (debug builds only): `KEYNOBI_SENTRY_SMOKE_PANIC=1` triggers a panic after the message for crash-event verification.
+In the dev app, open the **command palette** (**⌘⇧P**) and run **Send test native (Rust) Sentry event** or **Send test web Sentry event** (Debug category). You should see a matching event in each configured Sentry project.
 
 We keep **`send_default_pii: false`** and path scrubbing in code; do not paste a real DSN into the repository.
+
+The WebView **CSP** in `tauri.conf.json` must allow `connect-src` to Sentry ingest hosts (`*.ingest.sentry.io` / `*.ingest.us.sentry.io`); otherwise the browser SDK cannot upload events.
 
 ---
 

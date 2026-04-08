@@ -6,4 +6,5 @@ pub mod logcat;
 pub mod mcp;
 pub mod settings;
 pub mod studio;
+pub mod telemetry;
 pub mod variant;

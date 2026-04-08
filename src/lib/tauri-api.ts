@@ -105,6 +105,11 @@ export async function resetSettingsToDefaults(): Promise<AppSettings> {
   return invoke<AppSettings>("reset_settings");
 }
 
+/** Single info-level event to the Rust Sentry project (telemetry feature + compile-time `SENTRY_DSN`, telemetry on at launch). */
+export async function sendNativeSentryTestEvent(): Promise<void> {
+  await invoke<void>("send_native_sentry_test_event");
+}
+
 export async function detectSdkPath(): Promise<string | null> {
   return invoke<string | null>("detect_sdk_path");
 }

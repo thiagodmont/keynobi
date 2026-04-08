@@ -27,6 +27,7 @@ use commands::logcat::{
 };
 use commands::mcp::{configure_mcp_in_claude, get_mcp_activity, get_mcp_server_status, get_mcp_setup_status, clear_mcp_activity, start_mcp_server};
 use commands::settings::*;
+use commands::telemetry::send_native_sentry_test_event;
 use commands::studio::open_in_studio;
 use commands::variant::{get_variants_from_gradle, get_variants_preview, set_active_variant};
 use models::log_entry::LogEntry;
@@ -160,11 +161,7 @@ pub fn run() {
     #[cfg(feature = "telemetry")]
     let _sentry_guard = {
         let (settings, _) = services::settings_manager::load_settings();
-        let guard = services::telemetry_sentry::init_if_enabled(&settings);
-        if guard.is_some() {
-            services::telemetry_sentry::run_optional_smoke_test();
-        }
-        guard
+        services::telemetry_sentry::init_if_enabled(&settings)
     };
 
     let log_dir = log_dir.clone();
@@ -284,6 +281,7 @@ pub fn run() {
             save_settings,
             get_default_settings,
             reset_settings,
+            send_native_sentry_test_event,
             detect_sdk_path,
             detect_java_path,
             // Health

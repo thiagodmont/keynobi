@@ -321,7 +321,7 @@ Use **Auto-detect** to find Java from your shell environment.
 
 ### Telemetry (crash reporting)
 
-Under **Privacy**, **Anonymous crash reporting** is **off** by default. When enabled, the app may send **minimal, non-identifying** crash reports from the desktop app itself (for example, panic and error summaries with paths stripped) to help fix bugs. It does **not** send your Android project files, Gradle log content, logcat, MCP traffic, or personal identifiers. Changing the toggle applies fully after **restart** (same as in the setup wizard).
+Under **Privacy**, **Anonymous crash reporting** is **off** by default. When enabled, the app may send **minimal, non-identifying** crash reports from the **native** layer and the **UI** (for example, panic and UI error summaries with paths stripped) to help fix bugs. It does **not** send your Android project files, Gradle log content, logcat, MCP traffic, or personal identifiers. Changing the toggle applies fully after **restart** (same as in the setup wizard).
 
 ---
 

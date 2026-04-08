@@ -1,4 +1,4 @@
-import { type JSX, For, onMount, onCleanup } from "solid-js";
+import { type JSX, For, onMount, onCleanup, createEffect } from "solid-js";
 import {
   uiState,
   setActiveTab,
@@ -23,14 +23,15 @@ import { DeviceSidebar } from "@/components/device/DeviceSidebar";
 import { DevicePickerDialog } from "@/components/device/DevicePickerDialog";
 import { registerKeybinding, initKeybindings } from "@/lib/keybindings";
 import { registerAction, type ActionCategory } from "@/lib/action-registry";
-import { loadSettings } from "@/stores/settings.store";
+import { loadSettings, settingsState } from "@/stores/settings.store";
+import { captureSentryException, initSentryWeb } from "@/lib/telemetry/sentry-web";
 import { tryOpenOnboardingAfterLoad, openOnboardingWizard } from "@/stores/onboarding.store";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
 import { openProjectFolder, refreshProjectsList, restoreLastProject } from "@/services/project.service";
 import { initBuildService, runBuild, runAndDeploy, cancelBuild } from "@/services/build.service";
 import { initDevices } from "@/stores/device.store";
 import { openVariantPicker } from "@/components/build/VariantSelector";
-import { formatError } from "@/lib/tauri-api";
+import { formatError, sendNativeSentryTestEvent } from "@/lib/tauri-api";
 import { projectState } from "@/stores/project.store";
 import { openMcpPanel } from "@/components/mcp/McpPanel";
 
@@ -73,6 +74,12 @@ function registerKeyAndAction(opts: {
 
 export function App(): JSX.Element {
   let unlistenClose: (() => void) | undefined;
+
+  // Start/stop browser Sentry only when Anonymous crash reporting is on (after settings are known).
+  createEffect(() => {
+    settingsState.telemetry.enabled;
+    initSentryWeb();
+  });
 
   onMount(async () => {
     initKeybindings();
@@ -117,6 +124,31 @@ export function App(): JSX.Element {
 
     // ── File ────────────────────────────────────────────────────────────────
     registerKeyAndAction({ id: "file.openFolder", key: "o", metaKey: true, label: "Open Folder", category: "File", action: () => { openProjectFolder(); } });
+
+    if (import.meta.env.DEV) {
+      registerAction({
+        id: "debug.sentryWebTest",
+        label: "Send test web Sentry event",
+        category: "Debug",
+        action: () => {
+          captureSentryException(new Error("Keynobi dev: Solid / WebView Sentry test"));
+          showToast("Test event sent (requires VITE_SENTRY_DSN + Anonymous crash reporting on)", "info");
+        },
+      });
+      registerAction({
+        id: "debug.sentryNativeTest",
+        label: "Send test native (Rust) Sentry event",
+        category: "Debug",
+        action: async () => {
+          try {
+            await sendNativeSentryTestEvent();
+            showToast("Native test event sent (check Rust Sentry project)", "info");
+          } catch (e) {
+            showToast(formatError(e), "error");
+          }
+        },
+      });
+    }
 
     // ── Command Palette ──────────────────────────────────────────────────────
     registerKeyAndAction({ id: "navigate.commandPalette", key: "p", metaKey: true, shiftKey: true, label: "Command Palette", category: "General", action: () => openPalette("commands") });

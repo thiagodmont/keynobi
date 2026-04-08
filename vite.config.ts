@@ -1,13 +1,49 @@
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
+import { readFileSync } from "fs";
 import { resolve } from "path";
+import { fileURLToPath } from "url";
 /// <reference types="vitest" />
+
+const pkg = JSON.parse(
+  readFileSync(fileURLToPath(new URL("./package.json", import.meta.url)), "utf-8")
+) as { version: string };
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+// @ts-expect-error process is a nodejs global
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim();
+const sentryUploadEnabled = Boolean(sentryAuthToken);
+// @ts-expect-error process is a nodejs global
+const sentryOrg = process.env.SENTRY_ORG ?? "keynobi";
+// @ts-expect-error process is a nodejs global
+const sentryProject = process.env.SENTRY_PROJECT ?? "javascript-solid";
+
 export default defineConfig(async () => ({
-  plugins: [solid()],
+  plugins: [
+    solid(),
+    sentryVitePlugin({
+      disable: !sentryUploadEnabled,
+      org: sentryOrg,
+      project: sentryProject,
+      authToken: sentryAuthToken,
+      release: { name: pkg.version },
+      sourcemaps: {
+        filesToDeleteAfterUpload: sentryUploadEnabled ? ["./dist/**/*.map"] : undefined,
+      },
+    }),
+  ],
+
+  build: {
+    // Source maps are generated only when uploading to Sentry (CI release with SENTRY_AUTH_TOKEN).
+    sourcemap: sentryUploadEnabled,
+  },
+
+  define: {
+    "import.meta.env.VITE_APP_VERSION": JSON.stringify(pkg.version),
+  },
 
   resolve: {
     alias: {

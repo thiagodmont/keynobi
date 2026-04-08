@@ -1,4 +1,5 @@
 import { ErrorBoundary as SolidErrorBoundary, type JSX } from "solid-js";
+import { captureSentryException } from "@/lib/telemetry/sentry-web";
 
 const CONTAINER_STYLE = {
   flex: "1",
@@ -48,7 +49,9 @@ const RELOAD_BTN_STYLE = {
 export function AppErrorBoundary(props: { children: JSX.Element }): JSX.Element {
   return (
     <SolidErrorBoundary
-      fallback={(err, reset) => (
+      fallback={(err, reset) => {
+        captureSentryException(err instanceof Error ? err : new Error(String(err)));
+        return (
         <div style={CONTAINER_STYLE}>
           <h2 style={{ "font-size": "18px", "font-weight": "600" }}>
             Something went wrong
@@ -72,7 +75,8 @@ export function AppErrorBoundary(props: { children: JSX.Element }): JSX.Element 
             Try Again
           </button>
         </div>
-      )}
+        );
+      }}
     >
       {props.children}
     </SolidErrorBoundary>
