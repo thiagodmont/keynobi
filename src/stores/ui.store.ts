@@ -65,18 +65,27 @@ export interface Toast {
 }
 
 const [_toasts, setToasts] = createSignal<Toast[]>([]);
+const _toastTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 export const toasts = _toasts;
 
 export function showToast(message: string, kind: ToastKind = "info"): void {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   setToasts(prev => [...prev, { id, message, kind }]);
-  // Auto-dismiss after 5 s for non-error toasts; errors stay until dismissed.
   if (kind !== "error") {
-    setTimeout(() => dismissToast(id), 5000);
+    const timer = setTimeout(() => {
+      _toastTimers.delete(id);
+      dismissToast(id);
+    }, 5000);
+    _toastTimers.set(id, timer);
   }
 }
 
 export function dismissToast(id: string): void {
+  const timer = _toastTimers.get(id);
+  if (timer !== undefined) {
+    clearTimeout(timer);
+    _toastTimers.delete(id);
+  }
   setToasts(prev => prev.filter(t => t.id !== id));
 }
