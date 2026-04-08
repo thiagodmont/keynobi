@@ -9,18 +9,6 @@ import {
 } from "@/stores/settings.store";
 
 describe("settings.store", () => {
-  it("has correct editor defaults", () => {
-    const d = getDefaults();
-    expect(d.editor.fontSize).toBe(13);
-    expect(d.editor.tabSize).toBe(4);
-    expect(d.editor.insertSpaces).toBe(true);
-    expect(d.editor.wordWrap).toBe(false);
-    expect(d.editor.lineNumbers).toBe(true);
-    expect(d.editor.bracketMatching).toBe(true);
-    expect(d.editor.autoCloseBrackets).toBe(true);
-    expect(d.editor.highlightActiveLine).toBe(true);
-  });
-
   it("has correct appearance defaults", () => {
     expect(getDefaults().appearance.uiFontSize).toBe(12);
   });
@@ -44,12 +32,6 @@ describe("settings.store", () => {
     const d = getDefaults();
     expect(d.lsp.logLevel).toBe("INFO");
     expect(d.lsp.requestTimeoutSec).toBe(30);
-  });
-
-  it("updateSetting changes editor settings", () => {
-    updateSetting("editor", "fontSize", 18);
-    expect(settingsState.editor.fontSize).toBe(18);
-    updateSetting("editor", "fontSize", 13);
   });
 
   it("updateSetting changes appearance settings", () => {
@@ -112,8 +94,6 @@ describe("settings.store error state transitions", () => {
     );
     await loadSettings();
     // State should still reflect defaults — loadSettings must not throw.
-    expect(settingsState.editor.fontSize).toBe(13);
-    expect(settingsState.editor.tabSize).toBe(4);
     expect(settingsState.appearance.uiFontSize).toBe(12);
     vi.restoreAllMocks();
   });
@@ -123,7 +103,6 @@ describe("settings.store error state transitions", () => {
       new Error("No such file or directory (os error 2)")
     );
     await loadSettings();
-    expect(settingsState.editor.fontSize).toBe(13);
     expect(settingsState.search.contextLines).toBe(2);
     vi.restoreAllMocks();
   });
@@ -131,13 +110,13 @@ describe("settings.store error state transitions", () => {
   it("applies loaded settings when getSettings resolves with partial overrides", async () => {
     const customSettings = {
       ...getDefaults(),
-      editor: { ...getDefaults().editor, fontSize: 16 },
+      appearance: { ...getDefaults().appearance, uiFontSize: 14 },
     };
     vi.spyOn(tauriApi, "getSettings").mockResolvedValue(customSettings);
     await loadSettings();
-    expect(settingsState.editor.fontSize).toBe(16);
+    expect(settingsState.appearance.uiFontSize).toBe(14);
     // Restore to default for subsequent tests.
-    updateSetting("editor", "fontSize", 13);
+    updateSetting("appearance", "uiFontSize", 12);
     vi.restoreAllMocks();
   });
 

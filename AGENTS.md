@@ -4,7 +4,6 @@
 
 - **Framework**: Tauri 2.0 (Rust backend + WKWebView frontend)
 - **Frontend**: SolidJS + TypeScript + Vite
-- **Code Editor**: CodeMirror 6
 - **Backend**: Rust (tokio async runtime)
 - **Parsing**: Tree-sitter (`tree-sitter-kotlin-ng`)
 - **Search**: ripgrep library crates (`grep-regex`, `grep-searcher`, `grep-matcher`)

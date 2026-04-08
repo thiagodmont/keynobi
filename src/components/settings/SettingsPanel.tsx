@@ -5,8 +5,6 @@ import {
   SettingRow,
   SettingToggle,
   SettingNumberInput,
-  SettingTextInput,
-  SettingSelect,
 } from "@/components/settings/SettingRow";
 import { AndroidSdkStatus, JavaStatus } from "@/components/settings/ToolStatus";
 import Icon from "@/components/common/Icon";
@@ -260,88 +258,6 @@ function SectionHeader(props: { title: string }): JSX.Element {
 function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean }): JSX.Element {
   return (
     <>
-      <SectionHeader title="Editor" />
-      <Show when={props.matchesSearch("Font Family", "Editor font")}>
-        <SettingRow label="Font Family" description="Editor font face">
-          <SettingTextInput
-            value={settingsState.editor.fontFamily}
-            onChange={(v) => updateSetting("editor", "fontFamily", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={props.matchesSearch("Font Size", "Editor font size in pixels")}>
-        <SettingRow label="Font Size" description="Editor font size in pixels">
-          <SettingNumberInput
-            value={settingsState.editor.fontSize}
-            min={10}
-            max={30}
-            onChange={(v) => updateSetting("editor", "fontSize", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={props.matchesSearch("Tab Size", "Number of spaces per tab")}>
-        <SettingRow label="Tab Size" description="Number of spaces per tab">
-          <SettingSelect
-            value={String(settingsState.editor.tabSize)}
-            options={["2", "4", "8"]}
-            onChange={(v) => updateSetting("editor", "tabSize", parseInt(v, 10))}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={props.matchesSearch("Insert Spaces", "Use spaces instead of tabs")}>
-        <SettingRow label="Insert Spaces" description="Use spaces instead of tabs">
-          <SettingToggle
-            checked={settingsState.editor.insertSpaces}
-            onChange={(v) => updateSetting("editor", "insertSpaces", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={props.matchesSearch("Word Wrap", "Wrap long lines")}>
-        <SettingRow label="Word Wrap" description="Wrap long lines instead of horizontal scrolling">
-          <SettingToggle
-            checked={settingsState.editor.wordWrap}
-            onChange={(v) => updateSetting("editor", "wordWrap", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={props.matchesSearch("Line Numbers", "Show line numbers")}>
-        <SettingRow label="Line Numbers" description="Show line numbers in the gutter">
-          <SettingToggle
-            checked={settingsState.editor.lineNumbers}
-            onChange={(v) => updateSetting("editor", "lineNumbers", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={props.matchesSearch("Bracket Matching", "Highlight matching brackets")}>
-        <SettingRow label="Bracket Matching" description="Highlight matching brackets">
-          <SettingToggle
-            checked={settingsState.editor.bracketMatching}
-            onChange={(v) => updateSetting("editor", "bracketMatching", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show when={props.matchesSearch("Active Line Highlight", "Highlight the current line")}>
-        <SettingRow label="Active Line Highlight" description="Highlight the current line">
-          <SettingToggle
-            checked={settingsState.editor.highlightActiveLine}
-            onChange={(v) => updateSetting("editor", "highlightActiveLine", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show
-        when={props.matchesSearch("Auto-close Brackets", "Automatically insert closing brackets")}
-      >
-        <SettingRow
-          label="Auto-close Brackets"
-          description="Automatically insert closing brackets, quotes, etc."
-        >
-          <SettingToggle
-            checked={settingsState.editor.autoCloseBrackets}
-            onChange={(v) => updateSetting("editor", "autoCloseBrackets", v)}
-          />
-        </SettingRow>
-      </Show>
-
       <SectionHeader title="Appearance" />
       <Show when={props.matchesSearch("UI Font Size", "Font size for UI elements")}>
         <SettingRow
@@ -533,47 +449,6 @@ function AdvancedSettings(props: {
       </div>
 
       <SectionHeader title="Build" />
-      <Show when={props.matchesSearch("Gradle Parallel Builds", "Run Gradle tasks in parallel")}>
-        <SettingRow
-          label="Parallel Builds"
-          description="Pass --parallel to Gradle for faster multi-module builds"
-        >
-          <SettingToggle
-            checked={settingsState.build.gradleParallel}
-            onChange={(v) => updateSetting("build", "gradleParallel", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show
-        when={props.matchesSearch(
-          "Gradle Offline Mode",
-          "Prevent Gradle from accessing the network"
-        )}
-      >
-        <SettingRow
-          label="Offline Mode"
-          description="Pass --offline to Gradle to skip dependency downloads"
-        >
-          <SettingToggle
-            checked={settingsState.build.gradleOffline}
-            onChange={(v) => updateSetting("build", "gradleOffline", v)}
-          />
-        </SettingRow>
-      </Show>
-      <Show
-        when={props.matchesSearch("Gradle JVM Args", "Extra JVM arguments for the Gradle daemon")}
-      >
-        <SettingRow
-          label="Gradle JVM Args"
-          description='Extra JVM arguments passed to the Gradle daemon (e.g. "-Xmx4g")'
-        >
-          <SettingTextInput
-            value={settingsState.build.gradleJvmArgs ?? ""}
-            placeholder="-Xmx4g"
-            onChange={(v) => updateSetting("build", "gradleJvmArgs", v || null)}
-          />
-        </SettingRow>
-      </Show>
       <Show
         when={props.matchesSearch(
           "Auto Install on Build",

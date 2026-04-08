@@ -2,7 +2,7 @@ use crate::models::settings::AppSettings;
 use std::path::PathBuf;
 
 const KNOWN_SETTINGS_FIELDS: &[&str] = &[
-    "editor", "appearance", "search", "android", "lsp", "java",
+    "appearance", "search", "android", "lsp", "java",
     "advanced", "build", "logcat", "mcp", "telemetry", "onboardingCompleted",
     "recentProjects", "lastActiveProject",
 ];
@@ -228,8 +228,8 @@ mod tests {
         let path = dir.path().join("settings.json");
 
         let mut settings = AppSettings::default();
-        settings.editor.font_size = 18;
-        settings.editor.tab_size = 2;
+        settings.appearance.ui_font_size = 14;
+        settings.search.context_lines = 5;
 
         let json = serde_json::to_string_pretty(&settings).unwrap();
         std::fs::write(&path, &json).unwrap();
@@ -237,8 +237,8 @@ mod tests {
         let loaded: AppSettings = serde_json::from_str(
             &std::fs::read_to_string(&path).unwrap()
         ).unwrap();
-        assert_eq!(loaded.editor.font_size, 18);
-        assert_eq!(loaded.editor.tab_size, 2);
+        assert_eq!(loaded.appearance.ui_font_size, 14);
+        assert_eq!(loaded.search.context_lines, 5);
     }
 
     #[test]
@@ -309,15 +309,15 @@ mod tests {
         // but the return value must be correct.
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("settings.json");
-        std::fs::write(&path, r#"{"editor": {"fontSize": 20}, "unknownKey": true}"#).unwrap();
+        std::fs::write(&path, r#"{"appearance": {"uiFontSize": 14}, "unknownKey": true}"#).unwrap();
         let (settings, corrupted) = load_settings_from_path(&path);
         assert!(!corrupted, "unknown field must not be treated as corruption");
-        assert_eq!(settings.editor.font_size, 20, "valid field must be loaded despite unknown key");
+        assert_eq!(settings.appearance.ui_font_size, 14, "valid field must be loaded despite unknown key");
     }
 
     #[test]
     fn all_known_fields_pass_validation() {
-        let known = ["editor", "appearance", "search", "android", "lsp", "java",
+        let known = ["appearance", "search", "android", "lsp", "java",
                      "advanced", "build", "logcat", "mcp", "telemetry", "onboardingCompleted",
                      "recentProjects", "lastActiveProject"];
         let settings = AppSettings::default();
@@ -336,10 +336,10 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("settings.json");
         // Write settings with a typo field + a valid field
-        std::fs::write(&path, r#"{"editor": {"fontSize": 18}, "fontSizee": 20}"#).unwrap();
+        std::fs::write(&path, r#"{"appearance": {"uiFontSize": 14}, "uiFontSizee": 20}"#).unwrap();
         let (settings, corrupted) = load_settings_from_path(&path);
         assert!(!corrupted, "misspelled field is not corruption");
-        assert_eq!(settings.editor.font_size, 18, "valid field must be loaded");
+        assert_eq!(settings.appearance.ui_font_size, 14, "valid field must be loaded");
         // The typo "fontSizee" is silently ignored by serde(default) —
         // our helper only logs a warning, it doesn't change the return value.
     }

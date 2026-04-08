@@ -18,6 +18,7 @@ import {
   setLogcatFilter,
   listenLogcatEntries,
   listenLogcatCleared,
+  listenLogcatReconnecting,
   listenDeviceListChanged,
   formatError,
   type LogcatEntry,
@@ -309,6 +310,7 @@ export function LogcatPanel(): JSX.Element {
   let unlistenEntries: (() => void) | undefined;
   let unlistenCleared: (() => void) | undefined;
   let unlistenDevices: (() => void) | undefined;
+  let unlistenReconnecting: (() => void) | undefined;
   let nowTimer: ReturnType<typeof setInterval> | undefined;
 
   // ── Parsed query (debounced — avoids re-parsing on every keystroke)
@@ -561,6 +563,15 @@ export function LogcatPanel(): JSX.Element {
       }
     });
 
+    // Keep streaming status in sync when the backend reconnects after an
+    // unexpected ADB server restart (e.g. Android Studio opening Logcat).
+    // The backend never sets streaming=false in this case, so the UI stays
+    // consistent; this listener is purely for future indicator use.
+    // eslint-disable-next-line solid/reactivity
+    unlistenReconnecting = await listenLogcatReconnecting(() => {
+      setLogcatStore("streaming", true);
+    });
+
     nowTimer = setInterval(() => setNow(Date.now()), 5_000);
   });
 
@@ -568,6 +579,7 @@ export function LogcatPanel(): JSX.Element {
     unlistenEntries?.();
     unlistenCleared?.();
     unlistenDevices?.();
+    unlistenReconnecting?.();
     clearInterval(nowTimer);
     clearTimeout(_queryDebounce);
     // Clear backend filter on unmount so it doesn't persist

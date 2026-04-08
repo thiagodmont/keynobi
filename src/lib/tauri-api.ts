@@ -426,6 +426,16 @@ export function listenLogcatCleared(cb: () => void): Promise<UnlistenFn> {
   return listen("logcat:cleared", () => cb());
 }
 
+/**
+ * Fired when the logcat stream disconnects unexpectedly (e.g. because Android
+ * Studio restarted the ADB server) and the backend is about to reconnect.
+ * The stream will resume automatically; the frontend can use this to show a
+ * brief "reconnecting…" indicator without treating it as a stop.
+ */
+export function listenLogcatReconnecting(cb: () => void): Promise<UnlistenFn> {
+  return listen("logcat:reconnecting", () => cb());
+}
+
 // ── MCP Server ─────────────────────────────────────────────────────────────────
 
 import type { McpSetupStatus, McpActivityEntry, McpServerStatus } from "@/bindings";

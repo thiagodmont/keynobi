@@ -13,17 +13,6 @@ import { showToast } from "@/components/common/Toast";
 export type { AppSettings };
 
 const DEFAULT_SETTINGS: AppSettings = {
-  editor: {
-    fontFamily: '"SF Mono", "Fira Code", "JetBrains Mono", "Menlo", monospace',
-    fontSize: 13,
-    tabSize: 4,
-    insertSpaces: true,
-    wordWrap: false,
-    lineNumbers: true,
-    bracketMatching: true,
-    highlightActiveLine: true,
-    autoCloseBrackets: true,
-  },
   appearance: { uiFontSize: 12 },
   search: { contextLines: 2, maxResults: 10_000, maxFiles: 500 },
   android: { sdkPath: null },
@@ -146,12 +135,9 @@ if (typeof window !== "undefined") {
   });
 }
 
-// Apply CSS variable effects when appearance/editor settings change
+// Apply CSS variable effects when appearance settings change
 if (typeof document !== "undefined") {
   createEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty("--font-size-editor", `${settingsState.editor.fontSize}px`);
-    root.style.setProperty("--font-size-ui", `${settingsState.appearance.uiFontSize}px`);
-    root.style.setProperty("--font-mono", settingsState.editor.fontFamily);
+    document.documentElement.style.setProperty("--font-size-ui", `${settingsState.appearance.uiFontSize}px`);
   });
 }

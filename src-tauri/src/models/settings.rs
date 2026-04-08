@@ -38,7 +38,6 @@ pub struct ProjectEntry {
 #[ts(export, export_to = "../../src/bindings/")]
 #[derive(Default)]
 pub struct AppSettings {
-    pub editor: EditorSettings,
     pub appearance: AppearanceSettings,
     pub search: SearchSettings,
     pub android: AndroidSettings,
@@ -57,21 +56,6 @@ pub struct AppSettings {
     pub recent_projects: Vec<ProjectEntry>,
     /// The path of the project that was active when the app was last closed.
     pub last_active_project: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
-#[serde(rename_all = "camelCase", default)]
-#[ts(export, export_to = "../../src/bindings/")]
-pub struct EditorSettings {
-    pub font_family: String,
-    pub font_size: u32,
-    pub tab_size: u32,
-    pub insert_spaces: bool,
-    pub word_wrap: bool,
-    pub line_numbers: bool,
-    pub bracket_matching: bool,
-    pub highlight_active_line: bool,
-    pub auto_close_brackets: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
@@ -198,22 +182,6 @@ pub struct McpSettings {
 /// The oldest non-pinned entry is evicted when this limit is exceeded.
 pub const MAX_RECENT_PROJECTS: usize = 20;
 
-impl Default for EditorSettings {
-    fn default() -> Self {
-        Self {
-            font_family: r#""SF Mono", "Fira Code", "JetBrains Mono", "Menlo", monospace"#.into(),
-            font_size: 13,
-            tab_size: 4,
-            insert_spaces: true,
-            word_wrap: false,
-            line_numbers: true,
-            bracket_matching: true,
-            highlight_active_line: true,
-            auto_close_brackets: true,
-        }
-    }
-}
-
 impl Default for AppearanceSettings {
     fn default() -> Self {
         Self { ui_font_size: 12 }
@@ -322,11 +290,10 @@ mod tests {
 
     #[test]
     fn partial_json_merges_with_defaults() {
-        let json = r#"{"editor": {"fontSize": 16}}"#;
+        let json = r#"{"search": {"contextLines": 5}}"#;
         let parsed: AppSettings = serde_json::from_str(json).unwrap();
-        assert_eq!(parsed.editor.font_size, 16);
-        assert_eq!(parsed.editor.tab_size, 4); // default preserved
-        assert_eq!(parsed.search.context_lines, 2); // other section defaults
+        assert_eq!(parsed.search.context_lines, 5);
+        assert_eq!(parsed.appearance.ui_font_size, 12); // other section defaults
     }
 
     #[test]
@@ -339,19 +306,7 @@ mod tests {
         let json = r#"{"onboardingCompleted": true}"#;
         let parsed: AppSettings = serde_json::from_str(json).unwrap();
         assert!(parsed.onboarding_completed);
-        assert_eq!(parsed.editor.font_size, 13); // rest from defaults
-    }
-
-    #[test]
-    fn editor_defaults_are_correct() {
-        let d = EditorSettings::default();
-        assert_eq!(d.font_size, 13);
-        assert_eq!(d.tab_size, 4);
-        assert!(d.insert_spaces);
-        assert!(!d.word_wrap);
-        assert!(d.line_numbers);
-        assert!(d.bracket_matching);
-        assert!(d.auto_close_brackets);
+        assert_eq!(parsed.appearance.ui_font_size, 12); // rest from defaults
     }
 
     #[test]

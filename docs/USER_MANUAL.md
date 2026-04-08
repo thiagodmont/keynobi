@@ -324,9 +324,6 @@ Use **Auto-detect** to find Java from your shell environment.
 
 - **Last-used variant** — restored on next launch
 - **Last-used device serial** — restored on next launch
-- **Gradle JVM args** — passed to the Gradle daemon
-- **Parallel builds** — `--parallel` flag
-- **Offline mode** — `--offline` flag
 
 ### Telemetry (crash reporting)
 
