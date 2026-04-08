@@ -282,6 +282,7 @@ export function LogcatPanel(): JSX.Element {
   }
 
   const [autoScroll, setAutoScroll] = createSignal(true);
+  const [scrollCompensate, setScrollCompensate] = createSignal(0);
   let virtualListRef: VirtualListHandle | undefined;
   const [paused, setPaused] = createSignal(false);
 
@@ -515,17 +516,22 @@ export function LogcatPanel(): JSX.Element {
       newEntries.forEach((e, i) => { if (e.isCrash) newCrashOffsets.push(baseLen + i); });
 
       let didEvict = false;
+      let dropped = 0;
       setLogcatStore(
         produce((s) => {
           for (const e of newEntries) s.entries.push(e);
           if (evictionPending && s.entries.length > MAX_UI_ENTRIES) {
-            const dropped = s.entries.length - MAX_UI_ENTRIES;
+            dropped = s.entries.length - MAX_UI_ENTRIES;
             s.entries.splice(0, dropped);
             evictionPending = false;
             didEvict = true;
           }
         })
       );
+
+      if (didEvict && !autoScroll()) {
+        setScrollCompensate(c => c + dropped * ROW_HEIGHT);
+      }
 
       if (didEvict) {
         // After eviction all pre-computed offsets are stale — rebuild fully.
@@ -1171,6 +1177,7 @@ export function LogcatPanel(): JSX.Element {
           items={filteredEntries()}
           rowHeight={ROW_HEIGHT}
           autoScroll={autoScroll()}
+          scrollCompensate={scrollCompensate()}
           jumpTo={jumpTarget()}
           onScrolledToBottom={() => setAutoScroll(true)}
           onScrolledUp={() => setAutoScroll(false)}
