@@ -78,7 +78,7 @@ export function App(): JSX.Element {
   // Start/stop browser Sentry only when Anonymous crash reporting is on (after settings are known).
   createEffect(() => {
     // Access to create reactive dependency on telemetry setting.
-    settingsState.telemetry.enabled;
+    void settingsState.telemetry.enabled;
     initSentryWeb();
   });
 
