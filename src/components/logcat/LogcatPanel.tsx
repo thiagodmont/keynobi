@@ -29,7 +29,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { selectedDevice } from "@/stores/device.store";
 import { settingsState } from "@/stores/settings.store";
 import { showToast } from "@/components/common/Toast";
-import { VirtualList } from "@/components/common/VirtualList";
+import { VirtualList, type VirtualListHandle } from "@/components/common/VirtualList";
 import { QueryBar } from "@/components/logcat/QueryBar";
 import Icon from "@/components/common/Icon";
 import {
@@ -282,6 +282,7 @@ export function LogcatPanel(): JSX.Element {
   }
 
   const [autoScroll, setAutoScroll] = createSignal(true);
+  let virtualListRef: VirtualListHandle | undefined;
   const [paused, setPaused] = createSignal(false);
 
   // Crash navigation
@@ -547,6 +548,8 @@ export function LogcatPanel(): JSX.Element {
       setLogcatStore("entries", []);
       setCrashIndicesFull([]);
       clearSuggestions();
+      setAutoScroll(true);
+      virtualListRef?.scrollToBottom();
     });
 
     // Auto-start on device connect
@@ -1041,11 +1044,14 @@ export function LogcatPanel(): JSX.Element {
           </Show>
         </div>
 
-        {/* Auto-scroll */}
+        {/* Scroll to end */}
         <button
-          onClick={() => setAutoScroll((v) => !v)}
-          title={autoScroll() ? "Auto-scroll on" : "Auto-scroll off"}
-          style={btnStyle(autoScroll() ? "var(--accent)" : "var(--text-muted)")}
+          onClick={() => {
+            setAutoScroll(true);
+            virtualListRef?.scrollToBottom();
+          }}
+          title="Scroll to end"
+          style={btnStyle(autoScroll() ? "var(--text-muted)" : "var(--accent)")}
         >
           ↓
         </button>
@@ -1168,6 +1174,7 @@ export function LogcatPanel(): JSX.Element {
           jumpTo={jumpTarget()}
           onScrolledToBottom={() => setAutoScroll(true)}
           onScrolledUp={() => setAutoScroll(false)}
+          handle={(api) => { virtualListRef = api; }}
           style={{
             flex: "1",
             "font-family": "var(--font-mono)",
