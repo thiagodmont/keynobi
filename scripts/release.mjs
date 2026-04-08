@@ -134,9 +134,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       console.log();
     }
 
-    await confirm("Press Enter to add to CHANGELOG.md, or Ctrl+C to cancel: ");
-    prependToChangelog(changelogPath, entry);
-    info("CHANGELOG.md updated");
+    await confirm("Press Enter to confirm CHANGELOG entry, or Ctrl+C to cancel: ");
 
     // ── Write files ──────────────────────────────────────────────────────────
     try {
@@ -177,6 +175,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
     // ── Git operations ────────────────────────────────────────────────────────
     step("Releasing");
+    try {
+      prependToChangelog(changelogPath, entry);
+      info("CHANGELOG.md updated");
+    } catch (err) {
+      fatal(`Failed to write CHANGELOG.md: ${err.message}`);
+      process.exit(1);
+    }
     try {
       execSync(
         "git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json src-tauri/Cargo.lock CHANGELOG.md",
