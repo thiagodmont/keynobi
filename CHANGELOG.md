@@ -7,6 +7,28 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.7] — 2026-04-08
+
+### Added
+- full 20K backfill and detail panel integration
+- add Restart button to logcat toolbar
+- add scroll compensation for smooth eviction
+- wire VirtualList handle, fix cleared listener scroll, update ↓ button
+- add LogEntryDetailPanel component for row detail inspection
+- add scrollCompensate prop and VirtualListHandle imperative API
+- raise backend backfill cap from 10K to 20K entries
+
+### Fixed
+- remove unused copyRow, fix solid/reactivity lint warnings
+- fix LogEntryDetailPanel SolidJS lifecycle and reactivity patterns
+- reset PipelineContext on clear to prevent stale enrichment
+
+### Changed
+- extract shared LEVEL_CONFIG to logcat-levels.ts
+- remove editor settings and update related components
+
+---
+
 ## [0.1.6] — 2026-04-08
 
 ### Changed
