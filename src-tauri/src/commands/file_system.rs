@@ -5,6 +5,7 @@ use crate::FsState;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use tauri::State;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -353,6 +354,16 @@ pub async fn save_project_app_info(
 
 // ── Regex helpers ─────────────────────────────────────────────────────────────
 
+static RE_VERSION_NAME: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"(versionName\s*=?\s*)"[^"]*""#)
+        .expect("RE_VERSION_NAME: invalid regex")
+});
+
+static RE_VERSION_CODE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"(versionCode\s*=?\s*)\d+")
+        .expect("RE_VERSION_CODE: invalid regex")
+});
+
 fn extract_version_name(content: &str) -> Option<String> {
     let re = regex::Regex::new(r#"versionName\s*=?\s*"([^"]+)""#).ok()?;
     let caps = re.captures(content)?;
@@ -366,19 +377,19 @@ fn extract_version_code(content: &str) -> Option<i64> {
 }
 
 fn replace_version_name(content: &str, new_value: &str) -> String {
-    let re = regex::Regex::new(r#"(versionName\s*=?\s*)"[^"]*""#).unwrap();
-    re.replace(content, |caps: &regex::Captures| {
-        format!("{}\"{}\"", &caps[1], new_value)
-    })
-    .to_string()
+    RE_VERSION_NAME
+        .replace(content, |caps: &regex::Captures| {
+            format!("{}\"{}\"", &caps[1], new_value)
+        })
+        .to_string()
 }
 
 fn replace_version_code(content: &str, new_value: i64) -> String {
-    let re = regex::Regex::new(r"(versionCode\s*=?\s*)\d+").unwrap();
-    re.replace(content, |caps: &regex::Captures| {
-        format!("{}{}", &caps[1], new_value)
-    })
-    .to_string()
+    RE_VERSION_CODE
+        .replace(content, |caps: &regex::Captures| {
+            format!("{}{}", &caps[1], new_value)
+        })
+        .to_string()
 }
 
 // ── Per-project meta persistence ──────────────────────────────────────────────
