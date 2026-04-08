@@ -156,6 +156,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       process.exit(1);
     }
 
+    // ── Write CHANGELOG.md (before diff so it appears in the stat) ───────────
+    try {
+      prependToChangelog(changelogPath, entry);
+      info("CHANGELOG.md updated");
+    } catch (err) {
+      fatal(`Failed to write CHANGELOG.md: ${err.message}`);
+      process.exit(1);
+    }
+
     // ── Show diff ────────────────────────────────────────────────────────────
     step("Changes");
     try {
@@ -175,13 +184,6 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
 
     // ── Git operations ────────────────────────────────────────────────────────
     step("Releasing");
-    try {
-      prependToChangelog(changelogPath, entry);
-      info("CHANGELOG.md updated");
-    } catch (err) {
-      fatal(`Failed to write CHANGELOG.md: ${err.message}`);
-      process.exit(1);
-    }
     try {
       execSync(
         "git add package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json src-tauri/Cargo.lock CHANGELOG.md",

@@ -151,5 +151,5 @@ export function prependToChangelog(changelogPath, entry) {
   const afterSep = sepIdx + "\n---\n".length;
   const before = content.slice(0, afterSep);
   const after  = content.slice(afterSep);
-  writeFileSync(changelogPath, before + "\n" + entry + "\n---\n\n" + after);
+  writeFileSync(changelogPath, before + "\n" + entry + "\n---\n" + after);
 }

@@ -273,4 +273,15 @@ See GitHub.
     const afterEntry = content.slice(entryEnd);
     expect(afterEntry.trimStart()).toMatch(/^---/);
   });
+
+  it("places a second entry before the first on repeated calls", () => {
+    prependToChangelog(TMP, "## [0.1.5] — 2026-04-09\n");
+    prependToChangelog(TMP, "## [0.1.6] — 2026-04-10\n");
+    const content = readFileSync(TMP, "utf-8");
+    const idx6 = content.indexOf("## [0.1.6]");
+    const idx5 = content.indexOf("## [0.1.5]");
+    const idx4 = content.indexOf("## [0.1.4]");
+    expect(idx6).toBeLessThan(idx5);
+    expect(idx5).toBeLessThan(idx4);
+  });
 });
