@@ -1,4 +1,4 @@
-# Production Readiness Design — Android Dev Companion
+# Production Readiness Design — Keynobi
 
 **Date:** 2026-04-02  
 **Status:** Approved  
@@ -8,7 +8,7 @@
 
 ## Overview
 
-This spec defines all work required to bring the Android Dev Companion (Tauri 2.0 + SolidJS) from a well-architected beta to a production-ready application. Work is organized into three severity-tiered waves with clear release gates.
+This spec defines all work required to bring Keynobi (Tauri 2.0 + SolidJS) from a well-architected beta to a production-ready application. Work is organized into three severity-tiered waves with clear release gates.
 
 The project is structurally sound: good separation of concerns, atomic writes, mutex discipline, ring buffer design, and a clean IPC boundary. The gaps are concentrated in security hardening, error handling structure, test coverage, and production infrastructure.
 

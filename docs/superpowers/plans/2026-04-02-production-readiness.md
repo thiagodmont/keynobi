@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Harden the Android Dev Companion for public launch by fixing security vulnerabilities, improving error handling, increasing test coverage, and adding production infrastructure — organized in three severity-tiered waves.
+**Goal:** Harden Keynobi for public launch by fixing security vulnerabilities, improving error handling, increasing test coverage, and adding production infrastructure — organized in three severity-tiered waves.
 
 **Architecture:** No architectural changes to the three-layer structure (SolidJS → Tauri IPC → Rust services). Two new files are introduced: `src-tauri/src/utils/path.rs` (centralized path validation, Task 16) and `src-tauri/src/services/build_parser.rs` (regex + parsing logic extracted from `build_runner.rs`, Task 15).
 
@@ -11,6 +11,15 @@
 **Spec:** `docs/superpowers/specs/2026-04-02-production-readiness-design.md`
 
 ---
+
+> **STATUS — 2026-04-08:** This plan was drafted 2026-04-02 under the previous project name "Android Dev Companion". The project has since been renamed to **Keynobi**. The following tasks from this plan are **already complete** in the codebase and do not need to be re-done:
+> - Task 1 (S-1): Command injection in `studio.rs` — ✅ fixed
+> - Task 2 (S-2): CSP in `tauri.conf.json` — ✅ done
+> - Task 3 (S-3): FS capabilities scoped to `~/.keynobi` — ✅ done
+> - Task 16 (Q-2): `utils/path.rs` path traversal protection — ✅ done
+> - All Sentry/telemetry tasks — ✅ done
+>
+> **Remaining work from this plan is tracked in `2026-04-08-production-readiness-final.md`.**
 
 ## File Map
 
