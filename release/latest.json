@@ -1,10 +1,10 @@
 {
-  "version": "0.1.4",
-  "tag": "v0.1.4",
+  "version": "0.1.5",
+  "tag": "v0.1.5",
   "releaseDate": "2026-04-08",
-  "releaseUrl": "https://github.com/thiagodmont/keynobi/releases/tag/v0.1.4",
+  "releaseUrl": "https://github.com/thiagodmont/keynobi/releases/tag/v0.1.5",
   "downloads": {
-    "applesilicon": "https://github.com/thiagodmont/keynobi/releases/download/v0.1.4/Keynobi_0.1.4_arm64.dmg",
-    "intel": "https://github.com/thiagodmont/keynobi/releases/download/v0.1.4/Keynobi_0.1.4_intel.dmg"
+    "applesilicon": "https://github.com/thiagodmont/keynobi/releases/download/v0.1.5/Keynobi_0.1.5_arm64.dmg",
+    "intel": "https://github.com/thiagodmont/keynobi/releases/download/v0.1.5/Keynobi_0.1.5_intel.dmg"
   }
 }
