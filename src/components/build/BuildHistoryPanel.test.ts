@@ -1,37 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { BuildRecord, BuildStatus } from "@/bindings";
-
-// ── Helpers (duplicated from component for isolated testing) ──────────────────
-
-function statusIcon(status: BuildStatus): string {
-  if (status.state === "running") return "⟳";
-  if (status.state === "success") return "✓";
-  if (status.state === "failed") return "✗";
-  if (status.state === "cancelled") return "◼";
-  return "•";
-}
-
-function statusColor(status: BuildStatus): string {
-  if (status.state === "success") return "#4ade80";
-  if (status.state === "failed") return "#f87171";
-  if (status.state === "cancelled") return "rgba(255,255,255,0.3)";
-  return "#60a5fa";
-}
-
-function durationLabel(status: BuildStatus): string {
-  if (status.state !== "success" && status.state !== "failed") return "";
-  const ms = Number((status as any).durationMs ?? 0);
-  if (!ms) return "";
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  const mins = Math.floor(ms / 60000);
-  const secs = Math.floor((ms % 60000) / 1000);
-  return `${mins}m ${secs}s`;
-}
-
-function errorCount(record: BuildRecord): number {
-  return record.errors.filter((e) => e.severity === "error").length;
-}
+import { statusIcon, statusColor, durationLabel, errorCount } from "@/components/build/BuildHistoryPanel";
 
 function makeRecord(state: BuildStatus["state"], durationMs = 0, errors: any[] = []): BuildRecord {
   const status: any =
