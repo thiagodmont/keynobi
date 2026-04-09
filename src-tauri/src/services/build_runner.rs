@@ -299,9 +299,12 @@ pub async fn cancel_build(
 }
 
 /// Clear all build history from memory and disk.
+/// Disk persistence is best-effort; failures are silently dropped.
+/// The in-memory clear (including ID counter reset) always succeeds.
 pub async fn clear_history(build_state: &BuildState) {
     let mut bs = build_state.inner.lock().await;
     bs.history.clear();
+    bs.next_id = 1;
     save_build_history(&bs.history);
 }
 
