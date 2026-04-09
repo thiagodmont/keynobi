@@ -98,8 +98,13 @@ export function BuildPanel(): JSX.Element {
   }
 
   async function handleClearHistory() {
-    await clearBuildHistory();
-    setSelectedHistoryId(null);
+    try {
+      await clearBuildHistory();
+      setSelectedHistoryId(null);
+    } catch (e) {
+      console.error(e);
+      showToast(`Failed to clear build history: ${formatError(e)}`, "error");
+    }
   }
 
   return (
