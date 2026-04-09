@@ -298,6 +298,13 @@ pub async fn cancel_build(
     }
 }
 
+/// Clear all build history from memory and disk.
+pub async fn clear_history(build_state: &BuildState) {
+    let mut bs = build_state.inner.lock().await;
+    bs.history.clear();
+    save_build_history(&bs.history);
+}
+
 /// Record the completed build result and push it to history.
 pub async fn record_build_result(
     build_state: &BuildState,
@@ -905,6 +912,27 @@ mod tests {
         let records: VecDeque<BuildRecord> = VecDeque::new();
         let next_id = records.iter().map(|r| r.id).max().unwrap_or(0) + 1;
         assert_eq!(next_id, 1);
+    }
+
+    #[tokio::test]
+    async fn clear_history_empties_the_deque() {
+        let state = BuildState::new();
+        // Inject 3 records directly into the state.
+        {
+            let mut bs = state.inner.lock().await;
+            for i in 1u32..=3 {
+                bs.history.push_back(BuildRecord {
+                    id: i,
+                    task: format!("task_{i}"),
+                    status: BuildStatus::Idle,
+                    errors: vec![],
+                    started_at: "2026-01-01T00:00:00Z".into(),
+                });
+            }
+        }
+        clear_history(&state).await;
+        let bs = state.inner.lock().await;
+        assert!(bs.history.is_empty(), "history must be empty after clear_history");
     }
 
     #[test]

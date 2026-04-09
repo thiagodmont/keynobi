@@ -4,8 +4,8 @@ pub mod services;
 pub mod utils;
 
 use commands::build::{
-    cancel_build, find_apk_path, finalize_build, get_build_errors, get_build_history,
-    get_build_status, run_gradle_task,
+    cancel_build, clear_build_history, find_apk_path, finalize_build, get_build_errors,
+    get_build_history, get_build_status, get_package_name_from_apk, run_gradle_task,
 };
 use tauri::{Emitter, Manager};
 use commands::device::{
@@ -293,7 +293,9 @@ pub fn run() {
             get_build_status,
             get_build_errors,
             get_build_history,
+            clear_build_history,
             find_apk_path,
+            get_package_name_from_apk,
             // Variants
             get_variants_preview,
             get_variants_from_gradle,

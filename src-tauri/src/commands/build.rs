@@ -274,6 +274,46 @@ pub async fn get_build_history(
     Ok(bs.history.iter().cloned().collect())
 }
 
+/// Clear all build history (in-memory and on disk).
+#[tauri::command]
+pub async fn clear_build_history(
+    build_state: State<'_, BuildState>,
+) -> Result<(), String> {
+    build_runner::clear_history(&build_state).await;
+    Ok(())
+}
+
+/// Extract the package name from an APK using `aapt2 dump packagename`.
+///
+/// This is the authoritative way to get the exact installed package name,
+/// including any `applicationIdSuffix` added by the build variant. Use this
+/// after `find_apk_path` to pass the correct package to `launch_app_on_device`.
+#[tauri::command]
+pub async fn get_package_name_from_apk(
+    apk_path: String,
+) -> Result<String, AppError> {
+    let (settings, _) = settings_manager::load_settings();
+
+    let aapt2 = crate::services::adb_manager::find_aapt2(&settings).ok_or_else(|| {
+        AppError::NotFound(
+            "aapt2 not found in $ANDROID_HOME/build-tools. Check your SDK path in Settings → Android SDK.".to_string(),
+        )
+    })?;
+
+    let apk = PathBuf::from(&apk_path);
+    if !apk.is_file() {
+        return Err(AppError::NotFound(format!("APK not found: {apk_path}")));
+    }
+
+    crate::services::adb_manager::get_package_name_from_apk(&aapt2, &apk)
+        .await
+        .ok_or_else(|| {
+            AppError::ProcessFailed(format!(
+                "aapt2 failed to extract package name from {apk_path}"
+            ))
+        })
+}
+
 /// Find the output APK path for the given variant after a successful build.
 #[tauri::command]
 pub async fn find_apk_path(
