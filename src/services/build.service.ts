@@ -13,6 +13,7 @@ import {
 import {
   startBuild,
   addBuildLine,
+  flushPendingLines,
   setBuildResult,
   cancelBuildState,
   setBuildHistory,
@@ -23,6 +24,7 @@ import { variantState } from "@/stores/variant.store";
 import { deviceState } from "@/stores/device.store";
 import { setActiveTab } from "@/stores/ui.store";
 import { projectState } from "@/stores/project.store";
+import { settingsState } from "@/stores/settings.store";
 import type { BuildError } from "@/bindings";
 
 let buildCompleteUnlisten: (() => void) | null = null;
@@ -33,6 +35,9 @@ let buildCompleteUnlisten: (() => void) | null = null;
 export async function initBuildService(): Promise<void> {
   if (buildCompleteUnlisten) return;
   buildCompleteUnlisten = await listenBuildComplete((e) => {
+    // Flush any lines still in the 50ms buffer before updating phase.
+    flushPendingLines();
+
     if (e.cancelled) {
       // Build was explicitly cancelled by the user — use dedicated cancelled phase.
       cancelBuildState();
@@ -84,7 +89,7 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
     }
   }
 
-  logGradleInvocation(effectiveTask);
+  logBuildHeader(effectiveTask);
 
   const startedAt = new Date().toISOString();
   const accumulatedErrors: BuildError[] = [];
@@ -203,9 +208,12 @@ export async function runAndDeploy(): Promise<void> {
 
     // 3. Install.
     setDeployPhase("installing");
+    const deviceInfo = deviceLabel(serial);
+    logStep(`Installing on: ${deviceInfo}`);
     logStep(`adb install ${apkPath}`);
+    const installStart = Date.now();
     const installOutput = await installApkOnDevice(serial, apkPath);
-    logStep(`Install: ${installOutput.trim()}`);
+    logStep(`Install: ${installOutput.trim()} (${formatDuration(Date.now() - installStart)})`);
 
     // 4. Launch.
     const appId = projectState.applicationId;
@@ -233,8 +241,29 @@ export async function runAndDeploy(): Promise<void> {
 export async function cancelBuild(): Promise<void> {
   const resolve = _resolveBuildComplete;
   _resolveBuildComplete = null;
+
+  // Flush any buffered log lines before finalising state.
+  flushPendingLines();
+
+  const task = buildState.currentTask ?? "unknown";
+  const startedAtMs = buildState.startedAt ?? Date.now();
+  const startedAt = new Date(startedAtMs).toISOString();
+  const durationMs = Date.now() - startedAtMs;
+
   cancelBuildState();
   await cancelBuildApi();
+
+  // Persist the cancelled build to history so it appears in the side panel.
+  await finalizeBuild({
+    success: false,
+    durationMs,
+    errors: buildState.errors,
+    task,
+    startedAt,
+  }).catch((err) => {
+    console.error("[build] Failed to finalize cancelled build:", err);
+  });
+
   // Unblock runBuild immediately so it doesn't hang until timeout.
   resolve?.({ success: false, durationMs: 0 });
 }
@@ -257,12 +286,34 @@ async function resolveDevice(): Promise<string | null> {
 }
 
 /**
- * Jump to a build error location.
+ * Jump to a build error in Android Studio when file info is available,
+ * otherwise show the error in a Toast.
  */
 export async function jumpToBuildError(error: BuildError): Promise<void> {
   const { showToast } = await import("@/components/common/Toast");
+  const { openInStudio } = await import("@/lib/tauri-api");
+
+  if (error.file) {
+    try {
+      // openInStudio expects (classPath, filename, line).
+      const parts = error.file.replace(/\\/g, "/").split("/");
+      const filename = parts[parts.length - 1] ?? error.file;
+      // Build a dotted class path from the path relative to java/ or kotlin/.
+      const srcIdx = parts.findIndex((p) => p === "java" || p === "kotlin");
+      const classPath = srcIdx >= 0
+        ? parts.slice(srcIdx + 1).join(".").replace(/\.(kt|java)$/, "")
+        : filename.replace(/\.(kt|java)$/, "");
+      await openInStudio(classPath, filename, error.line ?? 1);
+      return;
+    } catch (e) {
+      // Studio may not be running — fall through to Toast.
+      console.warn("[build] openInStudio failed, falling back to Toast:", e);
+    }
+  }
+
+  // Fallback: show the error in a Toast.
   const location = error.file
-    ? `${error.file}${error.line !== null && error.line !== undefined ? `:${error.line}` : ""}${error.col !== null && error.col !== undefined ? `:${error.col}` : ""} — `
+    ? `${error.file}${error.line != null ? `:${error.line}` : ""}${error.col != null ? `:${error.col}` : ""} — `
     : "";
   showToast(`${location}${error.message}`, "info");
 }
@@ -274,13 +325,39 @@ function logStep(message: string): void {
   addBuildLine({ kind: "info", content: `▶ ${message}`, file: null, line: null, col: null });
 }
 
-/** Mirror the Gradle invocation from `run_gradle_task` (Rust) for the build log. */
-function logGradleInvocation(effectiveTask: string): void {
-  logStep(`./gradlew ${effectiveTask} --console=plain`);
-  const cwd = projectState.gradleRoot ?? projectState.projectRoot;
-  if (cwd) {
-    logStep(`Working directory: ${cwd}`);
+/** Log an environment variable only if its value is set. */
+function logEnvVar(name: string, value: string | null | undefined): void {
+  if (value) {
+    logStep(`${name}: ${value}`);
   }
+}
+
+/** Format device label for logging. */
+function deviceLabel(serial: string): string {
+  const dev = deviceState.devices.find((d) => d.serial === serial);
+  if (!dev) return serial;
+  const model = dev.model ?? dev.name ?? serial;
+  const api = dev.apiLevel != null ? ` (API ${dev.apiLevel})` : "";
+  return `${model}${api} [${serial}]`;
+}
+
+function formatDuration(ms: number): string {
+  if (!ms) return "0ms";
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+  const mins = Math.floor(ms / 60000);
+  const secs = ((ms % 60000) / 1000).toFixed(0);
+  return `${mins}m ${secs}s`;
+}
+
+/** Log build header: task, working directory, and relevant env vars. */
+function logBuildHeader(effectiveTask: string): void {
+  logStep(`Build started: ${effectiveTask}`);
+  const cwd = projectState.gradleRoot ?? projectState.projectRoot;
+  if (cwd) logStep(`Working directory: ${cwd}`);
+  logEnvVar("JAVA_HOME", settingsState.java?.home);
+  logEnvVar("ANDROID_HOME", settingsState.android?.sdkPath);
+  logStep(`./gradlew ${effectiveTask} --console=plain`);
 }
 
 /** Emit a visible error into the build log AND the Problems tab. */
