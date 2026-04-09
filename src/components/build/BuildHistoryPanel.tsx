@@ -1,12 +1,15 @@
 import { type JSX, For, Show } from "solid-js";
-import type { BuildRecord, BuildStatus } from "@/bindings";
-import { buildState, isBuilding } from "@/stores/build.store";
+import type { BuildRecord, BuildResult, BuildStatus } from "@/bindings";
+import { buildState } from "@/stores/build.store";
+import Icon from "@/components/common/Icon";
 
 export interface BuildHistoryPanelProps {
   /** ID of the currently selected history entry. null = current build. */
   selectedId: number | null;
   /** Called when the user clicks a history entry. null = current build. */
   onSelect: (record: BuildRecord | null) => void;
+  /** Called when the user clicks the clear-history button. */
+  onClear?: () => void;
 }
 
 export function statusIcon(status: BuildStatus): string {
@@ -26,7 +29,7 @@ export function statusColor(status: BuildStatus): string {
 
 export function durationLabel(status: BuildStatus): string {
   if (status.state !== "success" && status.state !== "failed") return "";
-  const ms = Number((status as any).durationMs ?? 0);
+  const ms = Number((status as BuildResult).durationMs ?? 0);
   if (!ms) return "";
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
@@ -76,9 +79,32 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
           "letter-spacing": "0.06em",
           "border-bottom": "1px solid var(--border)",
           "flex-shrink": "0",
+          display: "flex",
+          "align-items": "center",
+          "justify-content": "space-between",
         }}
       >
-        Builds
+        <span>Builds</span>
+        <Show when={history().length > 0 && props.onClear}>
+          <button
+            title="Clear build history"
+            onClick={() => props.onClear?.()}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: "0 2px",
+              color: "var(--text-disabled)",
+              display: "flex",
+              "align-items": "center",
+              opacity: "0.6",
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.6"; }}
+          >
+            <Icon name="trash" size={10} color="currentColor" />
+          </button>
+        </Show>
       </div>
 
       {/* Current in-progress build */}

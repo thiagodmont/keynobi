@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { BuildRecord, BuildStatus } from "@/bindings";
 import { statusIcon, statusColor, durationLabel, errorCount } from "@/components/build/BuildHistoryPanel";
+import type { BuildHistoryPanelProps } from "@/components/build/BuildHistoryPanel";
 
 function makeRecord(state: BuildStatus["state"], durationMs = 0, errors: any[] = []): BuildRecord {
   const status: any =
@@ -54,5 +55,15 @@ describe("BuildHistoryPanel helpers", () => {
       { severity: "error", message: "e2", file: null, line: null, col: null },
     ]);
     expect(errorCount(record)).toBe(2);
+  });
+
+  it("BuildHistoryPanelProps accepts optional onClear", () => {
+    // Type-level test: if this compiles, onClear is optional
+    const props: BuildHistoryPanelProps = {
+      selectedId: null,
+      onSelect: () => {},
+      // onClear omitted — must be optional
+    };
+    expect(props.selectedId).toBeNull();
   });
 });
