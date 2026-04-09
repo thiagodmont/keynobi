@@ -197,7 +197,8 @@ pub fn rotate_build_logs(
     }
 
     let now = std::time::SystemTime::now();
-    let retention_secs = u64::from(retention_days) * 86_400;
+    // retention_days = 0 means disabled (no age-based deletion).
+    let retention_secs = u64::from(retention_days).checked_mul(86_400);
     let valid_ids: std::collections::HashSet<u32> = history.iter().map(|r| r.id).collect();
 
     // Collect all .jsonl files with their metadata.
@@ -216,25 +217,21 @@ pub fn rotate_build_logs(
         }
     }
 
-    // Pass 1: Age.
+    // Pass 1+2: Age and orphans — combined to avoid double-deleting files that match both.
     for (path, mtime) in &files {
-        if let Ok(age) = now.duration_since(*mtime) {
-            if age.as_secs() > retention_secs {
-                let _ = std::fs::remove_file(path);
-            }
-        }
-    }
-
-    // Pass 2: Orphans.
-    for (path, _) in &files {
-        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-            if let Some(id_str) = stem.strip_prefix("build-") {
-                if let Ok(id) = id_str.parse::<u32>() {
-                    if !valid_ids.contains(&id) {
-                        let _ = std::fs::remove_file(path);
-                    }
-                }
-            }
+        let aged = retention_secs.is_some_and(|limit| {
+            now.duration_since(*mtime)
+                .map(|d| d.as_secs() > limit)
+                .unwrap_or(false)
+        });
+        let is_orphan = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .and_then(|stem| stem.strip_prefix("build-"))
+            .and_then(|id_str| id_str.parse::<u32>().ok())
+            .is_some_and(|id| !valid_ids.contains(&id));
+        if aged || is_orphan {
+            let _ = std::fs::remove_file(path);
         }
     }
 
