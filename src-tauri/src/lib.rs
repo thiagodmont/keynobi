@@ -5,7 +5,8 @@ pub mod utils;
 
 use commands::build::{
     cancel_build, clear_build_history, find_apk_path, finalize_build, get_build_errors,
-    get_build_history, get_build_status, get_package_name_from_apk, run_gradle_task,
+    get_build_history, get_build_log_entries, get_build_status, get_package_name_from_apk,
+    run_gradle_task,
 };
 use tauri::{Emitter, Manager};
 use commands::device::{
@@ -195,6 +196,18 @@ pub fn run() {
             // cleanup_old_logs is synchronous — no spawn needed.
             cleanup_old_logs(&log_dir, settings.advanced.log_retention_days);
 
+            // Rotate build log files at startup: age, orphan, and size-cap passes.
+            {
+                let build_log_dir = services::settings_manager::data_dir().join("build-logs");
+                let history = services::build_runner::load_build_history();
+                services::build_runner::rotate_build_logs(
+                    &build_log_dir,
+                    settings.build.build_log_retention_days,
+                    settings.build.build_log_max_folder_mb,
+                    &history,
+                );
+            }
+
             // Spawn monitor: polls memory + log folder size every 5s.
             {
                 let handle = app.handle().clone();
@@ -294,6 +307,7 @@ pub fn run() {
             get_build_errors,
             get_build_history,
             clear_build_history,
+            get_build_log_entries,
             find_apk_path,
             get_package_name_from_apk,
             // Variants
