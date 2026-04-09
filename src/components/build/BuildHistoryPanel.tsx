@@ -42,7 +42,7 @@ export function errorCount(record: BuildRecord): number {
   return record.errors.filter((e) => e.severity === "error").length;
 }
 
-function relativeTime(isoString: string): string {
+export function relativeTime(isoString: string): string {
   const diffMs = Date.now() - new Date(isoString).getTime();
   const sec = Math.floor(diffMs / 1000);
   if (sec < 60) return "just now";

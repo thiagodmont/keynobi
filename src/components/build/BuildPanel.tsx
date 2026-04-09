@@ -6,15 +6,16 @@ import {
   createSignal,
   createEffect,
 } from "solid-js";
-import { buildState, buildLogStore, isBuilding, isDeploying, clearBuildHistory } from "@/stores/build.store";
+import { buildState, buildLogStore, isBuilding, isDeploying, clearBuildHistory, lineToLogEntry } from "@/stores/build.store";
 import { runBuild, runAndDeploy, cancelBuild, jumpToBuildError } from "@/services/build.service";
 import { LogViewer } from "@/components/common/LogViewer";
 import type { BuildError, BuildRecord } from "@/bindings";
+import type { LogEntry } from "@/stores/log.store";
 import Icon from "@/components/common/Icon";
-import { BuildHistoryPanel } from "@/components/build/BuildHistoryPanel";
+import { BuildHistoryPanel, relativeTime } from "@/components/build/BuildHistoryPanel";
 import { projectState } from "@/stores/project.store";
 import { showToast } from "@/components/common/Toast";
-import { formatError } from "@/lib/tauri-api";
+import { formatError, getBuildLogEntries } from "@/lib/tauri-api";
 
 type ViewMode = "log" | "problems";
 
@@ -38,6 +39,28 @@ export function BuildPanel(): JSX.Element {
     if (phase() === "failed" && (errorCount() + warnCount()) > 0) {
       setViewMode("problems");
     }
+  });
+
+  const [historicalLog, setHistoricalLog] = createSignal<LogEntry[]>([]);
+
+  createEffect(() => {
+    const id = selectedHistoryId();
+    if (id === null) {
+      setHistoricalLog([]);
+      return;
+    }
+    getBuildLogEntries(id)
+      .then((lines) => setHistoricalLog(lines.map(lineToLogEntry)))
+      .catch(() => setHistoricalLog([]));
+  });
+
+  const logEntries = () =>
+    selectedHistoryId() !== null ? historicalLog() : buildLogStore.entries;
+
+  const selectedRecord = createMemo<BuildRecord | null>(() => {
+    const id = selectedHistoryId();
+    if (id === null) return null;
+    return buildState.history.find((r) => r.id === id) ?? null;
   });
 
   const summaryColor = createMemo(() => {
@@ -227,11 +250,29 @@ export function BuildPanel(): JSX.Element {
         {/* Log / Problems area */}
         <div style={{ flex: "1", overflow: "hidden" }}>
           <Show when={viewMode() === "log"}>
+            <Show when={selectedHistoryId() !== null && selectedRecord() !== null}>
+              <div
+                style={{
+                  padding: "4px 8px",
+                  "font-size": "11px",
+                  color: "var(--text-muted)",
+                  background: "var(--bg-tertiary)",
+                  "border-bottom": "1px solid var(--border)",
+                  "flex-shrink": "0",
+                }}
+              >
+                Viewing build from {relativeTime(selectedRecord()!.startedAt)}
+              </div>
+            </Show>
             <LogViewer
-              entries={buildLogStore.entries}
+              entries={logEntries()}
               onClear={() => buildLogStore.clearEntries()}
               showSource={false}
-              emptyMessage="No build output yet — press the run button or Cmd+Shift+R"
+              emptyMessage={
+                selectedHistoryId() !== null
+                  ? "No log saved for this build"
+                  : "No build output yet — press the run button or Cmd+Shift+R"
+              }
             />
           </Show>
           <Show when={viewMode() === "problems"}>
