@@ -142,6 +142,9 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
     throw e;
   }
 
+  // cancelBuild() already called finalizeBuild — don't duplicate.
+  if (buildState.phase === "cancelled") return;
+
   // Persist finalized result + history to the backend.
   await finalizeBuild({
     success: result.success,
