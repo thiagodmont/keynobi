@@ -248,6 +248,7 @@ export async function cancelBuild(): Promise<void> {
   const task = buildState.currentTask ?? "unknown";
   const startedAtMs = buildState.startedAt ?? Date.now();
   const startedAt = new Date(startedAtMs).toISOString();
+  const errors = buildState.errors.slice(); // snapshot before state is mutated
   const durationMs = Date.now() - startedAtMs;
 
   cancelBuildState();
@@ -257,7 +258,7 @@ export async function cancelBuild(): Promise<void> {
   await finalizeBuild({
     success: false,
     durationMs,
-    errors: buildState.errors,
+    errors,
     task,
     startedAt,
   }).catch((err) => {
