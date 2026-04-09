@@ -77,7 +77,7 @@ let _pendingLines: BuildLine[] = [];
 let _flushTimer: ReturnType<typeof setTimeout> | null = null;
 let buildLogIdCounter = 0;
 
-function _lineToLogEntry(line: BuildLine): LogEntry {
+export function lineToLogEntry(line: BuildLine): LogEntry {
   const level: LogEntry["level"] =
     line.kind === "error" ? "error"
     : line.kind === "warning" ? "warn"
@@ -112,7 +112,7 @@ function _executePendingFlush(): void {
   if (_pendingLines.length === 0) return;
   const batch = _pendingLines.splice(0); // drain — _pendingLines is now []
 
-  buildLogStore.pushEntries(batch.map(_lineToLogEntry));
+  buildLogStore.pushEntries(batch.map(lineToLogEntry));
 
   const errors = batch.filter((l) => l.kind === "error");
   const warnings = batch.filter((l) => l.kind === "warning");

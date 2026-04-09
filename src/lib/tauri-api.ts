@@ -212,6 +212,10 @@ export async function clearBuildHistory(): Promise<void> {
   return invoke<void>("clear_build_history");
 }
 
+export async function getBuildLogEntries(id: number): Promise<BuildLine[]> {
+  return invoke<BuildLine[]>("get_build_log_entries", { id });
+}
+
 export async function findApkPath(variant: string): Promise<string | null> {
   return invoke<string | null>("find_apk_path", { variant });
 }
