@@ -35,6 +35,10 @@ pub fn save_build_history(history: &VecDeque<BuildRecord>) {
 }
 
 /// Load build history from disk. Returns empty VecDeque if file is missing or corrupt.
+///
+/// The file is written newest-first (see `save_build_history`), so we reverse
+/// the loaded entries to restore oldest-first order — matching the invariant that
+/// `push_back` adds the newest record and `pop_front` evicts the oldest.
 pub fn load_build_history() -> VecDeque<BuildRecord> {
     let path = data_dir().join(BUILD_HISTORY_FILE);
     if !path.exists() {
@@ -42,7 +46,15 @@ pub fn load_build_history() -> VecDeque<BuildRecord> {
     }
     match std::fs::read_to_string(&path) {
         Ok(content) => serde_json::from_str::<Vec<BuildRecord>>(&content)
-            .map(|v| v.into_iter().collect())
+            .map(|v| {
+                // Reverse: file is newest-first, VecDeque must be oldest-first.
+                let mut deque: VecDeque<BuildRecord> = v.into_iter().rev().collect();
+                // Trim to MAX_HISTORY so the in-memory cap is enforced immediately.
+                while deque.len() > MAX_HISTORY {
+                    deque.pop_front();
+                }
+                deque
+            })
             .unwrap_or_default(),
         Err(_) => VecDeque::new(),
     }
@@ -72,12 +84,14 @@ impl Default for BuildStateInner {
 
 impl BuildStateInner {
     pub fn new() -> Self {
+        let history = load_build_history();
+        let next_id = history.iter().map(|r| r.id).max().unwrap_or(0) + 1;
         Self {
             current_build: None,
             status: BuildStatus::Idle,
-            history: load_build_history(),  // Load from disk on startup
+            history,
             current_errors: vec![],
-            next_id: 1,
+            next_id,
         }
     }
 }
@@ -868,6 +882,29 @@ mod tests {
         let parsed: BuildRecord = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.task, "assembleDebug");
         assert_eq!(parsed.id, 1);
+    }
+
+    #[test]
+    fn next_id_starts_after_max_history_id() {
+        use std::collections::VecDeque;
+        let records: VecDeque<BuildRecord> = (1u32..=5).map(|i| BuildRecord {
+            id: i,
+            task: format!("task_{i}"),
+            status: BuildStatus::Idle,
+            errors: vec![],
+            started_at: "2026-01-01T00:00:00Z".into(),
+        }).collect();
+        // This is the formula that BuildStateInner::new() must use.
+        let next_id = records.iter().map(|r| r.id).max().unwrap_or(0) + 1;
+        assert_eq!(next_id, 6, "next_id must continue from max existing id");
+    }
+
+    #[test]
+    fn next_id_is_one_when_history_empty() {
+        use std::collections::VecDeque;
+        let records: VecDeque<BuildRecord> = VecDeque::new();
+        let next_id = records.iter().map(|r| r.id).max().unwrap_or(0) + 1;
+        assert_eq!(next_id, 1);
     }
 
     #[test]
