@@ -8,4 +8,12 @@ export type BuildSettings = {
 /**
  * Automatically install and launch the app after a successful build.
  */
-autoInstallOnBuild: boolean, };
+autoInstallOnBuild: boolean, 
+/**
+ * Days to keep build log files in ~/.keynobi/build-logs/ (default: 7).
+ */
+buildLogRetentionDays: number, 
+/**
+ * Max total size of ~/.keynobi/build-logs/ in MB before size-based rotation (default: 100).
+ */
+buildLogMaxFolderMb: number, };

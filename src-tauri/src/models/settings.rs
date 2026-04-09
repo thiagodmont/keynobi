@@ -124,6 +124,10 @@ pub struct AdvancedSettings {
 pub struct BuildSettings {
     /// Automatically install and launch the app after a successful build.
     pub auto_install_on_build: bool,
+    /// Days to keep build log files in ~/.keynobi/build-logs/ (default: 7).
+    pub build_log_retention_days: u32,
+    /// Max total size of ~/.keynobi/build-logs/ in MB before size-based rotation (default: 100).
+    pub build_log_max_folder_mb: u32,
 }
 
 /// Logcat settings.
@@ -221,6 +225,8 @@ impl Default for BuildSettings {
     fn default() -> Self {
         Self {
             auto_install_on_build: true,
+            build_log_retention_days: 7,
+            build_log_max_folder_mb: 100,
         }
     }
 }
@@ -312,5 +318,20 @@ mod tests {
         let json = serde_json::to_value(&s).unwrap();
         assert!(json.get("buildVariant").is_none(), "buildVariant must be removed");
         assert!(json.get("selectedDevice").is_none(), "selectedDevice must be removed");
+    }
+
+    #[test]
+    fn build_log_settings_have_correct_defaults() {
+        let d = BuildSettings::default();
+        assert_eq!(d.build_log_retention_days, 7);
+        assert_eq!(d.build_log_max_folder_mb, 100);
+    }
+
+    #[test]
+    fn build_log_settings_round_trip() {
+        let json = r#"{"build":{"buildLogRetentionDays":14,"buildLogMaxFolderMb":200}}"#;
+        let parsed: AppSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.build.build_log_retention_days, 14);
+        assert_eq!(parsed.build.build_log_max_folder_mb, 200);
     }
 }
