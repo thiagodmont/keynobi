@@ -9,8 +9,9 @@ import {
 import { buildState, buildLogStore, isBuilding, isDeploying } from "@/stores/build.store";
 import { runBuild, runAndDeploy, cancelBuild, jumpToBuildError } from "@/services/build.service";
 import { LogViewer } from "@/components/common/LogViewer";
-import type { BuildError } from "@/bindings";
+import type { BuildError, BuildRecord } from "@/bindings";
 import Icon from "@/components/common/Icon";
+import { BuildHistoryPanel } from "@/components/build/BuildHistoryPanel";
 import { projectState } from "@/stores/project.store";
 import { showToast } from "@/components/common/Toast";
 import { formatError } from "@/lib/tauri-api";
@@ -20,6 +21,11 @@ type ViewMode = "log" | "problems";
 export function BuildPanel(): JSX.Element {
   const [viewMode, setViewMode] = createSignal<ViewMode>("log");
   const [running, setRunning] = createSignal(false);
+  const [selectedHistoryId, setSelectedHistoryId] = createSignal<number | null>(null);
+
+  function handleHistorySelect(record: BuildRecord | null): void {
+    setSelectedHistoryId(record?.id ?? null);
+  }
 
   const phase = () => buildState.phase;
   const deployPhase = () => buildState.deployPhase;
@@ -60,6 +66,7 @@ export function BuildPanel(): JSX.Element {
 
   /** Full run: build → install → launch on the selected device. */
   async function handleRunApp() {
+    setSelectedHistoryId(null); // select current build
     setRunning(true);
     setViewMode("log");
     try {
@@ -74,6 +81,7 @@ export function BuildPanel(): JSX.Element {
 
   /** Build only — no install/launch. */
   async function handleBuildOnly() {
+    setSelectedHistoryId(null); // select current build
     setRunning(true);
     setViewMode("log");
     try {
@@ -198,22 +206,30 @@ export function BuildPanel(): JSX.Element {
         </Show>
       </div>
 
-      {/* ── Content ── */}
-      <div style={{ flex: "1", overflow: "hidden" }}>
-        <Show when={viewMode() === "log"}>
-          <LogViewer
-            entries={buildLogStore.entries}
-            onClear={() => buildLogStore.clearEntries()}
-            showSource={false}
-            emptyMessage="No build output yet — press the run button or Cmd+Shift+R"
-          />
-        </Show>
-        <Show when={viewMode() === "problems"}>
-          <ProblemsView
-            errors={buildState.errors}
-            warnings={buildState.warnings}
-          />
-        </Show>
+      {/* ── Content: history strip + log/problems ── */}
+      <div style={{ flex: "1", overflow: "hidden", display: "flex" }}>
+        {/* History side panel */}
+        <BuildHistoryPanel
+          selectedId={selectedHistoryId()}
+          onSelect={handleHistorySelect}
+        />
+        {/* Log / Problems area */}
+        <div style={{ flex: "1", overflow: "hidden" }}>
+          <Show when={viewMode() === "log"}>
+            <LogViewer
+              entries={buildLogStore.entries}
+              onClear={() => buildLogStore.clearEntries()}
+              showSource={false}
+              emptyMessage="No build output yet — press the run button or Cmd+Shift+R"
+            />
+          </Show>
+          <Show when={viewMode() === "problems"}>
+            <ProblemsView
+              errors={buildState.errors}
+              warnings={buildState.warnings}
+            />
+          </Show>
+        </div>
       </div>
       </Show>
     </div>
