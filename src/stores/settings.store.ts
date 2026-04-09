@@ -32,6 +32,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   build: {
     autoInstallOnBuild: true,
+    buildLogRetentionDays: 7,
+    buildLogMaxFolderMb: 100,
   },
   logcat: {
     autoStart: true,
