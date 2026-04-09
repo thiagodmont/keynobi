@@ -292,10 +292,11 @@ pub async fn get_build_log_entries(id: u32) -> Result<Vec<BuildLine>, String> {
     let path = data_dir()
         .join("build-logs")
         .join(format!("build-{id}.jsonl"));
-    if !path.exists() {
-        return Ok(vec![]);
-    }
-    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let content = match tokio::fs::read_to_string(&path).await {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(e) => return Err(e.to_string()),
+    };
     let entries: Vec<BuildLine> = content
         .lines()
         .filter(|l| !l.trim().is_empty())
