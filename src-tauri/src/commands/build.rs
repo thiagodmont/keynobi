@@ -95,6 +95,9 @@ pub async fn run_gradle_task(
     let args_strs: Vec<String> = args;
     let args_refs: Vec<&str> = args_strs.iter().map(|s| s.as_str()).collect();
 
+    // Clear the log for this run BEFORE spawning so no early lines can be clobbered.
+    build_runner::clear_build_log(&build_state.build_log);
+
     let id = process_manager::spawn(
         &process_manager.0,
         gradlew.to_str().unwrap_or("./gradlew"),
@@ -202,7 +205,6 @@ pub async fn run_gradle_task(
         bs.current_build = Some(id);
         bs.current_errors.clear();
     }
-    build_runner::clear_build_log(&build_state.build_log);
 
     Ok(id)
 }
