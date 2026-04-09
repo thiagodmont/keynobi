@@ -407,8 +407,8 @@ pub async fn run_task(
     let errors_buf = Arc::new(std::sync::Mutex::new(Vec::<BuildError>::new()));
     let success_flag = Arc::new(AtomicBool::new(false));
     let duration_buf = Arc::new(AtomicU64::new(0));
-    let done_flag = Arc::new(AtomicBool::new(false));
-    let done_flag_clone = done_flag.clone();
+    let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+    let done_tx = Arc::new(StdMutex::new(Some(done_tx)));
 
     let pid = pm::spawn(
         &process_manager.0,
@@ -450,7 +450,11 @@ pub async fn run_task(
                 }
             }),
             on_exit: Box::new(move |_pid, _code| {
-                done_flag_clone.store(true, Ordering::Release);
+                if let Ok(mut g) = done_tx.lock() {
+                    if let Some(tx) = g.take() {
+                        let _ = tx.send(());
+                    }
+                }
             }),
         },
     )
@@ -471,20 +475,12 @@ pub async fn run_task(
         bs.current_build = Some(pid);
     }
 
-    let timeout = std::time::Duration::from_secs(timeout_sec);
-    let start = std::time::Instant::now();
-    let timed_out;
-    loop {
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-        if done_flag.load(Ordering::Acquire) {
-            timed_out = false;
-            break;
-        }
-        if start.elapsed() > timeout {
-            timed_out = true;
-            break;
-        }
-    }
+    let timed_out = tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_sec),
+        done_rx,
+    )
+    .await
+    .is_err();
 
     if timed_out {
         cancel_build(build_state, process_manager).await;
