@@ -70,9 +70,87 @@ export const hasWarnings = createMemo(() => buildState.warnings.length > 0);
 export const isBuilding = createMemo(() => buildState.phase === "running");
 export const isDeploying = createMemo(() => buildState.deployPhase !== null);
 
+// ── Batching ──────────────────────────────────────────────────────────────────
+
+let _pendingLines: BuildLine[] = [];
+let _flushTimer: ReturnType<typeof setTimeout> | null = null;
+let buildLogIdCounter = 0;
+
+function _lineToLogEntry(line: BuildLine): LogEntry {
+  const level: LogEntry["level"] =
+    line.kind === "error" ? "error"
+    : line.kind === "warning" ? "warn"
+    : line.kind === "summary" || line.kind === "info" ? "info"
+    : "debug";
+
+  const message = line.file
+    ? `${line.file}:${line.line ?? "?"}:${line.col ?? "?"} — ${line.content}`
+    : line.content;
+
+  return {
+    id: ++buildLogIdCounter,
+    timestamp: new Date().toISOString(),
+    level,
+    source: "gradle",
+    message,
+  };
+}
+
+function _lineToError(line: BuildLine): BuildError {
+  return {
+    message: line.content,
+    file: line.file ?? null,
+    line: line.line ?? null,
+    col: line.col ?? null,
+    severity: line.kind === "error" ? "error" : "warning",
+  };
+}
+
+function _executePendingFlush(): void {
+  _flushTimer = null;
+  if (_pendingLines.length === 0) return;
+  const batch = _pendingLines.splice(0); // drain — _pendingLines is now []
+
+  buildLogStore.pushEntries(batch.map(_lineToLogEntry));
+
+  const errors = batch.filter((l) => l.kind === "error");
+  const warnings = batch.filter((l) => l.kind === "warning");
+  if (errors.length > 0 || warnings.length > 0) {
+    setBuildState(
+      produce((s) => {
+        for (const l of errors) s.errors.push(_lineToError(l));
+        for (const l of warnings) s.warnings.push(_lineToError(l));
+      })
+    );
+  }
+}
+
+/** Add a line to the pending buffer. Schedules a 50ms flush if not already scheduled. */
+export function addBuildLine(line: BuildLine): void {
+  _pendingLines.push(line);
+  if (_flushTimer === null) {
+    _flushTimer = setTimeout(_executePendingFlush, 50);
+  }
+}
+
+/** Flush all buffered lines immediately (called before finalising build state). */
+export function flushPendingLines(): void {
+  if (_flushTimer !== null) {
+    clearTimeout(_flushTimer);
+    _flushTimer = null;
+  }
+  _executePendingFlush();
+}
+
 // ── Actions ───────────────────────────────────────────────────────────────────
 
 export function startBuild(task: string): void {
+  // Discard any pending lines from a previous build.
+  _pendingLines = [];
+  if (_flushTimer !== null) {
+    clearTimeout(_flushTimer);
+    _flushTimer = null;
+  }
   setBuildState({
     phase: "running",
     currentTask: task,
@@ -88,57 +166,6 @@ export function startBuild(task: string): void {
 
 export function setDeployPhase(phase: DeployPhase): void {
   setBuildState("deployPhase", phase);
-}
-
-// Counter for LogEntry IDs within the build log.
-let buildLogIdCounter = 0;
-
-/** Convert a BuildLine received from the backend into a LogEntry for the viewer. */
-export function addBuildLine(line: BuildLine): void {
-  const level: LogEntry["level"] =
-    line.kind === "error" ? "error"
-    : line.kind === "warning" ? "warn"
-    : line.kind === "summary" || line.kind === "info" ? "info"
-    : "debug";
-
-  const message = line.file
-    ? `${line.file}:${line.line ?? "?"}:${line.col ?? "?"} — ${line.content}`
-    : line.content;
-
-  buildLogStore.pushEntry({
-    id: ++buildLogIdCounter,
-    timestamp: new Date().toISOString(),
-    level,
-    source: "gradle",
-    message,
-  });
-
-  // Accumulate structured errors and warnings (file location is optional).
-  if (line.kind === "error") {
-    setBuildState(
-      produce((s) => {
-        s.errors.push({
-          message: line.content,
-          file: line.file ?? null,
-          line: line.line ?? null,
-          col: line.col ?? null,
-          severity: "error",
-        });
-      })
-    );
-  } else if (line.kind === "warning") {
-    setBuildState(
-      produce((s) => {
-        s.warnings.push({
-          message: line.content,
-          file: line.file ?? null,
-          line: line.line ?? null,
-          col: line.col ?? null,
-          severity: "warning",
-        });
-      })
-    );
-  }
 }
 
 export function setBuildResult(opts: {
@@ -161,6 +188,11 @@ export function cancelBuildState(): void {
 }
 
 export function clearBuild(): void {
+  _pendingLines = [];
+  if (_flushTimer !== null) {
+    clearTimeout(_flushTimer);
+    _flushTimer = null;
+  }
   _stopTick();
   setBuildState({
     phase: "idle",

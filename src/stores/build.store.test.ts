@@ -4,6 +4,7 @@ import {
   buildLogStore,
   startBuild,
   addBuildLine,
+  flushPendingLines,
   setBuildResult,
   cancelBuildState,
   clearBuild,
@@ -59,6 +60,7 @@ describe("build.store", () => {
       col: null,
     };
     addBuildLine(line);
+    flushPendingLines();
     expect(buildLogStore.entries).toHaveLength(1);
     expect(buildLogStore.entries[0].message).toContain("compileDebugKotlin");
   });
@@ -72,6 +74,7 @@ describe("build.store", () => {
       col: 5,
     };
     addBuildLine(errLine);
+    flushPendingLines();
     expect(buildState.errors).toHaveLength(1);
     expect(buildState.errors[0].message).toBe("Unresolved reference: foo");
     expect(buildState.errors[0].line).toBe(10);
@@ -128,6 +131,7 @@ describe("build store error state transitions", () => {
     addBuildLine(errLine);
     addBuildLine({ ...errLine, content: "Unresolved reference: baz" });
     addBuildLine({ ...errLine, content: "Unresolved reference: qux" });
+    flushPendingLines();
     setBuildResult({ success: false, durationMs: 3000, errorCount: 3, warningCount: 0 });
     expect(buildState.phase).toBe("failed");
     expect(buildState.durationMs).toBe(3000);
@@ -184,6 +188,61 @@ describe("build store error state transitions", () => {
     clearBuild();
     expect(buildState.phase).toBe("idle");
     expect(buildState.errors).toHaveLength(0);
+    expect(buildLogStore.entries).toHaveLength(0);
+  });
+});
+
+describe("build.store batching", () => {
+  beforeEach(() => {
+    resetBuildState();
+  });
+
+  it("addBuildLine does not immediately push to log store before flush", () => {
+    const line: BuildLine = {
+      kind: "output",
+      content: "buffered line",
+      file: null,
+      line: null,
+      col: null,
+    };
+    addBuildLine(line);
+    // Before flush, nothing should be in the log store
+    expect(buildLogStore.entries).toHaveLength(0);
+  });
+
+  it("flushPendingLines pushes all buffered lines at once", () => {
+    const lines: BuildLine[] = [
+      { kind: "output", content: "line 1", file: null, line: null, col: null },
+      { kind: "output", content: "line 2", file: null, line: null, col: null },
+      { kind: "output", content: "line 3", file: null, line: null, col: null },
+    ];
+    for (const l of lines) addBuildLine(l);
+    expect(buildLogStore.entries).toHaveLength(0); // not yet flushed
+    flushPendingLines();
+    expect(buildLogStore.entries).toHaveLength(3);
+  });
+
+  it("flushPendingLines accumulates errors from batch", () => {
+    addBuildLine({ kind: "error", content: "err A", file: null, line: null, col: null });
+    addBuildLine({ kind: "error", content: "err B", file: "/src/Foo.kt", line: 5, col: 1 });
+    addBuildLine({ kind: "warning", content: "warn C", file: null, line: null, col: null });
+    flushPendingLines();
+    expect(buildState.errors).toHaveLength(2);
+    expect(buildState.warnings).toHaveLength(1);
+    expect(buildState.errors[1].file).toBe("/src/Foo.kt");
+  });
+
+  it("flushPendingLines is idempotent — double flush does not double-push", () => {
+    addBuildLine({ kind: "output", content: "once", file: null, line: null, col: null });
+    flushPendingLines();
+    flushPendingLines(); // second flush — buffer is empty
+    expect(buildLogStore.entries).toHaveLength(1);
+  });
+
+  it("clearBuild drains pending buffer without pushing to log", () => {
+    addBuildLine({ kind: "output", content: "unflushed", file: null, line: null, col: null });
+    clearBuild(); // should discard pending lines
+    flushPendingLines(); // flush after clear — buffer should be empty
     expect(buildLogStore.entries).toHaveLength(0);
   });
 });
