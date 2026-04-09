@@ -208,8 +208,21 @@ export async function getBuildHistory(): Promise<BuildRecord[]> {
   return invoke<BuildRecord[]>("get_build_history");
 }
 
+export async function clearBuildHistory(): Promise<void> {
+  return invoke<void>("clear_build_history");
+}
+
 export async function findApkPath(variant: string): Promise<string | null> {
   return invoke<string | null>("find_apk_path", { variant });
+}
+
+/**
+ * Extract the package name directly from an APK binary using `aapt2`.
+ * Returns the exact installed package name including any `applicationIdSuffix`
+ * (e.g. `com.example.app.debug` for a debug build).
+ */
+export async function getPackageNameFromApk(apkPath: string): Promise<string> {
+  return invoke<string>("get_package_name_from_apk", { apkPath });
 }
 
 export function listenBuildComplete(

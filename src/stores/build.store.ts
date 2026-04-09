@@ -2,6 +2,7 @@ import { createStore, produce } from "solid-js/store";
 import { createMemo, createSignal } from "solid-js";
 import type { BuildError, BuildRecord, BuildLine, LogEntry } from "@/bindings";
 import { createLogStore, type LogStore } from "@/stores/log.store";
+import { clearBuildHistory as clearBuildHistoryApi } from "@/lib/tauri-api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -212,5 +213,10 @@ export function setBuildHistory(records: BuildRecord[]): void {
 
 export function resetBuildState(): void {
   clearBuild();
+  setBuildState("history", []);
+}
+
+export async function clearBuildHistory(): Promise<void> {
+  await clearBuildHistoryApi();
   setBuildState("history", []);
 }
