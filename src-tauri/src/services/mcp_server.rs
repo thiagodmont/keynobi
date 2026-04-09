@@ -270,13 +270,6 @@ impl AndroidMcpServer {
     ) -> Result<CallToolResult, McpError> {
         validate_gradle_task(&p.task)?;
 
-        if let Some(ref variant) = p.variant {
-            let (mut settings, _) = settings_manager::load_settings();
-            settings.build.build_variant = Some(variant.clone());
-            settings_manager::save_settings(&settings)
-                .map_err(|e| McpError::internal_error(e, None))?;
-        }
-
         let gradle_root = self.get_gradle_root().await
             .ok_or_else(|| McpError::invalid_params(
                 "No project open. Open an Android project first.", None,
@@ -435,11 +428,9 @@ impl AndroidMcpServer {
                 if let Ok(content) = std::fs::read_to_string(path) {
                     if let Some(list) = variant_manager::parse_variants_from_gradle(path, &content) {
                         if !list.variants.is_empty() {
-                            let (settings, _) = settings_manager::load_settings();
-                            let active = settings.build.build_variant.as_deref().unwrap_or("debug");
                             let names: Vec<&str> = list.variants.iter().map(|v| v.name.as_str()).collect();
                             return Ok(CallToolResult::structured(json!({
-                                "active": active,
+                                "active": null,
                                 "variants": names,
                             })));
                         }
@@ -456,10 +447,6 @@ impl AndroidMcpServer {
         &self,
         Parameters(p): Parameters<SetVariantParams>,
     ) -> Result<CallToolResult, McpError> {
-        let (mut settings, _) = settings_manager::load_settings();
-        settings.build.build_variant = Some(p.variant.clone());
-        settings_manager::save_settings(&settings)
-            .map_err(|e| McpError::internal_error(e, None))?;
         Ok(CallToolResult::success(vec![Content::text(format!("Active variant set to: {}", p.variant))]))
     }
 
@@ -472,10 +459,7 @@ impl AndroidMcpServer {
         let gradle_root = self.get_gradle_root().await
             .ok_or_else(|| McpError::invalid_params("No project open", None))?;
 
-        let (settings, _) = settings_manager::load_settings();
-        let variant = p.variant.as_deref()
-            .or(settings.build.build_variant.as_deref())
-            .unwrap_or("debug");
+        let variant = p.variant.as_deref().unwrap_or("debug");
 
         match build_runner::find_output_apk(&gradle_root, variant) {
             Some(path) => {

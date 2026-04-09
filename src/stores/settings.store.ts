@@ -32,8 +32,6 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   build: {
     autoInstallOnBuild: true,
-    buildVariant: null,
-    selectedDevice: null,
   },
   logcat: {
     autoStart: true,

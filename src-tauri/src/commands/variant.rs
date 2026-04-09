@@ -15,9 +15,7 @@ async fn resolve_gradle_root(fs_state: &State<'_, FsState>) -> Result<PathBuf, S
         .ok_or_else(|| "No project open".to_string())
 }
 
-fn restore_active(mut list: VariantList) -> VariantList {
-    let (settings, _) = settings_manager::load_settings();
-    list.active = settings.build.build_variant;
+fn restore_active(list: VariantList) -> VariantList {
     list
 }
 
@@ -147,10 +145,8 @@ pub async fn get_variants_from_gradle(
     )
 }
 
-/// Persist the active build variant to settings.
+/// Set the active build variant (no-op settings write — variant is managed by the variant store).
 #[tauri::command]
-pub async fn set_active_variant(variant: String) -> Result<(), String> {
-    let (mut settings, _) = settings_manager::load_settings();
-    settings.build.build_variant = Some(variant);
-    settings_manager::save_settings(&settings)
+pub async fn set_active_variant(_variant: String) -> Result<(), String> {
+    Ok(())
 }

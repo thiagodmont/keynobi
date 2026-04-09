@@ -116,7 +116,7 @@ pub struct AdvancedSettings {
     pub log_max_size_mb: u32,
 }
 
-/// Build system settings: auto-deploy behaviour, last-used selections.
+/// Build system settings: auto-deploy behaviour.
 /// Gradle JVM/parallel/offline flags are configured in Android Studio / `gradle.properties`, not here.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
 #[serde(rename_all = "camelCase", default)]
@@ -124,10 +124,6 @@ pub struct AdvancedSettings {
 pub struct BuildSettings {
     /// Automatically install and launch the app after a successful build.
     pub auto_install_on_build: bool,
-    /// Last-used build variant name, persisted across sessions.
-    pub build_variant: Option<String>,
-    /// Last-used ADB device serial, persisted across sessions.
-    pub selected_device: Option<String>,
 }
 
 /// Logcat settings.
@@ -225,8 +221,6 @@ impl Default for BuildSettings {
     fn default() -> Self {
         Self {
             auto_install_on_build: true,
-            build_variant: None,
-            selected_device: None,
         }
     }
 }
@@ -310,5 +304,13 @@ mod tests {
         assert_eq!(d.recent_files_limit, 20);
         assert_eq!(d.log_retention_days, 7);
         assert_eq!(d.log_max_size_mb, 500);
+    }
+
+    #[test]
+    fn build_settings_has_no_variant_or_device_fields() {
+        let s = BuildSettings::default();
+        let json = serde_json::to_value(&s).unwrap();
+        assert!(json.get("buildVariant").is_none(), "buildVariant must be removed");
+        assert!(json.get("selectedDevice").is_none(), "selectedDevice must be removed");
     }
 }

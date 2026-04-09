@@ -65,17 +65,16 @@ pub async fn refresh_devices(
     Ok(devices)
 }
 
-/// Persist the selected device serial to settings and device state.
+/// Persist the selected device serial to device state.
+/// Device selection is managed by the device store, not settings.
 #[tauri::command]
 pub async fn select_device(
     serial: String,
     device_state: State<'_, DeviceState>,
 ) -> Result<(), AppError> {
     validate_device_serial(&serial)?;
-    device_state.0.lock().await.selected_serial = Some(serial.clone());
-    let (mut settings, _) = settings_manager::load_settings();
-    settings.build.selected_device = Some(serial);
-    settings_manager::save_settings(&settings).map_err(AppError::SettingsError)
+    device_state.0.lock().await.selected_serial = Some(serial);
+    Ok(())
 }
 
 /// Return the currently selected device serial.
