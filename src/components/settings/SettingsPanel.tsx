@@ -466,6 +466,34 @@ function AdvancedSettings(props: {
         </SettingRow>
       </Show>
 
+      <Show when={props.matchesSearch("Build log retention", "Days to keep build log files")}>
+        <SettingRow
+          label="Build log retention (days)"
+          description="Days to keep build log files in ~/.keynobi/build-logs/ before they are deleted"
+        >
+          <SettingNumberInput
+            value={settingsState.build.buildLogRetentionDays}
+            min={1}
+            max={365}
+            onChange={(v) => updateSetting("build", "buildLogRetentionDays", v)}
+          />
+        </SettingRow>
+      </Show>
+
+      <Show when={props.matchesSearch("Build log folder limit", "Max size of build log folder")}>
+        <SettingRow
+          label="Build log folder limit (MB)"
+          description="Max total size of ~/.keynobi/build-logs/ before oldest files are deleted"
+        >
+          <SettingNumberInput
+            value={settingsState.build.buildLogMaxFolderMb}
+            min={10}
+            max={2048}
+            onChange={(v) => updateSetting("build", "buildLogMaxFolderMb", v)}
+          />
+        </SettingRow>
+      </Show>
+
       <SectionHeader title="Logging" />
       <Show when={props.matchesSearch("Log retention", "Days to keep log files")}>
         <SettingRow label="Log retention" description="Days to keep log files in ~/.keynobi/logs/">
