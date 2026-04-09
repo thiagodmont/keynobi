@@ -170,14 +170,76 @@ pub async fn install_apk(adb: &Path, serial: &str, apk_path: &str) -> Result<Str
     }
 }
 
+/// Query the device for the launcher activity component of `package`.
+///
+/// Uses `adb shell cmd package resolve-activity --brief` which returns the
+/// fully-qualified component (e.g. `com.example.app/.MainActivity`) on API 23+.
+/// Returns `None` if the package is not installed or has no LAUNCHER activity.
+async fn try_resolve_launcher(adb: &Path, serial: &str, package: &str) -> Option<String> {
+    let out = Command::new(adb)
+        .args([
+            "-s", serial, "shell", "cmd", "package",
+            "resolve-activity", "--brief",
+            "-c", "android.intent.category.LAUNCHER",
+            package,
+        ])
+        .output()
+        .await
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // Output is two lines: priority integer then the component string.
+    // Find the first line that contains '/' — that is the component.
+    stdout.lines().find(|l| l.contains('/')).map(|l| l.trim().to_string())
+}
+
+/// Find the effective installed package name when the caller only knows the
+/// base `applicationId` (without build-type / flavor suffixes).
+///
+/// Runs `adb shell pm list packages` and collects every package whose name
+/// starts with `base_package`. Returns the match if there is exactly one,
+/// so we can resolve the correct package for builds like `demoDebug` where the
+/// installed package is `com.example.app.demo.debug` but the stored ID is
+/// `com.example.app`.
+async fn discover_effective_package(
+    adb: &Path,
+    serial: &str,
+    base_package: &str,
+) -> Option<String> {
+    let out = Command::new(adb)
+        .args(["-s", serial, "shell", "pm", "list", "packages"])
+        .output()
+        .await
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    // Each line is "package:<name>". Collect names starting with base_package.
+    let matches: Vec<String> = stdout
+        .lines()
+        .filter_map(|l| l.strip_prefix("package:"))
+        .map(str::trim)
+        .filter(|name| name.starts_with(base_package))
+        .map(str::to_string)
+        .collect();
+    // If there is exactly one candidate (or an exact match), use it.
+    if matches.len() == 1 {
+        return Some(matches.into_iter().next().unwrap());
+    }
+    // If the base_package itself is among the candidates, prefer the exact match.
+    if matches.iter().any(|m| m == base_package) {
+        return Some(base_package.to_string());
+    }
+    None
+}
+
 /// Launch an app on a device.
 ///
-/// Strategy (per Android docs):
-///   1. Try `adb shell monkey -p <package> 1` — easiest, no activity name needed.
-///      Monkey prints "Events injected: 1" to stdout on success.
-///   2. If monkey fails (or stdout doesn't confirm injection), fall back to
-///      `adb shell am start -n <package>/<activity>` using `aapt dump badging`
-///      to discover the main activity.
+/// Strategy:
+///   1. Ask the device for the LAUNCHER component via `cmd package resolve-activity`.
+///      This is the authoritative answer and handles `applicationIdSuffix` variants.
+///   2. If the package isn't found under the given name, enumerate installed packages
+///      to discover the effective package (e.g. `com.example.app.demo.debug` when
+///      the stored ID is `com.example.app`), then repeat step 1 with the real name.
+///   3. Fall back to `adb shell monkey` with the effective package name.
+///   4. Last resort: `am start -a android.intent.action.MAIN` intent.
 ///
 /// Returns a human-readable description of what happened (for build log display).
 pub async fn launch_app(
@@ -203,11 +265,46 @@ pub async fn launch_app(
         return Err(format!("am start failed: {combined}"));
     }
 
-    // Step 1: try monkey.
+    // Step 1: ask the device for the LAUNCHER activity of the given package name.
+    if let Some(component) = try_resolve_launcher(adb, serial, package).await {
+        let out = Command::new(adb)
+            .args(["-s", serial, "shell", "am", "start", "-n", &component])
+            .output()
+            .await
+            .map_err(|e| format!("adb am start failed: {e}"))?;
+        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+        if !stdout.contains("Error") {
+            let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+            return Ok(format!("am start OK ({component}): {}", format!("{stdout}{stderr}").trim()));
+        }
+    }
+
+    // Step 2: package not found under the given name — try to discover the
+    // effective package (e.g. the installed variant has a build-type/flavor suffix).
+    let effective_package = discover_effective_package(adb, serial, package)
+        .await
+        .unwrap_or_else(|| package.to_string());
+
+    if effective_package != package {
+        if let Some(component) = try_resolve_launcher(adb, serial, &effective_package).await {
+            let out = Command::new(adb)
+                .args(["-s", serial, "shell", "am", "start", "-n", &component])
+                .output()
+                .await
+                .map_err(|e| format!("adb am start failed: {e}"))?;
+            let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
+            if !stdout.contains("Error") {
+                let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+                return Ok(format!("am start OK ({component}): {}", format!("{stdout}{stderr}").trim()));
+            }
+        }
+    }
+
+    // Step 3: fall back to monkey with the effective package name.
     let monkey_out = Command::new(adb)
         .args([
             "-s", serial, "shell", "monkey",
-            "-p", package,
+            "-p", &effective_package,
             "-c", "android.intent.category.LAUNCHER",
             "1",
         ])
@@ -219,57 +316,17 @@ pub async fn launch_app(
     let monkey_stderr = String::from_utf8_lossy(&monkey_out.stderr).into_owned();
     let monkey_combined = format!("{monkey_stdout}{monkey_stderr}").trim().to_owned();
 
-    // Monkey prints "Events injected: 1" on success. If it printed that, we're done.
     if monkey_stdout.contains("Events injected: 1") {
         return Ok(format!("monkey OK: {monkey_combined}"));
     }
 
-    // Step 2: monkey didn't confirm success — fall back to am start.
-    // Use am start -n with the default activity (try common entry points).
-    let fallback_result = am_start_fallback(adb, serial, package).await;
-    match fallback_result {
-        Ok(msg) => Ok(msg),
-        Err(am_err) => Err(format!(
-            "monkey: {monkey_combined} | am start fallback: {am_err}"
-        )),
-    }
-}
-
-/// Try to launch using `am start` with common activity name patterns,
-/// falling back to a `.MainActivity` convention if all else fails.
-async fn am_start_fallback(adb: &Path, serial: &str, package: &str) -> Result<String, String> {
-    // Try the most common activity name patterns.
-    let candidates = [
-        format!("{package}/.MainActivity"),
-        format!("{package}/.main.MainActivity"),
-        format!("{package}/com.google.android.apps.internal.Main"),
-    ];
-
-    let mut last_err = String::new();
-    for activity in &candidates {
-        let out = Command::new(adb)
-            .args(["-s", serial, "shell", "am", "start", "-n", activity])
-            .output()
-            .await
-            .map_err(|e| format!("adb failed: {e}"))?;
-
-        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-        let combined = format!("{stdout}{stderr}").trim().to_owned();
-
-        if out.status.success() && !stdout.contains("Error:") && !stdout.contains("does not exist") {
-            return Ok(format!("am start OK ({activity}): {combined}"));
-        }
-        last_err = combined;
-    }
-
-    // Last resort: am start without activity (launches default).
+    // Step 4: last resort — fire the MAIN/LAUNCHER intent.
     let out = Command::new(adb)
         .args([
             "-s", serial, "shell", "am", "start",
             "-a", "android.intent.action.MAIN",
             "-c", "android.intent.category.LAUNCHER",
-            package,
+            &effective_package,
         ])
         .output()
         .await
@@ -282,7 +339,7 @@ async fn am_start_fallback(adb: &Path, serial: &str, package: &str) -> Result<St
     if out.status.success() && !stdout.contains("Error:") {
         Ok(format!("am start (intent) OK: {combined}"))
     } else {
-        Err(format!("{last_err} | intent: {combined}"))
+        Err(format!("processFailed: {monkey_combined} | intent: {combined}"))
     }
 }
 
