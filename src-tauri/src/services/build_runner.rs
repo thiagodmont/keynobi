@@ -153,6 +153,126 @@ pub fn clear_build_log(build_log: &BuildLog) {
     }
 }
 
+/// Core of save_build_log — accepts a target directory for testability.
+pub fn save_build_log_to(id: u32, raw_lines: &VecDeque<String>, build_log_dir: &Path) {
+    if std::fs::create_dir_all(build_log_dir).is_err() {
+        return;
+    }
+    let path = build_log_dir.join(format!("build-{id}.jsonl"));
+    let tmp = build_log_dir.join(format!("build-{id}.jsonl.tmp"));
+
+    let mut content = String::new();
+    for raw in raw_lines.iter().take(MAX_BUILD_LOG) {
+        let line = parse_build_line(raw);
+        if let Ok(json) = serde_json::to_string(&line) {
+            content.push_str(&json);
+            content.push('\n');
+        }
+    }
+
+    if std::fs::write(&tmp, &content).is_ok() {
+        let _ = std::fs::rename(&tmp, &path);
+    }
+}
+
+/// Persist the structured build log for a completed build to ~/.keynobi/build-logs/build-{id}.jsonl.
+/// Re-parses each raw line into a BuildLine and writes as JSON Lines. Best-effort — failures are silent.
+pub fn save_build_log(id: u32, raw_lines: &VecDeque<String>) {
+    save_build_log_to(id, raw_lines, &data_dir().join("build-logs"));
+}
+
+/// Rotate the build-logs directory:
+/// 1. Age — delete .jsonl files older than retention_days.
+/// 2. Orphans — delete build-{id}.jsonl whose ID is not in history.
+/// 3. Size cap — if total folder size > max_folder_mb, delete oldest by mtime until under cap.
+/// All operations are best-effort; individual failures are silently ignored.
+pub fn rotate_build_logs(
+    build_log_dir: &Path,
+    retention_days: u32,
+    max_folder_mb: u32,
+    history: &VecDeque<BuildRecord>,
+) {
+    if !build_log_dir.is_dir() {
+        return;
+    }
+
+    let now = std::time::SystemTime::now();
+    let retention_secs = u64::from(retention_days) * 86_400;
+    let valid_ids: std::collections::HashSet<u32> = history.iter().map(|r| r.id).collect();
+
+    // Collect all .jsonl files with their metadata.
+    let mut files: Vec<(PathBuf, std::time::SystemTime)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(build_log_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let mtime = entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .unwrap_or(std::time::UNIX_EPOCH);
+            files.push((path, mtime));
+        }
+    }
+
+    // Pass 1: Age.
+    for (path, mtime) in &files {
+        if let Ok(age) = now.duration_since(*mtime) {
+            if age.as_secs() > retention_secs {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+
+    // Pass 2: Orphans.
+    for (path, _) in &files {
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            if let Some(id_str) = stem.strip_prefix("build-") {
+                if let Ok(id) = id_str.parse::<u32>() {
+                    if !valid_ids.contains(&id) {
+                        let _ = std::fs::remove_file(path);
+                    }
+                }
+            }
+        }
+    }
+
+    // Re-collect surviving files for size-cap pass.
+    let mut surviving: Vec<(PathBuf, u64, std::time::SystemTime)> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(build_log_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let meta = entry.metadata().ok();
+            let size = meta.as_ref().map(|m| m.len()).unwrap_or(0);
+            let mtime = meta
+                .as_ref()
+                .and_then(|m| m.modified().ok())
+                .unwrap_or(std::time::UNIX_EPOCH);
+            surviving.push((path, size, mtime));
+        }
+    }
+
+    // Pass 3: Size cap.
+    let max_bytes = u64::from(max_folder_mb) * 1024 * 1024;
+    let total: u64 = surviving.iter().map(|(_, size, _)| *size).sum();
+    if total > max_bytes {
+        surviving.sort_by_key(|(_, _, mtime)| *mtime); // oldest first
+        let mut running = total;
+        for (path, size, _) in &surviving {
+            if running <= max_bytes {
+                break;
+            }
+            if std::fs::remove_file(path).is_ok() {
+                running = running.saturating_sub(*size);
+            }
+        }
+    }
+}
+
 /// Locate the `gradlew` wrapper relative to `gradle_root`.
 pub fn find_gradlew(gradle_root: &Path) -> Option<PathBuf> {
     let gradlew = gradle_root.join("gradlew");
@@ -316,30 +436,55 @@ pub async fn record_build_result(
     result: BuildResult,
     errors: Vec<BuildError>,
 ) {
+    // Snapshot the raw build log before taking the inner lock so we don't
+    // hold two locks simultaneously.
+    let raw_lines: VecDeque<String> = build_state
+        .build_log
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_default();
+
     let _ = build_state.active_process_id.lock().unwrap().take();
-    let mut bs = build_state.inner.lock().await;
-    bs.status = if result.success {
-        BuildStatus::Success(result.clone())
-    } else {
-        BuildStatus::Failed(result.clone())
-    };
-    bs.current_errors = errors.clone();
-    bs.current_build = None;
 
-    let record = BuildRecord {
-        id: bs.next_id,
-        task,
-        status: bs.status.clone(),
-        errors,
-        started_at,
-    };
-    bs.next_id += 1;
+    let (record_id, history_snapshot) = {
+        let mut bs = build_state.inner.lock().await;
+        bs.status = if result.success {
+            BuildStatus::Success(result.clone())
+        } else {
+            BuildStatus::Failed(result.clone())
+        };
+        bs.current_errors = errors.clone();
+        bs.current_build = None;
 
-    bs.history.push_back(record);
-    while bs.history.len() > MAX_HISTORY {
-        bs.history.pop_front();
-    }
-    save_build_history(&bs.history);
+        let record = BuildRecord {
+            id: bs.next_id,
+            task,
+            status: bs.status.clone(),
+            errors,
+            started_at,
+        };
+        let record_id = bs.next_id;
+        bs.next_id += 1;
+
+        bs.history.push_back(record);
+        while bs.history.len() > MAX_HISTORY {
+            bs.history.pop_front();
+        }
+        save_build_history(&bs.history);
+        let history_snapshot = bs.history.clone();
+        (record_id, history_snapshot)
+    };
+
+    // Best-effort disk I/O — outside the lock.
+    save_build_log(record_id, &raw_lines);
+    let (settings, _) = crate::services::settings_manager::load_settings();
+    let build_log_dir = data_dir().join("build-logs");
+    rotate_build_logs(
+        &build_log_dir,
+        settings.build.build_log_retention_days,
+        settings.build.build_log_max_folder_mb,
+        &history_snapshot,
+    );
 }
 
 /// Build environment variables for a Gradle process, and ensure `gradlew` is executable.
@@ -957,5 +1102,66 @@ mod tests {
         assert_eq!(loaded.len(), 5);
         assert_eq!(loaded[0].task, "task_1");
         assert_eq!(loaded[4].task, "task_5");
+    }
+
+    // ── save_build_log_to tests ────────────────────────────────────────────────
+
+    #[test]
+    fn save_build_log_to_writes_jsonl_file() {
+        use std::io::BufRead;
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path();
+
+        let mut raw: VecDeque<String> = VecDeque::new();
+        raw.push_back("e: /src/Foo.kt:1:1: Unresolved reference: bar".into());
+        raw.push_back("> Task :app:compileDebugKotlin".into());
+
+        save_build_log_to(42, &raw, dir_path);
+
+        let path = dir_path.join("build-42.jsonl");
+        assert!(path.exists(), "jsonl file must be created");
+
+        let file = std::fs::File::open(&path).unwrap();
+        let lines: Vec<String> = std::io::BufReader::new(file)
+            .lines()
+            .map(|l| l.unwrap())
+            .filter(|l| !l.trim().is_empty())
+            .collect();
+        assert_eq!(lines.len(), 2);
+
+        let first: crate::models::build::BuildLine = serde_json::from_str(&lines[0]).unwrap();
+        assert_eq!(first.kind, BuildLineKind::Error);
+        assert!(first.content.contains("Unresolved reference"));
+    }
+
+    // ── rotate_build_logs tests ────────────────────────────────────────────────
+
+    #[test]
+    fn rotate_build_logs_removes_orphan() {
+        let dir = tempfile::tempdir().unwrap();
+        let dir_path = dir.path();
+
+        // Write two log files: id=42 (in history) and id=99 (orphan)
+        std::fs::write(dir_path.join("build-42.jsonl"), "{}").unwrap();
+        std::fs::write(dir_path.join("build-99.jsonl"), "{}").unwrap();
+
+        let mut history: VecDeque<crate::models::build::BuildRecord> = VecDeque::new();
+        history.push_back(crate::models::build::BuildRecord {
+            id: 42,
+            task: "assembleDebug".into(),
+            status: BuildStatus::Success(BuildResult {
+                success: true,
+                duration_ms: 1000,
+                error_count: 0,
+                warning_count: 0,
+            }),
+            errors: vec![],
+            started_at: "2026-04-09T00:00:00Z".into(),
+        });
+
+        rotate_build_logs(dir_path, 365, 1000, &history);
+
+        assert!(dir_path.join("build-42.jsonl").exists(), "id=42 (in history) must survive");
+        assert!(!dir_path.join("build-99.jsonl").exists(), "id=99 (orphan) must be deleted");
     }
 }
