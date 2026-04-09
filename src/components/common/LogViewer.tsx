@@ -4,9 +4,8 @@ import {
   Show,
   createMemo,
   createSignal,
-  createEffect,
-  on,
 } from "solid-js";
+import { VirtualList } from "@/components/common/VirtualList";
 import type { LogEntry, LogLevel } from "@/bindings";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -160,9 +159,6 @@ export function LogViewer(props: LogViewerProps): JSX.Element {
   const [autoScroll, setAutoScroll] = createSignal(true);
   const [copiedAll, setCopiedAll] = createSignal(false);
 
-  let scrollRef!: HTMLDivElement;
-  let userScrolledUp = false;
-
   // Derive unique sorted sources from the current entries.
   const uniqueSources = createMemo(() => {
     const seen = new Set<string>();
@@ -179,34 +175,6 @@ export function LogViewer(props: LogViewerProps): JSX.Element {
     const sf = sourceFilter();
     return props.entries.filter((e) => matchesFilter(e, lf, sf, q));
   });
-
-  // Auto-scroll to bottom when new entries arrive (if enabled)
-  createEffect(
-    on(
-      () => filtered().length,
-      () => {
-        if (autoScroll() && scrollRef) {
-          scrollRef.scrollTop = scrollRef.scrollHeight;
-        }
-      },
-      { defer: true }
-    )
-  );
-
-  function handleScroll(): void {
-    if (!scrollRef) return;
-    const atBottom =
-      scrollRef.scrollHeight - scrollRef.scrollTop - scrollRef.clientHeight < 20;
-    if (atBottom) {
-      if (userScrolledUp) {
-        userScrolledUp = false;
-        setAutoScroll(true);
-      }
-    } else {
-      userScrolledUp = true;
-      setAutoScroll(false);
-    }
-  }
 
   async function handleCopyAll(): Promise<void> {
     const text = filtered()
@@ -381,13 +349,7 @@ export function LogViewer(props: LogViewerProps): JSX.Element {
           title={autoScroll() ? "Auto-scroll on (click to pause)" : "Auto-scroll paused (click to resume)"}
           active={autoScroll()}
           activeColor="var(--accent)"
-          onClick={() => {
-            const next = !autoScroll();
-            setAutoScroll(next);
-            if (next && scrollRef) {
-              scrollRef.scrollTop = scrollRef.scrollHeight;
-            }
-          }}
+          onClick={() => setAutoScroll((v) => !v)}
         >
           ↓
         </ToolbarButton>
@@ -415,15 +377,7 @@ export function LogViewer(props: LogViewerProps): JSX.Element {
       </div>
 
       {/* ── Log list ── */}
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        style={{
-          flex: "1",
-          "overflow-y": "auto",
-          "overflow-x": "hidden",
-        }}
-      >
+      <div style={{ flex: "1", overflow: "hidden" }}>
         <Show
           when={filtered().length > 0}
           fallback={
@@ -445,16 +399,22 @@ export function LogViewer(props: LogViewerProps): JSX.Element {
             </div>
           }
         >
-          <For each={filtered()}>
-            {(entry, index) => (
+          <VirtualList
+            items={filtered()}
+            rowHeight={20}
+            autoScroll={autoScroll()}
+            onScrolledUp={() => setAutoScroll(false)}
+            onScrolledToBottom={() => setAutoScroll(true)}
+            renderRow={(entry, index) => (
               <LogRow
                 entry={entry}
-                index={index()}
+                index={index}
                 showTimestamp={showTimestamps()}
                 showSource={showSource()}
               />
             )}
-          </For>
+            style={{ height: "100%" }}
+          />
         </Show>
       </div>
     </div>
@@ -484,9 +444,11 @@ function LogRow(props: LogRowProps): JSX.Element {
       onClick={handleClick}
       style={{
         display: "flex",
-        "align-items": "flex-start",
+        "align-items": "center",
         gap: "6px",
-        padding: "2px 8px",
+        padding: "0 8px",
+        height: "20px",
+        overflow: "hidden",
         background: isEven() ? "transparent" : "rgba(255,255,255,0.018)",
         cursor: "pointer",
         "border-left": `2px solid ${
@@ -496,7 +458,6 @@ function LogRow(props: LogRowProps): JSX.Element {
             ? "var(--warning)"
             : "transparent"
         }`,
-        "min-height": "20px",
         transition: "background 0.05s",
       }}
       onMouseEnter={(e) => {
@@ -516,7 +477,6 @@ function LogRow(props: LogRowProps): JSX.Element {
             "flex-shrink": "0",
             "user-select": "none",
             "font-size": "11px",
-            "padding-top": "1px",
           }}
         >
           {formatTime(props.entry.timestamp)}
@@ -533,7 +493,6 @@ function LogRow(props: LogRowProps): JSX.Element {
             color: "var(--text-muted)",
             "flex-shrink": "0",
             "font-size": "10px",
-            "padding-top": "2px",
             "max-width": "120px",
             overflow: "hidden",
             "text-overflow": "ellipsis",
@@ -548,12 +507,14 @@ function LogRow(props: LogRowProps): JSX.Element {
       <span
         style={{
           color: meta().color,
-          "word-break": "break-word",
-          "white-space": "pre-wrap",
+          overflow: "hidden",
+          "text-overflow": "ellipsis",
+          "white-space": "nowrap",
           flex: "1",
           "min-width": "0",
-          "line-height": "1.5",
+          "line-height": "20px",
         }}
+        title={props.entry.message}
       >
         {props.entry.message}
       </span>
