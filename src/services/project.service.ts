@@ -38,7 +38,12 @@ import { clearBuild } from "@/stores/build.store";
 import { initDevices, pickDevice, onDeviceChange } from "@/stores/device.store";
 import { stopLogcat } from "@/lib/tauri-api";
 import { setMinePackage } from "@/lib/logcat-query";
-import { selectVariant, onVariantChange } from "@/stores/variant.store";
+import {
+  loadVariants,
+  onVariantChange,
+  resetVariantState,
+  selectVariant,
+} from "@/stores/variant.store";
 import { variantState } from "@/stores/variant.store";
 import { deviceState } from "@/stores/device.store";
 import { refreshHealthChecks } from "@/stores/health.store";
@@ -90,6 +95,28 @@ async function doOpenProject(path: string): Promise<OpenProjectResult | null> {
   }
 }
 
+/**
+ * After FsState points at a project, rediscover variants and restore registry selections.
+ * Call only after a successful `doOpenProject` so a failed open does not wipe variant state.
+ */
+async function reloadVariantsAndRestoreMeta(entry: ProjectEntry | null): Promise<void> {
+  resetVariantState();
+  await loadVariants();
+  if (variantState.error) {
+    showToast(`Failed to load build variants: ${variantState.error}`, "error");
+  }
+  const savedVariant = entry?.lastBuildVariant;
+  if (
+    savedVariant &&
+    variantState.variants.some((v) => v.name === savedVariant)
+  ) {
+    await selectVariant(savedVariant).catch(console.error);
+  }
+  if (entry?.lastDevice) {
+    await pickDevice(entry.lastDevice).catch(console.error);
+  }
+}
+
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
@@ -113,6 +140,7 @@ export async function openProjectFolder(): Promise<OpenProjectResult | null> {
       upsertProject(entry);
       setActiveProjectId(entry.id);
     }
+    await reloadVariantsAndRestoreMeta(entry ?? null);
   }
   return result;
 }
@@ -145,13 +173,7 @@ export async function selectProject(entry: ProjectEntry): Promise<void> {
     setActiveProjectId(fresh.id);
     setProjects(projects);
 
-    // Restore per-project variant and device selections.
-    if (fresh.lastBuildVariant) {
-      selectVariant(fresh.lastBuildVariant).catch(console.error);
-    }
-    if (fresh.lastDevice) {
-      pickDevice(fresh.lastDevice).catch(console.error);
-    }
+    await reloadVariantsAndRestoreMeta(fresh);
   }
 }
 
@@ -219,14 +241,8 @@ export async function restoreLastProject(): Promise<boolean> {
       const entry = projects.find((p) => p.path === lastPath);
       if (entry) {
         setActiveProjectId(entry.id);
-        // Restore per-project variant/device from registry.
-        if (entry.lastBuildVariant) {
-          selectVariant(entry.lastBuildVariant).catch(console.error);
-        }
-        if (entry.lastDevice) {
-          pickDevice(entry.lastDevice).catch(console.error);
-        }
       }
+      await reloadVariantsAndRestoreMeta(entry ?? null);
       setProjects(projects);
       return true;
     }

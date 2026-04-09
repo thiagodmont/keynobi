@@ -36,6 +36,7 @@ export function VariantSelectorPill(): JSX.Element {
 
   onMount(() => {
     if (projectState.gradleRoot || projectState.projectRoot) {
+      // Concurrent with restoreLastProject / openProject — loadVariants coalesces duplicate work.
       loadVariants().catch(e => { console.error(e); showToast(`Failed to load build variants: ${formatError(e)}`, "error"); });
     }
   });

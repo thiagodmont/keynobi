@@ -60,6 +60,9 @@ function resolveActive(list: VariantList, currentActive: string | null): string 
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
+/** Coalesces concurrent callers (e.g. project restore + status bar mount) onto one Gradle run. */
+let loadVariantsPending: Promise<void> | null = null;
+
 /**
  * Load variants using a two-phase approach:
  *
@@ -71,7 +74,16 @@ function resolveActive(list: VariantList, currentActive: string | null): string 
  *
  * Both phases update the store independently so the UI is always responsive.
  */
-export async function loadVariants(): Promise<void> {
+export function loadVariants(): Promise<void> {
+  if (!loadVariantsPending) {
+    loadVariantsPending = runLoadVariants().finally(() => {
+      loadVariantsPending = null;
+    });
+  }
+  return loadVariantsPending;
+}
+
+async function runLoadVariants(): Promise<void> {
   setVariantState({ loading: true, gradleLoading: true, error: null, gradleError: null, fromGradle: false });
 
   // ── Phase 1: instant preview from static parse ─────────────────────────────
