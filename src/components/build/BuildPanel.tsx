@@ -49,9 +49,11 @@ export function BuildPanel(): JSX.Element {
       setHistoricalLog([]);
       return;
     }
+    let cancelled = false;
     getBuildLogEntries(id)
-      .then((lines) => setHistoricalLog(lines.map(lineToLogEntry)))
-      .catch(() => setHistoricalLog([]));
+      .then((lines) => { if (!cancelled) setHistoricalLog(lines.map(lineToLogEntry)); })
+      .catch(() => { if (!cancelled) setHistoricalLog([]); });
+    return () => { cancelled = true; };
   });
 
   const logEntries = () =>
@@ -250,23 +252,25 @@ export function BuildPanel(): JSX.Element {
         {/* Log / Problems area */}
         <div style={{ flex: "1", overflow: "hidden" }}>
           <Show when={viewMode() === "log"}>
-            <Show when={selectedHistoryId() !== null && selectedRecord() !== null}>
-              <div
-                style={{
-                  padding: "4px 8px",
-                  "font-size": "11px",
-                  color: "var(--text-muted)",
-                  background: "var(--bg-tertiary)",
-                  "border-bottom": "1px solid var(--border)",
-                  "flex-shrink": "0",
-                }}
-              >
-                Viewing build from {relativeTime(selectedRecord()!.startedAt)}
-              </div>
+            <Show when={selectedRecord()}>
+              {(record) => (
+                <div
+                  style={{
+                    padding: "4px 8px",
+                    "font-size": "11px",
+                    color: "var(--text-muted)",
+                    background: "var(--bg-tertiary)",
+                    "border-bottom": "1px solid var(--border)",
+                    "flex-shrink": "0",
+                  }}
+                >
+                  Viewing build from {relativeTime(record().startedAt)}
+                </div>
+              )}
             </Show>
             <LogViewer
               entries={logEntries()}
-              onClear={() => buildLogStore.clearEntries()}
+              onClear={selectedHistoryId() !== null ? undefined : () => buildLogStore.clearEntries()}
               showSource={false}
               emptyMessage={
                 selectedHistoryId() !== null
