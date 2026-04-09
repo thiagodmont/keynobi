@@ -1206,7 +1206,7 @@ export function LogcatPanel(): JSX.Element {
             "font-size": "11px",
             "line-height": `${ROW_HEIGHT}px`,
           }}
-          renderItem={(entry, idx) => {
+          renderRow={(entry, idx) => {
             if (entry.kind === "processDied" || entry.kind === "processStarted") {
               return <SeparatorRow entry={entry} />;
             }

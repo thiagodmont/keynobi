@@ -14,7 +14,7 @@
  *   <VirtualList
  *     items={filteredEntries()}
  *     rowHeight={20}
- *     renderItem={(item, index) => <MyRow entry={item} />}
+ *     renderRow={(item, index) => <MyRow entry={item} />}
  *     autoScroll={autoScroll()}
  *     onScrolledToBottom={() => setAutoScroll(true)}
  *     onScrolledUp={() => setAutoScroll(false)}
@@ -41,7 +41,7 @@ export interface VirtualListProps<T> {
   /** Height of every row in pixels. Must be fixed. */
   rowHeight: number;
   /** Render a single row. Receives the item and its absolute index in `items`. */
-  renderItem: (item: T, index: number) => JSX.Element;
+  renderRow: (item: T, index: number) => JSX.Element;
   /**
    * When true the list scrolls to the bottom whenever items change and the
    * user is already at the bottom (or auto-scroll has never been overridden).
@@ -256,7 +256,7 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
         <For each={visibleItems()}>
           {(item, getLocalIndex) =>
             // eslint-disable-next-line solid/reactivity
-            props.renderItem(item, startIndex() + getLocalIndex())
+            props.renderRow(item, startIndex() + getLocalIndex())
           }
         </For>
       </div>
