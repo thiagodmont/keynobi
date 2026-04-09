@@ -6,7 +6,7 @@ import {
   createSignal,
   createEffect,
 } from "solid-js";
-import { buildState, buildLogStore, isBuilding, isDeploying } from "@/stores/build.store";
+import { buildState, buildLogStore, isBuilding, isDeploying, clearBuildHistory } from "@/stores/build.store";
 import { runBuild, runAndDeploy, cancelBuild, jumpToBuildError } from "@/services/build.service";
 import { LogViewer } from "@/components/common/LogViewer";
 import type { BuildError, BuildRecord } from "@/bindings";
@@ -95,6 +95,11 @@ export function BuildPanel(): JSX.Element {
 
   async function handleCancel() {
     await cancelBuild().catch(e => { console.error(e); showToast(`Failed to cancel build: ${formatError(e)}`, "error"); });
+  }
+
+  async function handleClearHistory() {
+    await clearBuildHistory();
+    setSelectedHistoryId(null);
   }
 
   return (
@@ -212,6 +217,7 @@ export function BuildPanel(): JSX.Element {
         <BuildHistoryPanel
           selectedId={selectedHistoryId()}
           onSelect={handleHistorySelect}
+          onClear={handleClearHistory}
         />
         {/* Log / Problems area */}
         <div style={{ flex: "1", overflow: "hidden" }}>
