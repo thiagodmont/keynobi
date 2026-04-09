@@ -78,13 +78,7 @@ pub async fn run_gradle_task(
     let gradlew = build_runner::find_gradlew(&gradle_root)
         .ok_or_else(|| AppError::NotFound("gradlew not found at project root".into()))?;
 
-    let mut args = vec![task.clone(), "--console=plain".to_owned()];
-    if settings.build.gradle_parallel {
-        args.push("--parallel".into());
-    }
-    if settings.build.gradle_offline {
-        args.push("--offline".into());
-    }
+    let args = vec![task.clone(), "--console=plain".to_owned()];
 
     let env = build_env_vars(&settings, &gradle_root);
     let started_at = Utc::now().to_rfc3339();
@@ -191,9 +185,16 @@ pub async fn run_gradle_task(
     .await
     .map_err(AppError::ProcessFailed)?;
 
+    // Register immediately (sync, no `.await` before this) so cancel always has a ProcessId.
+    *build_state.active_process_id.lock().unwrap() = Some(id);
+
     // Mark build as running in the managed state and clear the log for this run.
     {
         let mut bs = build_state.inner.lock().await;
+        if matches!(bs.status, BuildStatus::Cancelled) {
+            // User cancelled in the window after spawn but before this lock — Gradle may already be gone.
+            return Ok(id);
+        }
         bs.status = BuildStatus::Running {
             task: task.clone(),
             started_at: started_at.clone(),

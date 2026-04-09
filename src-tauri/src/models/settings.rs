@@ -116,17 +116,12 @@ pub struct AdvancedSettings {
     pub log_max_size_mb: u32,
 }
 
-/// Build system settings: Gradle flags, auto-deploy behaviour, last-used selections.
+/// Build system settings: auto-deploy behaviour, last-used selections.
+/// Gradle JVM/parallel/offline flags are configured in Android Studio / `gradle.properties`, not here.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
 #[serde(rename_all = "camelCase", default)]
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct BuildSettings {
-    /// Extra JVM arguments passed to the Gradle daemon (e.g. `"-Xmx4g"`).
-    pub gradle_jvm_args: Option<String>,
-    /// Pass `--parallel` to Gradle for faster multi-module builds.
-    pub gradle_parallel: bool,
-    /// Pass `--offline` to Gradle to skip dependency downloads.
-    pub gradle_offline: bool,
     /// Automatically install and launch the app after a successful build.
     pub auto_install_on_build: bool,
     /// Last-used build variant name, persisted across sessions.
@@ -229,9 +224,6 @@ impl Default for AdvancedSettings {
 impl Default for BuildSettings {
     fn default() -> Self {
         Self {
-            gradle_jvm_args: None,
-            gradle_parallel: true,
-            gradle_offline: false,
             auto_install_on_build: true,
             build_variant: None,
             selected_device: None,

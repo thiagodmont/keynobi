@@ -31,9 +31,6 @@ const DEFAULT_SETTINGS: AppSettings = {
     logMaxSizeMb: 500,
   },
   build: {
-    gradleJvmArgs: null,
-    gradleParallel: true,
-    gradleOffline: false,
     autoInstallOnBuild: true,
     buildVariant: null,
     selectedDevice: null,

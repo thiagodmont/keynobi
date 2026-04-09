@@ -7,6 +7,7 @@ import {
   launchAppOnDevice,
   getBuildHistory,
   listenBuildComplete,
+  formatError,
   type BuildLine,
 } from "@/lib/tauri-api";
 import {
@@ -83,6 +84,8 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
     }
   }
 
+  logGradleInvocation(effectiveTask);
+
   const startedAt = new Date().toISOString();
   const accumulatedErrors: BuildError[] = [];
 
@@ -116,7 +119,7 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
   } catch (e) {
     // Process-level spawn failure (e.g. gradlew not found).
     _resolveBuildComplete = null;
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = formatError(e);
     addBuildLine({ kind: "error", content: `Failed to start Gradle: ${msg}`, file: null, line: null, col: null });
     setBuildResult({ success: false, durationMs: 0, errorCount: 1, warningCount: 0 });
     throw e;
@@ -128,7 +131,7 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
     result = await buildComplete;
   } catch (e) {
     // Timeout or unexpected rejection.
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = formatError(e);
     addBuildLine({ kind: "error", content: `Build event error: ${msg}`, file: null, line: null, col: null });
     setBuildResult({ success: false, durationMs: 0, errorCount: 1, warningCount: 0 });
     throw e;
@@ -218,7 +221,7 @@ export async function runAndDeploy(): Promise<void> {
       );
     }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = formatError(e);
     logError(`Deploy failed: ${msg}`);
     throw e;
   } finally {
@@ -269,6 +272,15 @@ export async function jumpToBuildError(error: BuildError): Promise<void> {
 /** Emit a visible info step into the build log (e.g. "Installing APK…"). */
 function logStep(message: string): void {
   addBuildLine({ kind: "info", content: `▶ ${message}`, file: null, line: null, col: null });
+}
+
+/** Mirror the Gradle invocation from `run_gradle_task` (Rust) for the build log. */
+function logGradleInvocation(effectiveTask: string): void {
+  logStep(`./gradlew ${effectiveTask} --console=plain`);
+  const cwd = projectState.gradleRoot ?? projectState.projectRoot;
+  if (cwd) {
+    logStep(`Working directory: ${cwd}`);
+  }
 }
 
 /** Emit a visible error into the build log AND the Problems tab. */

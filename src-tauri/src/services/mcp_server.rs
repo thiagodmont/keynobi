@@ -288,14 +288,11 @@ impl AndroidMcpServer {
             ))?;
 
         let (settings, _) = settings_manager::load_settings();
-        let mut extra: Vec<&str> = Vec::new();
-        if settings.build.gradle_parallel { extra.push("--parallel"); }
-        if settings.build.gradle_offline { extra.push("--offline"); }
         let env = build_runner::build_env_vars(&settings, &gradle_root);
 
         let result = build_runner::run_task(
             &p.task,
-            &extra,
+            &[],
             &gradle_root,
             &gradlew,
             settings.mcp.build_timeout_sec as u64,

@@ -8,6 +8,7 @@ use crate::services::settings_manager::data_dir;
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::Mutex as StdMutex;
 use tokio::sync::Mutex;
 
 // Re-export parsing functions for backward compatibility.
@@ -91,6 +92,10 @@ pub struct BuildState {
     pub inner: Arc<Mutex<BuildStateInner>>,
     /// Raw build output log — accessible from both sync callbacks and async MCP tools.
     pub build_log: BuildLog,
+    /// Set synchronously in the same task tick immediately after `spawn` returns (no `.await`
+    /// before this), so `cancel_build` can always resolve the `ProcessId` even if it runs
+    /// before `inner.current_build` is updated (otherwise cancel saw `None` and did not kill Gradle).
+    pub active_process_id: Arc<StdMutex<Option<ProcessId>>>,
 }
 
 impl BuildState {
@@ -98,6 +103,7 @@ impl BuildState {
         BuildState {
             inner: Arc::new(Mutex::new(BuildStateInner::new())),
             build_log: Arc::new(std::sync::Mutex::new(VecDeque::new())),
+            active_process_id: Arc::new(StdMutex::new(None)),
         }
     }
 }
@@ -107,6 +113,7 @@ impl Clone for BuildState {
         BuildState {
             inner: self.inner.clone(),
             build_log: self.build_log.clone(),
+            active_process_id: self.active_process_id.clone(),
         }
     }
 }
@@ -251,15 +258,25 @@ pub async fn cancel_build(
     build_state: &BuildState,
     process_manager: &ProcessManager,
 ) -> bool {
-    let pid = {
-        let mut bs = build_state.inner.lock().await;
-        let pid = bs.current_build.take();
-        if pid.is_some() {
+    let id = {
+        let from_sync = build_state.active_process_id.lock().unwrap().take();
+        if let Some(id) = from_sync {
+            let mut bs = build_state.inner.lock().await;
+            if bs.current_build == Some(id) {
+                bs.current_build = None;
+            }
             bs.status = BuildStatus::Cancelled;
+            Some(id)
+        } else {
+            let mut bs = build_state.inner.lock().await;
+            let pid = bs.current_build.take();
+            if pid.is_some() {
+                bs.status = BuildStatus::Cancelled;
+            }
+            pid
         }
-        pid
     };
-    if let Some(id) = pid {
+    if let Some(id) = id {
         process_manager::cancel(&process_manager.0, id).await;
         true
     } else {
@@ -275,6 +292,7 @@ pub async fn record_build_result(
     result: BuildResult,
     errors: Vec<BuildError>,
 ) {
+    let _ = build_state.active_process_id.lock().unwrap().take();
     let mut bs = build_state.inner.lock().await;
     bs.status = if result.success {
         BuildStatus::Success(result.clone())
@@ -312,9 +330,6 @@ pub fn build_env_vars(
     if let Some(sdk) = settings.android.sdk_path.as_deref() {
         env.push(("ANDROID_HOME".into(), sdk.into()));
         env.push(("ANDROID_SDK_ROOT".into(), sdk.into()));
-    }
-    if let Some(jvm_args) = settings.build.gradle_jvm_args.as_deref() {
-        env.push(("GRADLE_OPTS".into(), jvm_args.into()));
     }
     #[cfg(unix)]
     {
@@ -442,8 +457,17 @@ pub async fn run_task(
     .await
     .map_err(|e| format!("Failed to spawn Gradle: {e}"))?;
 
+    *build_state.active_process_id.lock().unwrap() = Some(pid);
     {
         let mut bs = build_state.inner.lock().await;
+        if matches!(bs.status, BuildStatus::Cancelled) {
+            return Ok(GradleTaskResult {
+                success: false,
+                timed_out: false,
+                duration_ms: 0,
+                errors: Vec::new(),
+            });
+        }
         bs.current_build = Some(pid);
     }
 
@@ -683,6 +707,20 @@ mod tests {
     }
 
     // ── cancel_build ──────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn cancel_build_returns_true_when_only_active_process_id_set() {
+        // Simulates the window after `spawn` returns but before `inner.current_build` is updated.
+        let state = BuildState::new();
+        let pm = ProcessManager::new();
+        *state.active_process_id.lock().unwrap() = Some(99998);
+        let was_running = cancel_build(&state, &pm).await;
+        assert!(
+            was_running,
+            "cancel must see active_process_id even when inner.current_build is still None"
+        );
+        assert!(state.active_process_id.lock().unwrap().is_none());
+    }
 
     #[tokio::test]
     async fn cancel_build_returns_false_when_idle() {
