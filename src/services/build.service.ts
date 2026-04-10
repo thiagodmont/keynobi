@@ -3,6 +3,7 @@ import {
   cancelBuild as cancelBuildApi,
   finalizeBuild,
   findApkPath,
+  getPackageNameFromApk,
   installApkOnDevice,
   launchAppOnDevice,
   getBuildHistory,
@@ -49,16 +50,19 @@ export async function initBuildService(): Promise<void> {
         warningCount: e.warningCount,
       });
     }
-    // Reload history from backend.
-    getBuildHistory()
-      .then(setBuildHistory)
-      .catch((err) => {
-        console.error("[build] Failed to reload build history:", err);
-      });
     // Resolve the pending build promise if there is one.
+    // History reload happens AFTER finalizeBuild in runBuild/cancelBuild so the
+    // new record is already persisted when we fetch.
     _resolveBuildComplete?.({ success: e.success, durationMs: e.durationMs });
     _resolveBuildComplete = null;
   });
+
+  // Load persisted history on startup so previous sessions are visible immediately.
+  getBuildHistory()
+    .then(setBuildHistory)
+    .catch((err) => {
+      console.error("[build] Failed to load initial build history:", err);
+    });
 }
 
 // One-shot resolver for the current build. Set before a build starts, cleared on completion.
@@ -145,7 +149,8 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
   // cancelBuild() already called finalizeBuild — don't duplicate.
   if (buildState.phase === "cancelled") return;
 
-  // Persist finalized result + history to the backend.
+  // Persist finalized result + history to the backend, then refresh the
+  // history store so the new record is visible in the side panel.
   await finalizeBuild({
     success: result.success,
     durationMs: result.durationMs,
@@ -155,6 +160,12 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
   }).catch((err) => {
     console.error("[build] Failed to finalize build:", err);
   });
+
+  getBuildHistory()
+    .then(setBuildHistory)
+    .catch((err) => {
+      console.error("[build] Failed to reload build history:", err);
+    });
 }
 
 /**
@@ -218,17 +229,29 @@ export async function runAndDeploy(): Promise<void> {
     const installOutput = await installApkOnDevice(serial, apkPath);
     logStep(`Install: ${installOutput.trim()} (${formatDuration(Date.now() - installStart)})`);
 
-    // 4. Launch.
-    const appId = projectState.applicationId;
-    if (appId) {
-      setDeployPhase("launching");
-      logStep(`adb shell monkey -p ${appId} 1`);
-      const launchOutput = await launchAppOnDevice(serial, appId);
+    // 4. Launch — resolve exact package name from the APK binary.
+    setDeployPhase("launching");
+    let packageName: string | null = null;
+    try {
+      packageName = await getPackageNameFromApk(apkPath);
+      logStep(`Package (from APK): ${packageName}`);
+    } catch (e) {
+      // aapt2 unavailable or failed — fall back to applicationId from project.
+      const fallback = projectState.applicationId;
+      if (fallback) {
+        logStep(`aapt2 unavailable (${formatError(e)}), using applicationId: ${fallback}`);
+        packageName = fallback;
+      }
+    }
+
+    if (packageName) {
+      logStep(`adb shell am start (package: ${packageName})`);
+      const launchOutput = await launchAppOnDevice(serial, packageName);
       logStep(`Launch: ${launchOutput.trim()}`);
     } else {
       logStep(
-        "APK installed. applicationId not found in project — cannot auto-launch. " +
-        "Open 'Project App Info' to verify your applicationId is set."
+        "APK installed. Could not determine package name — cannot auto-launch. " +
+        "Ensure aapt2 is available in your Android SDK or set applicationId in Project App Info."
       );
     }
   } catch (e) {
@@ -267,6 +290,12 @@ export async function cancelBuild(): Promise<void> {
   }).catch((err) => {
     console.error("[build] Failed to finalize cancelled build:", err);
   });
+
+  getBuildHistory()
+    .then(setBuildHistory)
+    .catch((err) => {
+      console.error("[build] Failed to reload build history after cancel:", err);
+    });
 
   // Unblock runBuild immediately so it doesn't hang until timeout.
   resolve?.({ success: false, durationMs: 0 });
@@ -317,7 +346,7 @@ export async function jumpToBuildError(error: BuildError): Promise<void> {
 
   // Fallback: show the error in a Toast.
   const location = error.file
-    ? `${error.file}${error.line != null ? `:${error.line}` : ""}${error.col != null ? `:${error.col}` : ""} — `
+    ? `${error.file}${error.line !== null ? `:${error.line}` : ""}${error.col !== null ? `:${error.col}` : ""} — `
     : "";
   showToast(`${location}${error.message}`, "info");
 }
@@ -341,7 +370,7 @@ function deviceLabel(serial: string): string {
   const dev = deviceState.devices.find((d) => d.serial === serial);
   if (!dev) return serial;
   const model = dev.model ?? dev.name ?? serial;
-  const api = dev.apiLevel != null ? ` (API ${dev.apiLevel})` : "";
+  const api = dev.apiLevel !== null ? ` (API ${dev.apiLevel})` : "";
   return `${model}${api} [${serial}]`;
 }
 

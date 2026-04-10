@@ -39,6 +39,62 @@ fn expand_tilde(path: &str) -> PathBuf {
     PathBuf::from(path)
 }
 
+// ── aapt2 utilities ────────────────────────────────────────────────────────────
+
+/// Find the `aapt2` binary in `$ANDROID_HOME/build-tools/<latest>/aapt2`.
+///
+/// Scans build-tools subdirectories, parses their names as version tuples,
+/// and returns the path inside the highest-versioned directory that actually
+/// contains an `aapt2` executable.
+pub fn find_aapt2(settings: &AppSettings) -> Option<PathBuf> {
+    let sdk_path = settings.android.sdk_path.as_deref()?;
+    let build_tools = expand_tilde(sdk_path).join("build-tools");
+
+    let mut best: Option<(Vec<u32>, PathBuf)> = None;
+
+    let entries = std::fs::read_dir(&build_tools).ok()?;
+    for entry in entries.flatten() {
+        let candidate = entry.path().join("aapt2");
+        if !candidate.is_file() {
+            continue;
+        }
+        let dir_name = entry.file_name();
+        let ver_str = dir_name.to_string_lossy();
+        let parts: Vec<u32> = ver_str
+            .split('.')
+            .filter_map(|p| p.parse().ok())
+            .collect();
+        if parts.is_empty() {
+            continue;
+        }
+        if best.as_ref().map_or(true, |(prev, _)| parts > *prev) {
+            best = Some((parts, candidate));
+        }
+    }
+
+    best.map(|(_, path)| path)
+}
+
+/// Extract the package name from an APK using `aapt2 dump packagename <apk>`.
+///
+/// This is the authoritative method — it reads the package name directly from
+/// the APK binary, including any `applicationIdSuffix` from the build variant.
+/// Returns `None` if `aapt2` fails or produces no parseable output.
+pub async fn get_package_name_from_apk(aapt2: &Path, apk_path: &Path) -> Option<String> {
+    let out = Command::new(aapt2)
+        .args(["dump", "packagename", apk_path.to_str()?])
+        .output()
+        .await
+        .ok()?;
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    stdout
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .map(str::to_string)
+}
+
 // ── Device listing ─────────────────────────────────────────────────────────────
 
 /// Parse the output of `adb devices -l` into a list of `Device`s.
