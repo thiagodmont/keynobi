@@ -7,6 +7,49 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.8] — 2026-04-10
+
+### Added
+- add build log retention and folder size settings to Settings panel
+- switch LogViewer to historical log when a history entry is selected
+- add getBuildLogEntries API binding; export lineToLogEntry from store; fix BuildSettings defaults
+- add getBuildLogEntries API binding; export lineToLogEntry from store
+- add get_build_log_entries command; call rotate_build_logs at startup
+- persist structured build log per build; rotate on finalization
+- add build_log_retention_days and build_log_max_folder_mb to BuildSettings
+- wire clear-history button in BuildPanel
+- add onClear prop and trash button to BuildHistoryPanel header
+- add clearBuildHistory store action and API binding
+- add clear_build_history Tauri command
+- add history side panel to BuildPanel — flex-row layout
+- add BuildHistoryPanel component showing past builds in sidebar
+- implement loadVariants function to coalesce concurrent calls and add reloadVariantsAndRestoreMeta for project state restoration
+
+### Fixed
+- cancel stale async log fetch on selection change; hide clear button in historical view
+- use tokio::fs and proper NotFound handling in get_build_log_entries
+- combine age+orphan rotation passes to prevent double-delete; guard retention_days=0
+- handle error in handleClearHistory with toast
+- reset next_id to 1 when clearing history
+- initialize next_id from max history id to prevent collisions after restart
+- resolve launcher activity from device instead of guessing
+- prevent double finalizeBuild on cancel; gate VirtualList auto-scroll microtask
+- snapshot errors before cancelBuildState to avoid fragile post-cancel read
+- record cancelled builds in history, open Studio from errors, richer logging
+- rename renderItem prop to renderRow per spec
+- move clear_build_log before spawn to eliminate race condition
+
+### Changed
+- clean up code and improve readability
+- remove outdated build panel design document; implement new build history and log management features
+- replace For loop with VirtualList — only visible rows in DOM
+- batch-flush build log lines every 50ms instead of one update per line
+- replace 200ms polling loop in run_task with tokio oneshot channel
+- remove unused BuildSettings.buildVariant and selectedDevice fields
+- remove Gradle flags from settings and enhance error formatting
+
+---
+
 ## [0.1.7] — 2026-04-08
 
 ### Added
