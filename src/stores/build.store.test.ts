@@ -10,6 +10,7 @@ import {
   clearBuild,
   setBuildHistory,
   resetBuildState,
+  setLastLaunchedAt,
 } from "@/stores/build.store";
 import type { BuildLine } from "@/bindings";
 
@@ -278,5 +279,38 @@ describe("build.store batching", () => {
     clearBuild(); // should discard pending lines
     flushPendingLines(); // flush after clear — buffer should be empty
     expect(buildLogStore.entries).toHaveLength(0);
+  });
+});
+
+// ── lastLaunchedAt ────────────────────────────────────────────────────────────
+
+describe("lastLaunchedAt", () => {
+  beforeEach(() => { resetBuildState(); });
+
+  it("is null on initial state", () => {
+    expect(buildState.lastLaunchedAt).toBeNull();
+  });
+
+  it("setLastLaunchedAt stores the timestamp", () => {
+    setLastLaunchedAt(1_000_000);
+    expect(buildState.lastLaunchedAt).toBe(1_000_000);
+  });
+
+  it("clearBuild resets lastLaunchedAt to null", () => {
+    setLastLaunchedAt(1_000_000);
+    clearBuild();
+    expect(buildState.lastLaunchedAt).toBeNull();
+  });
+
+  it("resetBuildState resets lastLaunchedAt to null", () => {
+    setLastLaunchedAt(1_000_000);
+    resetBuildState();
+    expect(buildState.lastLaunchedAt).toBeNull();
+  });
+
+  it("successive deploys each update the timestamp", () => {
+    setLastLaunchedAt(1_000_000);
+    setLastLaunchedAt(2_000_000);
+    expect(buildState.lastLaunchedAt).toBe(2_000_000);
   });
 });
