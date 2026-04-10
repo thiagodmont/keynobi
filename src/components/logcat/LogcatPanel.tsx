@@ -47,6 +47,7 @@ import {
   type FilterGroup,
 } from "@/lib/logcat-query";
 import { projectState } from "@/stores/project.store";
+import { buildState } from "@/stores/build.store";
 import { PackageDropdown } from "@/components/logcat/PackageDropdown";
 import { LogEntryDetailPanel } from "./LogEntryDetailPanel";
 import { LEVEL_CONFIG } from "./logcat-levels";
@@ -461,6 +462,22 @@ export function LogcatPanel(): JSX.Element {
     if (q.includes("package:mine") || q.includes("pkg:mine")) {
       syncBackendFilter(parseFilterGroups(q));
     }
+  });
+
+  // ── Auto-apply package:mine after a successful deploy ─────────────────────────
+  // When the build service launches an app it sets buildState.lastLaunchedAt to
+  // Date.now(). Subscribing here lets us merge package:mine into the active query
+  // automatically so the user immediately sees logs for their app.
+  let _prevLaunchedAt: number | null | undefined = undefined;
+  createEffect(() => {
+    const launchedAt = buildState.lastLaunchedAt;
+    if (launchedAt === _prevLaunchedAt) return;
+    _prevLaunchedAt = launchedAt;
+    if (launchedAt === null) return; // initial mount — skip
+    const q = query();
+    if (q.includes("package:mine") || q.includes("pkg:mine")) return;
+    const next = setPackageInQuery(q, "mine");
+    updateQuery(next.trimEnd() ? next.trimEnd() + " " : "");
   });
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────────

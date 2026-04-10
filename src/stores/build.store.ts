@@ -18,6 +18,7 @@ export interface BuildStoreState {
   warnings: BuildError[];
   history: BuildRecord[];
   deployPhase: DeployPhase;
+  lastLaunchedAt: number | null;
 }
 
 // ── Tick (1-second reactive heartbeat while a build is running) ───────────────
@@ -48,6 +49,7 @@ const [buildState, setBuildState] = createStore<BuildStoreState>({
   warnings: [],
   history: [],
   deployPhase: null,
+  lastLaunchedAt: null,
 });
 
 export { buildState };
@@ -169,6 +171,10 @@ export function setDeployPhase(phase: DeployPhase): void {
   setBuildState("deployPhase", phase);
 }
 
+export function setLastLaunchedAt(ts: number): void {
+  setBuildState("lastLaunchedAt", ts);
+}
+
 export function setBuildResult(opts: {
   success: boolean;
   durationMs: number;
@@ -203,6 +209,7 @@ export function clearBuild(): void {
     errors: [],
     warnings: [],
     deployPhase: null,
+    lastLaunchedAt: null,
   });
   buildLogStore.clearEntries();
 }

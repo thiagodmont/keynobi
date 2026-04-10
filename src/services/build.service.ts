@@ -19,6 +19,7 @@ import {
   cancelBuildState,
   setBuildHistory,
   setDeployPhase,
+  setLastLaunchedAt,
   buildState,
 } from "@/stores/build.store";
 import { variantState } from "@/stores/variant.store";
@@ -249,6 +250,7 @@ export async function runAndDeploy(): Promise<void> {
       logStep(`adb shell am start (package: ${packageName})`);
       const launchOutput = await launchAppOnDevice(serial, packageName);
       logStep(`Launch: ${launchOutput.trim()}`);
+      setLastLaunchedAt(Date.now());
     } else {
       logStep(
         "APK installed. Could not determine package name — cannot auto-launch. " +
