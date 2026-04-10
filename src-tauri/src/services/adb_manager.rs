@@ -67,7 +67,7 @@ pub fn find_aapt2(settings: &AppSettings) -> Option<PathBuf> {
         if parts.is_empty() {
             continue;
         }
-        if best.as_ref().map_or(true, |(prev, _)| parts > *prev) {
+        if best.as_ref().is_none_or(|(prev, _)| parts > *prev) {
             best = Some((parts, candidate));
         }
     }

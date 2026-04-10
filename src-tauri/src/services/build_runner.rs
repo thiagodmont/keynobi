@@ -185,6 +185,7 @@ pub fn save_build_log(id: u32, raw_lines: &VecDeque<String>) {
 /// 1. Age — delete .jsonl files older than retention_days.
 /// 2. Orphans — delete build-{id}.jsonl whose ID is not in history.
 /// 3. Size cap — if total folder size > max_folder_mb, delete oldest by mtime until under cap.
+///
 /// All operations are best-effort; individual failures are silently ignored.
 pub fn rotate_build_logs(
     build_log_dir: &Path,

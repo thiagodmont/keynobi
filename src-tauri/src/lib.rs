@@ -390,7 +390,6 @@ mod runtime_safety_tests {
                     && trimmed.contains("tokio::spawn")
                     && !trimmed.contains("tokio::spawn_blocking") // allowed: blocking pool
             })
-            .map(|(n, l)| (n, l))
             .collect();
 
         assert!(

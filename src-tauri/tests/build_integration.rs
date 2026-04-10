@@ -378,7 +378,7 @@ async fn mock_gradlew_error_output_produces_error_lines() {
     let error_lines: Vec<_> = stdout
         .lines()
         .filter(|l| !l.trim().is_empty())
-        .map(|l| build_runner::parse_build_line(l))
+        .map(build_runner::parse_build_line)
         .filter(|parsed| parsed.kind == BuildLineKind::Error)
         .collect();
 
