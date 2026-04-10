@@ -82,7 +82,7 @@ function getTokenStyle(tokenText: string): TokenStyle {
  * Uses a quote-aware tokeniser so that `tag:"hello world"` is treated as
  * a single pill rather than being split at the internal space.
  */
-function parseQueryState(value: string): { committed: string[]; draft: string } {
+export function parseQueryState(value: string): { committed: string[]; draft: string } {
   if (!value.trim()) return { committed: [], draft: "" };
 
   // Quote-aware split: same logic as parseQuery but we keep track of
@@ -124,7 +124,7 @@ function parseQueryState(value: string): { committed: string[]; draft: string } 
  * When there is no draft the committed section always gets a trailing space
  * so on the next render all parts are recognised as committed (not draft).
  */
-function buildQuery(committed: string[], draft: string): string {
+export function buildQuery(committed: string[], draft: string): string {
   const base = committed.join(" ");
   if (!draft) return base ? `${base} ` : "";
   return base ? `${base} ${draft}` : draft;
@@ -339,7 +339,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
   return (
     <div
       ref={containerRef}
-      style={{ position: "relative", flex: "1", "min-width": "200px" }}
+      style={{ position: "relative", flex: "1", "min-width": "280px" }}
     >
       {/* ── Pill + draft input container ─────────────────────────────────── */}
       {/*                                                                      */}

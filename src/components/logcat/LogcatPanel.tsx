@@ -40,11 +40,13 @@ import {
   setPackageInQuery,
   getPackageFromQuery,
   getMinePackage,
+  setMinePackage,
   parseStackFrame,
   isProjectFrame,
   type QueryToken,
   type FilterGroup,
 } from "@/lib/logcat-query";
+import { projectState } from "@/stores/project.store";
 import { PackageDropdown } from "@/components/logcat/PackageDropdown";
 import { LogEntryDetailPanel } from "./LogEntryDetailPanel";
 import { LEVEL_CONFIG } from "./logcat-levels";
@@ -376,7 +378,8 @@ export function LogcatPanel(): JSX.Element {
   const activePackage = createMemo(() => getPackageFromQuery(debouncedQuery()));
 
   function handlePackageSelect(pkg: string | null) {
-    updateQuery(setPackageInQuery(query(), pkg));
+    const q = setPackageInQuery(query(), pkg);
+    updateQuery(q.trimEnd() ? q.trimEnd() + " " : "");
   }
 
   function parseAge(v: string): number {
@@ -440,6 +443,24 @@ export function LogcatPanel(): JSX.Element {
     _prevDebouncedQuery = q;
     setLastActiveQuery(q);
     syncBackendFilter(parseFilterGroups(q));
+  });
+
+  // Re-sync the backend filter when the project's applicationId becomes available
+  // (or changes on project switch). This fixes a startup race where the LogcatPanel
+  // mounts and restores a `package:mine` query before doOpenProject() has finished
+  // resolving getApplicationId() — the initial sync runs with _minePackage = null
+  // and the guard on the effect above (_prevDebouncedQuery) prevents it from re-running.
+  let _prevAppId: string | null | undefined = undefined;
+  createEffect(() => {
+    const appId = projectState.applicationId; // reactive — tracks project changes
+    if (appId === _prevAppId) return;
+    _prevAppId = appId;
+    setMinePackage(appId);
+    // Re-evaluate the backend filter only if the current query references "mine".
+    const q = debouncedQuery();
+    if (q.includes("package:mine") || q.includes("pkg:mine")) {
+      syncBackendFilter(parseFilterGroups(q));
+    }
   });
 
   // ── Lifecycle ─────────────────────────────────────────────────────────────────
@@ -720,7 +741,9 @@ export function LogcatPanel(): JSX.Element {
   // ── Presets / saved filters ───────────────────────────────────────────────────
 
   function applyPreset(q: string) {
-    updateQuery(q);
+    // Trailing space commits all tokens as pills immediately (QueryBar's convention:
+    // a value ending in whitespace means the last token is committed, not a draft).
+    updateQuery(q.trimEnd() + " ");
     setPresetsOpen(false);
   }
 
@@ -766,7 +789,8 @@ export function LogcatPanel(): JSX.Element {
   // ── Age pills ─────────────────────────────────────────────────────────────────
 
   function handleAgePill(value: string | null) {
-    updateQuery(setAgeInQuery(query(), value));
+    const q = setAgeInQuery(query(), value);
+    updateQuery(q.trimEnd() ? q.trimEnd() + " " : "");
   }
 
   // ── JSON viewer state ─────────────────────────────────────────────────────────
@@ -851,14 +875,6 @@ export function LogcatPanel(): JSX.Element {
         </button>
 
         <div style={{ width: "1px", height: "18px", background: "var(--border)", "flex-shrink": "0" }} />
-
-        {/* Unified query bar */}
-        <QueryBar
-          value={query()}
-          onChange={updateQuery}
-          knownTags={knownTags()}
-          knownPackages={knownPackages()}
-        />
 
         {/* Crash nav */}
         <Show when={crashes() > 0}>
@@ -1100,68 +1116,79 @@ export function LogcatPanel(): JSX.Element {
         </Show>
       </div>
 
-      {/* ── Age quick-select pills ────────────────────────────────────────── */}
+      {/* ── Unified filter zone ───────────────────────────────────────────── */}
       <div
         style={{
           display: "flex",
-          "align-items": "center",
-          gap: "4px",
-          padding: "3px 10px",
-          background: "var(--bg-tertiary)",
+          "flex-wrap": "wrap",
+          "align-items": "flex-start",
+          gap: "6px",
+          padding: "5px 10px",
+          background: "var(--bg-secondary)",
           "border-bottom": "1px solid var(--border)",
           "flex-shrink": "0",
         }}
       >
-        <span style={{ "font-size": "10px", color: "var(--text-muted)", "margin-right": "2px", "flex-shrink": "0" }}>Age:</span>
-        <For each={AGE_PILLS}>
-          {(pill) => {
-            const isActive = () => pill.value === null
-              ? !hasAgeFilter()
-              : activeAge() === pill.value;
-            return (
-              <button
-                onClick={() => handleAgePill(pill.value ?? null)}
-                style={{
-                  padding: "1px 7px",
-                  "font-size": "10px",
-                  background: isActive() ? "var(--accent)" : "var(--bg-primary)",
-                  color: isActive() ? "#fff" : "var(--text-muted)",
-                  border: `1px solid ${isActive() ? "var(--accent)" : "var(--border)"}`,
-                  "border-radius": "10px",
-                  cursor: "pointer",
-                  "flex-shrink": "0",
-                  transition: "all 0.1s",
-                }}
-              >
-                {pill.label}
-              </button>
-            );
-          }}
-        </For>
-
-        <div style={{ width: "1px", height: "14px", background: "var(--border)", "flex-shrink": "0", "margin-left": "2px" }} />
-
-        {/* Package filter dropdown */}
-        <PackageDropdown
-          packages={knownPackages()}
-          selected={activePackage()}
-          onSelect={handlePackageSelect}
+        {/* Query bar — grows to fill available width */}
+        <QueryBar
+          value={query()}
+          onChange={updateQuery}
+          knownTags={knownTags()}
+          knownPackages={knownPackages()}
         />
 
-        <Show when={isFiltered()}>
-          <button
-            onClick={() => updateQuery("")}
-            title="Clear all filters"
-            style={{
-              ...btnStyle("var(--text-muted)"),
-              "margin-left": "auto",
-              "font-size": "10px",
-              padding: "1px 7px",
+        {/* Age + Package sub-row — inline right, wraps below on narrow windows */}
+        <div style={{ display: "flex", "align-items": "center", gap: "4px", "flex-shrink": "0" }}>
+          <span style={{ "font-size": "10px", color: "var(--text-muted)", "margin-right": "2px", "flex-shrink": "0" }}>Age:</span>
+          <For each={AGE_PILLS}>
+            {(pill) => {
+              const isActive = () => pill.value === null
+                ? !hasAgeFilter()
+                : activeAge() === pill.value;
+              return (
+                <button
+                  onClick={() => handleAgePill(pill.value ?? null)}
+                  style={{
+                    padding: "1px 7px",
+                    "font-size": "10px",
+                    background: isActive() ? "var(--accent)" : "var(--bg-primary)",
+                    color: isActive() ? "#fff" : "var(--text-muted)",
+                    border: `1px solid ${isActive() ? "var(--accent)" : "var(--border)"}`,
+                    "border-radius": "10px",
+                    cursor: "pointer",
+                    "flex-shrink": "0",
+                    transition: "all 0.1s",
+                  }}
+                >
+                  {pill.label}
+                </button>
+              );
             }}
-          >
-            ✕ Clear
-          </button>
-        </Show>
+          </For>
+
+          <div style={{ width: "1px", height: "14px", background: "var(--border)", "flex-shrink": "0", "margin-left": "2px" }} />
+
+          {/* Package filter dropdown */}
+          <PackageDropdown
+            packages={knownPackages()}
+            selected={activePackage()}
+            onSelect={handlePackageSelect}
+          />
+
+          <Show when={isFiltered()}>
+            <button
+              onClick={() => updateQuery("")}
+              title="Clear all filters"
+              style={{
+                ...btnStyle("var(--text-muted)"),
+                "font-size": "10px",
+                padding: "1px 7px",
+              }}
+            >
+              ✕ Clear
+            </button>
+          </Show>
+        </div>
       </div>
 
       {/* ── Empty state ───────────────────────────────────────────────────── */}
