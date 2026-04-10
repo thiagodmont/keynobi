@@ -1032,6 +1032,7 @@ mod tests {
             }),
             errors: vec![],
             started_at: "2026-04-06T12:00:00Z".into(),
+            project_root: None,
         };
         let json = serde_json::to_string(&record).unwrap();
         let parsed: BuildRecord = serde_json::from_str(&json).unwrap();
@@ -1048,6 +1049,7 @@ mod tests {
             status: BuildStatus::Idle,
             errors: vec![],
             started_at: "2026-01-01T00:00:00Z".into(),
+            project_root: None,
         }).collect();
         // This is the formula that BuildStateInner::new() must use.
         let next_id = records.iter().map(|r| r.id).max().unwrap_or(0) + 1;
@@ -1075,6 +1077,7 @@ mod tests {
                     status: BuildStatus::Idle,
                     errors: vec![],
                     started_at: "2026-01-01T00:00:00Z".into(),
+                    project_root: None,
                 });
             }
         }
@@ -1095,6 +1098,7 @@ mod tests {
             status: BuildStatus::Idle,
             errors: vec![],
             started_at: "2026-04-06T12:00:00Z".into(),
+            project_root: None,
         }).collect();
 
         let json = serde_json::to_string_pretty(&records).unwrap();
@@ -1157,6 +1161,7 @@ mod tests {
             }),
             errors: vec![],
             started_at: "2026-04-09T00:00:00Z".into(),
+            project_root: None,
         });
 
         rotate_build_logs(dir_path, 365, 1000, &history);
