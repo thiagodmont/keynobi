@@ -7,6 +7,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.11] — 2026-04-10
+
+### Added
+- auto-apply package:mine filter after successful deploy
+- unified filter zone layout (Option B)
+
+---
+
 ## [0.1.10] — 2026-04-10
 
 ### Added
