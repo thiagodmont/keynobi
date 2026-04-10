@@ -5,4 +5,4 @@ import type { BuildStatus } from "./BuildStatus";
 /**
  * A record of a past build kept in the build history ring-buffer.
  */
-export type BuildRecord = { id: number, task: string, status: BuildStatus, errors: Array<BuildError>, startedAt: string, };
+export type BuildRecord = { id: number, task: string, status: BuildStatus, errors: Array<BuildError>, startedAt: string, projectRoot: string | null, };

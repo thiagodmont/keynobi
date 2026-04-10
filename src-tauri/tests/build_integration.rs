@@ -183,6 +183,7 @@ async fn record_build_result_success_updates_state() {
         "2024-01-01T00:00:00Z".into(),
         result,
         vec![],
+        None,
     )
     .await;
 
@@ -227,6 +228,7 @@ async fn record_build_result_failure_updates_state() {
         "2024-01-01T00:00:00Z".into(),
         result,
         errors.clone(),
+        None,
     )
     .await;
 
@@ -261,6 +263,7 @@ async fn record_build_result_respects_history_limit() {
             "2024-01-01T00:00:00Z".into(),
             result,
             vec![],
+            None,
         )
         .await;
     }
@@ -274,6 +277,86 @@ async fn record_build_result_respects_history_limit() {
     // The oldest entries (task_0, task_1) should have been evicted.
     assert_eq!(inner.history[0].task, "task_2");
     assert!(matches!(inner.status, BuildStatus::Success(_)));
+}
+
+// ── project_root scoping tests ────────────────────────────────────────────────
+
+/// Regression: records must carry the project_root they were built against so
+/// get_build_history can return only builds for the active project.
+#[tokio::test]
+async fn record_build_result_stamps_project_root() {
+    let state = BuildState::new();
+    let result = BuildResult { success: true, duration_ms: 1_000, error_count: 0, warning_count: 0 };
+
+    build_runner::record_build_result(
+        &state,
+        "assembleDebug".into(),
+        "2024-01-01T00:00:00Z".into(),
+        result,
+        vec![],
+        Some("/home/user/my-app".into()),
+    )
+    .await;
+
+    let inner = state.inner.lock().await;
+    let last = inner.history.back().expect("history must not be empty");
+    assert_eq!(
+        last.project_root.as_deref(),
+        Some("/home/user/my-app"),
+        "project_root should be stamped on the record"
+    );
+}
+
+/// Records with no project_root (e.g. from MCP run_task paths) store None.
+#[tokio::test]
+async fn record_build_result_stores_none_project_root_when_not_provided() {
+    let state = BuildState::new();
+    let result = BuildResult { success: true, duration_ms: 500, error_count: 0, warning_count: 0 };
+
+    build_runner::record_build_result(
+        &state,
+        "assembleDebug".into(),
+        "2024-01-01T00:00:00Z".into(),
+        result,
+        vec![],
+        None,
+    )
+    .await;
+
+    let inner = state.inner.lock().await;
+    let last = inner.history.back().expect("history must not be empty");
+    assert!(last.project_root.is_none(), "project_root should be None when not provided");
+}
+
+/// Regression: builds from different projects must not mix — the in-memory
+/// history holds all records, and filtering by project_root is what scopes them.
+#[tokio::test]
+async fn history_records_retain_distinct_project_roots() {
+    let state = BuildState::new();
+    let make_result = || BuildResult { success: true, duration_ms: 1_000, error_count: 0, warning_count: 0 };
+
+    build_runner::record_build_result(
+        &state, "assembleDebug".into(), "2024-01-01T00:00:00Z".into(),
+        make_result(), vec![], Some("/projects/app-alpha".into()),
+    ).await;
+
+    build_runner::record_build_result(
+        &state, "assembleRelease".into(), "2024-01-02T00:00:00Z".into(),
+        make_result(), vec![], Some("/projects/app-beta".into()),
+    ).await;
+
+    let inner = state.inner.lock().await;
+    let alpha: Vec<_> = inner.history.iter()
+        .filter(|r| r.project_root.as_deref() == Some("/projects/app-alpha"))
+        .collect();
+    let beta: Vec<_> = inner.history.iter()
+        .filter(|r| r.project_root.as_deref() == Some("/projects/app-beta"))
+        .collect();
+
+    assert_eq!(alpha.len(), 1, "alpha should have 1 record");
+    assert_eq!(beta.len(), 1, "beta should have 1 record");
+    assert_eq!(alpha[0].task, "assembleDebug");
+    assert_eq!(beta[0].task, "assembleRelease");
 }
 
 // ── Process execution tests ───────────────────────────────────────────────────

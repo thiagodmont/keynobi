@@ -97,10 +97,44 @@ describe("build.store", () => {
         status: { state: "Success", success: true, durationMs: 1000, errorCount: 0, warningCount: 0 } as any,
         errors: [],
         startedAt: new Date().toISOString(),
+        projectRoot: "/home/user/my-app",
       },
     ]);
     expect(buildState.history).toHaveLength(1);
     expect(buildState.history[0].task).toBe("assembleDebug");
+    expect(buildState.history[0].projectRoot).toBe("/home/user/my-app");
+  });
+
+  // Regression: resetBuildState must clear history (not just current build state).
+  // Bug: selectProject was calling clearBuild() which preserved history, so
+  // switching projects left the previous project's builds visible.
+  it("resetBuildState clears history along with build state", () => {
+    setBuildHistory([
+      {
+        id: 1, task: "assembleDebug",
+        status: { state: "success" } as any, errors: [],
+        startedAt: new Date().toISOString(), projectRoot: "/home/user/my-app",
+      },
+    ]);
+    startBuild("assembleDebug");
+    resetBuildState();
+    expect(buildState.phase).toBe("idle");
+    expect(buildState.history).toHaveLength(0);
+  });
+
+  // Contrast: clearBuild intentionally preserves history (used during live builds).
+  it("clearBuild does NOT clear history — only resetBuildState does", () => {
+    setBuildHistory([
+      {
+        id: 1, task: "assembleDebug",
+        status: { state: "success" } as any, errors: [],
+        startedAt: new Date().toISOString(), projectRoot: "/home/user/my-app",
+      },
+    ]);
+    startBuild("assembleDebug");
+    clearBuild();
+    expect(buildState.phase).toBe("idle");
+    expect(buildState.history).toHaveLength(1); // history preserved intentionally
   });
 });
 

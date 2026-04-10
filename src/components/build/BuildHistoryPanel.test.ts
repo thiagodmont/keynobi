@@ -8,7 +8,7 @@ function makeRecord(state: BuildStatus["state"], durationMs = 0, errors: any[] =
     state === "success" ? { state: "success", success: true, durationMs: BigInt(durationMs), errorCount: 0, warningCount: 0 }
     : state === "failed" ? { state: "failed", success: false, durationMs: BigInt(durationMs), errorCount: errors.length, warningCount: 0 }
     : { state };
-  return { id: 1, task: "assembleDebug", status, errors, startedAt: new Date().toISOString() };
+  return { id: 1, task: "assembleDebug", status, errors, startedAt: new Date().toISOString(), projectRoot: null };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

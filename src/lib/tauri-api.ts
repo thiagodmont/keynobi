@@ -182,6 +182,7 @@ export async function finalizeBuild(opts: {
   errors: BuildError[];
   task: string;
   startedAt: string;
+  projectRoot: string | null;
 }): Promise<void> {
   return invoke<void>("finalize_build", {
     success: opts.success,
@@ -189,6 +190,7 @@ export async function finalizeBuild(opts: {
     errors: opts.errors,
     task: opts.task,
     startedAt: opts.startedAt,
+    projectRoot: opts.projectRoot,
   });
 }
 

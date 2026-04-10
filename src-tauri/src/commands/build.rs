@@ -219,6 +219,7 @@ pub async fn finalize_build(
     errors: Vec<BuildError>,
     task: String,
     started_at: String,
+    project_root: Option<String>,
     build_state: State<'_, BuildState>,
 ) -> Result<(), String> {
     let error_count = errors
@@ -235,7 +236,7 @@ pub async fn finalize_build(
         error_count,
         warning_count: warn_count,
     };
-    build_runner::record_build_result(&build_state, task, started_at, result, errors).await;
+    build_runner::record_build_result(&build_state, task, started_at, result, errors, project_root).await;
     Ok(())
 }
 
@@ -265,13 +266,30 @@ pub async fn get_build_errors(
     Ok(build_state.inner.lock().await.current_errors.clone())
 }
 
-/// Return a summary of the last N builds (up to MAX_HISTORY).
+/// Return the build history for the currently active project.
+///
+/// Records are filtered by `project_root` so builds from other projects are
+/// not mixed in. Records with no `project_root` (persisted before this field
+/// was added) are excluded.
 #[tauri::command]
 pub async fn get_build_history(
     build_state: State<'_, BuildState>,
+    fs_state: State<'_, FsState>,
 ) -> Result<Vec<BuildRecord>, String> {
+    let current_root: Option<String> = {
+        let fs = fs_state.0.lock().await;
+        fs.project_root
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned())
+    };
     let bs = build_state.inner.lock().await;
-    Ok(bs.history.iter().cloned().collect())
+    let records: Vec<BuildRecord> = bs
+        .history
+        .iter()
+        .filter(|r| r.project_root.as_deref() == current_root.as_deref())
+        .cloned()
+        .collect();
+    Ok(records)
 }
 
 /// Clear all build history (in-memory and on disk).

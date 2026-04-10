@@ -41,6 +41,13 @@ export function BuildPanel(): JSX.Element {
     }
   });
 
+  // Reset history selection when the project changes so logs from the
+  // previous project cannot bleed through via a stale selectedHistoryId.
+  createEffect(() => {
+    void projectState.projectRoot; // reactive dependency
+    setSelectedHistoryId(null);
+  });
+
   const [historicalLog, setHistoricalLog] = createSignal<LogEntry[]>([]);
 
   createEffect(() => {

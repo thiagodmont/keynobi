@@ -111,6 +111,9 @@ pub struct BuildRecord {
     pub status: BuildStatus,
     pub errors: Vec<BuildError>,
     pub started_at: String,
+    /// Absolute path of the project root at the time the build ran.
+    /// Used to scope history to the currently active project.
+    pub project_root: Option<String>,
 }
 
 #[cfg(test)]

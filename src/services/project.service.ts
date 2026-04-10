@@ -32,9 +32,9 @@ import {
   projectsState,
 } from "@/stores/projects.store";
 import { showToast } from "@/components/common/Toast";
-import { initBuildService } from "@/services/build.service";
-import { cancelBuild } from "@/services/build.service";
-import { clearBuild } from "@/stores/build.store";
+import { initBuildService, cancelBuild } from "@/services/build.service";
+import { resetBuildState, setBuildHistory } from "@/stores/build.store";
+import { getBuildHistory } from "@/lib/tauri-api";
 import { initDevices, pickDevice, onDeviceChange } from "@/stores/device.store";
 import { stopLogcat } from "@/lib/tauri-api";
 import { setMinePackage } from "@/lib/logcat-query";
@@ -129,6 +129,10 @@ export async function openProjectFolder(): Promise<OpenProjectResult | null> {
   const path = await openFolderDialog();
   if (!path) return null;
 
+  // Cancel any running build from the previous project and clear its state.
+  await cancelBuild().catch(() => {});
+  resetBuildState();
+
   const result = await doOpenProject(path);
   if (result) {
     // Refresh the projects list so the new entry shows in the sidebar.
@@ -140,6 +144,9 @@ export async function openProjectFolder(): Promise<OpenProjectResult | null> {
       upsertProject(entry);
       setActiveProjectId(entry.id);
     }
+    // Load build history scoped to the newly opened project.
+    getBuildHistory().then(setBuildHistory).catch(console.error);
+
     await reloadVariantsAndRestoreMeta(entry ?? null);
   }
   return result;
@@ -158,20 +165,24 @@ export async function openProjectFolder(): Promise<OpenProjectResult | null> {
  */
 export async function selectProject(entry: ProjectEntry): Promise<void> {
   // Cancel build — it targets the old project's Gradle root.
-  try {
-    await cancelBuild();
-  } catch {
+  await cancelBuild().catch(() => {
     // Ignore — no build in progress.
-  }
-  clearBuild();
+  });
+  // Reset build state AND history so the previous project's builds don't bleed through.
+  resetBuildState();
 
   const result = await doOpenProject(entry.path);
   if (result) {
+    // Fetch fresh metadata for this entry (lastBuildVariant, lastDevice, etc.)
+    // but do NOT replace the full list — that would re-sort by lastOpened and
+    // jump the selected project to the top.
     const projects = (await listProjects().catch(() => [])) as ProjectEntry[];
     const fresh = projects.find((p) => p.id === entry.id) ?? entry;
     upsertProject(fresh);
     setActiveProjectId(fresh.id);
-    setProjects(projects);
+
+    // Load build history scoped to the newly active project.
+    getBuildHistory().then(setBuildHistory).catch(console.error);
 
     await reloadVariantsAndRestoreMeta(fresh);
   }

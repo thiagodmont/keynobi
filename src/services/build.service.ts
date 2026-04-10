@@ -157,6 +157,7 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
     errors: accumulatedErrors,
     task: effectiveTask,
     startedAt,
+    projectRoot: projectState.projectRoot ?? null,
   }).catch((err) => {
     console.error("[build] Failed to finalize build:", err);
   });
@@ -263,8 +264,10 @@ export async function runAndDeploy(): Promise<void> {
   }
 }
 
-/** Cancel the currently running build. */
+/** Cancel the currently running build. No-op if no build is running. */
 export async function cancelBuild(): Promise<void> {
+  if (buildState.phase !== "running") return;
+
   const resolve = _resolveBuildComplete;
   _resolveBuildComplete = null;
 
@@ -287,6 +290,7 @@ export async function cancelBuild(): Promise<void> {
     errors,
     task,
     startedAt,
+    projectRoot: projectState.projectRoot ?? null,
   }).catch((err) => {
     console.error("[build] Failed to finalize cancelled build:", err);
   });

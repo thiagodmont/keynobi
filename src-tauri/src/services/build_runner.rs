@@ -433,6 +433,7 @@ pub async fn record_build_result(
     started_at: String,
     result: BuildResult,
     errors: Vec<BuildError>,
+    project_root: Option<String>,
 ) {
     // Snapshot the raw build log before taking the inner lock so we don't
     // hold two locks simultaneously.
@@ -460,6 +461,7 @@ pub async fn record_build_result(
             status: bs.status.clone(),
             errors,
             started_at,
+            project_root,
         };
         let record_id = bs.next_id;
         bs.next_id += 1;
@@ -672,7 +674,7 @@ pub async fn run_task(
         .count() as u32;
 
     let result = BuildResult { success, duration_ms, error_count, warning_count };
-    record_build_result(build_state, task.to_owned(), started_at, result, errors.clone()).await;
+    record_build_result(build_state, task.to_owned(), started_at, result, errors.clone(), None).await;
 
     Ok(GradleTaskResult { success, timed_out: false, duration_ms, errors })
 }
