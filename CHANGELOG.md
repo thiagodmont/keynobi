@@ -7,6 +7,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.9] — 2026-04-10
+
+### Added
+- enhance build history management with project scoping
+
+### Fixed
+- initialize projectRoot in BuildRecord tests
+
+---
+
 ## [0.1.8] — 2026-04-10
 
 ### Added
