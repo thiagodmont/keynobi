@@ -2,6 +2,7 @@ import { createStore } from "solid-js/store";
 import { createMemo } from "solid-js";
 import type { BuildVariant, VariantList } from "@/bindings";
 import { getVariantsPreview, getVariantsFromGradle, setActiveVariant } from "@/lib/tauri-api";
+import { projectState } from "@/stores/project.store";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,21 @@ export interface VariantStoreState {
   error: string | null;
   /** Gradle-specific error shown in the picker footer even when preview has results. */
   gradleError: string | null;
+}
+
+// ── Session cache ─────────────────────────────────────────────────────────────
+// Keyed by project root path. Survives project switches; cleared only when the
+// app restarts (module re-initialisation). Avoids re-running the expensive
+// `./gradlew :app:tasks` query when the user switches back to a known project.
+const variantCache = new Map<string, BuildVariant[]>();
+
+/** Clear the cache for a specific root (or all roots when called with no argument). */
+export function clearVariantCache(root?: string): void {
+  if (root !== undefined) {
+    variantCache.delete(root);
+  } else {
+    variantCache.clear();
+  }
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
@@ -70,11 +86,19 @@ let loadVariantsPending: Promise<void> | null = null;
  *    immediately with whatever is explicitly declared.
  * 2. **Gradle** (authoritative): runs `./gradlew :app:tasks --console=plain`,
  *    gets every variant the project actually has (including implicit `debug`,
- *    custom types, product flavors), then replaces the preview list.
+ *    custom types, product flavors), then replaces the preview list. The result
+ *    is cached in memory for the session — subsequent switches back to the same
+ *    project skip the Gradle invocation entirely.
  *
  * Both phases update the store independently so the UI is always responsive.
+ *
+ * Pass `{ force: true }` to bypass the cache (e.g. the Refresh button).
  */
-export function loadVariants(): Promise<void> {
+export function loadVariants(opts?: { force?: boolean }): Promise<void> {
+  if (opts?.force) {
+    const root = projectState.projectRoot;
+    if (root !== null) variantCache.delete(root);
+  }
   if (!loadVariantsPending) {
     loadVariantsPending = runLoadVariants().finally(() => {
       loadVariantsPending = null;
@@ -103,9 +127,27 @@ async function runLoadVariants(): Promise<void> {
     setVariantState({ loading: false });
   }
 
-  // ── Phase 2: authoritative list from Gradle ────────────────────────────────
+  // ── Phase 2: authoritative list from Gradle (or session cache) ───────────────
+  const cacheKey = projectState.projectRoot;
+  const cached = cacheKey !== null ? variantCache.get(cacheKey) : undefined;
+
+  if (cached) {
+    setVariantState({
+      variants: cached,
+      activeVariant: resolveActive({ variants: cached, active: null }, variantState.activeVariant),
+      fromGradle: true,
+      gradleLoading: false,
+      gradleError: null,
+      error: null,
+    });
+    return;
+  }
+
   try {
     const full = await getVariantsFromGradle();
+    if (cacheKey !== null) {
+      variantCache.set(cacheKey, full.variants);
+    }
     setVariantState({
       variants: full.variants,
       activeVariant: resolveActive(full, variantState.activeVariant),

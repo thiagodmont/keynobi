@@ -116,7 +116,7 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
   }
 
   async function handleRefresh() {
-    await loadVariants().catch(console.error);
+    await loadVariants({ force: true }).catch(console.error);
   }
 
   const statusLabel = () => {
