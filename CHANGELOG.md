@@ -7,6 +7,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.10] — 2026-04-10
+
+### Added
+- implement caching for loadVariants and add force refresh option
+
+---
+
 ## [0.1.9] — 2026-04-10
 
 ### Added
