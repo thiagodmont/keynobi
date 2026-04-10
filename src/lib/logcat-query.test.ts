@@ -308,6 +308,47 @@ describe("matchesQuery — package filter", () => {
     expect(matchesQuery(makeEntry({ package: "mine-corp.app" }), tokens, NOW)).toBe(true);
     expect(matchesQuery(makeEntry({ package: "com.example" }), tokens, NOW)).toBe(false);
   });
+
+  // ── Startup race: null → resolved transition ─────────────────────────────────
+  //
+  // LogcatPanel.onMount may evaluate the filter before doOpenProject() finishes
+  // calling setMinePackage(). The token matching must re-evaluate dynamically —
+  // not capture the value at parse time — so the same token set works correctly
+  // once setMinePackage is called.
+
+  it("re-evaluates correctly when minePackage transitions from null to a resolved value", () => {
+    setMinePackage(null);
+    const tokens = parseQuery("package:mine");
+
+    // At startup: _minePackage is null, so "mine" is treated as a literal string.
+    // The project entry does NOT contain the word "mine" in its package name.
+    expect(matchesQuery(makeEntry({ package: "com.example.app" }), tokens, NOW)).toBe(false);
+
+    // Once doOpenProject() resolves and calls setMinePackage:
+    setMinePackage("com.example.app");
+
+    // The same parsed tokens now resolve correctly.
+    expect(matchesQuery(makeEntry({ package: "com.example.app" }), tokens, NOW)).toBe(true);
+    expect(matchesQuery(makeEntry({ package: "com.other.app" }), tokens, NOW)).toBe(false);
+
+    setMinePackage(null);
+  });
+
+  it("re-evaluates correctly when minePackage changes on project switch", () => {
+    setMinePackage("com.project-a.app");
+    const tokens = parseQuery("package:mine");
+
+    expect(matchesQuery(makeEntry({ package: "com.project-a.app" }), tokens, NOW)).toBe(true);
+    expect(matchesQuery(makeEntry({ package: "com.project-b.app" }), tokens, NOW)).toBe(false);
+
+    // User switches to project B — setMinePackage is called with the new id.
+    setMinePackage("com.project-b.app");
+
+    expect(matchesQuery(makeEntry({ package: "com.project-b.app" }), tokens, NOW)).toBe(true);
+    expect(matchesQuery(makeEntry({ package: "com.project-a.app" }), tokens, NOW)).toBe(false);
+
+    setMinePackage(null);
+  });
 });
 
 describe("matchesQuery — age filter", () => {
