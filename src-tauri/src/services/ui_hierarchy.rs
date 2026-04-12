@@ -324,10 +324,59 @@ pub async fn probe_foreground_activity(adb: &PathBuf, serial: &str) -> Option<St
         .map(|l| l.trim().to_string())
 }
 
+/// Byte index just after `/>` when `<hierarchy` opens a self-closing root element.
+/// Returns `None` if the tag is not self-closing (content starts with `>`), in which case
+/// callers should rely on `</hierarchy>`.
+fn find_self_closing_hierarchy_end(s: &str, tag_open_lt: usize) -> Option<usize> {
+    const TAG: &[u8] = b"<hierarchy";
+    let b = s.as_bytes();
+    if tag_open_lt + TAG.len() > b.len() {
+        return None;
+    }
+    if &b[tag_open_lt..tag_open_lt + TAG.len()] != TAG {
+        return None;
+    }
+    let mut i = tag_open_lt + TAG.len();
+    let mut in_dquote = false;
+    let mut in_squote = false;
+    while i < b.len() {
+        let ch = b[i];
+        if in_dquote {
+            if ch == b'"' {
+                in_dquote = false;
+            }
+            i += 1;
+            continue;
+        }
+        if in_squote {
+            if ch == b'\'' {
+                in_squote = false;
+            }
+            i += 1;
+            continue;
+        }
+        match ch {
+            b'"' => {
+                in_dquote = true;
+                i += 1;
+            }
+            b'\'' => {
+                in_squote = true;
+                i += 1;
+            }
+            b'/' if i + 1 < b.len() && b[i + 1] == b'>' => return Some(i + 2),
+            b'>' => return None,
+            _ => i += 1,
+        }
+    }
+    None
+}
+
 fn strip_ui_automator_noise(bytes: &[u8]) -> String {
     let s = String::from_utf8_lossy(bytes).into_owned();
     // Some builds prefix lines like "UI hierchary dumped to: ..."; exec-out /dev/tty may also
-    // append the same message *after* </hierarchy>, which breaks strict XML parsers.
+    // append the same message after the document (after `</hierarchy>` or `<hierarchy/>`),
+    // which breaks strict XML parsers.
     let mut s = if let Some(idx) = s.find("<?xml") {
         s[idx..].to_string()
     } else if let Some(idx) = s.find("<hierarchy") {
@@ -339,6 +388,10 @@ fn strip_ui_automator_noise(bytes: &[u8]) -> String {
     if let Some(pos) = s.rfind(END) {
         let end = pos + END.len();
         s.truncate(end);
+    } else if let Some(start) = s.find("<hierarchy") {
+        if let Some(end) = find_self_closing_hierarchy_end(&s, start) {
+            s.truncate(end);
+        }
     }
     s
 }
@@ -414,5 +467,26 @@ mod tests {
             s,
             "<?xml version='1.0' encoding='UTF-8' standalone='yes'?><hierarchy></hierarchy>"
         );
+    }
+
+    #[test]
+    fn strip_trailing_message_after_self_closing_hierarchy() {
+        let raw = "<?xml version='1.0'?><hierarchy/>UI hierchary dumped to: /dev/tty\n";
+        let s = strip_ui_automator_noise(raw.as_bytes());
+        assert_eq!(s, "<?xml version='1.0'?><hierarchy/>");
+    }
+
+    #[test]
+    fn strip_trailing_noise_after_hierarchy_with_attrs_self_closed() {
+        let raw = "<?xml version='1.0'?><hierarchy rotation=\"0\"/>junk";
+        let s = strip_ui_automator_noise(raw.as_bytes());
+        assert_eq!(s, "<?xml version='1.0'?><hierarchy rotation=\"0\"/>");
+    }
+
+    #[test]
+    fn self_closing_scanner_ignores_gt_inside_quoted_attrs() {
+        let s = r#"<hierarchy bounds="[0,0][1>2]"/>"#;
+        let end = find_self_closing_hierarchy_end(s, 0).expect("closed");
+        assert_eq!(&s[..end], s);
     }
 }

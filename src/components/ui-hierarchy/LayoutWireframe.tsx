@@ -60,7 +60,7 @@ export function LayoutWireframe(props: LayoutWireframeProps): JSX.Element {
   const [showScreenshot, setShowScreenshot] = createSignal(false);
   const [zoom, setZoom] = createSignal(1);
   const [pan, setPan] = createSignal({ x: 0, y: 0 });
-  let dragging = false;
+  const [dragging, setDragging] = createSignal(false);
   let dragStart = { x: 0, y: 0 };
   let panStart = { x: 0, y: 0 };
 
@@ -180,7 +180,7 @@ export function LayoutWireframe(props: LayoutWireframeProps): JSX.Element {
             width: "100%",
             height: "100%",
             display: "block",
-            cursor: dragging ? "grabbing" : "crosshair",
+            cursor: dragging() ? "grabbing" : "crosshair",
             "user-select": "none",
           }}
           viewBox={viewBox()}
@@ -212,12 +212,12 @@ export function LayoutWireframe(props: LayoutWireframeProps): JSX.Element {
           onMouseDown={(e) => {
             if (e.button !== 0) return;
             // Only drag when not clicking on a node (middle/background click).
-            dragging = true;
+            setDragging(true);
             dragStart = { x: e.clientX, y: e.clientY };
             panStart = pan();
           }}
           onMouseMove={(e) => {
-            if (dragging) {
+            if (dragging()) {
               const { width, height } = prepared().screen;
               const svg = e.currentTarget;
               const rect = svg.getBoundingClientRect();
@@ -226,15 +226,15 @@ export function LayoutWireframe(props: LayoutWireframeProps): JSX.Element {
               const dy = ((dragStart.y - e.clientY) / rect.height) * (height / z);
               setPan({ x: panStart.x + dx, y: panStart.y + dy });
             }
-            if (!dragging) {
+            if (!dragging()) {
               const svg = e.currentTarget;
               setHoverPath(hitTest(svg, e.clientX, e.clientY));
             }
           }}
           onMouseUp={(e) => {
-            if (!dragging) return;
+            if (!dragging()) return;
             const moved = Math.abs(e.clientX - dragStart.x) + Math.abs(e.clientY - dragStart.y);
-            dragging = false;
+            setDragging(false);
             if (moved < 4) {
               // Treat as click — select node.
               const svg = e.currentTarget;
@@ -243,7 +243,7 @@ export function LayoutWireframe(props: LayoutWireframeProps): JSX.Element {
             }
           }}
           onMouseLeave={() => {
-            dragging = false;
+            setDragging(false);
             setHoverPath(null);
           }}
         >

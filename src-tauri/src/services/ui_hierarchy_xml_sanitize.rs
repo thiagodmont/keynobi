@@ -1,7 +1,7 @@
 //! Repair common malformations in Android `uiautomator dump` XML.
 //!
 //! The platform serializer often omits escaping in attribute values (`&`, `<`, `>`)
-//! and may emit HTML named entities (`&nbsp;`) that strict XML parsers reject.
+//! and may emit HTML named entities (`&nbsp;`, `&copy;`, …) that strict XML parsers reject.
 
 use regex::Regex;
 use roxmltree::{Error as XmlError, TextPos};
@@ -94,9 +94,12 @@ fn replace_unknown_named_entities(s: &str) -> String {
             match name {
                 "amp" | "lt" | "gt" | "quot" | "apos" => caps[0].to_string(),
                 "nbsp" => "&#160;".to_string(),
-                // Common in WebView / pasted content
-                "copy" | "reg" | "trade" => " ".to_string(),
-                _ => " ".to_string(),
+                // HTML symbols common in WebView / pasted content (not XML predefined entities)
+                "copy" => "&#169;".to_string(),
+                "reg" => "&#174;".to_string(),
+                "trade" => "&#8482;".to_string(),
+                // Undefined named entity: escape `&` so XML parses; decoded text stays `&name;`
+                _ => format!("&amp;{name};"),
             }
         })
         .into_owned()
@@ -289,5 +292,32 @@ mod tests {
             .find(|n| n.has_tag_name("node"))
             .expect("node");
         assert_eq!(n.attribute("text"), Some("a&b<c"));
+    }
+
+    #[test]
+    fn html_symbol_entities_decode_to_characters() {
+        let raw = r#"<hierarchy><node text="A&copy;B&reg;C&trade;D" bounds="[0,0][1,1]"/></hierarchy>"#;
+        let (s, _) = preprocess_uiautomator_xml(raw);
+        let doc = roxmltree::Document::parse(&s).expect("parse");
+        let n = doc
+            .descendants()
+            .find(|n| n.has_tag_name("node"))
+            .expect("node");
+        assert_eq!(
+            n.attribute("text"),
+            Some("A\u{A9}B\u{AE}C\u{2122}D")
+        );
+    }
+
+    #[test]
+    fn unknown_named_entity_preserved_as_literal_in_text() {
+        let raw = r#"<hierarchy><node text="x&madeup;y" bounds="[0,0][1,1]"/></hierarchy>"#;
+        let (s, _) = preprocess_uiautomator_xml(raw);
+        let doc = roxmltree::Document::parse(&s).expect("parse");
+        let n = doc
+            .descendants()
+            .find(|n| n.has_tag_name("node"))
+            .expect("node");
+        assert_eq!(n.attribute("text"), Some("x&madeup;y"));
     }
 }

@@ -652,6 +652,16 @@ pub fn validate_coordinates(x: i32, y: i32) -> Result<(), String> {
     Ok(())
 }
 
+/// Reject a lone `tap_x` or `tap_y` so callers do not skip the tap and act on the wrong focus target.
+pub fn validate_tap_coordinate_pair(tap_x: Option<i32>, tap_y: Option<i32>) -> Result<(), String> {
+    match (tap_x, tap_y) {
+        (Some(_), None) | (None, Some(_)) => Err(
+            "tap_x and tap_y must both be set or both omitted".to_string(),
+        ),
+        _ => Ok(()),
+    }
+}
+
 /// Android `adb shell input text` encoding: `%` → `%%`, space → `%s`. ASCII printable only.
 pub fn encode_adb_input_text(text: &str) -> Result<String, String> {
     if text.len() > MAX_INPUT_TEXT_BYTES {
@@ -825,6 +835,17 @@ pub async fn adb_keyevent(adb: &PathBuf, serial: &str, keycode: i32) -> Result<S
     run_adb_shell(adb, serial, &["input", "keyevent", &keycode.to_string()]).await
 }
 
+/// Shell pipeline to set the device clipboard: try Clipper broadcast, then `content insert`.
+/// Must not end with a forced success (`|| true`); otherwise paste can succeed while the
+/// clipboard still holds stale text.
+fn unicode_clipboard_set_shell(escaped_text: &str) -> String {
+    format!(
+        "am broadcast -a clipper.set -e text '{escaped_text}' 2>/dev/null || \
+         content insert --uri content://com.android.providers.clipboard/primary \
+           --bind text:s:'{escaped_text}' 2>/dev/null"
+    )
+}
+
 /// Type Unicode text into the focused field via clipboard paste.
 ///
 /// Strategy: write text to the device clipboard via `content insert`, then paste with Ctrl+V.
@@ -847,13 +868,8 @@ pub async fn adb_type_text_unicode(
     // Shell-escape the text to prevent injection: replace ' with '"'"'
     let escaped = text.replace('\'', "'\"'\"'");
 
-    // Write to clipboard via content provider (API 24+).
-    let clip_cmd = format!(
-        "am broadcast -a clipper.set -e text '{escaped}' 2>/dev/null || \
-         content insert --uri content://com.android.providers.clipboard/primary \
-           --bind text:s:'{escaped}' 2>/dev/null || true"
-    );
-    run_adb_shell(adb, serial, &["sh", "-c", &clip_cmd]).await.ok();
+    let clip_cmd = unicode_clipboard_set_shell(&escaped);
+    run_adb_shell(adb, serial, &["sh", "-c", &clip_cmd]).await?;
 
     // Paste via Ctrl+V (META_CTRL_ON=4096, KEYCODE_V=50).
     run_adb_shell(
@@ -908,6 +924,37 @@ mod tests {
     #[test]
     fn encode_rejects_unicode() {
         assert!(encode_adb_input_text("café").is_err());
+    }
+
+    #[test]
+    fn validate_tap_coordinate_pair_accepts_both_or_neither() {
+        assert!(validate_tap_coordinate_pair(None, None).is_ok());
+        assert!(validate_tap_coordinate_pair(Some(0), Some(0)).is_ok());
+    }
+
+    #[test]
+    fn validate_tap_coordinate_pair_rejects_lone_axis() {
+        assert!(validate_tap_coordinate_pair(Some(10), None).is_err());
+        assert!(validate_tap_coordinate_pair(None, Some(20)).is_err());
+    }
+
+    #[test]
+    fn unicode_clipboard_shell_tries_broadcast_then_content_insert_without_forcing_success() {
+        let cmd = unicode_clipboard_set_shell("hello");
+        assert!(
+            !cmd.contains("|| true"),
+            "clipboard pipeline must not mask failures or paste can insert stale clipboard text"
+        );
+        assert!(cmd.contains("clipper.set"));
+        assert!(cmd.contains("content://com.android.providers.clipboard/primary"));
+        assert!(cmd.contains("'hello'"));
+    }
+
+    #[test]
+    fn unicode_clipboard_shell_escapes_apostrophe_for_single_quoted_segments() {
+        let escaped = "it's".replace('\'', "'\"'\"'");
+        let cmd = unicode_clipboard_set_shell(&escaped);
+        assert!(cmd.contains(&format!("'{escaped}'")));
     }
 
     #[test]

@@ -1027,13 +1027,8 @@ impl AndroidMcpServer {
         if p.text.is_empty() {
             return Ok(CallToolResult::error(vec![Content::text("text must not be empty")]));
         }
-        match (p.tap_x, p.tap_y) {
-            (Some(_), None) | (None, Some(_)) => {
-                return Ok(CallToolResult::error(vec![Content::text(
-                    "tap_x and tap_y must both be set or both omitted",
-                )]));
-            }
-            _ => {}
+        if let Err(e) = ui_automation::validate_tap_coordinate_pair(p.tap_x, p.tap_y) {
+            return Ok(CallToolResult::error(vec![Content::text(e)]));
         }
 
         let (settings, _) = settings_manager::load_settings();
@@ -1094,6 +1089,9 @@ impl AndroidMcpServer {
         if let Some(ref s) = p.device_serial {
             validate_device_serial(s)?;
         }
+        if let Err(e) = ui_automation::validate_tap_coordinate_pair(p.tap_x, p.tap_y) {
+            return Ok(CallToolResult::error(vec![Content::text(e)]));
+        }
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
@@ -1132,13 +1130,8 @@ impl AndroidMcpServer {
         if p.text.is_empty() {
             return Ok(CallToolResult::error(vec![Content::text("text must not be empty")]));
         }
-        match (p.tap_x, p.tap_y) {
-            (Some(_), None) | (None, Some(_)) => {
-                return Ok(CallToolResult::error(vec![Content::text(
-                    "tap_x and tap_y must both be set or both omitted",
-                )]));
-            }
-            _ => {}
+        if let Err(e) = ui_automation::validate_tap_coordinate_pair(p.tap_x, p.tap_y) {
+            return Ok(CallToolResult::error(vec![Content::text(e)]));
         }
 
         let (settings, _) = settings_manager::load_settings();
