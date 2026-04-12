@@ -7,4 +7,5 @@ pub mod mcp;
 pub mod settings;
 pub mod studio;
 pub mod telemetry;
+pub mod ui_hierarchy;
 pub mod variant;

@@ -206,6 +206,8 @@ keynobi/
 │   │   │   └── DevicePanel.tsx        # Devices + AVD management (Create/Delete/Wipe)
 │   │   ├── logcat/
 │   │   │   └── LogcatPanel.tsx        # Real-time logcat, filters, crash detection
+│   │   ├── ui-hierarchy/
+│   │   │   └── LayoutViewerPanel.tsx  # UI Automator / accessibility hierarchy tree
 │   │   ├── health/
 │   │   │   └── HealthPanel.tsx        # Java, SDK, ADB, Gradle, disk checks
 │   │   ├── settings/

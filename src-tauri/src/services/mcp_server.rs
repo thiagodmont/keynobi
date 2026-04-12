@@ -1,7 +1,7 @@
 /**
  * MCP Server for Keynobi
  *
- * Exposes build, logcat, device, and project tools to Claude Code (or any
+ * Exposes build, logcat, device, UI hierarchy, UI automation (tap/type/swipe/keys), and project tools to Claude Code (or any
  * MCP-compatible client) via the Model Context Protocol (2025-11-25 spec).
  *
  * Two modes:
@@ -26,6 +26,9 @@ use crate::services::app_inspector;
 use crate::services::build_inspector;
 use crate::services::device_inspector;
 use crate::services::health_inspector;
+use crate::services::ui_automation;
+use crate::services::ui_hierarchy;
+use crate::services::ui_hierarchy_parse;
 use crate::FsState;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rmcp::{
@@ -253,6 +256,16 @@ pub struct GetAppRuntimeStateParams {
 pub struct GetBuildConfigParams {
     #[schemars(description = "Gradle module name (subdirectory), e.g. app (default) or feature-login")]
     pub module: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetUiHierarchyParams {
+    #[schemars(description = "ADB device serial (from list_devices). Uses first online device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(description = "If true, return only interactive rows (bounds, text, actions) — smaller than full tree. Default false.")]
+    pub interactive_only: Option<bool>,
+    #[schemars(description = "Max rows when interactive_only is true (default 80, max 500).")]
+    pub max_interactive_rows: Option<u32>,
 }
 
 // ── Tool implementations ──────────────────────────────────────────────────────
@@ -798,6 +811,516 @@ impl AndroidMcpServer {
         Ok(CallToolResult::structured(json!({ "count": devices.len(), "devices": structured })))
     }
 
+    /// Dump UI Automator / accessibility hierarchy for the focused window (native Views + Compose).
+    #[tool(description = "Dump the focused window UI hierarchy (UI Automator accessibility XML) for native Views and Jetpack Compose. Includes capped shell context (dumpsys window/display, wm size/density) and tries uiautomator dump --compressed when supported. Use interactive_only for a compact list of tappable fields.")]
+    async fn get_ui_hierarchy(
+        &self,
+        Parameters(p): Parameters<GetUiHierarchyParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or pass device_serial from list_devices.",
+            )])),
+        };
+
+        let snapshot = match ui_hierarchy::capture_ui_hierarchy_snapshot(&adb, &serial).await {
+            Ok(s) => s,
+            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+        };
+
+        if p.interactive_only.unwrap_or(false) {
+            let max = p.max_interactive_rows.unwrap_or(80).clamp(1, 500) as usize;
+            let rows = ui_hierarchy_parse::extract_interactive_rows(&snapshot.root, max);
+            return Ok(CallToolResult::structured(json!({
+                "interactiveOnly": true,
+                "capturedAt": snapshot.captured_at,
+                "truncated": snapshot.truncated,
+                "warnings": snapshot.warnings,
+                "screenHash": snapshot.screen_hash,
+                "interactiveCount": snapshot.interactive_count,
+                "foregroundActivity": snapshot.foreground_activity,
+                "layoutContext": snapshot.layout_context,
+                "commandLog": snapshot.command_log,
+                "rows": rows,
+            })));
+        }
+
+        match serde_json::to_value(&snapshot) {
+            Ok(v) => Ok(CallToolResult::structured(v)),
+            Err(e) => Err(McpError::internal_error(e.to_string(), None)),
+        }
+    }
+
+    /// Search the focused window hierarchy for nodes matching text, content-desc, resource-id, class, or package. Returns centers for use with ui_tap. Requires at least one primary filter (not only clickable/editable flags).
+    #[tool(description = "Find UI elements on the focused screen by text, content-desc, resource-id, class, or package. Returns treePath, bounds, centerX/centerY, flags, and screenHash from a fresh uiautomator dump. Use centerX/centerY with ui_tap. At least one of textContains, textEquals, contentDescContains, resourceIdEquals, resourceIdContains, classContains, or packageEquals is required.")]
+    async fn find_ui_elements(
+        &self,
+        Parameters(p): Parameters<ui_automation::FindUiElementsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+        if !ui_automation::find_query_has_primary_filter(&p) {
+            return Ok(CallToolResult::error(vec![Content::text(
+                "find_ui_elements requires at least one primary filter: textContains, textEquals, contentDescContains, resourceIdEquals, resourceIdContains, classContains, or packageEquals (non-empty).",
+            )]));
+        }
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or pass device_serial from list_devices.",
+            )])),
+        };
+
+        let snapshot = match ui_automation::capture_ui_snapshot(&adb, &serial).await {
+            Ok(s) => s,
+            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+        };
+
+        let max = p.max_results.unwrap_or(ui_automation::DEFAULT_FIND_RESULTS as u32) as usize;
+        let matches = ui_automation::find_ui_elements(&snapshot, &p, max);
+        let matches_json: Vec<serde_json::Value> = matches
+            .iter()
+            .filter_map(|m| serde_json::to_value(m).ok())
+            .collect();
+
+        Ok(CallToolResult::structured(json!({
+            "capturedAt": snapshot.captured_at,
+            "truncated": snapshot.truncated,
+            "warnings": snapshot.warnings,
+            "screenHash": snapshot.screen_hash,
+            "foregroundActivity": snapshot.foreground_activity,
+            "commandLog": snapshot.command_log,
+            "matchCount": matches_json.len(),
+            "matches": matches_json,
+        })))
+    }
+
+    /// Resolve the direct parent of a node by layout treePath (same paths as find_ui_elements / Layout tab).
+    #[tool(description = "Given a non-empty layout treePath from find_ui_elements or the Layout viewer, returns the direct parent node (treePath, bounds, centerX/centerY, flags) plus screenHash from a fresh dump. Optional expect_screen_hash refuses if the UI changed. Empty treePath is invalid (root has no parent).")]
+    async fn find_ui_parent(
+        &self,
+        Parameters(p): Parameters<ui_automation::FindUiParentParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or pass device_serial from list_devices.",
+            )])),
+        };
+
+        let snapshot = if p.expect_screen_hash.is_some() {
+            match ui_automation::ensure_screen_hash(
+                &adb,
+                &serial,
+                p.expect_screen_hash.as_deref(),
+            )
+            .await
+            {
+                Ok(s) => s,
+                Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            }
+        } else {
+            match ui_automation::capture_ui_snapshot(&adb, &serial).await {
+                Ok(s) => s,
+                Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            }
+        };
+
+        let (normalized_path, parent) = match ui_automation::find_ui_parent_from_snapshot(
+            &snapshot,
+            &p.tree_path,
+        ) {
+            Ok(v) => v,
+            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+        };
+
+        let parent_json = match serde_json::to_value(&parent) {
+            Ok(v) => v,
+            Err(e) => return Err(McpError::internal_error(e.to_string(), None)),
+        };
+
+        Ok(CallToolResult::structured(json!({
+            "capturedAt": snapshot.captured_at,
+            "truncated": snapshot.truncated,
+            "warnings": snapshot.warnings,
+            "screenHash": snapshot.screen_hash,
+            "foregroundActivity": snapshot.foreground_activity,
+            "commandLog": snapshot.command_log,
+            "treePath": normalized_path,
+            "parentTreePath": parent.tree_path,
+            "parent": parent_json,
+        })))
+    }
+
+    /// Tap device coordinates (usually from find_ui_elements centerX/centerY).
+    #[tool(description = "Tap at device pixel coordinates. Use find_ui_elements for centerX/centerY. Optional expect_screen_hash re-dumps the hierarchy and refuses if the screen changed.")]
+    async fn ui_tap(
+        &self,
+        Parameters(p): Parameters<ui_automation::UiTapParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or pass device_serial from list_devices.",
+            )])),
+        };
+
+        if let Err(e) = ui_automation::validate_coordinates(p.x, p.y) {
+            return Ok(CallToolResult::error(vec![Content::text(e)]));
+        }
+
+        if p.expect_screen_hash.is_some() {
+            if let Err(e) = ui_automation::ensure_screen_hash(
+                &adb,
+                &serial,
+                p.expect_screen_hash.as_deref(),
+            )
+            .await
+            {
+                return Ok(CallToolResult::error(vec![Content::text(e)]));
+            }
+        }
+
+        match ui_automation::adb_input_tap(&adb, &serial, p.x, p.y).await {
+            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(if msg.is_empty() {
+                format!("tap ({}, {})", p.x, p.y)
+            } else {
+                format!("tap ({}, {}): {msg}", p.x, p.y)
+            })])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    /// Type text via adb input text (ASCII-oriented; use tap_x/tap_y to focus a field first).
+    #[tool(description = "Send text with adb shell input text after an optional tap to focus. ASCII printable only; spaces encoded automatically; no emoji. Optional expect_screen_hash verifies hierarchy before acting. For complex text use clipboard workflows outside this tool.")]
+    async fn ui_type_text(
+        &self,
+        Parameters(p): Parameters<ui_automation::UiTypeTextParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+        if p.text.is_empty() {
+            return Ok(CallToolResult::error(vec![Content::text("text must not be empty")]));
+        }
+        match (p.tap_x, p.tap_y) {
+            (Some(_), None) | (None, Some(_)) => {
+                return Ok(CallToolResult::error(vec![Content::text(
+                    "tap_x and tap_y must both be set or both omitted",
+                )]));
+            }
+            _ => {}
+        }
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or pass device_serial from list_devices.",
+            )])),
+        };
+
+        if let Some(ref expected) = p.expect_screen_hash {
+            if let Err(e) = ui_automation::ensure_screen_hash(
+                &adb,
+                &serial,
+                Some(expected.as_str()),
+            )
+            .await
+            {
+                return Ok(CallToolResult::error(vec![Content::text(e)]));
+            }
+        }
+
+        if let (Some(x), Some(y)) = (p.tap_x, p.tap_y) {
+            if let Err(e) = ui_automation::validate_coordinates(x, y) {
+                return Ok(CallToolResult::error(vec![Content::text(e)]));
+            }
+            if let Err(e) = ui_automation::adb_input_tap(&adb, &serial, x, y).await {
+                return Ok(CallToolResult::error(vec![Content::text(e)]));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+
+        if p.clear_before.unwrap_or(false) {
+            if let Err(e) = ui_automation::adb_clear_field(&adb, &serial).await {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "clear_before failed: {e}"
+                ))]));
+            }
+        }
+
+        match ui_automation::adb_input_text(&adb, &serial, &p.text).await {
+            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(if msg.is_empty() {
+                "input text sent".to_string()
+            } else {
+                msg
+            })])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    /// Clear the focused editable field (Ctrl+A then Delete). Optional tap to focus first.
+    #[tool(description = "Clear the focused editable field using Ctrl+A then Delete. Use tap_x/tap_y to focus a field first. Call before ui_type_text to replace instead of append, or use the clear_before flag on ui_type_text directly.")]
+    async fn clear_focused_input(
+        &self,
+        Parameters(p): Parameters<ui_automation::ClearFocusedInputParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or pass device_serial from list_devices.",
+            )])),
+        };
+
+        if let (Some(x), Some(y)) = (p.tap_x, p.tap_y) {
+            if let Err(e) = ui_automation::validate_coordinates(x, y) {
+                return Ok(CallToolResult::error(vec![Content::text(e)]));
+            }
+            if let Err(e) = ui_automation::adb_input_tap(&adb, &serial, x, y).await {
+                return Ok(CallToolResult::error(vec![Content::text(e)]));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+
+        match ui_automation::adb_clear_field(&adb, &serial).await {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text("field cleared")])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    /// Type Unicode text (emoji, non-ASCII) via clipboard paste (API 24+).
+    #[tool(description = "Type Unicode text (including emoji and non-ASCII) into a focused field using clipboard paste (Ctrl+V). Requires API 24+. Use ui_type_text for ASCII-only input. Optional tap_x/tap_y to focus a field first. Optional clear_before to replace existing content.")]
+    async fn ui_type_text_unicode(
+        &self,
+        Parameters(p): Parameters<ui_automation::UiTypeTextUnicodeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+        if p.text.is_empty() {
+            return Ok(CallToolResult::error(vec![Content::text("text must not be empty")]));
+        }
+        match (p.tap_x, p.tap_y) {
+            (Some(_), None) | (None, Some(_)) => {
+                return Ok(CallToolResult::error(vec![Content::text(
+                    "tap_x and tap_y must both be set or both omitted",
+                )]));
+            }
+            _ => {}
+        }
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or pass device_serial from list_devices.",
+            )])),
+        };
+
+        if let (Some(x), Some(y)) = (p.tap_x, p.tap_y) {
+            if let Err(e) = ui_automation::validate_coordinates(x, y) {
+                return Ok(CallToolResult::error(vec![Content::text(e)]));
+            }
+            if let Err(e) = ui_automation::adb_input_tap(&adb, &serial, x, y).await {
+                return Ok(CallToolResult::error(vec![Content::text(e)]));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+
+        if p.clear_before.unwrap_or(false) {
+            if let Err(e) = ui_automation::adb_clear_field(&adb, &serial).await {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "clear_before failed: {e}"
+                ))]));
+            }
+        }
+
+        match ui_automation::adb_type_text_unicode(&adb, &serial, &p.text).await {
+            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(if msg.is_empty() {
+                "unicode text sent via clipboard".to_string()
+            } else {
+                msg
+            })])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    /// Send an allowlisted keyevent (Back, Home, Enter, etc.).
+    #[tool(description = "Send a keyevent by name: Back, Home, Enter, Delete, Tab, Escape, Search, Menu, AppSwitch, DpadUp, DpadDown, DpadLeft, DpadRight, DpadCenter.")]
+    async fn send_ui_key(
+        &self,
+        Parameters(p): Parameters<ui_automation::SendUiKeyParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+        let code = match ui_automation::resolve_ui_key_code(&p.key) {
+            Ok(c) => c,
+            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+        };
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or pass device_serial from list_devices.",
+            )])),
+        };
+
+        match ui_automation::adb_keyevent(&adb, &serial, code).await {
+            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(if msg.is_empty() {
+                format!("keyevent {code}")
+            } else {
+                format!("keyevent {code}: {msg}")
+            })])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    /// Swipe or long-press (same start/end with duration_ms).
+    #[tool(description = "Swipe from x1,y1 to x2,y2 in device pixels. Optional duration_ms; same coordinates + duration performs a long-press.")]
+    async fn ui_swipe(
+        &self,
+        Parameters(p): Parameters<ui_automation::UiSwipeParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or pass device_serial from list_devices.",
+            )])),
+        };
+
+        match ui_automation::adb_input_swipe(
+            &adb,
+            &serial,
+            p.x1,
+            p.y1,
+            p.x2,
+            p.y2,
+            p.duration_ms,
+        )
+        .await
+        {
+            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(if msg.is_empty() {
+                "swipe OK".to_string()
+            } else {
+                msg
+            })])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    /// Grant a runtime permission (pm grant).
+    #[tool(description = "Grant an android.permission.* runtime permission to an installed package. Package must be a normal applicationId; permission must start with android.permission.")]
+    async fn grant_runtime_permission(
+        &self,
+        Parameters(p): Parameters<ui_automation::GrantRuntimePermissionParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+        validate_package_name(&p.package)?;
+        if let Err(e) = ui_automation::validate_runtime_permission(&p.permission) {
+            return Ok(CallToolResult::error(vec![Content::text(e)]));
+        }
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or pass device_serial from list_devices.",
+            )])),
+        };
+
+        match ui_automation::adb_pm_grant(&adb, &serial, &p.package, &p.permission).await {
+            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(if msg.is_empty() {
+                format!("granted {} to {}", p.permission, p.package)
+            } else {
+                msg
+            })])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    /// Poll until a UI element matching filters appears (or timeout elapses).
+    #[tool(description = "Poll the device hierarchy until an element matching the given filters appears, or timeout_ms elapses (default 15s, max 30s). Returns the same shape as find_ui_elements on success. Requires at least one primary filter. Use after ui_tap or navigation to wait for the next screen to load.")]
+    async fn wait_for_element(
+        &self,
+        Parameters(p): Parameters<ui_automation::WaitForElementParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or pass device_serial from list_devices.",
+            )])),
+        };
+
+        match ui_automation::wait_for_element(&adb, &serial, &p).await {
+            Ok((snapshot, matches)) => {
+                let matches_json: Vec<serde_json::Value> = matches
+                    .iter()
+                    .filter_map(|m| serde_json::to_value(m).ok())
+                    .collect();
+                Ok(CallToolResult::structured(json!({
+                    "found": true,
+                    "capturedAt": snapshot.captured_at,
+                    "screenHash": snapshot.screen_hash,
+                    "foregroundActivity": snapshot.foreground_activity,
+                    "matchCount": matches_json.len(),
+                    "matches": matches_json,
+                })))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
     /// Capture a screenshot from a connected device.
     #[tool(description = "Capture a screenshot from a connected Android device. Returns the image inline.")]
     async fn screenshot(
@@ -830,6 +1353,66 @@ impl AndroidMcpServer {
             Ok(info) => Ok(CallToolResult::structured(json!(info))),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
+    }
+
+    /// Compare current UI state against a baseline screenHash captured earlier.
+    #[tool(description = "Compare current UI state against a baseline screenHash. Returns changed=false if the screen hash matches (UI is identical), or changed=true with all currently interactive (clickable/editable) nodes when the screen changed. Use after ui_tap, ui_swipe, ui_type_text, etc. to verify the action had an effect before taking the next step.")]
+    async fn compare_ui_state(
+        &self,
+        Parameters(p): Parameters<ui_automation::CompareUiStateParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+            Some(s) => s,
+            None => return Ok(CallToolResult::error(vec![Content::text(
+                "No device connected. Connect a device or pass device_serial from list_devices.",
+            )])),
+        };
+
+        let snapshot = match ui_automation::capture_ui_snapshot(&adb, &serial).await {
+            Ok(s) => s,
+            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+        };
+
+        let changed = snapshot.screen_hash != p.baseline_screen_hash;
+
+        if !changed {
+            return Ok(CallToolResult::structured(json!({
+                "changed": false,
+                "message": "UI state is identical to baseline — screen hash unchanged.",
+                "previousHash": p.baseline_screen_hash,
+                "currentHash": snapshot.screen_hash,
+                "capturedAt": snapshot.captured_at,
+                "foregroundActivity": snapshot.foreground_activity,
+                "commandLog": snapshot.command_log,
+            })));
+        }
+
+        let max = p.max_results.unwrap_or(30).clamp(1, 100) as usize;
+        let interactive = ui_automation::collect_interactive_nodes(&snapshot, max);
+        let interactive_json: Vec<serde_json::Value> = interactive
+            .iter()
+            .filter_map(|m| serde_json::to_value(m).ok())
+            .collect();
+
+        Ok(CallToolResult::structured(json!({
+            "changed": true,
+            "message": format!("UI state changed — {} interactive nodes found in new state.", interactive_json.len()),
+            "previousHash": p.baseline_screen_hash,
+            "currentHash": snapshot.screen_hash,
+            "capturedAt": snapshot.captured_at,
+            "foregroundActivity": snapshot.foreground_activity,
+            "truncated": snapshot.truncated,
+            "warnings": snapshot.warnings,
+            "commandLog": snapshot.command_log,
+            "interactiveCount": interactive_json.len(),
+            "interactiveNodes": interactive_json,
+        })))
     }
 
     /// Get installed app details from a device.
@@ -1180,7 +1763,7 @@ impl ServerHandler for AndroidMcpServer {
             "Keynobi MCP Server — AI-first companion for Android development. \
              Tools: build (run_gradle_task, get_build_errors, get_build_log, get_build_config, find_apk_path, run_tests), \
              logcat (start_logcat, get_logcat_entries, get_crash_logs, get_crash_stack_trace), \
-             devices (list_devices, screenshot, get_device_info, install_apk, launch_app, restart_app, dump_app_info, get_memory_info, get_app_runtime_state), \
+             devices (list_devices, get_ui_hierarchy, find_ui_elements, find_ui_parent, ui_tap, ui_type_text, ui_swipe, send_ui_key, grant_runtime_permission, screenshot, get_device_info, install_apk, launch_app, restart_app, dump_app_info, get_memory_info, get_app_runtime_state), \
              project (get_project_info, run_health_check). \
              Prompts: diagnose-crash, full-deploy, build-and-fix. \
              Start with get_project_info and run_health_check to verify the environment.".to_string()

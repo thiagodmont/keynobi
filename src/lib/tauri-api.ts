@@ -280,8 +280,24 @@ export async function setActiveVariant(variant: string): Promise<void> {
 
 // ── Devices ───────────────────────────────────────────────────────────────────
 
-import type { Device, AvdInfo, SystemImageInfo, DeviceDefinition, AvailableSystemImage, SdkDownloadProgress } from "@/bindings";
-export type { Device, AvdInfo, SystemImageInfo, DeviceDefinition, AvailableSystemImage, SdkDownloadProgress };
+import type {
+  Device,
+  AvdInfo,
+  SystemImageInfo,
+  DeviceDefinition,
+  AvailableSystemImage,
+  SdkDownloadProgress,
+  UiHierarchySnapshot,
+} from "@/bindings";
+export type {
+  Device,
+  AvdInfo,
+  SystemImageInfo,
+  DeviceDefinition,
+  AvailableSystemImage,
+  SdkDownloadProgress,
+  UiHierarchySnapshot,
+};
 
 export async function listAdbDevices(): Promise<Device[]> {
   return invoke<Device[]>("list_adb_devices");
@@ -297,6 +313,15 @@ export async function selectDevice(serial: string): Promise<void> {
 
 export async function getSelectedDevice(): Promise<string | null> {
   return invoke<string | null>("get_selected_device");
+}
+
+/** UI Automator / accessibility hierarchy for the focused window (`deviceSerial` null = selected device). */
+export async function dumpUiHierarchy(
+  deviceSerial?: string | null
+): Promise<UiHierarchySnapshot> {
+  return invoke<UiHierarchySnapshot>("dump_ui_hierarchy", {
+    deviceSerial: deviceSerial ?? null,
+  });
 }
 
 export async function installApkOnDevice(

@@ -29,6 +29,7 @@ keynobi/
 │   │   ├── health/             # System health checks
 │   │   ├── layout/             # Shell: Sidebar, StatusBar, PanelContainer, ...
 │   │   ├── logcat/             # Logcat viewer
+│   │   ├── ui-hierarchy/      # Layout / UI Automator tree viewer
 │   │   ├── mcp/               # MCP server panel
 │   │   ├── projects/           # Project switcher and recent projects
 │   │   └── settings/           # Settings panel

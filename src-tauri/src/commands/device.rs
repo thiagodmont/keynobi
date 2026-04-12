@@ -25,7 +25,7 @@ pub struct DeviceListChangedEvent {
 
 /// Validate an ADB device serial against an allowlist.
 /// Allowed: alphanumeric, colon, dot, hyphen, underscore. Max 64 chars.
-fn validate_device_serial(serial: &str) -> Result<(), AppError> {
+pub(crate) fn validate_device_serial(serial: &str) -> Result<(), AppError> {
     if serial.is_empty() {
         return Err(AppError::InvalidInput("Device serial must not be empty".to_string()));
     }

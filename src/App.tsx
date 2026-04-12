@@ -17,6 +17,7 @@ import { HealthPanel, openHealthPanel } from "@/components/health/HealthPanel";
 import { McpPanel } from "@/components/mcp/McpPanel";
 import { BuildPanel } from "@/components/build/BuildPanel";
 import { LogcatPanel } from "@/components/logcat/LogcatPanel";
+import { LayoutViewerPanel } from "@/components/ui-hierarchy/LayoutViewerPanel";
 import { ProjectInfoEditor, openProjectInfoEditor } from "@/components/projects/ProjectInfoEditor";
 import { ProjectSidebar } from "@/components/projects/ProjectSidebar";
 import { DeviceSidebar } from "@/components/device/DeviceSidebar";
@@ -120,6 +121,7 @@ export function App(): JSX.Element {
     registerKeyAndAction({ id: "view.healthCenter", key: "h", metaKey: true, shiftKey: true, label: "Open Health Center", category: "View", action: openHealthPanel });
     registerKeyAndAction({ id: "view.buildPanel", key: "1", metaKey: true, label: "Open Build Panel", category: "View", action: () => setActiveTab("build") });
     registerKeyAndAction({ id: "view.logcatPanel", key: "2", metaKey: true, label: "Open Logcat Panel", category: "View", action: () => setActiveTab("logcat") });
+    registerKeyAndAction({ id: "view.layoutPanel", key: "4", metaKey: true, label: "Open Layout Viewer", category: "View", action: () => setActiveTab("layout") });
     registerKeyAndAction({ id: "view.devicesPanel", key: "3", metaKey: true, label: "Toggle Device Sidebar", category: "View", action: () => toggleDeviceSidebar() });
     registerKeyAndAction({ id: "view.toggleSidebar", key: "b", metaKey: true, label: "Toggle Project Sidebar", category: "View", action: () => toggleSidebar() });
 
@@ -267,6 +269,7 @@ export function App(): JSX.Element {
   const tabs: { id: MainTab; label: string }[] = [
     { id: "build", label: "Build" },
     { id: "logcat", label: "Logcat" },
+    { id: "layout", label: "Layout" },
   ];
 
   return (
@@ -342,6 +345,11 @@ export function App(): JSX.Element {
               </div>
               <div style={{ display: uiState.activeTab === "logcat" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
                 <LogcatPanel />
+              </div>
+              <div style={{ display: uiState.activeTab === "layout" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
+                <AppErrorBoundary>
+                  <LayoutViewerPanel />
+                </AppErrorBoundary>
               </div>
             </div>
           </div>

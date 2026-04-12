@@ -9,7 +9,8 @@ Domain-specific implementation details. These supplement the foundational rules 
 1. [Build System](#build-system)
 2. [Device Management](#device-management)
 3. [Logcat Pipeline](#logcat-pipeline)
-4. [MCP Server](#mcp-server)
+4. [UI hierarchy (layout viewer)](#ui-hierarchy-layout-viewer)
+5. [MCP Server](#mcp-server)
 
 ---
 
@@ -149,6 +150,39 @@ Everything else (level, simple tag/text/package, only_crashes) is handled in Rus
 
 ---
 
+## UI hierarchy (layout viewer)
+
+Black-box capture of the focused window via **UI Automator** (`uiautomator dump`), parsed into a bounded tree for the **Layout** tab and MCP.
+
+### Rust services
+
+- **`services/ui_hierarchy.rs`** — `capture_ui_hierarchy_snapshot` is the single pipeline for the Layout tab, MCP, and UI automation: log `dumpsys activity activities`, `probe_foreground_activity` (first **512 KiB** for a resumed-activity line), `probe_layout_context` (parallel **12s** cap) for capped excerpts of `dumpsys window windows` (**12 KiB**), `dumpsys display` (**8 KiB**), `wm size`, `wm density`, then `dump_hierarchy_xml`. **`dump_hierarchy_xml`** tries `exec-out uiautomator dump --compressed /dev/tty`, then plain `exec-out`, then `shell uiautomator dump` with and without `--compressed` + `exec-out cat` of `window_dump.xml` paths. Raw XML is capped at **4 MiB**; dump attempts use a **25s** timeout. `strip_ui_automator_noise` trims junk around the XML. `build_snapshot` attaches `UiLayoutContext` + `command_log` (every adb line). See `ui_hierarchy_parse::tests::parses_minified_single_line_xml` for **`--compressed`**-style whitespace.
+- **`services/ui_hierarchy_parse.rs`** — `roxmltree` → `UiNode` tree with caps: **8000** nodes, depth **64**, attribute strings **2048** chars. Parses **`selected`** (e.g. bottom nav). `compute_screen_hash` (SHA-256) fingerprints interactive-relevant fields. `extract_interactive_rows` produces flat rows for MCP (`interactive_only`).
+- **`services/ui_automation.rs`** — MCP UI control: `capture_ui_snapshot` (same dump path as Layout), DFS **`find_ui_elements`** with `treePath` aligned to the layout viewer (`0`, `0.1`, …), **`find_ui_parent_from_snapshot`** / **`normalize_tree_path`** / **`get_node_at_path`** for one-step parent traversal, match cap **100**, string fields truncated for JSON; **`encode_adb_input_text`** for `adb shell input text`; allowlisted **`send_ui_key`** keyevents; `adb_input_tap` / `adb_input_swipe` with coordinate bounds **0..=16384**; **`grant_runtime_permission`** validates `android.permission.*` + package. Unit-tested with hierarchy fixtures (no device).
+- **Fixtures** — `services/fixtures/ui_hierarchy_*.xml` for unit tests (classic View + Compose-shaped XML).
+
+### IPC
+
+- **Command** — `dump_ui_hierarchy` in `commands/ui_hierarchy.rs`; `device_serial: Option<String>` (omit → use `DeviceState.selected_serial`). Reuses `commands::device::validate_device_serial`.
+- **Types** — `models/ui_hierarchy.rs`: `UiNode` (includes **`selected`**), `UiLayoutContext` (window/display/wm excerpts), `UiHierarchySnapshot` (`ts-rs` → `src/bindings/`; includes `layoutContext`, `command_log`). `UiInteractiveRow` is MCP-only (schemars, no TS).
+
+### Frontend
+
+- **`lib/ui-hierarchy-display.ts`** — `collapseBoringChains` (synthetic `android.view.KeynobiCollapsedWrappers` rows), `defaultExpandDepthForNodeCount`, search path helpers (`pathOverridesToRevealPath` expands through the match; **`pathOverridesToRevealAncestorPath`** opens only prefixes so a row is visible without expanding its subtree), **`parentLayoutPath`** (direct parent index path for **Find parent**), `formatRowSnippet` / `isMergedTapTargetHeuristic`, package inference for toolbar, and **wireframe** helpers (`parseBoundsRect`, `flattenNodesWithBounds`, `inferScreenSizeFromRects`, `pickNodePathAtDevicePoint`, `prepareWireframeDrawList`, cap **`WIREFRAME_RECT_CAP`**). Vitest covers collapse, paths, parent path vs tree, and wireframe parsing/hit-test.
+- **`LayoutWireframe.tsx`** — SVG wireframe beside the tree; click uses SVG CTM inverse + `pickNodePathAtDevicePoint` (smallest-area win). Paths match the tree (`data-layout-path` + `scrollIntoView` on selection).
+- **`layout-detail-get-node.ts`** — `layoutDetailGetNode(selectedNode)` builds `NodeDetailPanel`’s `getNode` callback. Do not pass Solid `Show`’s render-prop `n` into props (proxy / not callable at runtime). Vitest: `layout-detail-get-node.test.ts`.
+- **`layoutViewer.store.ts`** + **`LayoutViewerPanel.tsx`** — refresh; **Hide boilerplate**, interactive-only, filter with prev/next match, **wireframe | tree | detail** layout, dominant package line; on **selection** (wireframe or tree), merge ancestor path overrides, force **`globalExpand`** back to `auto` if needed, then deferred `scrollIntoView`; footer shows `commandLog` from the latest snapshot.
+- **Tab / shortcut** — `MainTab` includes `"layout"`; **Cmd+4** (`view.layoutPanel`).
+
+### MCP
+
+- **`get_ui_hierarchy`** — `GetUiHierarchyParams`: optional `device_serial` (resolved like `restart_app`), `interactive_only`, `max_interactive_rows` (default **80**, max **500**). Full mode returns `UiHierarchySnapshot` JSON; interactive mode returns `{ rows, screenHash, commandLog, … }` without the full tree.
+- **`find_ui_elements`** — `FindUiElementsParams` (in `ui_automation.rs`, re-used by the tool router): optional `device_serial`, text/id/class/package filters, optional `clickable_only` / `editable_only` / `enabled_only`, `max_results` (default **50**, max **100**). Requires at least one primary filter (not flags alone). Returns `matches`, `screenHash`, `commandLog`, etc.
+- **`find_ui_parent`** — `FindUiParentParams`: optional `device_serial`, required non-empty `treePath` (same convention as the Layout tab), optional `expect_screen_hash`. Returns `parent` (`UiElementMatch` shape), `parentTreePath`, and snapshot metadata. Empty `treePath` is rejected (display root has no parent).
+- **`ui_tap`**, **`ui_type_text`**, **`ui_swipe`**, **`send_ui_key`**, **`grant_runtime_permission`** — parameter structs in `ui_automation.rs`; optional `device_serial`; `ui_tap` / `ui_type_text` support optional `expect_screen_hash` against a fresh dump.
+
+---
+
 ## MCP Server
 
 ### Defining a New Tool
@@ -187,6 +221,7 @@ All MCP tools that accept strings must validate inputs before acting:
 - Package names: `validate_package_name(pkg)?` — `com.example.app` format
 - Device serials: `validate_device_serial(serial)?` — alphanumeric + `-:._`
 - APK paths: `self.validate_apk_path(path).await?` — must be within project build outputs
+- UI automation: coordinates bounded in `ui_automation`; runtime permissions via `validate_runtime_permission` (`android.permission.*`); keyevents via allowlist in `resolve_ui_key_code`
 
 ### Headless vs GUI Mode
 

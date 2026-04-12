@@ -2,7 +2,7 @@ import { createStore } from "solid-js/store";
 import { createSignal } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
 
-export type MainTab = "build" | "logcat";
+export type MainTab = "build" | "logcat" | "layout";
 
 interface UIState {
   activeTab: MainTab;
