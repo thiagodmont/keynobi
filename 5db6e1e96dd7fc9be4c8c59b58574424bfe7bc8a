@@ -1,0 +1,33 @@
+src-tauri/src/services/mcp_server.rs
+  a4e51a7064238ab9 1030-1031,1092-1094,1133-1134
+src-tauri/src/services/ui_hierarchy.rs
+  a4e51a7064238ab9 327-374,378-379,391-394,471-491
+src/components/ui-hierarchy/LayoutWireframe.test.tsx
+  a4e51a7064238ab9 1-46
+src-tauri/src/services/ui_hierarchy_xml_sanitize.rs
+  a4e51a7064238ab9 4,97-102,296-322
+src/components/ui-hierarchy/LayoutWireframe.tsx
+  a4e51a7064238ab9 63,183,215,220,229,235,237,246
+src-tauri/src/services/ui_automation.rs
+  a4e51a7064238ab9 655-664,838-848,871-872,930-959
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "5db6e1e96dd7fc9be4c8c59b58574424bfe7bc8a",
+  "prompts": {
+    "a4e51a7064238ab9": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "73f95455-3ac8-4a06-8121-2b9932e8a5ce",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 226,
+      "total_deletions": 36,
+      "accepted_lines": 224,
+      "overriden_lines": 0
+    }
+  }
+}
