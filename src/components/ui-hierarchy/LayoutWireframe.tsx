@@ -28,6 +28,13 @@ function clientToDevice(
   return { x: p.x, y: p.y };
 }
 
+const LEGEND_ITEMS = [
+  { color: "#60a5fa", label: "Interactive" },
+  { color: "#2dd4bf", label: "Text" },
+  { color: "#f59e0b", label: "Compose" },
+  { color: "var(--border)", label: "Container" },
+] as const;
+
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 10;
 const ZOOM_FACTOR = 1.15;
@@ -324,37 +331,32 @@ export function LayoutWireframe(props: LayoutWireframeProps): JSX.Element {
         }}
       >
         {/* Color legend */}
-        {(
-          [
-            { color: "#60a5fa", label: "Interactive" },
-            { color: "#2dd4bf", label: "Text" },
-            { color: "#f59e0b", label: "Compose" },
-            { color: "var(--border)", label: "Container" },
-          ] as const
-        ).map((item) => (
-          <span
-            style={{
-              display: "inline-flex",
-              "align-items": "center",
-              gap: "4px",
-              "font-size": "10px",
-              color: "var(--text-muted)",
-            }}
-          >
+        <For each={LEGEND_ITEMS}>
+          {(item) => (
             <span
               style={{
-                display: "inline-block",
-                width: "10px",
-                height: "10px",
-                border: `2px solid ${item.color}`,
-                "border-radius": "2px",
-                background: "transparent",
-                "flex-shrink": "0",
+                display: "inline-flex",
+                "align-items": "center",
+                gap: "4px",
+                "font-size": "10px",
+                color: "var(--text-muted)",
               }}
-            />
-            {item.label}
-          </span>
-        ))}
+            >
+              <span
+                style={{
+                  display: "inline-block",
+                  width: "10px",
+                  height: "10px",
+                  border: `2px solid ${item.color}`,
+                  "border-radius": "2px",
+                  background: "transparent",
+                  "flex-shrink": "0",
+                }}
+              />
+              {item.label}
+            </span>
+          )}
+        </For>
         <span
           style={{ "font-size": "10px", color: "var(--text-muted)", "margin-left": "auto" }}
         >

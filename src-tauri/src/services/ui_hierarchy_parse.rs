@@ -367,7 +367,7 @@ fn walk_rows_limited(
 
 fn parse_bounds(bounds: &str) -> Option<(i32, i32)> {
     // "[0,0][1080,2400]" -> width, height
-    let s = bounds.replace("][", ",").replace('[', "").replace(']', "");
+    let s: String = bounds.replace("][", ",").chars().filter(|&c| c != '[' && c != ']').collect();
     let parts: Vec<i32> = s.split(',').filter_map(|p| p.trim().parse().ok()).collect();
     if parts.len() != 4 {
         return None;
@@ -378,7 +378,7 @@ fn parse_bounds(bounds: &str) -> Option<(i32, i32)> {
 }
 
 pub(crate) fn center_from_bounds(bounds: &str) -> Option<(i32, i32)> {
-    let s = bounds.replace("][", ",").replace('[', "").replace(']', "");
+    let s: String = bounds.replace("][", ",").chars().filter(|&c| c != '[' && c != ']').collect();
     let parts: Vec<i32> = s.split(',').filter_map(|p| p.trim().parse().ok()).collect();
     if parts.len() != 4 {
         return None;

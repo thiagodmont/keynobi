@@ -123,13 +123,7 @@ fn known_entity_len(s: &str) -> Option<usize> {
         return Some(6);
     }
     let rest = s.strip_prefix("&#")?;
-    let hexpart = if let Some(r) = rest.strip_prefix('x') {
-        Some(r)
-    } else if let Some(r) = rest.strip_prefix('X') {
-        Some(r)
-    } else {
-        None
-    };
+    let hexpart = rest.strip_prefix('x').or_else(|| rest.strip_prefix('X'));
     if let Some(hexpart) = hexpart {
         let mut n = 0usize;
         for b in hexpart.as_bytes() {

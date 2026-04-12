@@ -598,7 +598,8 @@ export function LayoutViewerPanel(): JSX.Element {
   };
 
   createEffect(() => {
-    layoutViewerState.snapshot?.capturedAt;
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    layoutViewerState.snapshot?.capturedAt; // reactive dependency: reset tree state on each new snapshot
     setPathOverrides({});
     setGlobalExpand("auto");
   });
@@ -921,7 +922,7 @@ export function LayoutViewerPanel(): JSX.Element {
                     root={r}
                     selectedPath={layoutViewerState.selectedLayoutPath}
                     onSelectPath={(p) => setLayoutSelectedPath(p)}
-                    screenshotB64={layoutViewerState.snapshot?.screenshotB64}
+                    screenshotB64={layoutViewerState.snapshot?.screenshotB64 ?? undefined}
                   />
                   <div
                     ref={(el) => {
@@ -1066,7 +1067,7 @@ export function LayoutViewerPanel(): JSX.Element {
                     style={{
                       margin: "0 0 6px 0",
                       "font-size": "10px",
-                      "line-height": 1.35,
+                      "line-height": "1.35",
                       "font-family": "var(--font-mono, ui-monospace, monospace)",
                       "white-space": "pre-wrap",
                       "word-break": "break-all",

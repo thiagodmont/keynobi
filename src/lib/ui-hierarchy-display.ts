@@ -10,7 +10,7 @@ const TEXT_PREVIEW_ROW = 48;
 
 /** Parse bounds `[l,t][r,b]` → width × height (null if invalid). */
 export function boundsWidthHeight(bounds: string): { w: number; h: number } | null {
-  const s = bounds.replace(/\]\[/g, ",").replace(/[\[\]]/g, "");
+  const s = bounds.replace(/\]\[/g, ",").replace(/[[\]]/g, "");
   const parts = s.split(",").map((p) => Number(p.trim()));
   if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return null;
   const w = Math.max(0, parts[2] - parts[0]);
@@ -230,7 +230,7 @@ export function inferDominantPackage(root: UiNode): string | null {
 /** Primary row snippet: text and/or content-desc (never hide desc when text empty). */
 export function formatRowSnippet(n: UiNode, interactiveOnly: boolean): { text: string; desc: string } {
   let text = n.text.length > 0 ? truncatePreview(n.text, TEXT_PREVIEW_ROW) : "";
-  let desc =
+  const desc =
     n.contentDesc.length > 0 ? truncatePreview(n.contentDesc, TEXT_PREVIEW_ROW) : "";
   if (interactiveOnly && !text && !desc) {
     const inherited = firstDescendantTextOrDesc(n, 10);
@@ -391,7 +391,7 @@ export function pathOverridesToRevealAncestorPath(path: string): Record<string, 
 export function parseBoundsRect(
   bounds: string
 ): { left: number; top: number; right: number; bottom: number } | null {
-  const s = bounds.replace(/\]\[/g, ",").replace(/[\[\]]/g, "");
+  const s = bounds.replace(/\]\[/g, ",").replace(/[[\]]/g, "");
   const parts = s.split(",").map((p) => Number(p.trim()));
   if (parts.length !== 4 || parts.some((n) => Number.isNaN(n))) return null;
   const left = parts[0]!;

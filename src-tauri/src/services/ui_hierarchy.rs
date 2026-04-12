@@ -6,7 +6,7 @@ use crate::services::ui_hierarchy_parse::{
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::Utc;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::timeout;
@@ -29,7 +29,7 @@ const MAX_WM_LINE_BYTES: usize = 512;
 const DUMPSYS_ACTIVITY_PREFIX_BYTES: usize = 512 * 1024;
 
 /// One shell-invokable `adb` line (path + `-s` + args).
-pub fn format_adb_command(adb: &PathBuf, serial: &str, args: &[&str]) -> String {
+pub fn format_adb_command(adb: &Path, serial: &str, args: &[&str]) -> String {
     let mut s = adb.display().to_string();
     s.push_str(" -s ");
     s.push_str(serial);

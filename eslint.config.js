@@ -58,6 +58,8 @@ export default [
         InputEvent: "readonly",
         ClipboardEvent: "readonly",
         WheelEvent: "readonly",
+        SVGSVGElement: "readonly",
+        CSS: "readonly",
         // JS built-ins
         structuredClone: "readonly",
         Promise: "readonly",

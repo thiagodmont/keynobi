@@ -819,7 +819,7 @@ pub async fn adb_input_text(adb: &PathBuf, serial: &str, text: &str) -> Result<S
 }
 
 pub async fn adb_keyevent(adb: &PathBuf, serial: &str, keycode: i32) -> Result<String, String> {
-    if keycode < 0 || keycode > 300 {
+    if !(0..=300).contains(&keycode) {
         return Err("keycode out of range".to_string());
     }
     run_adb_shell(adb, serial, &["input", "keyevent", &keycode.to_string()]).await
