@@ -1,0 +1,27 @@
+src/styles/theme.css
+  2e3908ffa4deb7f0 21
+src/components/ui/Button/Button.module.css
+  2e3908ffa4deb7f0 25
+src/components/ui/Resizable/Resizable.tsx
+  2e3908ffa4deb7f0 1,53-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "c7e4782f2e29f59d05ee7134d6feee9ec8b55b91",
+  "prompts": {
+    "2e3908ffa4deb7f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19cfcb80-79b1-4db1-a427-00058336c4de",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 9,
+      "total_deletions": 2,
+      "accepted_lines": 9,
+      "overriden_lines": 0
+    }
+  }
+}
