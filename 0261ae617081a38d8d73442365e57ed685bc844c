@@ -1,0 +1,31 @@
+src/components/ui/Kbd/index.ts
+  2e3908ffa4deb7f0 1-2
+src/components/ui/Kbd/Kbd.module.css
+  2e3908ffa4deb7f0 1-14
+src/components/ui/index.ts
+  2e3908ffa4deb7f0 10
+src/components/ui/Kbd/Kbd.tsx
+  2e3908ffa4deb7f0 1-15
+src/components/ui/Kbd/Kbd.test.tsx
+  2e3908ffa4deb7f0 1-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "0261ae617081a38d8d73442365e57ed685bc844c",
+  "prompts": {
+    "2e3908ffa4deb7f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19cfcb80-79b1-4db1-a427-00058336c4de",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 52,
+      "total_deletions": 0,
+      "accepted_lines": 52,
+      "overriden_lines": 0
+    }
+  }
+}
