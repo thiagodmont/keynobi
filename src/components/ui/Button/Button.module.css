@@ -22,7 +22,7 @@
 /* Variants */
 .primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-fg);
   border: 1px solid transparent;
 }
 

@@ -1,4 +1,4 @@
-import { createSignal, type JSX } from "solid-js";
+import { createSignal, onCleanup, type JSX } from "solid-js";
 import styles from "./Resizable.module.css";
 
 export interface ResizableProps {
@@ -49,6 +49,12 @@ export function Resizable(props: ResizableProps): JSX.Element {
   function onDblClick() {
     props.onReset?.();
   }
+
+  onCleanup(() => {
+    if (rafId !== undefined) cancelAnimationFrame(rafId);
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+  });
 
   return (
     <div
