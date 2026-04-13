@@ -65,3 +65,8 @@ export type { LogcatKind } from "./LogcatKind";
 export type { EntryCategory } from "./EntryCategory";
 export type { LogStats } from "./LogStats";
 export type { LogcatFilterSpec } from "./LogcatFilterSpec";
+
+// UI hierarchy (layout viewer)
+export type { UiNode } from "./UiNode";
+export type { UiLayoutContext } from "./UiLayoutContext";
+export type { UiHierarchySnapshot } from "./UiHierarchySnapshot";

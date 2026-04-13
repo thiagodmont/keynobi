@@ -18,4 +18,8 @@ pub mod process_manager;
 pub mod settings_manager;
 #[cfg(feature = "telemetry")]
 pub mod telemetry_sentry;
+pub mod ui_hierarchy;
+pub mod ui_automation;
+pub mod ui_hierarchy_parse;
+pub mod ui_hierarchy_xml_sanitize;
 pub mod variant_manager;

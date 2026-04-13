@@ -13,6 +13,7 @@ The distributed app and installer are named **Keynobi**.
 2. [Layout Overview](#2-layout-overview)
 3. [Build Panel](#3-build-panel)
 4. [Logcat Panel](#4-logcat-panel)
+4a. [Layout Panel](#4a-layout-panel)
 5. [Devices Sidebar](#5-devices-sidebar)
 6. [Status Bar](#6-status-bar)
 7. [Settings](#7-settings)
@@ -50,14 +51,14 @@ The app automatically restores the last-active project. No need to re-open the f
 
 ## 2. Layout Overview
 
-The window has a **title bar** (draggable; shows the app name and current project), a **tab bar** with two tabs, **sidebars** on the left and right, and a **status bar** at the bottom.
+The window has a **title bar** (draggable; shows the app name and current project), a **tab bar** with **Build**, **Logcat**, and **Layout**, **sidebars** on the left and right, and a **status bar** at the bottom.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
 │  Title bar (app name — project name)                                        │
-├───┬──[ Build ]──[ Logcat ]──────────────────────────────────────────────┬───┤
+├───┬──[ Build ]──[ Logcat ]──[ Layout ]───────────────────────────────────┬───┤
 │ P │                                                                      │ D │
-│ r │  Active tab content (Build or Logcat)                                 │ e │
+│ r │  Active tab content (Build, Logcat, or Layout)                        │ e │
 │ o │                                                                      │ v │
 │ j │                                                                      │ i │
 │ e │                                                                      │ c │
@@ -71,6 +72,7 @@ The window has a **title bar** (draggable; shows the app name and current projec
 
 - **Build** tab — Gradle build output and error list
 - **Logcat** tab — Android device log streaming
+- **Layout** tab — UI Automator / accessibility hierarchy for the focused screen (native Views and Jetpack Compose)
 - **Projects** sidebar (left) — project registry, open/switch projects (**Cmd+B** toggles collapse)
 - **Devices** sidebar (right) — connected devices and emulators (**Cmd+3** toggles visibility)
 
@@ -261,6 +263,55 @@ The pipeline automatically classifies entries by tag into categories (visible in
 
 ---
 
+## 4a. Layout Panel
+
+The **Layout** tab shows the **accessibility / UI Automator** tree for whatever is on screen on the **selected device** — the same surface **UI Automator**, **TalkBack**, and MCP automation see. **Jetpack Compose** is primary: composables draw a **semantics** tree that merges into this view (not the full composable call tree). **Android Views / XML** appear as usual when not using Compose.
+
+### How to use
+
+1. Select an **online** device in the **Devices** sidebar (right).
+2. Open the **Layout** tab (**Cmd+4**).
+3. Click **Refresh**. Keynobi runs official **platform-tools** commands: `dumpsys activity activities`, capped excerpts from **`dumpsys window windows`**, **`dumpsys display`**, **`wm size`**, **`wm density`**, then **`uiautomator dump`** (tries **`--compressed`** first when the device supports it, then plain dump and file fallbacks). The XML is parsed into a tree.
+
+### Toolbar
+
+- **Refresh** — Capture the current hierarchy (snapshot; not live video).
+- **Interactive only** — Hide branches that are not clickable/scrollable/editable and do not carry text or content description (similar to automation “actionable” lists). Parent rows may show a short **inherited** snippet from a descendant so clickable Compose groups stay readable.
+- **Hide boilerplate** — Collapse long chains of single-child, same-bounds, empty wrappers (sibling-safe: parallel subtrees like status bar vs content stay separate).
+- **Filter** — Narrow the tree by substring in class, resource id, text, content description, or package. **Prev / Next** steps through matches and expands the path to each hit.
+- **Expand all / Collapse all** — Control disclosure state. Default expansion depth scales with tree size (deeper on smaller dumps).
+
+### Tree and detail
+
+- The **left column** is a **wireframe** (SVG) in **device pixel** coordinates: every node with valid bounds is drawn as a rectangle, using the same filtered tree as the list (interactive only, hide boilerplate, search). **Click a region** to select that node: the **tree expands only along the path** from the root to that row (ancestors open; the node’s own subtree stays collapsed unless you expand it or shallow auto-expand applies), then **scrolls** the row into view, highlights it, and updates the **detail** panel. Overlapping rects prefer the **smallest** containing hit (so nested controls win). Very large trees may show only the first **2000** rects (a short notice appears); refine filters to reduce count.
+- Rows show **class**, a **resource-id** chip (when present), **text** and **content-desc** previews, bounds with **width×height**, and badges such as **minified** (short obfuscated class names), **merged target** (typical Compose tap parent), **selected** (e.g. tab), and **Compose** where applicable. The dominant **package** for the dump is shown under the toolbar; it is omitted on rows when it matches, to reduce noise.
+- Click a row to select it; the **right-hand detail** panel lists every field (full class, id, text, descriptions, flags) and offers **Copy bounds**, **Copy id**, **Copy summary**, and **Find parent** (selects the **direct parent** of the current row in the displayed tree—the node one level up; disabled on the display root). Accessibility flags in dumps are not always accurate (for example, some `HorizontalScrollView` nodes report `scrollable=false`); use them as hints.
+
+### Metadata
+
+Below the tree, Keynobi shows capture time, a **screen hash** (for comparing whether the screen changed), interactive node count, parser **warnings**, and a best-effort **foreground activity** line from `dumpsys activity activities` when available. The same refresh still records capped window/display/`wm` excerpts on the snapshot (for MCP and other tooling); they are **not** shown in this panel.
+
+At the **bottom of the Layout panel**, after a successful refresh, Keynobi lists **ADB commands (this capture)** — every `adb -s …` line run for that refresh so you can paste them into a terminal.
+
+### Deeper inspection (debuggable apps, Compose-first)
+
+The Layout tab is the right default for **automation-aligned** trees. It does **not** replace Android Studio’s **full composable / modifier** view.
+
+- **Semantics and stable ids** — Follow [Semantics in Compose](https://developer.android.com/develop/ui/compose/accessibility/semantics): `Modifier.testTag`, `testTagsAsResourceId` (for `resource-id` in dumps), `contentDescription`, and custom `Modifier.semantics` where needed. See also [Inspect and debug (Compose accessibility)](https://developer.android.com/develop/ui/compose/accessibility/inspect-debug).
+- **Layout Inspector (Android Studio)** — For **debuggable** builds, use [Layout Inspector](https://developer.android.com/studio/debug/layout-inspector) for composable parameters, semantics properties (e.g. hidden from accessibility), and recompositions. Studio can enable **view attribute inspection** via the global setting below.
+- **View attribute inspection (optional, terminal)** — On a device or emulator: `adb shell settings put global debug_view_attributes 1` (and `0` or `delete` to turn off). This is primarily for **Layout Inspector** and richer **View** metadata on **debuggable** processes; impact on `uiautomator dump` XML varies by OS and app—treat any extra fields as a bonus, not a guarantee.
+- **Semantics text via tests (terminal)** — Run instrumented UI tests from your project, for example `./gradlew :app:connectedDebugAndroidTest`, and use `ComposeTestRule.onRoot().printToLog("tag")` (or similar) so the **semantics tree** is printed to **logcat**—official AndroidX testing, useful when the XML snapshot is not enough.
+
+**Reference:** the `uiautomator` shell command is part of the platform ([AOSP `cmds/uiautomator`](https://github.com/aosp-mirror/platform_frameworks_base/tree/master/cmds/uiautomator)); **adb** only transports it ([adb module](https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/main)). For a broad menu of other official-style `adb` / `dumpsys` / `logcat` ideas (validate on your API level), see the community gist [Adb useful commands](https://gist.github.com/Pulimet/5013acf2cd5b28e55036c82c91bd56d8).
+
+### Limitations
+
+- **Snapshot only** — the UI may change between refreshes; rapid polling can occasionally fail or return empty dumps.
+- **Compose vs composables** — You see **merged semantics** as exposed to accessibility, not every composable or internal modifier chain. Shallow trees are normal when children merge.
+- **`FLAG_SECURE`** — can hide or obscure content from accessibility dumps.
+
+---
+
 ## 5. Devices Sidebar
 
 The **Devices** sidebar on the right lists connected physical devices and available emulators. **Cmd+3** toggles this sidebar open and closed.
@@ -361,6 +412,7 @@ Click **Refresh** to re-run all checks.
 | **Cmd+Shift+V** | Select Build Variant |
 | **Cmd+1** | Open Build tab |
 | **Cmd+2** | Open Logcat tab |
+| **Cmd+4** | Open Layout tab |
 | **Cmd+3** | Toggle Device Sidebar |
 | **Cmd+B** | Toggle Project Sidebar |
 | **Cmd+,** | Open Settings |
@@ -440,6 +492,14 @@ claude mcp add --transport stdio keynobi -- "/Applications/Keynobi.app/Contents/
 | `clear_logcat` | Clear the in-memory logcat buffer |
 | `get_logcat_stats` | Logcat statistics (counts by level, crashes, packages) |
 | `list_devices` | Connected ADB devices (JSON) |
+| `get_ui_hierarchy` | Focused window UI tree from UI Automator (full JSON, or `interactive_only` for compact rows) |
+| `find_ui_elements` | Fresh dump + search by text, content-desc, resource-id, class, or package; returns `treePath`, bounds, `centerX`/`centerY`, flags, and `screenHash` (needs at least one primary filter) |
+| `find_ui_parent` | Given a non-empty `treePath` from `find_ui_elements` or the Layout tab, returns the **direct parent** node (same match shape: `treePath`, bounds, centers, flags) plus `screenHash`; optional `expect_screen_hash` like `ui_tap` |
+| `ui_tap` | Tap device pixel coordinates (use centers from `find_ui_elements`); optional `expect_screen_hash` to refuse if the UI changed |
+| `ui_type_text` | `adb shell input text` after optional tap to focus; ASCII-oriented (no emoji); optional `expect_screen_hash` |
+| `ui_swipe` | Swipe or long-press (`duration_ms`, same start/end) in device pixels |
+| `send_ui_key` | Allowlisted keyevent (Back, Home, Enter, Delete, Tab, D-pad, Menu, AppSwitch, …) |
+| `grant_runtime_permission` | `pm grant` for `android.permission.*` on a package |
 | `screenshot` | Capture a screenshot (inline image) |
 | `get_device_info` | SDK level, model, screen, battery |
 | `dump_app_info` | App version, install path, activities |
@@ -482,6 +542,8 @@ The server exposes project files as readable resources:
 5. You fix in your editor
 6. Ask Claude: *"Run it on the connected emulator"*
 7. Claude calls `list_devices()` to pick a device, then `install_apk()` and `launch_app()`
+
+For **UI automation**, use `find_ui_elements` to locate controls, then `ui_tap` on the returned centers. Use **`find_ui_parent`** with a match’s `treePath` to walk up one level in the same tree as the Layout viewer (repeat to reach an ancestor container). Pass `screenHash` from the find result into `expect_screen_hash` on tap/type when you need to avoid acting on a stale screen. `ui_type_text` is limited by what `adb input text` supports (mostly ASCII).
 
 ### MCP Status Indicator
 

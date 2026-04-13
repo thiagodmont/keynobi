@@ -16,6 +16,7 @@ use commands::device::{
     refresh_devices, select_device, start_device_polling, stop_app_on_device, stop_avd,
     stop_device_polling, wipe_avd_data_cmd,
 };
+use commands::ui_hierarchy::dump_ui_hierarchy;
 use commands::file_system::{
     get_application_id, get_gradle_root, get_last_active_project, get_project_app_info,
     get_project_root, list_projects, open_project, pin_project, remove_project,
@@ -334,6 +335,7 @@ pub fn run() {
             wipe_avd_data_cmd,
             list_available_system_images_cmd,
             download_system_image_cmd,
+            dump_ui_hierarchy,
             // Logcat
             start_logcat,
             stop_logcat,
