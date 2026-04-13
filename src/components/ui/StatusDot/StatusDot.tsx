@@ -16,8 +16,8 @@ export function StatusDot(props: StatusDotProps): JSX.Element {
         styles.root,
         styles[props.status],
         styles[props.size ?? "md"],
-        props.class ?? "",
-      ].join(" ")}
+        props.class,
+      ].filter(Boolean).join(" ")}
       role="img"
       aria-label={props.status}
     />
