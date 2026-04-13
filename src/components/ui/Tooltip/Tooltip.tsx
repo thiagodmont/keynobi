@@ -1,4 +1,4 @@
-import { createSignal, onCleanup, Show, type JSX } from "solid-js";
+import { createSignal, createUniqueId, onCleanup, Show, type JSX } from "solid-js";
 import styles from "./Tooltip.module.css";
 
 export interface TooltipProps {
@@ -12,6 +12,7 @@ export interface TooltipProps {
 
 export function Tooltip(props: TooltipProps): JSX.Element {
   const [visible, setVisible] = createSignal(false);
+  const tooltipId = createUniqueId();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   function show() {
@@ -29,6 +30,7 @@ export function Tooltip(props: TooltipProps): JSX.Element {
   return (
     <div
       class={[styles.wrapper, props.class].filter(Boolean).join(" ")}
+      aria-describedby={visible() ? tooltipId : undefined}
       onMouseEnter={show}
       onMouseLeave={hide}
       onFocus={show}
@@ -37,6 +39,7 @@ export function Tooltip(props: TooltipProps): JSX.Element {
       {props.children}
       <Show when={visible()}>
         <div
+          id={tooltipId}
           class={[styles.tooltip, styles[props.position ?? "top"]].join(" ")}
           role="tooltip"
         >
