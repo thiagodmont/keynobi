@@ -46,17 +46,72 @@ pub fn parse_build_config(
         .to_string_lossy()
         .to_string();
 
+    let compile_sdk = extract_int_value(&content, &["compileSdk", "compileSdkVersion"]);
+    let min_sdk     = extract_int_value(&content, &["minSdk", "minSdkVersion"]);
+    let target_sdk  = extract_int_value(&content, &["targetSdk", "targetSdkVersion"]);
+
+    let conv = if compile_sdk.is_none() || min_sdk.is_none() || target_sdk.is_none() {
+        sdk_from_convention_plugins(gradle_root)
+    } else {
+        (None, None, None)
+    };
+
     Ok(BuildConfig {
         module: module.to_string(),
         file: relative,
-        compile_sdk: extract_int_value(&content, &["compileSdk", "compileSdkVersion"]),
-        min_sdk: extract_int_value(&content, &["minSdk", "minSdkVersion"]),
-        target_sdk: extract_int_value(&content, &["targetSdk", "targetSdkVersion"]),
+        compile_sdk: compile_sdk.or(conv.0),
+        min_sdk:     min_sdk.or(conv.1),
+        target_sdk:  target_sdk.or(conv.2),
         application_id: extract_string_value(&content, "applicationId"),
-        namespace: extract_string_value(&content, "namespace"),
-        build_types: parse_build_types(&content),
+        namespace:      extract_string_value(&content, "namespace"),
+        build_types:    parse_build_types(&content),
         product_flavors: parse_product_flavors(&content),
     })
+}
+
+/// Recursively visit every `.kt` file under `dir`, calling `f` with its text content.
+fn walk_kt_files(dir: &Path, f: &mut impl FnMut(&str)) {
+    let read_dir = match std::fs::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(_) => return,
+    };
+    for entry in read_dir.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk_kt_files(&path, f);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("kt") {
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                f(&content);
+            }
+        }
+    }
+}
+
+/// Scan `{gradle_root}/build-logic/` for SDK levels defined in convention plugin `.kt` files.
+/// Returns `(compile_sdk, min_sdk, target_sdk)`.
+fn sdk_from_convention_plugins(gradle_root: &Path) -> (Option<i64>, Option<i64>, Option<i64>) {
+    let build_logic = gradle_root.join("build-logic");
+    if !build_logic.is_dir() {
+        return (None, None, None);
+    }
+
+    let mut compile_sdk: Option<i64> = None;
+    let mut min_sdk: Option<i64> = None;
+    let mut target_sdk: Option<i64> = None;
+
+    walk_kt_files(&build_logic, &mut |content| {
+        if compile_sdk.is_none() {
+            compile_sdk = extract_int_value(content, &["compileSdk", "compileSdkVersion"]);
+        }
+        if min_sdk.is_none() {
+            min_sdk = extract_int_value(content, &["minSdk", "minSdkVersion"]);
+        }
+        if target_sdk.is_none() {
+            target_sdk = extract_int_value(content, &["targetSdk", "targetSdkVersion"]);
+        }
+    });
+
+    (compile_sdk, min_sdk, target_sdk)
 }
 
 fn read_build_gradle(module_dir: &Path) -> Result<(PathBuf, String), String> {
@@ -76,18 +131,31 @@ fn read_build_gradle(module_dir: &Path) -> Result<(PathBuf, String), String> {
 
 /// Extract an integer value for any of the given key names.
 /// Matches: `compileSdk = 35`, `compileSdkVersion(35)`, `compileSdkVersion = 35`
+/// Also finds the key when it appears mid-line, e.g. `defaultConfig { minSdk = 24 }`.
 #[allow(clippy::manual_strip)]
 fn extract_int_value(content: &str, keys: &[&str]) -> Option<i64> {
     for key in keys {
         for line in content.lines() {
             let trimmed = line.trim();
-            if trimmed.starts_with(key) {
-                // Guard: next char must be a separator, not part of a longer identifier
-                let after = trimmed[key.len()..].chars().next();
+            // Find all occurrences of the key in the line (typically just one).
+            let mut search_from = 0;
+            while let Some(offset) = trimmed[search_from..].find(key) {
+                let abs = search_from + offset;
+                // Guard: char before must not be alphanumeric or '_' (no prefix)
+                if abs > 0 {
+                    let prev = trimmed[..abs].chars().next_back();
+                    if matches!(prev, Some(c) if c.is_alphanumeric() || c == '_') {
+                        search_from = abs + key.len();
+                        continue;
+                    }
+                }
+                // Guard: char immediately after the key must not be alphanumeric or '_'
+                let after = trimmed[abs + key.len()..].chars().next();
                 if matches!(after, Some(c) if c.is_alphanumeric() || c == '_') {
+                    search_from = abs + key.len();
                     continue;
                 }
-                let rest = trimmed[key.len()..].trim_start();
+                let rest = trimmed[abs + key.len()..].trim_start();
                 let digits: String = rest
                     .trim_start_matches(['=', '(', ' '])
                     .chars()
@@ -96,6 +164,7 @@ fn extract_int_value(content: &str, keys: &[&str]) -> Option<i64> {
                 if let Ok(n) = digits.parse::<i64>() {
                     return Some(n);
                 }
+                search_from = abs + key.len();
             }
         }
     }
@@ -474,5 +543,57 @@ android {
         );
         let cfg = parse_build_config(dir.path(), "app").unwrap();
         assert_eq!(cfg.application_id.as_deref(), Some("com.example.app"));
+    }
+
+    #[test]
+    fn sdk_levels_from_convention_plugin_kt() {
+        let dir = tempfile::tempdir().unwrap();
+        let mod_dir = dir.path().join("app");
+        fs::create_dir_all(&mod_dir).unwrap();
+        fs::write(mod_dir.join("build.gradle.kts"), r#"
+android {
+    defaultConfig {
+        applicationId = "com.example.app"
+    }
+}
+"#).unwrap();
+        let kt_dir = dir.path()
+            .join("build-logic").join("convention").join("src").join("main").join("kotlin");
+        fs::create_dir_all(&kt_dir).unwrap();
+        fs::write(kt_dir.join("KotlinAndroid.kt"), r#"
+fun configureKotlinAndroid(extension: CommonExtension<*, *, *, *, *, *>) {
+    extension.apply {
+        compileSdk = 36
+        defaultConfig {
+            minSdk = 23
+        }
+    }
+}
+"#).unwrap();
+
+        let cfg = parse_build_config(dir.path(), "app").unwrap();
+        assert_eq!(cfg.compile_sdk, Some(36), "compileSdk should come from convention plugin");
+        assert_eq!(cfg.min_sdk, Some(23), "minSdk should come from convention plugin");
+        assert_eq!(cfg.application_id.as_deref(), Some("com.example.app"));
+    }
+
+    #[test]
+    fn sdk_levels_from_build_file_take_precedence_over_convention() {
+        let dir = tempfile::tempdir().unwrap();
+        let mod_dir = dir.path().join("app");
+        fs::create_dir_all(&mod_dir).unwrap();
+        fs::write(mod_dir.join("build.gradle.kts"), r#"
+android {
+    compileSdk = 35
+    defaultConfig { minSdk = 24 }
+}
+"#).unwrap();
+        let kt_dir = dir.path().join("build-logic");
+        fs::create_dir_all(&kt_dir).unwrap();
+        fs::write(kt_dir.join("KotlinAndroid.kt"), "compileSdk = 36\nminSdk = 21\n").unwrap();
+
+        let cfg = parse_build_config(dir.path(), "app").unwrap();
+        assert_eq!(cfg.compile_sdk, Some(35), "module-level compileSdk must win");
+        assert_eq!(cfg.min_sdk, Some(24), "module-level minSdk must win");
     }
 }
