@@ -1,1 +1,2 @@
-// Design system barrel — components added here as each task completes
+// Design system barrel
+export { Icon, type IconProps } from "./Icon";
