@@ -1,0 +1,31 @@
+src/components/ui/Tooltip/Tooltip.module.css
+  2e3908ffa4deb7f0 1-43
+src/components/ui/Tooltip/index.ts
+  2e3908ffa4deb7f0 1-2
+src/components/ui/index.ts
+  2e3908ffa4deb7f0 9
+src/components/ui/Tooltip/Tooltip.test.tsx
+  2e3908ffa4deb7f0 1-58
+src/components/ui/Tooltip/Tooltip.tsx
+  2e3908ffa4deb7f0 1-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "879ce590050e9c37a2ffdbfc168aafa07bdb4873",
+  "prompts": {
+    "2e3908ffa4deb7f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19cfcb80-79b1-4db1-a427-00058336c4de",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 152,
+      "total_deletions": 0,
+      "accepted_lines": 152,
+      "overriden_lines": 0
+    }
+  }
+}
