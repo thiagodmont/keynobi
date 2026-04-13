@@ -1,0 +1,31 @@
+src/components/ui/Badge/Badge.test.tsx
+  2e3908ffa4deb7f0 1-28
+src/components/ui/Badge/Badge.module.css
+  2e3908ffa4deb7f0 1-61
+src/components/ui/Badge/index.ts
+  2e3908ffa4deb7f0 1-2
+src/components/ui/Badge/Badge.tsx
+  2e3908ffa4deb7f0 1-30
+src/components/ui/index.ts
+  2e3908ffa4deb7f0 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "0cb39b29311a9b0ef48cfb73f87bdc52975b0f6d",
+  "prompts": {
+    "2e3908ffa4deb7f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19cfcb80-79b1-4db1-a427-00058336c4de",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 122,
+      "total_deletions": 0,
+      "accepted_lines": 122,
+      "overriden_lines": 0
+    }
+  }
+}
