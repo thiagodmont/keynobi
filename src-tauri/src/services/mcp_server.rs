@@ -442,8 +442,14 @@ impl AndroidMcpServer {
                     if let Some(list) = variant_manager::parse_variants_from_gradle(path, &content) {
                         if !list.variants.is_empty() {
                             let names: Vec<&str> = list.variants.iter().map(|v| v.name.as_str()).collect();
+                            let active = self
+                                .get_gradle_root()
+                                .await
+                                .and_then(|r| {
+                                    settings_manager::get_active_variant_for_project(&r.to_string_lossy())
+                                });
                             return Ok(CallToolResult::structured(json!({
-                                "active": null,
+                                "active": active,
                                 "variants": names,
                             })));
                         }
@@ -460,7 +466,18 @@ impl AndroidMcpServer {
         &self,
         Parameters(p): Parameters<SetVariantParams>,
     ) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::success(vec![Content::text(format!("Active variant set to: {}", p.variant))]))
+        if let Some(root) = self.get_gradle_root().await {
+            let path = root.to_string_lossy().to_string();
+            if let Err(e) = settings_manager::set_active_variant_for_project(&path, &p.variant) {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed to persist active variant: {e}"
+                ))]));
+            }
+        }
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Active variant set to: {}",
+            p.variant
+        ))]))
     }
 
     /// Find the output APK path for a given build variant.
@@ -808,7 +825,17 @@ impl AndroidMcpServer {
             "kind": format!("{:?}", d.device_kind).to_lowercase(),
         })).collect();
 
-        Ok(CallToolResult::structured(json!({ "count": devices.len(), "devices": structured })))
+        let any_offline = structured.iter().any(|d| d["state"] == "offline");
+        let hint: Option<&str> = if any_offline {
+            Some("One or more devices are offline. Try: adb kill-server && adb start-server, then reconnect.")
+        } else {
+            None
+        };
+        Ok(CallToolResult::structured(json!({
+            "count": devices.len(),
+            "devices": structured,
+            "hint": hint,
+        })))
     }
 
     /// Dump UI Automator / accessibility hierarchy for the focused window (native Views + Compose).
@@ -847,16 +874,27 @@ impl AndroidMcpServer {
                 "screenHash": snapshot.screen_hash,
                 "interactiveCount": snapshot.interactive_count,
                 "foregroundActivity": snapshot.foreground_activity,
-                "layoutContext": snapshot.layout_context,
-                "commandLog": snapshot.command_log,
+                "layoutContext": {
+                    "wmSize": snapshot.layout_context.wm_size,
+                    "wmDensity": snapshot.layout_context.wm_density,
+                },
                 "rows": rows,
             })));
         }
 
-        match serde_json::to_value(&snapshot) {
-            Ok(v) => Ok(CallToolResult::structured(v)),
-            Err(e) => Err(McpError::internal_error(e.to_string(), None)),
-        }
+        Ok(CallToolResult::structured(json!({
+            "capturedAt": snapshot.captured_at,
+            "truncated": snapshot.truncated,
+            "warnings": snapshot.warnings,
+            "screenHash": snapshot.screen_hash,
+            "interactiveCount": snapshot.interactive_count,
+            "foregroundActivity": snapshot.foreground_activity,
+            "layoutContext": {
+                "wmSize": snapshot.layout_context.wm_size,
+                "wmDensity": snapshot.layout_context.wm_density,
+            },
+            "root": serde_json::to_value(&snapshot.root).unwrap_or(serde_json::Value::Null),
+        })))
     }
 
     /// Search the focused window hierarchy for nodes matching text, content-desc, resource-id, class, or package. Returns centers for use with ui_tap. Requires at least one primary filter (not only clickable/editable flags).
@@ -901,7 +939,6 @@ impl AndroidMcpServer {
             "warnings": snapshot.warnings,
             "screenHash": snapshot.screen_hash,
             "foregroundActivity": snapshot.foreground_activity,
-            "commandLog": snapshot.command_log,
             "matchCount": matches_json.len(),
             "matches": matches_json,
         })))
@@ -963,7 +1000,6 @@ impl AndroidMcpServer {
             "warnings": snapshot.warnings,
             "screenHash": snapshot.screen_hash,
             "foregroundActivity": snapshot.foreground_activity,
-            "commandLog": snapshot.command_log,
             "treePath": normalized_path,
             "parentTreePath": parent.tree_path,
             "parent": parent_json,
@@ -1382,7 +1418,6 @@ impl AndroidMcpServer {
                 "currentHash": snapshot.screen_hash,
                 "capturedAt": snapshot.captured_at,
                 "foregroundActivity": snapshot.foreground_activity,
-                "commandLog": snapshot.command_log,
             })));
         }
 
@@ -1402,7 +1437,6 @@ impl AndroidMcpServer {
             "foregroundActivity": snapshot.foreground_activity,
             "truncated": snapshot.truncated,
             "warnings": snapshot.warnings,
-            "commandLog": snapshot.command_log,
             "interactiveCount": interactive_json.len(),
             "interactiveNodes": interactive_json,
         })))
