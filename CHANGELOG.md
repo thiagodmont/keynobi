@@ -7,6 +7,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.12] — 2026-04-13
+
+### Added
+- add Layout Viewer for UI Automator accessibility hierarchy
+
+### Fixed
+- update ESLint config and improve LayoutViewerPanel and LayoutWireframe components
+
+---
+
 ## [0.1.11] — 2026-04-10
 
 ### Added
