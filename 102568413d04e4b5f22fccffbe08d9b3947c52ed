@@ -1,0 +1,23 @@
+src-tauri/src/services/mcp_server.rs
+  d1ddf0617d3c9e27 828-838
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "102568413d04e4b5f22fccffbe08d9b3947c52ed",
+  "prompts": {
+    "d1ddf0617d3c9e27": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89ef7551-9822-46f9-9cf9-6eea7f7050ff",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 1,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    }
+  }
+}
