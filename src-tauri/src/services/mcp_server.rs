@@ -442,8 +442,14 @@ impl AndroidMcpServer {
                     if let Some(list) = variant_manager::parse_variants_from_gradle(path, &content) {
                         if !list.variants.is_empty() {
                             let names: Vec<&str> = list.variants.iter().map(|v| v.name.as_str()).collect();
+                            let active = self
+                                .get_gradle_root()
+                                .await
+                                .and_then(|r| {
+                                    settings_manager::get_active_variant_for_project(&r.to_string_lossy())
+                                });
                             return Ok(CallToolResult::structured(json!({
-                                "active": null,
+                                "active": active,
                                 "variants": names,
                             })));
                         }
@@ -460,7 +466,18 @@ impl AndroidMcpServer {
         &self,
         Parameters(p): Parameters<SetVariantParams>,
     ) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::success(vec![Content::text(format!("Active variant set to: {}", p.variant))]))
+        if let Some(root) = self.get_gradle_root().await {
+            let path = root.to_string_lossy().to_string();
+            if let Err(e) = settings_manager::set_active_variant_for_project(&path, &p.variant) {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Failed to persist active variant: {e}"
+                ))]));
+            }
+        }
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Active variant set to: {}",
+            p.variant
+        ))]))
     }
 
     /// Find the output APK path for a given build variant.

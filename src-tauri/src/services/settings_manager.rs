@@ -91,6 +91,54 @@ pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
     Ok(())
 }
 
+/// Read `last_build_variant` for the given project path from a specific settings file.
+/// Matches by `ProjectEntry.path` or `ProjectEntry.gradle_root`.
+/// Used directly in unit tests; production code uses `get_active_variant_for_project`.
+pub fn get_active_variant_for_project_path(
+    settings_path: &std::path::Path,
+    project_path: &str,
+) -> Option<String> {
+    let (settings, _) = load_settings_from_path(settings_path);
+    settings
+        .recent_projects
+        .iter()
+        .find(|e| {
+            e.path == project_path
+                || e.gradle_root.as_deref() == Some(project_path)
+        })
+        .and_then(|e| e.last_build_variant.clone())
+}
+
+/// Persist `variant` as `last_build_variant` for the given project path.
+/// No-op (no error) if the project is not found in recent_projects.
+pub fn set_active_variant_for_project_path(
+    settings_path: &std::path::Path,
+    project_path: &str,
+    variant: &str,
+) -> Result<(), String> {
+    let (mut settings, _) = load_settings_from_path(settings_path);
+    if let Some(entry) = settings.recent_projects.iter_mut().find(|e| {
+        e.path == project_path || e.gradle_root.as_deref() == Some(project_path)
+    }) {
+        entry.last_build_variant = Some(variant.to_string());
+        let json = serde_json::to_string_pretty(&settings)
+            .map_err(|e| format!("Failed to serialize settings: {e}"))?;
+        std::fs::write(settings_path, json)
+            .map_err(|e| format!("Failed to write settings: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Production wrapper: get active variant from the default settings file.
+pub fn get_active_variant_for_project(project_path: &str) -> Option<String> {
+    get_active_variant_for_project_path(&settings_file(), project_path)
+}
+
+/// Production wrapper: set active variant in the default settings file.
+pub fn set_active_variant_for_project(project_path: &str, variant: &str) -> Result<(), String> {
+    set_active_variant_for_project_path(&settings_file(), project_path, variant)
+}
+
 /// Delete the settings file and return defaults.
 pub fn reset_settings() -> Result<AppSettings, String> {
     let path = settings_file();
@@ -342,5 +390,58 @@ mod tests {
         assert_eq!(settings.appearance.ui_font_size, 14, "valid field must be loaded");
         // The typo "fontSizee" is silently ignored by serde(default) —
         // our helper only logs a warning, it doesn't change the return value.
+    }
+}
+
+#[cfg(test)]
+mod variant_tests {
+    use super::*;
+    use std::fs;
+
+    fn write_settings(path: &std::path::Path, content: &str) {
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, content).unwrap();
+    }
+
+    #[test]
+    fn set_and_get_active_variant_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings_path = dir.path().join("settings.json");
+        let initial = serde_json::json!({
+            "lastActiveProject": "/proj/myapp",
+            "recentProjects": [{
+                "id": "abc123",
+                "path": "/proj/myapp",
+                "name": "myapp",
+                "gradleRoot": null,
+                "lastOpened": "2026-01-01T00:00:00Z",
+                "pinned": false,
+                "lastBuildVariant": null,
+                "lastDevice": null
+            }]
+        });
+        write_settings(&settings_path, &initial.to_string());
+
+        set_active_variant_for_project_path(&settings_path, "/proj/myapp", "demoDebug").unwrap();
+        let result = get_active_variant_for_project_path(&settings_path, "/proj/myapp");
+        assert_eq!(result, Some("demoDebug".to_string()));
+    }
+
+    #[test]
+    fn get_active_variant_returns_none_for_unknown_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings_path = dir.path().join("settings.json");
+        write_settings(&settings_path, "{}");
+        let result = get_active_variant_for_project_path(&settings_path, "/proj/unknown");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn set_active_variant_is_noop_for_unknown_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let settings_path = dir.path().join("settings.json");
+        write_settings(&settings_path, "{}");
+        let result = set_active_variant_for_project_path(&settings_path, "/proj/unknown", "debug");
+        assert!(result.is_ok());
     }
 }
