@@ -1,0 +1,61 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 500;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
+}
+
+/* Variants */
+.default {
+  background: var(--bg-quaternary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.success {
+  background: rgba(76, 175, 80, 0.12);
+  color: var(--success);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.error {
+  background: rgba(241, 76, 76, 0.12);
+  color: var(--error);
+  border: 1px solid rgba(241, 76, 76, 0.3);
+}
+
+.warning {
+  background: rgba(204, 167, 0, 0.12);
+  color: var(--warning);
+  border: 1px solid rgba(204, 167, 0, 0.3);
+}
+
+.info {
+  background: rgba(117, 190, 255, 0.12);
+  color: var(--info);
+  border: 1px solid rgba(117, 190, 255, 0.3);
+}
+
+.accent {
+  background: var(--accent-bg);
+  color: var(--accent);
+  border: 1px solid rgba(0, 122, 204, 0.3);
+}
+
+/* Modifier */
+.subtle {
+  border-color: transparent;
+}
