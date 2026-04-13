@@ -1,0 +1,31 @@
+src/components/ui/index.ts
+  2e3908ffa4deb7f0 1-2
+src/components/ui/Icon/Icon.tsx
+  2e3908ffa4deb7f0 1-80
+src/components/ui/Icon/Icon.test.tsx
+  2e3908ffa4deb7f0 1-28
+src/components/ui/Icon/index.ts
+  2e3908ffa4deb7f0 1-3
+src/components/common/Icon.tsx
+  2e3908ffa4deb7f0 1-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "5c041fc8425d4f0311c58de0ec7f0b7bee9a81e0",
+  "prompts": {
+    "2e3908ffa4deb7f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19cfcb80-79b1-4db1-a427-00058336c4de",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 117,
+      "total_deletions": 81,
+      "accepted_lines": 117,
+      "overriden_lines": 0
+    }
+  }
+}
