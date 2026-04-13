@@ -8,3 +8,4 @@ export { Badge, type BadgeProps, type BadgeVariant } from "./Badge";
 export { StatusDot, type StatusDotProps, type DotStatus } from "./StatusDot";
 export { Tooltip, type TooltipProps } from "./Tooltip";
 export { Kbd, type KbdProps } from "./Kbd";
+export { Separator, type SeparatorProps } from "./Separator";
