@@ -1,0 +1,35 @@
+.track {
+  position: relative;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.track:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.off { background: var(--bg-quaternary); }
+.on  { background: var(--accent); }
+
+.sm { width: 32px; height: 18px; }
+.md { width: 36px; height: 20px; }
+
+.thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  border-radius: 50%;
+  background: var(--accent-fg);
+  transition: transform 0.15s;
+}
+
+.thumbSm { width: 14px; height: 14px; }
+.thumbMd { width: 16px; height: 16px; }
+
+.thumbOnSm { transform: translateX(14px); }
+.thumbOnMd { transform: translateX(16px); }
