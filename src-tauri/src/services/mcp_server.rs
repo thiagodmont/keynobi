@@ -864,16 +864,27 @@ impl AndroidMcpServer {
                 "screenHash": snapshot.screen_hash,
                 "interactiveCount": snapshot.interactive_count,
                 "foregroundActivity": snapshot.foreground_activity,
-                "layoutContext": snapshot.layout_context,
-                "commandLog": snapshot.command_log,
+                "layoutContext": {
+                    "wmSize": snapshot.layout_context.wm_size,
+                    "wmDensity": snapshot.layout_context.wm_density,
+                },
                 "rows": rows,
             })));
         }
 
-        match serde_json::to_value(&snapshot) {
-            Ok(v) => Ok(CallToolResult::structured(v)),
-            Err(e) => Err(McpError::internal_error(e.to_string(), None)),
-        }
+        Ok(CallToolResult::structured(json!({
+            "capturedAt": snapshot.captured_at,
+            "truncated": snapshot.truncated,
+            "warnings": snapshot.warnings,
+            "screenHash": snapshot.screen_hash,
+            "interactiveCount": snapshot.interactive_count,
+            "foregroundActivity": snapshot.foreground_activity,
+            "layoutContext": {
+                "wmSize": snapshot.layout_context.wm_size,
+                "wmDensity": snapshot.layout_context.wm_density,
+            },
+            "root": serde_json::to_value(&snapshot.root).unwrap_or(serde_json::Value::Null),
+        })))
     }
 
     /// Search the focused window hierarchy for nodes matching text, content-desc, resource-id, class, or package. Returns centers for use with ui_tap. Requires at least one primary filter (not only clickable/editable flags).
@@ -918,7 +929,6 @@ impl AndroidMcpServer {
             "warnings": snapshot.warnings,
             "screenHash": snapshot.screen_hash,
             "foregroundActivity": snapshot.foreground_activity,
-            "commandLog": snapshot.command_log,
             "matchCount": matches_json.len(),
             "matches": matches_json,
         })))
@@ -980,7 +990,6 @@ impl AndroidMcpServer {
             "warnings": snapshot.warnings,
             "screenHash": snapshot.screen_hash,
             "foregroundActivity": snapshot.foreground_activity,
-            "commandLog": snapshot.command_log,
             "treePath": normalized_path,
             "parentTreePath": parent.tree_path,
             "parent": parent_json,
@@ -1399,7 +1408,6 @@ impl AndroidMcpServer {
                 "currentHash": snapshot.screen_hash,
                 "capturedAt": snapshot.captured_at,
                 "foregroundActivity": snapshot.foreground_activity,
-                "commandLog": snapshot.command_log,
             })));
         }
 
@@ -1419,7 +1427,6 @@ impl AndroidMcpServer {
             "foregroundActivity": snapshot.foreground_activity,
             "truncated": snapshot.truncated,
             "warnings": snapshot.warnings,
-            "commandLog": snapshot.command_log,
             "interactiveCount": interactive_json.len(),
             "interactiveNodes": interactive_json,
         })))
