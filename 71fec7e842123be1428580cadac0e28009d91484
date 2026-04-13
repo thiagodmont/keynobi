@@ -1,0 +1,31 @@
+src/components/ui/StatusDot/StatusDot.tsx
+  2e3908ffa4deb7f0 1-25
+src/components/ui/StatusDot/index.ts
+  2e3908ffa4deb7f0 1-2
+src/components/ui/index.ts
+  2e3908ffa4deb7f0 8
+src/components/ui/StatusDot/StatusDot.module.css
+  2e3908ffa4deb7f0 1-24
+src/components/ui/StatusDot/StatusDot.test.tsx
+  2e3908ffa4deb7f0 1-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "71fec7e842123be1428580cadac0e28009d91484",
+  "prompts": {
+    "2e3908ffa4deb7f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19cfcb80-79b1-4db1-a427-00058336c4de",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 72,
+      "total_deletions": 0,
+      "accepted_lines": 72,
+      "overriden_lines": 0
+    }
+  }
+}
