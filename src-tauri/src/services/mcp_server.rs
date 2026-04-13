@@ -825,7 +825,17 @@ impl AndroidMcpServer {
             "kind": format!("{:?}", d.device_kind).to_lowercase(),
         })).collect();
 
-        Ok(CallToolResult::structured(json!({ "count": devices.len(), "devices": structured })))
+        let any_offline = structured.iter().any(|d| d["state"] == "offline");
+        let hint: Option<&str> = if any_offline {
+            Some("One or more devices are offline. Try: adb kill-server && adb start-server, then reconnect.")
+        } else {
+            None
+        };
+        Ok(CallToolResult::structured(json!({
+            "count": devices.len(),
+            "devices": structured,
+            "hint": hint,
+        })))
     }
 
     /// Dump UI Automator / accessibility hierarchy for the focused window (native Views + Compose).
