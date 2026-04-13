@@ -1,0 +1,31 @@
+src/components/ui/Toggle/Toggle.module.css
+  2e3908ffa4deb7f0 1-35
+src/components/ui/Toggle/index.ts
+  2e3908ffa4deb7f0 1-2
+src/components/ui/Toggle/Toggle.test.tsx
+  2e3908ffa4deb7f0 1-53
+src/components/ui/Toggle/Toggle.tsx
+  2e3908ffa4deb7f0 1-47
+src/components/ui/index.ts
+  2e3908ffa4deb7f0 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "84743a4b2d841035081552ee2487b73c13b8fbd2",
+  "prompts": {
+    "2e3908ffa4deb7f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "19cfcb80-79b1-4db1-a427-00058336c4de",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 141,
+      "total_deletions": 3,
+      "accepted_lines": 149,
+      "overriden_lines": 0
+    }
+  }
+}
