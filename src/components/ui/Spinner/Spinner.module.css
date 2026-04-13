@@ -1,0 +1,31 @@
+@keyframes ui-spin {
+  to { transform: rotate(360deg); }
+}
+
+.root {
+  display: inline-block;
+  border-radius: 50%;
+  border-style: solid;
+  border-color: var(--border);
+  border-top-color: var(--accent);
+  animation: ui-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.sm {
+  width: 10px;
+  height: 10px;
+  border-width: 1.5px;
+}
+
+.md {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.lg {
+  width: 20px;
+  height: 20px;
+  border-width: 2.5px;
+}
