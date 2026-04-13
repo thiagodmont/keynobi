@@ -1,0 +1,23 @@
+src-tauri/src/services/build_inspector.rs
+  d1ddf0617d3c9e27 3-4,61-69,78-79,128-171,654-698
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "ecda6cdc39fa4c6c69b6b497462ad77eec92204a",
+  "prompts": {
+    "d1ddf0617d3c9e27": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89ef7551-9822-46f9-9cf9-6eea7f7050ff",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 134,
+      "total_deletions": 34,
+      "accepted_lines": 232,
+      "overriden_lines": 0
+    }
+  }
+}
