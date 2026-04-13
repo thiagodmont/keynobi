@@ -7,3 +7,4 @@ export { Button, type ButtonProps, type ButtonVariant, type ButtonSize } from ".
 export { Badge, type BadgeProps, type BadgeVariant } from "./Badge";
 export { StatusDot, type StatusDotProps, type DotStatus } from "./StatusDot";
 export { Tooltip, type TooltipProps } from "./Tooltip";
+export { Kbd, type KbdProps } from "./Kbd";
