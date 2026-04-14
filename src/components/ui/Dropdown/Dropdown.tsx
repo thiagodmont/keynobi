@@ -76,7 +76,7 @@ export function Dropdown(props: DropdownProps): JSX.Element {
 
   function handleOutsideMouseDown(e: MouseEvent) {
     if (!isOpen()) return;
-    const target = e.target as Node;
+    const target = e.target as globalThis.Node;
     if (triggerRef && !triggerRef.contains(target)) {
       close();
     }

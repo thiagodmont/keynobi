@@ -41,10 +41,10 @@ import { DownloadSystemImageDialog } from "./DownloadSystemImageDialog";
 
 function connectionColor(state: Device["connectionState"]): string {
   switch (state) {
-    case "online":       return "#4ade80";
-    case "unauthorized": return "#fbbf24";
+    case "online":       return "var(--success)";
+    case "unauthorized": return "var(--warning)";
     case "offline":
-    default:             return "#6b7280";
+    default:             return "var(--text-muted)";
   }
 }
 
@@ -548,8 +548,8 @@ function ConnectedDeviceRow(props: {
               "flex-shrink": "0",
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.color = "var(--error, #f87171)";
-              (e.currentTarget as HTMLElement).style.background = "rgba(248,113,113,0.1)";
+              (e.currentTarget as HTMLElement).style.color = "var(--error)";
+              (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--error) 10%, transparent)";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
@@ -622,7 +622,7 @@ function AvdRow(props: {
               width: "7px",
               height: "7px",
               "border-radius": "50%",
-              background: "#4ade80",
+              background: "var(--success)",
               border: "1.5px solid var(--bg-secondary)",
             }}
           />
@@ -679,8 +679,8 @@ function AvdRow(props: {
                     "border-radius": "3px",
                   }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.color = "var(--error, #f87171)";
-                    (e.currentTarget as HTMLElement).style.background = "rgba(248,113,113,0.1)";
+                    (e.currentTarget as HTMLElement).style.color = "var(--error)";
+                    (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--error) 10%, transparent)";
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
@@ -708,8 +708,8 @@ function AvdRow(props: {
                 }}
                 onMouseEnter={(e) => {
                   if (!props.launching) {
-                    (e.currentTarget as HTMLElement).style.color = "#4ade80";
-                    (e.currentTarget as HTMLElement).style.background = "rgba(74,222,128,0.1)";
+                    (e.currentTarget as HTMLElement).style.color = "var(--success)";
+                    (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--success) 10%, transparent)";
                   }
                 }}
                 onMouseLeave={(e) => {

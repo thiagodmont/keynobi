@@ -5,10 +5,10 @@
  * (the token currently being typed) lives in a plain text input at the end.
  * The container wraps and grows naturally — no fixed max-width.
  *
- * Token colors:
- *   level:*   → amber     tag:*, tag~:*   → blue
- *   message:* → green     package:*, pkg: → accent
- *   age:*     → purple    is:*            → red
+ * Token colors (theme tokens):
+ *   level:* → warning   tag:* / tag~:* → info
+ *   message:* / msg:* → success   package:* / pkg:* → accent
+ *   age:* → accent      is:* → error
  *   freetext  → muted     negated (-*)    → same color, dimmed
  *
  * AND within a group: pills are separated by a subtle · dot.
@@ -58,17 +58,41 @@ interface TokenStyle { color: string; bg: string; border: string }
 function getTokenStyle(tokenText: string): TokenStyle {
   const t = tokenText.startsWith("-") ? tokenText.slice(1) : tokenText;
   if (t.startsWith("level:"))
-    return { color: "#fbbf24", bg: "rgba(251,191,36,0.13)", border: "rgba(251,191,36,0.35)" };
+    return {
+      color: "var(--warning)",
+      bg: "color-mix(in srgb, var(--warning) 13%, transparent)",
+      border: "color-mix(in srgb, var(--warning) 35%, transparent)",
+    };
   if (t.startsWith("tag:") || t.startsWith("tag~:"))
-    return { color: "#60a5fa", bg: "rgba(96,165,250,0.13)", border: "rgba(96,165,250,0.35)" };
+    return {
+      color: "var(--info)",
+      bg: "color-mix(in srgb, var(--info) 13%, transparent)",
+      border: "color-mix(in srgb, var(--info) 35%, transparent)",
+    };
   if (t.startsWith("message:") || t.startsWith("message~:") || t.startsWith("msg:"))
-    return { color: "#4ade80", bg: "rgba(74,222,128,0.11)", border: "rgba(74,222,128,0.35)" };
+    return {
+      color: "var(--success)",
+      bg: "color-mix(in srgb, var(--success) 11%, transparent)",
+      border: "color-mix(in srgb, var(--success) 35%, transparent)",
+    };
   if (t.startsWith("package:") || t.startsWith("pkg:"))
-    return { color: "var(--accent)", bg: "rgba(var(--accent-rgb,59,130,246),0.13)", border: "rgba(var(--accent-rgb,59,130,246),0.4)" };
+    return {
+      color: "var(--accent)",
+      bg: "color-mix(in srgb, var(--accent) 13%, transparent)",
+      border: "color-mix(in srgb, var(--accent) 40%, transparent)",
+    };
   if (t.startsWith("age:"))
-    return { color: "#c084fc", bg: "rgba(192,132,252,0.13)", border: "rgba(192,132,252,0.35)" };
+    return {
+      color: "var(--accent)",
+      bg: "color-mix(in srgb, var(--accent) 13%, transparent)",
+      border: "color-mix(in srgb, var(--accent) 35%, transparent)",
+    };
   if (t.startsWith("is:"))
-    return { color: "#f87171", bg: "rgba(248,113,113,0.13)", border: "rgba(248,113,113,0.35)" };
+    return {
+      color: "var(--error)",
+      bg: "color-mix(in srgb, var(--error) 13%, transparent)",
+      border: "color-mix(in srgb, var(--error) 35%, transparent)",
+    };
   return { color: "var(--text-secondary)", bg: "rgba(255,255,255,0.07)", border: "var(--border)" };
 }
 
@@ -509,8 +533,8 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                 title="Add AND condition — both conditions must match"
                 style={connectorBtnStyle()}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "#4ade80";
-                  (e.currentTarget as HTMLElement).style.borderColor = "#4ade80";
+                  (e.currentTarget as HTMLElement).style.color = "var(--success)";
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--success)";
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";

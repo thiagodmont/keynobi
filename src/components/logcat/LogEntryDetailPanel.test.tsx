@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@solidjs/testing-library";
+import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { LogEntryDetailPanel } from "./LogEntryDetailPanel";
 import type { LogcatEntry } from "@/lib/tauri-api";
 
@@ -46,6 +46,15 @@ describe("LogEntryDetailPanel", () => {
     );
     expect(closeBtn).not.toBeUndefined();
     closeBtn!.click();
+    expect(closed).toBe(true);
+  });
+
+  it("calls onClose when Escape is pressed", () => {
+    let closed = false;
+    render(() => (
+      <LogEntryDetailPanel entry={ENTRY} onClose={() => { closed = true; }} />
+    ));
+    fireEvent.keyDown(document, { key: "Escape" });
     expect(closed).toBe(true);
   });
 });

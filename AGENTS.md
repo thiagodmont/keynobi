@@ -37,6 +37,8 @@ npm run test:watch        # watch mode during development
 npm run test:ui           # Vitest browser UI
 ```
 
+**Design system / UI refactor PRs:** run `npm test && npm run typescript:check && npm run lint` before merge (see `docs/CODE_PATTERN.md` §Testing Patterns — verification gate).
+
 ### Rust
 ```bash
 cd src-tauri

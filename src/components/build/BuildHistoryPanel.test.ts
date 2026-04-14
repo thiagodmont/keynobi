@@ -30,6 +30,15 @@ describe("BuildHistoryPanel helpers", () => {
     expect(statusColor(makeRecord("failed").status)).toBe("var(--error)");
   });
 
+  it("statusColor returns info token for running and idle", () => {
+    expect(statusColor({ state: "running", task: "t", started_at: "" })).toBe("var(--info)");
+    expect(statusColor({ state: "idle" })).toBe("var(--info)");
+  });
+
+  it("statusColor returns muted rgba for cancelled", () => {
+    expect(statusColor({ state: "cancelled" })).toBe("rgba(255,255,255,0.3)");
+  });
+
   it("durationLabel returns empty for running/idle/cancelled", () => {
     expect(durationLabel({ state: "running", task: "t", started_at: "" })).toBe("");
     expect(durationLabel({ state: "idle" })).toBe("");
