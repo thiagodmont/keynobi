@@ -22,3 +22,4 @@ export { Tabs, type TabsProps, type TabDef } from "./Tabs";
 export { EmptyState, type EmptyStateProps } from "./EmptyState";
 export { Alert, type AlertProps, type AlertVariant } from "./Alert";
 export { ProgressBar, type ProgressBarProps, type ProgressVariant } from "./ProgressBar";
+export { CopyableText, type CopyableTextProps } from "./CopyableText";
