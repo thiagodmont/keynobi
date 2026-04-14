@@ -25,9 +25,7 @@ import {
 } from "@/lib/tauri-api";
 import type { Device, AvdInfo } from "@/bindings";
 import { toggleDeviceSidebar } from "@/stores/ui.store";
-import { showToast } from "@/components/ui";
-import { Icon } from "@/components/ui";
-import { showDialog } from "@/components/ui";
+import { Icon, EmptyState, Button, showToast, showDialog } from "@/components/ui";
 import { AvdContextMenu } from "@/components/device/AvdContextMenu";
 import { CreateDeviceDialog } from "./CreateDeviceDialog";
 
@@ -208,7 +206,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
                   <EmptyState
                     icon="device"
                     title="No devices connected"
-                    message="Connect a physical device via USB or launch a virtual device below."
+                    description="Connect a physical device via USB or launch a virtual device below."
                   />
                 }
               >
@@ -239,8 +237,12 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
                   <EmptyState
                     icon="device"
                     title="No virtual devices"
-                    message='Create a virtual device to run your app in the emulator.'
-                    action={{ label: "+ New Device", onClick: () => setShowCreateDialog(true) }}
+                    description="Create a virtual device to run your app in the emulator."
+                    action={
+                      <Button variant="primary" size="sm" onClick={() => setShowCreateDialog(true)}>
+                        + New Device
+                      </Button>
+                    }
                   />
                 }
               >
@@ -710,60 +712,6 @@ function SectionHeader(props: { label: string; count: number }): JSX.Element {
         >
           {props.count}
         </span>
-      </Show>
-    </div>
-  );
-}
-
-function EmptyState(props: {
-  icon: string;
-  title: string;
-  message: string;
-  action?: { label: string; onClick: () => void };
-}): JSX.Element {
-  return (
-    <div
-      style={{
-        display: "flex",
-        "flex-direction": "column",
-        "align-items": "center",
-        "justify-content": "center",
-        gap: "8px",
-        padding: "24px 16px",
-        color: "var(--text-muted)",
-        "text-align": "center",
-      }}
-    >
-      <Icon name={props.icon} size={28} color="var(--text-muted)" />
-      <div>
-        <div style={{ "font-size": "13px", "font-weight": "500", color: "var(--text-secondary)", "margin-bottom": "4px" }}>
-          {props.title}
-        </div>
-        <div style={{ "font-size": "11px", "line-height": "1.5", "max-width": "240px" }}>
-          {props.message}
-        </div>
-      </div>
-      <Show when={props.action}>
-        {(action) => (
-          <button
-            onClick={action().onClick}
-            style={{
-              "margin-top": "4px",
-              padding: "5px 14px",
-              background: "var(--accent)",
-              color: "#fff",
-              border: "none",
-              "border-radius": "4px",
-              "font-size": "12px",
-              "font-weight": "500",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.85"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-          >
-            {action().label}
-          </button>
-        )}
       </Show>
     </div>
   );
