@@ -1,0 +1,31 @@
+src/components/ui/EmptyState/EmptyState.test.tsx
+  ea106d8db9946cbe 1-41
+src/components/ui/EmptyState/index.ts
+  ea106d8db9946cbe 1-2
+src/components/ui/EmptyState/EmptyState.tsx
+  ea106d8db9946cbe 1-28
+src/components/ui/index.ts
+  ea106d8db9946cbe 22
+src/components/ui/EmptyState/EmptyState.module.css
+  ea106d8db9946cbe 1-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "65821ba602bff52539fc3ee68715c1de3568e242",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 104,
+      "total_deletions": 0,
+      "accepted_lines": 104,
+      "overriden_lines": 0
+    }
+  }
+}
