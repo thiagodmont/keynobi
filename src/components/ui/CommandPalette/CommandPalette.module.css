@@ -1,6 +1,10 @@
 .backdrop {
+  align-items: flex-start;
   background: rgba(0, 0, 0, 0.3);
+  display: flex;
   inset: 0;
+  justify-content: center;
+  padding-top: 20vh;
   position: fixed;
   z-index: 1000;
 }
@@ -12,12 +16,8 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
-  left: 50%;
   max-height: 400px;
   overflow: hidden;
-  position: absolute;
-  top: 20%;
-  transform: translateX(-50%);
   width: 560px;
 }
 
@@ -78,7 +78,8 @@
 }
 
 .item.active .detail {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--accent-fg);
+  opacity: 0.7;
 }
 
 .empty {
