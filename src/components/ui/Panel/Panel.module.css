@@ -1,0 +1,52 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: var(--font-size-ui);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.body {
+  flex: 1;
+  overflow: hidden;
+  padding: 10px;
+}
+
+.noPadding {
+  padding: 0;
+}
+
+.scrollable {
+  overflow-y: auto;
+}
+
+.footer {
+  border-top: 1px solid var(--border);
+  padding: 6px 10px;
+  flex-shrink: 0;
+}

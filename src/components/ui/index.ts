@@ -17,3 +17,4 @@ export { Checkbox, type CheckboxProps } from "./Checkbox";
 export { Textarea, type TextareaProps, type TextareaState } from "./Textarea";
 export { FormField, type FormFieldProps } from "./FormField";
 export { ScrollArea, type ScrollAreaProps } from "./ScrollArea";
+export { Panel, type PanelProps } from "./Panel";
