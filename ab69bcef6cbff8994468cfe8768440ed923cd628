@@ -1,0 +1,31 @@
+src/components/ui/index.ts
+  ea106d8db9946cbe 24
+src/components/ui/ProgressBar/ProgressBar.tsx
+  ea106d8db9946cbe 1-41
+src/components/ui/ProgressBar/ProgressBar.module.css
+  ea106d8db9946cbe 1-31
+src/components/ui/ProgressBar/ProgressBar.test.tsx
+  ea106d8db9946cbe 1-38
+src/components/ui/ProgressBar/index.ts
+  ea106d8db9946cbe 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "ab69bcef6cbff8994468cfe8768440ed923cd628",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 113,
+      "total_deletions": 0,
+      "accepted_lines": 113,
+      "overriden_lines": 0
+    }
+  }
+}
