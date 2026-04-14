@@ -1,0 +1,49 @@
+src/components/settings/SettingsPanel.tsx
+  ea106d8db9946cbe 10
+src/components/projects/WelcomePanel.tsx
+  ea106d8db9946cbe 11
+src/components/device/CreateDeviceDialog.tsx
+  ea106d8db9946cbe 15
+src/components/layout/StatusBar.tsx
+  ea106d8db9946cbe 12
+src/components/device/DevicePickerDialog.tsx
+  ea106d8db9946cbe 10
+src/components/device/DeviceSidebar.tsx
+  ea106d8db9946cbe 34
+src/components/build/VariantSelector.tsx
+  ea106d8db9946cbe 15
+src/components/device/DevicePanel.tsx
+  ea106d8db9946cbe 29
+src/components/build/BuildHistoryPanel.tsx
+  ea106d8db9946cbe 4
+src/components/onboarding/OnboardingWizard.tsx
+  ea106d8db9946cbe 13
+src/components/build/BuildPanel.tsx
+  ea106d8db9946cbe 14
+src/components/ui-hierarchy/LayoutViewerPanel.tsx
+  ea106d8db9946cbe 11
+src/components/projects/ProjectSidebar.tsx
+  ea106d8db9946cbe 24
+src/components/device/DownloadSystemImageDialog.tsx
+  ea106d8db9946cbe 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "a0589a59ea7000ecbe351fe381e5648cc210a710",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 14,
+      "total_deletions": 14,
+      "accepted_lines": 14,
+      "overriden_lines": 0
+    }
+  }
+}
