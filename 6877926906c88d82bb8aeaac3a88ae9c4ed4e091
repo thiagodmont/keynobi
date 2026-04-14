@@ -1,0 +1,27 @@
+src/components/device/DevicePanel.tsx
+  4a88dd7d06511611 31
+src/components/device/AvdContextMenu.tsx
+  4a88dd7d06511611 1-72
+src/components/device/DeviceSidebar.tsx
+  4a88dd7d06511611 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "6877926906c88d82bb8aeaac3a88ae9c4ed4e091",
+  "prompts": {
+    "4a88dd7d06511611": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "526f7238-ab05-427c-a4f2-ee399d8cd793",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 74,
+      "total_deletions": 151,
+      "accepted_lines": 74,
+      "overriden_lines": 0
+    }
+  }
+}
