@@ -1,0 +1,39 @@
+src/components/ui/Dropdown/Dropdown.tsx
+  f5ffadcfadb0369c 24,64,68,83-85,116
+src/components/ui/Dropdown/Dropdown.test.tsx
+  f5ffadcfadb0369c 87-99
+src/components/ui/CommandPalette/CommandPalette.tsx
+  f5ffadcfadb0369c 71-76
+src/components/ui/CopyableText/CopyableText.tsx
+  f5ffadcfadb0369c 15
+src/components/ui/Dialog/Dialog.tsx
+  f5ffadcfadb0369c 1,20,24,29-33,36-41,47-71,74-76
+src/components/ui/Alert/Alert.tsx
+  f5ffadcfadb0369c 31
+src/components/ui/CommandPalette/CommandPalette.module.css
+  f5ffadcfadb0369c 19,22
+docs/CODE_PATTERN.md
+  f5ffadcfadb0369c 290
+src/components/ui/Dialog/Dialog.test.tsx
+  f5ffadcfadb0369c 1,3,6-8,62-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "0264226d98ad1dbb7e2fe00f92f936711e54d0ac",
+  "prompts": {
+    "f5ffadcfadb0369c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2174eaa7-2be1-4016-8e28-5e1c8d7dbae4",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 111,
+      "total_deletions": 52,
+      "accepted_lines": 101,
+      "overriden_lines": 0
+    }
+  }
+}
