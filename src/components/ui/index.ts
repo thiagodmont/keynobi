@@ -10,3 +10,4 @@ export { Tooltip, type TooltipProps } from "./Tooltip";
 export { Kbd, type KbdProps } from "./Kbd";
 export { Separator, type SeparatorProps } from "./Separator";
 export { Toggle, type ToggleProps } from "./Toggle";
+export { Select, type SelectProps, type SelectOption } from "./Select";
