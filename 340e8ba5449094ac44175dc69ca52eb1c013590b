@@ -1,0 +1,47 @@
+src/components/device/DevicePanel.tsx
+  ea106d8db9946cbe 28
+src/components/onboarding/OnboardingWizard.tsx
+  ea106d8db9946cbe 12
+src/stores/settings.store.ts
+  ea106d8db9946cbe 11
+src/components/device/DeviceSidebar.tsx
+  ea106d8db9946cbe 33
+src/components/build/VariantSelector.tsx
+  ea106d8db9946cbe 16
+src/components/projects/ProjectSidebar.tsx
+  ea106d8db9946cbe 16
+src/components/logcat/LogcatPanel.tsx
+  ea106d8db9946cbe 31
+src/components/settings/ToolStatus.tsx
+  ea106d8db9946cbe 4
+src/components/projects/ProjectInfoEditor.tsx
+  ea106d8db9946cbe 12
+src/components/logcat/LogEntryDetailPanel.tsx
+  ea106d8db9946cbe 2
+src/components/build/BuildPanel.tsx
+  ea106d8db9946cbe 17
+src/App.tsx
+  ea106d8db9946cbe 11
+src/services/project.service.ts
+  ea106d8db9946cbe 34
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "340e8ba5449094ac44175dc69ca52eb1c013590b",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 13,
+      "total_deletions": 13,
+      "accepted_lines": 13,
+      "overriden_lines": 0
+    }
+  }
+}
