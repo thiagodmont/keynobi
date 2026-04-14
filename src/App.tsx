@@ -9,9 +9,9 @@ import {
 import TitleBar from "@/components/layout/TitleBar";
 import StatusBar from "@/components/layout/StatusBar";
 import { ToastContainer, showToast } from "@/components/ui";
-import { DialogHost } from "@/components/common/Dialog";
+import { DialogHost } from "@/components/ui";
 import { AppErrorBoundary } from "@/components/common/ErrorBoundary";
-import { CommandPalette, openPalette } from "@/components/common/CommandPalette";
+import { CommandPalette, openPalette } from "@/components/ui";
 import { SettingsPanel, openSettings } from "@/components/settings/SettingsPanel";
 import { HealthPanel, openHealthPanel } from "@/components/health/HealthPanel";
 import { McpPanel } from "@/components/mcp/McpPanel";

@@ -29,7 +29,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { selectedDevice } from "@/stores/device.store";
 import { settingsState } from "@/stores/settings.store";
 import { showToast } from "@/components/ui";
-import { VirtualList, type VirtualListHandle } from "@/components/common/VirtualList";
+import { VirtualList, type VirtualListHandle } from "@/components/ui";
 import { QueryBar } from "@/components/logcat/QueryBar";
 import { Icon } from "@/components/ui";
 import {
