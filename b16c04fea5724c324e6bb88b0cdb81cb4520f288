@@ -1,0 +1,23 @@
+src/components/settings/SettingRow.tsx
+  ea106d8db9946cbe 1-5,42,48,59-68,78-85,94,101
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "b16c04fea5724c324e6bb88b0cdb81cb4520f288",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 27,
+      "total_deletions": 153,
+      "accepted_lines": 27,
+      "overriden_lines": 0
+    }
+  }
+}
