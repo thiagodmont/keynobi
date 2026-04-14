@@ -24,3 +24,4 @@ export { Alert, type AlertProps, type AlertVariant } from "./Alert";
 export { ProgressBar, type ProgressBarProps, type ProgressVariant } from "./ProgressBar";
 export { CopyableText, type CopyableTextProps } from "./CopyableText";
 export { Dropdown, type DropdownProps, type MenuItem } from "./Dropdown";
+export { Toolbar, type ToolbarProps, type ToolbarItemDef } from "./Toolbar";
