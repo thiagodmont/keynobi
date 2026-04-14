@@ -1,0 +1,24 @@
+.root {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-color) transparent;
+}
+
+.root::-webkit-scrollbar {
+  width: var(--scrollbar-width);
+  height: var(--scrollbar-width);
+}
+
+.root::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-color);
+  border-radius: 4px;
+}
+
+.root::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-hover);
+}
+
+.root::-webkit-scrollbar-track {
+  background: transparent;
+}
