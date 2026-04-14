@@ -28,7 +28,7 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { save } from "@tauri-apps/plugin-dialog";
 import { selectedDevice } from "@/stores/device.store";
 import { settingsState } from "@/stores/settings.store";
-import { showToast } from "@/components/common/Toast";
+import { showToast } from "@/components/ui";
 import { VirtualList, type VirtualListHandle } from "@/components/common/VirtualList";
 import { QueryBar } from "@/components/logcat/QueryBar";
 import { Icon } from "@/components/ui";

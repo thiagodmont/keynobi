@@ -13,7 +13,7 @@ import { type JSX, createSignal, Show, For } from "solid-js";
 import { projectState } from "@/stores/project.store";
 import { projectsState } from "@/stores/projects.store";
 import { uiState, toggleSidebar } from "@/stores/ui.store";
-import { showToast } from "@/components/common/Toast";
+import { showToast } from "@/components/ui";
 import { formatError } from "@/lib/tauri-api";
 import {
   selectProject,

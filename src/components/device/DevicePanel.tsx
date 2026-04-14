@@ -25,7 +25,7 @@ import {
 } from "@/lib/tauri-api";
 import type { Device, AvdInfo } from "@/bindings";
 import { toggleDeviceSidebar } from "@/stores/ui.store";
-import { showToast } from "@/components/common/Toast";
+import { showToast } from "@/components/ui";
 import { Icon } from "@/components/ui";
 import { showDialog } from "@/components/common/Dialog";
 import { CreateDeviceDialog } from "./CreateDeviceDialog";

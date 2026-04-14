@@ -31,7 +31,7 @@ import {
   updateProjectMetaInStore,
   projectsState,
 } from "@/stores/projects.store";
-import { showToast } from "@/components/common/Toast";
+import { showToast } from "@/components/ui";
 import { initBuildService, cancelBuild } from "@/services/build.service";
 import { resetBuildState, setBuildHistory } from "@/stores/build.store";
 import { getBuildHistory } from "@/lib/tauri-api";

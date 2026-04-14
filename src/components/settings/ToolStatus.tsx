@@ -1,7 +1,7 @@
 import { type JSX, Show, createSignal, createEffect } from "solid-js";
 import { settingsState, updateSetting } from "@/stores/settings.store";
 import { detectSdkPath, detectJavaPath, formatError } from "@/lib/tauri-api";
-import { showToast } from "@/components/common/Toast";
+import { showToast } from "@/components/ui";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 

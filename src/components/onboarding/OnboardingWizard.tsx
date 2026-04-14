@@ -9,7 +9,7 @@ import { settingsState, updateSetting, setAppSetting } from "@/stores/settings.s
 import { AndroidSdkStatus, JavaStatus } from "@/components/settings/ToolStatus";
 import { SettingRow, SettingToggle } from "@/components/settings/SettingRow";
 import { healthChecks, refreshHealthChecks } from "@/stores/health.store";
-import { showToast } from "@/components/common/Toast";
+import { showToast } from "@/components/ui";
 import { Icon } from "@/components/ui";
 import type { CheckStatus } from "@/stores/health.store";
 

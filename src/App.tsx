@@ -8,7 +8,7 @@ import {
 } from "@/stores/ui.store";
 import TitleBar from "@/components/layout/TitleBar";
 import StatusBar from "@/components/layout/StatusBar";
-import { ToastContainer, showToast } from "@/components/common/Toast";
+import { ToastContainer, showToast } from "@/components/ui";
 import { DialogHost } from "@/components/common/Dialog";
 import { AppErrorBoundary } from "@/components/common/ErrorBoundary";
 import { CommandPalette, openPalette } from "@/components/common/CommandPalette";

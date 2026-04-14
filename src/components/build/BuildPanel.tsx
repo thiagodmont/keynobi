@@ -14,7 +14,7 @@ import type { LogEntry } from "@/stores/log.store";
 import { Icon } from "@/components/ui";
 import { BuildHistoryPanel, relativeTime } from "@/components/build/BuildHistoryPanel";
 import { projectState } from "@/stores/project.store";
-import { showToast } from "@/components/common/Toast";
+import { showToast } from "@/components/ui";
 import { formatError, getBuildLogEntries } from "@/lib/tauri-api";
 
 type ViewMode = "log" | "problems";

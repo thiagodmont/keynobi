@@ -1,5 +1,5 @@
 import { onCleanup, onMount } from "solid-js";
-import { showToast } from "@/components/common/Toast";
+import { showToast } from "@/components/ui";
 import type { LogcatEntry } from "@/lib/tauri-api";
 import { getLevelConfig } from "./logcat-levels";
 

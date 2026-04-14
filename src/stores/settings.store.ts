@@ -8,7 +8,7 @@ import {
   formatError,
 } from "@/lib/tauri-api";
 import { listen } from "@tauri-apps/api/event";
-import { showToast } from "@/components/common/Toast";
+import { showToast } from "@/components/ui";
 
 export type { AppSettings };
 
