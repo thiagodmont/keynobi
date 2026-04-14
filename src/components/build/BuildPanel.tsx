@@ -11,10 +11,9 @@ import { runBuild, runAndDeploy, cancelBuild, jumpToBuildError } from "@/service
 import { LogViewer } from "@/components/common/LogViewer";
 import type { BuildError, BuildRecord } from "@/bindings";
 import type { LogEntry } from "@/stores/log.store";
-import { Icon } from "@/components/ui";
+import { Icon, IconButton, showToast } from "@/components/ui";
 import { BuildHistoryPanel, relativeTime } from "@/components/build/BuildHistoryPanel";
 import { projectState } from "@/stores/project.store";
-import { showToast } from "@/components/ui";
 import { formatError, getBuildLogEntries } from "@/lib/tauri-api";
 
 type ViewMode = "log" | "problems";
@@ -192,21 +191,21 @@ export function BuildPanel(): JSX.Element {
         <Show
           when={isBuilding() || isDeploying()}
           fallback={
-            <ToolbarBtn title="Run App — build, install & launch (Cmd+R)" onClick={handleRunApp} disabled={busy()}>
-              <Icon name="play" size={13} color="#4ade80" />
-            </ToolbarBtn>
+            <IconButton size="sm" title="Run App — build, install & launch (Cmd+R)" onClick={handleRunApp} disabled={busy()}>
+              <Icon name="play" size={13} color="var(--success)" />
+            </IconButton>
           }
         >
-          <ToolbarBtn title="Cancel" onClick={handleCancel}>
-            <Icon name="stop" size={13} color="#f87171" />
-          </ToolbarBtn>
+          <IconButton size="sm" title="Cancel" onClick={handleCancel}>
+            <Icon name="stop" size={13} color="var(--error)" />
+          </IconButton>
         </Show>
 
         {/* Build Only button */}
         <Show when={!isBuilding() && !isDeploying()}>
-          <ToolbarBtn title="Build only — no install (Cmd+Shift+R)" onClick={handleBuildOnly} disabled={busy()}>
+          <IconButton size="sm" title="Build only — no install (Cmd+Shift+R)" onClick={handleBuildOnly} disabled={busy()}>
             <Icon name="hammer" size={13} color="var(--text-secondary)" />
-          </ToolbarBtn>
+          </IconButton>
         </Show>
 
         {/* View toggle */}
@@ -501,42 +500,6 @@ function DiagnosticRow(props: { item: DiagnosticItem; showLocation: boolean }): 
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-
-function ToolbarBtn(props: {
-  title: string;
-  onClick: () => void;
-  disabled?: boolean;
-  children: JSX.Element;
-}): JSX.Element {
-  return (
-    <button
-      title={props.title}
-      onClick={() => props.onClick()}
-      disabled={props.disabled ?? false}
-      style={{
-        display: "flex",
-        "align-items": "center",
-        "justify-content": "center",
-        width: "24px",
-        height: "22px",
-        "border-radius": "3px",
-        border: "none",
-        background: "transparent",
-        cursor: props.disabled ? "not-allowed" : "pointer",
-        opacity: props.disabled ? "0.4" : "1",
-        color: "var(--text-secondary)",
-        transition: "background 0.1s",
-        "flex-shrink": "0",
-      }}
-      onMouseEnter={(e) => {
-        if (!props.disabled) (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.08))";
-      }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-    >
-      {props.children}
-    </button>
-  );
-}
 
 function ViewToggleBtn(props: {
   label: string;

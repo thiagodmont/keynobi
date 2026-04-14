@@ -1,0 +1,44 @@
+.root {
+  align-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+}
+
+.root:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.root:hover:not(:disabled) {
+  background: var(--bg-hover);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}
+
+.root:active:not(:disabled) {
+  background: var(--bg-active);
+}
+
+.active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+/* Toolbar icon button (tightest) */
+.sm {
+  height: 22px;
+  width: 24px;
+}
+
+/* Default icon button */
+.md {
+  height: 26px;
+  width: 26px;
+}

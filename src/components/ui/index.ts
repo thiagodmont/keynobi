@@ -25,6 +25,7 @@ export { ProgressBar, type ProgressBarProps, type ProgressVariant } from "./Prog
 export { CopyableText, type CopyableTextProps } from "./CopyableText";
 export { Dropdown, type DropdownProps, type MenuItem } from "./Dropdown";
 export { Toolbar, type ToolbarProps, type ToolbarItemDef } from "./Toolbar";
+export { IconButton, type IconButtonProps } from "./IconButton";
 export { DialogHost, showDialog, type DialogButton, type DialogButtonStyle } from "./Dialog";
 export { ToastContainer, showToast, dismissToast, toasts, type Toast, type ToastKind } from "./Toast";
 export {

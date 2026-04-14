@@ -25,7 +25,7 @@ import {
 } from "@/lib/tauri-api";
 import type { Device, AvdInfo } from "@/bindings";
 import { toggleDeviceSidebar } from "@/stores/ui.store";
-import { Icon, EmptyState, Button, showToast, showDialog } from "@/components/ui";
+import { Icon, IconButton, EmptyState, Button, showToast, showDialog } from "@/components/ui";
 import { AvdContextMenu } from "@/components/device/AvdContextMenu";
 import { CreateDeviceDialog } from "./CreateDeviceDialog";
 
@@ -154,7 +154,8 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
               "flex-shrink": "0",
             }}
           >
-            <ToolbarBtn
+            <IconButton
+              size="md"
               title="Refresh devices"
               onClick={handleRefresh}
               disabled={refreshing()}
@@ -164,7 +165,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
                   <Icon name="spinner" size={13} color="var(--text-muted)" />
                 </span>
               </Show>
-            </ToolbarBtn>
+            </IconButton>
 
             <div style={{ "flex": "1" }} />
 
@@ -714,47 +715,6 @@ function SectionHeader(props: { label: string; count: number }): JSX.Element {
         </span>
       </Show>
     </div>
-  );
-}
-
-function ToolbarBtn(props: {
-  title: string;
-  onClick: () => void;
-  disabled?: boolean;
-  children: JSX.Element;
-}): JSX.Element {
-  return (
-    <button
-      onClick={() => props.onClick()}
-      disabled={props.disabled}
-      title={props.title}
-      style={{
-        width: "26px",
-        height: "26px",
-        display: "flex",
-        "align-items": "center",
-        "justify-content": "center",
-        background: "none",
-        border: "1px solid transparent",
-        "border-radius": "4px",
-        cursor: props.disabled ? "default" : "pointer",
-        color: "var(--text-muted)",
-        opacity: props.disabled ? "0.4" : "1",
-        transition: "background 0.1s",
-      }}
-      onMouseEnter={(e) => {
-        if (!props.disabled) {
-          (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.08))";
-          (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
-        }
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "none";
-        (e.currentTarget as HTMLElement).style.borderColor = "transparent";
-      }}
-    >
-      {props.children}
-    </button>
   );
 }
 
