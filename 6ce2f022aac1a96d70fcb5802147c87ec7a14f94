@@ -1,0 +1,27 @@
+src/components/ui/Dropdown/Dropdown.module.css
+  4a88dd7d06511611 39-47
+src/components/ui/Dropdown/Dropdown.test.tsx
+  4a88dd7d06511611 86-97
+src/components/ui/Dropdown/Dropdown.tsx
+  4a88dd7d06511611 10,133-138
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "6ce2f022aac1a96d70fcb5802147c87ec7a14f94",
+  "prompts": {
+    "4a88dd7d06511611": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "526f7238-ab05-427c-a4f2-ee399d8cd793",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 28,
+      "total_deletions": 1,
+      "accepted_lines": 28,
+      "overriden_lines": 0
+    }
+  }
+}
