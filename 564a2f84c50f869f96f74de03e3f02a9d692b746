@@ -1,0 +1,31 @@
+src/components/ui/index.ts
+  ea106d8db9946cbe 17
+src/components/ui/Textarea/Textarea.test.tsx
+  ea106d8db9946cbe 1-42
+src/components/ui/Textarea/index.ts
+  ea106d8db9946cbe 1-2
+src/components/ui/Textarea/Textarea.module.css
+  ea106d8db9946cbe 1-42
+src/components/ui/Textarea/Textarea.tsx
+  ea106d8db9946cbe 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "564a2f84c50f869f96f74de03e3f02a9d692b746",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 134,
+      "total_deletions": 0,
+      "accepted_lines": 134,
+      "overriden_lines": 0
+    }
+  }
+}
