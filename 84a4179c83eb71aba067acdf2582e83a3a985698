@@ -1,0 +1,31 @@
+src/components/ui/Dropdown/Dropdown.test.tsx
+  ea106d8db9946cbe 1-86
+src/components/ui/index.ts
+  ea106d8db9946cbe 26
+src/components/ui/Dropdown/index.ts
+  ea106d8db9946cbe 1-2
+src/components/ui/Dropdown/Dropdown.tsx
+  ea106d8db9946cbe 1-153
+src/components/ui/Dropdown/Dropdown.module.css
+  ea106d8db9946cbe 1-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "84a4179c83eb71aba067acdf2582e83a3a985698",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 290,
+      "total_deletions": 0,
+      "accepted_lines": 290,
+      "overriden_lines": 0
+    }
+  }
+}
