@@ -7,6 +7,7 @@ export interface MenuItem {
   onClick: () => void;
   disabled?: boolean;
   separator?: boolean;
+  destructive?: boolean;
 }
 
 export interface DropdownProps {
@@ -129,7 +130,12 @@ export function Dropdown(props: DropdownProps): JSX.Element {
                         class={[
                           styles.item,
                           item.disabled ? styles.itemDisabled : "",
-                          !item.disabled && myIdx === activeIndex() ? styles.focused : "",
+                          item.destructive ? styles.itemDestructive : "",
+                          !item.disabled &&
+                          !item.destructive &&
+                          myIdx === activeIndex()
+                            ? styles.focused
+                            : "",
                         ].filter(Boolean).join(" ")}
                         onClick={() => {
                           if (!item.disabled) {

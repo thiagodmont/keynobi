@@ -36,6 +36,15 @@
   background: var(--bg-active);
 }
 
+.itemDestructive {
+  color: var(--error);
+}
+
+.itemDestructive:hover {
+  background: rgba(0, 0, 0, 0.15);
+  color: var(--error);
+}
+
 .itemDisabled {
   opacity: 0.4;
   cursor: not-allowed;

@@ -83,4 +83,16 @@ describe("Dropdown", () => {
     fireEvent.keyDown(document, { key: "Enter" });
     expect(fn).toHaveBeenCalledOnce();
   });
+
+  it("renders destructive item with error color class", () => {
+    render(() => (
+      <Dropdown
+        trigger={<button>Open</button>}
+        items={[{ label: "Delete", onClick: vi.fn(), destructive: true }]}
+      />
+    ));
+    fireEvent.click(screen.getByText("Open"));
+    const item = screen.getByText("Delete").closest("button")!;
+    expect(item.className).toMatch(/itemDestructive/);
+  });
 });
