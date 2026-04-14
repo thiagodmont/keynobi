@@ -1,6 +1,4 @@
 .root {
-  overflow-y: auto;
-  overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-color) transparent;
 }
