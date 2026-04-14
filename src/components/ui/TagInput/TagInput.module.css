@@ -1,0 +1,76 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tagList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 4px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: var(--bg-quaternary);
+  border-radius: 3px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.removeBtn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+
+.removeBtn:hover {
+  color: var(--text-primary);
+}
+
+.addRow {
+  display: flex;
+  gap: 4px;
+}
+
+.input {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 3px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--font-ui);
+  outline: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.input:focus {
+  border-color: var(--border-focus);
+}
+
+.addBtn {
+  background: var(--bg-quaternary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--font-ui);
+}
+
+.addBtn:hover {
+  background: var(--bg-hover);
+}
