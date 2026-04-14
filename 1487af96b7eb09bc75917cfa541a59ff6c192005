@@ -1,0 +1,33 @@
+src/components/ui/CommandPalette/index.ts
+  ea106d8db9946cbe 1-7
+src/components/ui/index.ts
+  ea106d8db9946cbe 30-36
+src/components/common/CommandPalette.tsx
+  ea106d8db9946cbe 1-8
+src/components/ui/CommandPalette/CommandPalette.module.css
+  ea106d8db9946cbe 1-89
+src/components/ui/CommandPalette/CommandPalette.test.tsx
+  ea106d8db9946cbe 1-76
+src/components/ui/CommandPalette/CommandPalette.tsx
+  ea106d8db9946cbe 1-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "1487af96b7eb09bc75917cfa541a59ff6c192005",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 316,
+      "total_deletions": 224,
+      "accepted_lines": 316,
+      "overriden_lines": 0
+    }
+  }
+}
