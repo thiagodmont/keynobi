@@ -1,0 +1,35 @@
+src/components/ui/IconButton/IconButton.test.tsx
+  4a88dd7d06511611 1-63
+src/components/device/DevicePanel.tsx
+  4a88dd7d06511611 28,157-158,168
+src/components/ui/IconButton/IconButton.module.css
+  4a88dd7d06511611 1-44
+src/components/build/BuildPanel.tsx
+  4a88dd7d06511611 14,194-196,199-201,206,208
+src/components/ui/IconButton/IconButton.tsx
+  4a88dd7d06511611 1-34
+src/components/ui/index.ts
+  4a88dd7d06511611 28
+src/components/ui/IconButton/index.ts
+  4a88dd7d06511611 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "cbd726a3dc92d1c949298a49eab22219ec4fe2d2",
+  "prompts": {
+    "4a88dd7d06511611": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "526f7238-ab05-427c-a4f2-ee399d8cd793",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 156,
+      "total_deletions": 90,
+      "accepted_lines": 156,
+      "overriden_lines": 0
+    }
+  }
+}
