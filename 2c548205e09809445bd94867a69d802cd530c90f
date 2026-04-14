@@ -1,0 +1,31 @@
+src/components/ui/TagInput/TagInput.test.tsx
+  ea106d8db9946cbe 1-69
+src/components/ui/TagInput/TagInput.module.css
+  ea106d8db9946cbe 1-76
+src/components/ui/TagInput/index.ts
+  ea106d8db9946cbe 1-2
+src/components/ui/index.ts
+  ea106d8db9946cbe 14
+src/components/ui/TagInput/TagInput.tsx
+  ea106d8db9946cbe 1-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "2c548205e09809445bd94867a69d802cd530c90f",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 215,
+      "total_deletions": 0,
+      "accepted_lines": 215,
+      "overriden_lines": 0
+    }
+  }
+}
