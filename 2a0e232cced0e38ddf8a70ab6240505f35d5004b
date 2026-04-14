@@ -1,0 +1,27 @@
+src/stores/health.store.ts
+  ea106d8db9946cbe 18
+src/stores/mcp.store.ts
+  ea106d8db9946cbe 15
+src/stores/device.store.ts
+  ea106d8db9946cbe 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "2a0e232cced0e38ddf8a70ab6240505f35d5004b",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 34,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
