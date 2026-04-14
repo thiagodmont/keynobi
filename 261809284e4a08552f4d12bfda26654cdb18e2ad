@@ -1,0 +1,35 @@
+src/components/common/Toast.tsx
+  ea106d8db9946cbe 1-3
+src/components/ui/Toast/index.ts
+  ea106d8db9946cbe 1-2
+src/stores/ui.store.ts
+  ea106d8db9946cbe 5-7,53
+src/components/ui/index.ts
+  ea106d8db9946cbe 29
+src/components/ui/Toast/Toast.tsx
+  ea106d8db9946cbe 1-61
+src/components/ui/Toast/Toast.test.tsx
+  ea106d8db9946cbe 1-55
+src/components/ui/Toast/Toast.module.css
+  ea106d8db9946cbe 1-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "261809284e4a08552f4d12bfda26654cdb18e2ad",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 174,
+      "total_deletions": 121,
+      "accepted_lines": 174,
+      "overriden_lines": 0
+    }
+  }
+}
