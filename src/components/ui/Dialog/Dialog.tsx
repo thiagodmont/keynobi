@@ -1,4 +1,4 @@
-import { createSignal, For, type JSX } from "solid-js";
+import { createSignal, For, Show, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import styles from "./Dialog.module.css";
 
@@ -43,37 +43,33 @@ export function resetDialogHostForTests(): void {
 
 export function DialogHost(): JSX.Element {
   return (
-    <>
-      {() => {
-        const dialog = dialogQueue()[0];
-        if (!dialog) return null;
-        return (
-          <Portal>
-            <div
-              data-testid="dialog-backdrop"
-              class={styles.backdrop}
-              onClick={() => resolve("cancel")}
-            >
-              <div class={styles.box} onClick={(e) => e.stopPropagation()}>
-                <div class={styles.title}>{dialog.title}</div>
-                <div class={styles.message}>{dialog.message}</div>
-                <div class={styles.actions}>
-                  <For each={dialog.buttons.slice().reverse()}>
-                    {(btn) => (
-                      <button
-                        class={[styles.btn, styles[btn.style]].join(" ")}
-                        onClick={() => resolve(btn.value)}
-                      >
-                        {btn.label}
-                      </button>
-                    )}
-                  </For>
-                </div>
+    <Show when={dialogQueue()[0]} keyed>
+      {(dialog) => (
+        <Portal>
+          <div
+            data-testid="dialog-backdrop"
+            class={styles.backdrop}
+            onClick={() => resolve("cancel")}
+          >
+            <div class={styles.box} onClick={(e) => e.stopPropagation()}>
+              <div class={styles.title}>{dialog.title}</div>
+              <div class={styles.message}>{dialog.message}</div>
+              <div class={styles.actions}>
+                <For each={dialog.buttons.slice().reverse()}>
+                  {(btn) => (
+                    <button
+                      class={[styles.btn, styles[btn.style]].join(" ")}
+                      onClick={() => resolve(btn.value)}
+                    >
+                      {btn.label}
+                    </button>
+                  )}
+                </For>
               </div>
             </div>
-          </Portal>
-        );
-      }}
-    </>
+          </div>
+        </Portal>
+      )}
+    </Show>
   );
 }
