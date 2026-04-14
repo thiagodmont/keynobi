@@ -21,6 +21,7 @@ export function Dropdown(props: DropdownProps): JSX.Element {
   const [isOpen, setIsOpen] = createSignal(false);
   const [activeIndex, setActiveIndex] = createSignal(-1);
   let triggerRef!: HTMLDivElement;
+  let menuRef!: HTMLDivElement;
   let menuPos = { x: 0, y: 0 };
 
   function open() {
@@ -60,9 +61,11 @@ export function Dropdown(props: DropdownProps): JSX.Element {
       close();
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
+      if (items.length === 0) return;
       setActiveIndex((i) => (i + 1) % items.length);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
+      if (items.length === 0) return;
       setActiveIndex((i) => (i - 1 + items.length) % items.length);
     } else if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
@@ -77,7 +80,9 @@ export function Dropdown(props: DropdownProps): JSX.Element {
   function handleOutsideMouseDown(e: MouseEvent) {
     if (!isOpen()) return;
     const target = e.target as globalThis.Node;
-    if (triggerRef && !triggerRef.contains(target)) {
+    const insideTrigger = triggerRef?.contains(target) ?? false;
+    const insideMenu = menuRef?.contains(target) ?? false;
+    if (!insideTrigger && !insideMenu) {
       close();
     }
   }
@@ -108,6 +113,7 @@ export function Dropdown(props: DropdownProps): JSX.Element {
       <Show when={isOpen()}>
         <Portal>
           <div
+            ref={menuRef}
             class={styles.menu}
             style={{
               left: `${menuPos.x}px`,

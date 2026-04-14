@@ -84,6 +84,19 @@ describe("Dropdown", () => {
     expect(fn).toHaveBeenCalledOnce();
   });
 
+  it("does not break ArrowDown when no activatable items", () => {
+    render(() => (
+      <Dropdown
+        trigger={<button>Open</button>}
+        items={[{ label: "Only", onClick: vi.fn(), disabled: true }]}
+      />
+    ));
+    fireEvent.click(screen.getByText("Open"));
+    fireEvent.keyDown(document, { key: "ArrowDown" });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByText("Only")).toBeNull();
+  });
+
   it("renders destructive item with error color class", () => {
     render(() => (
       <Dropdown

@@ -12,7 +12,7 @@ export interface CopyableTextProps {
 
 export function CopyableText(props: CopyableTextProps): JSX.Element {
   function handleCopy() {
-    navigator.clipboard?.writeText(props.text).catch(() => {});
+    void navigator.clipboard?.writeText(props.text)?.catch(() => {});
   }
 
   return (

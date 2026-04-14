@@ -28,7 +28,7 @@ export function Alert(props: AlertProps): JSX.Element {
           <div class={styles.actions}>{props.action}</div>
         </Show>
       </div>
-      <Show when={props.dismissible}>
+      <Show when={props.dismissible && props.onDismiss}>
         <button
           type="button"
           class={styles.closeBtn}

@@ -9,7 +9,6 @@ rooms:
   description: Files from release/
   keywords:
   - release
-  - release
 - name: documentation
   description: Files from docs/
   keywords:
@@ -19,11 +18,9 @@ rooms:
   description: Files from public/
   keywords:
   - public
-  - public
 - name: scripts
   description: Files from scripts/
   keywords:
-  - scripts
   - scripts
 - name: src_tauri
   description: Files from src-tauri/
@@ -33,7 +30,6 @@ rooms:
 - name: src
   description: Files from src/
   keywords:
-  - src
   - src
 - name: testing
   description: Files from tests/

@@ -1,8 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { beforeEach, describe, it, expect } from "vitest";
 import { render, fireEvent, screen } from "@solidjs/testing-library";
-import { DialogHost, showDialog } from "./Dialog";
+import { DialogHost, resetDialogHostForTests, showDialog } from "./Dialog";
 
 describe("Dialog", () => {
+  beforeEach(() => {
+    resetDialogHostForTests();
+  });
   it("renders nothing when no dialog is pending", () => {
     const { container } = render(() => <DialogHost />);
     expect(container.firstChild).toBeNull();
@@ -55,5 +58,26 @@ describe("Dialog", () => {
     fireEvent.click(backdrop);
     const result = await promise;
     expect(result).toBe("cancel");
+  });
+
+  it("queues a second showDialog and resolves both in order", async () => {
+    render(() => <DialogHost />);
+    const p1 = showDialog({
+      title: "First",
+      message: "m1",
+      buttons: [{ label: "Next", value: "next", style: "primary" }],
+    });
+    const p2 = showDialog({
+      title: "Second",
+      message: "m2",
+      buttons: [{ label: "Done", value: "done", style: "primary" }],
+    });
+    expect(screen.getByText("First")).not.toBeNull();
+    expect(screen.queryByText("Second")).toBeNull();
+    fireEvent.click(screen.getByText("Next"));
+    expect(await p1).toBe("next");
+    expect(screen.getByText("Second")).not.toBeNull();
+    fireEvent.click(screen.getByText("Done"));
+    expect(await p2).toBe("done");
   });
 });

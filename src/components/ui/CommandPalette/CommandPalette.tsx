@@ -68,7 +68,12 @@ export function CommandPalette(): JSX.Element {
   function handleKeyDown(e: KeyboardEvent): void {
     const items = results();
     if (e.key === "Escape") { e.preventDefault(); closePalette(); return; }
-    if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIndex((i) => Math.min(i + 1, items.length - 1)); return; }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (items.length === 0) return;
+      setSelectedIndex((i) => Math.min(i + 1, items.length - 1));
+      return;
+    }
     if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIndex((i) => Math.max(i - 1, 0)); return; }
     if (e.key === "Enter") { e.preventDefault(); const item = items[selectedIndex()]; if (item) item.action(); return; }
   }

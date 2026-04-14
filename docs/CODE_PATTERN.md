@@ -287,7 +287,7 @@ interface DiagnosticWithCount extends Diagnostic { count: number; }
 
 ### 7. Design system (`src/components/ui/`)
 
-Reusable atoms and layout pieces live under `src/components/ui/` with **CSS Modules** and **`var(--*)` tokens** from `src/styles/theme.css` (see `docs/superpowers/specs/2026-04-12-design-system-design.md`). Import from `@/components/ui` via the barrel file.
+Reusable atoms and layout pieces live under `src/components/ui/` with **CSS Modules** and **`var(--*)` tokens** from `src/styles/theme.css`. Import from `@/components/ui` via the barrel file.
 
 - **`Button` vs `IconButton`**: Use `Button` for labeled actions (primary/secondary/ghost/danger). Use **`IconButton`** for compact toolbar controls (fixed square hit target, `title` for tooltip, optional `active` / `size="sm" | "md"`).
 - **`Dropdown` / `MenuItem`**: Set `destructive: true` on items that remove data so they get error-colored styling.
