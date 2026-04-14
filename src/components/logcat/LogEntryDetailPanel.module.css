@@ -1,0 +1,106 @@
+.panel {
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  font-size: 12px;
+  max-height: 30vh;
+}
+
+.header {
+  align-items: center;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-shrink: 0;
+  justify-content: space-between;
+  padding: 6px 12px;
+}
+
+.headerTitle {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.headerActions {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.iconBtn {
+  align-items: center;
+  background: none;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  gap: 4px;
+  padding: 2px 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.iconBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.grid {
+  display: grid;
+  flex-shrink: 0;
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.cell {
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+  padding: 6px 12px;
+}
+
+.cellBorderRight {
+  border-right: 1px solid var(--border);
+}
+
+.cellBorderLeft {
+  border-left: 1px solid var(--border);
+}
+
+.cellLabel {
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+}
+
+.cellValue {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.messageArea {
+  flex: 1;
+  overflow: auto;
+  padding: 8px 12px;
+}
+
+.messageValue {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
