@@ -1,0 +1,31 @@
+src/components/common/LogViewer.tsx
+  ea106d8db9946cbe 8
+src/components/logcat/LogcatPanel.tsx
+  ea106d8db9946cbe 32
+src/components/device/DevicePanel.tsx
+  ea106d8db9946cbe 30
+src/App.tsx
+  ea106d8db9946cbe 12,14
+src/components/device/DeviceSidebar.tsx
+  ea106d8db9946cbe 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "4120496ac889bf8aa8e3dae2835d2e864a7dcd5a",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 6,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  }
+}
