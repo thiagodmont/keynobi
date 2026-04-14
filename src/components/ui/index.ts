@@ -15,3 +15,4 @@ export { TagInput, type TagInputProps } from "./TagInput";
 export { Input, type InputProps, type InputType, type InputState } from "./Input";
 export { Checkbox, type CheckboxProps } from "./Checkbox";
 export { Textarea, type TextareaProps, type TextareaState } from "./Textarea";
+export { FormField, type FormFieldProps } from "./FormField";
