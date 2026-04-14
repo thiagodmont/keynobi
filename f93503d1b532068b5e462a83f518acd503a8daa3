@@ -1,0 +1,23 @@
+src/components/device/DevicePanel.tsx
+  4a88dd7d06511611 28,209,240-245
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "f93503d1b532068b5e462a83f518acd503a8daa3",
+  "prompts": {
+    "4a88dd7d06511611": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "526f7238-ab05-427c-a4f2-ee399d8cd793",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 8,
+      "total_deletions": 60,
+      "accepted_lines": 8,
+      "overriden_lines": 0
+    }
+  }
+}
