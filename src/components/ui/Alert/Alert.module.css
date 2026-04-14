@@ -1,0 +1,46 @@
+.root {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  border-width: 1px;
+  border-style: solid;
+  font-size: var(--font-size-ui);
+  line-height: 1.5;
+}
+
+.info    { background: rgba(0, 122, 204, 0.1);   border-color: rgba(0, 122, 204, 0.3);   color: var(--info); }
+.warning { background: rgba(204, 167, 0, 0.1);   border-color: rgba(204, 167, 0, 0.3);   color: var(--warning); }
+.error   { background: rgba(241, 76, 76, 0.1);   border-color: rgba(241, 76, 76, 0.3);   color: var(--error); }
+.success { background: rgba(76, 175, 80, 0.1);   border-color: rgba(76, 175, 80, 0.3);   color: var(--success); }
+
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.actions {
+  margin-top: 8px;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.closeBtn:hover {
+  opacity: 1;
+}
