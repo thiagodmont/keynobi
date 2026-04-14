@@ -10,7 +10,7 @@ import { AndroidSdkStatus, JavaStatus } from "@/components/settings/ToolStatus";
 import { SettingRow, SettingToggle } from "@/components/settings/SettingRow";
 import { healthChecks, refreshHealthChecks } from "@/stores/health.store";
 import { showToast } from "@/components/common/Toast";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 import type { CheckStatus } from "@/stores/health.store";
 
 const STEP_LABELS = ["Welcome", "Environment", "Privacy", "Workflow", "Summary"];

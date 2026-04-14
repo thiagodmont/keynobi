@@ -21,7 +21,7 @@ import {
   removeProjectEntry,
   renameProjectEntry,
 } from "@/services/project.service";
-import { Icon } from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 import type { ProjectEntry } from "@/bindings";
 
 // ── Avatar color ──────────────────────────────────────────────────────────────

@@ -26,7 +26,7 @@ import {
 import type { Device, AvdInfo } from "@/bindings";
 import { toggleDeviceSidebar } from "@/stores/ui.store";
 import { showToast } from "@/components/common/Toast";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 import { showDialog } from "@/components/common/Dialog";
 import { CreateDeviceDialog } from "./CreateDeviceDialog";
 

@@ -8,7 +8,7 @@
 import { type JSX, Show, For } from "solid-js";
 import { projectsState } from "@/stores/projects.store";
 import { openProjectFolder, switchProject } from "@/services/project.service";
-import { Icon } from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 import type { ProjectEntry } from "@/bindings";
 
 function shortenPath(p: string): string {

@@ -1,7 +1,7 @@
 import { type JSX, For, Show } from "solid-js";
 import type { BuildRecord, BuildResult, BuildStatus } from "@/bindings";
 import { buildState } from "@/stores/build.store";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 
 export interface BuildHistoryPanelProps {
   /** ID of the currently selected history entry. null = current build. */

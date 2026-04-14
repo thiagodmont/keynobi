@@ -9,7 +9,7 @@ import { VariantSelectorPill } from "@/components/build/VariantSelector";
 import { setActiveTab } from "@/stores/ui.store";
 import { mcpState } from "@/stores/mcp.store";
 import { openMcpPanel } from "@/components/mcp/McpPanel";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 import { appMemoryBytes, logFolderBytes, rotationTriggered } from "@/stores/monitor.store";
 import { settingsState } from "@/stores/settings.store";
 

@@ -7,7 +7,7 @@ import { type JSX, For, Show, createSignal, createMemo } from "solid-js";
 import { deviceState, setLaunchingAvd } from "@/stores/device.store";
 import { launchAvd } from "@/lib/tauri-api";
 import type { Device, AvdInfo } from "@/bindings";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 
 // ── Module-level promise resolver ─────────────────────────────────────────────
 

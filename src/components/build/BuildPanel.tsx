@@ -11,7 +11,7 @@ import { runBuild, runAndDeploy, cancelBuild, jumpToBuildError } from "@/service
 import { LogViewer } from "@/components/common/LogViewer";
 import type { BuildError, BuildRecord } from "@/bindings";
 import type { LogEntry } from "@/stores/log.store";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 import { BuildHistoryPanel, relativeTime } from "@/components/build/BuildHistoryPanel";
 import { projectState } from "@/stores/project.store";
 import { showToast } from "@/components/common/Toast";

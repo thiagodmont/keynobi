@@ -17,7 +17,7 @@ import {
 import { Portal } from "solid-js/web";
 import type { AvailableSystemImage } from "@/bindings";
 import { listAvailableSystemImages, downloadSystemImage } from "@/lib/tauri-api";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 
 export interface DownloadSystemImageDialogProps {
   onClose: () => void;

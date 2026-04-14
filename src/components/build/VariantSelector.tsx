@@ -12,7 +12,7 @@ import {
   loadVariants,
 } from "@/stores/variant.store";
 import { projectState } from "@/stores/project.store";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 import { showToast } from "@/components/common/Toast";
 import { formatError } from "@/lib/tauri-api";
 

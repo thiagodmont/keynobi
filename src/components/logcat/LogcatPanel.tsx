@@ -31,7 +31,7 @@ import { settingsState } from "@/stores/settings.store";
 import { showToast } from "@/components/common/Toast";
 import { VirtualList, type VirtualListHandle } from "@/components/common/VirtualList";
 import { QueryBar } from "@/components/logcat/QueryBar";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 import {
   parseFilterGroups,
   matchesFilterGroups,
