@@ -1,0 +1,25 @@
+src/components/build/BuildHistoryPanel.tsx
+  4a88dd7d06511611 24-25,27
+src/components/build/BuildHistoryPanel.test.ts
+  4a88dd7d06511611 25-26,29-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "a5840d5449184e1066347b013503ff3571bf2bed",
+  "prompts": {
+    "4a88dd7d06511611": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "526f7238-ab05-427c-a4f2-ee399d8cd793",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 7,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}
