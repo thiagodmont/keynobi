@@ -22,12 +22,12 @@ describe("BuildHistoryPanel helpers", () => {
     expect(statusIcon({ state: "idle" })).toBe("•");
   });
 
-  it("statusColor returns green for success", () => {
-    expect(statusColor(makeRecord("success").status)).toBe("#4ade80");
+  it("statusColor returns success token for success", () => {
+    expect(statusColor(makeRecord("success").status)).toBe("var(--success)");
   });
 
-  it("statusColor returns red for failed", () => {
-    expect(statusColor(makeRecord("failed").status)).toBe("#f87171");
+  it("statusColor returns error token for failed", () => {
+    expect(statusColor(makeRecord("failed").status)).toBe("var(--error)");
   });
 
   it("durationLabel returns empty for running/idle/cancelled", () => {

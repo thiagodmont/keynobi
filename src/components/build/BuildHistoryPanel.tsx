@@ -21,10 +21,10 @@ export function statusIcon(status: BuildStatus): string {
 }
 
 export function statusColor(status: BuildStatus): string {
-  if (status.state === "success") return "#4ade80";
-  if (status.state === "failed") return "#f87171";
+  if (status.state === "success") return "var(--success)";
+  if (status.state === "failed") return "var(--error)";
   if (status.state === "cancelled") return "rgba(255,255,255,0.3)";
-  return "#60a5fa"; // running / idle
+  return "var(--info)"; // running / idle
 }
 
 export function durationLabel(status: BuildStatus): string {
