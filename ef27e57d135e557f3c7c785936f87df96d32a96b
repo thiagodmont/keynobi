@@ -1,0 +1,27 @@
+src/components/logcat/LogEntryDetailPanel.module.css
+  4a88dd7d06511611 1-106
+src/components/logcat/LogEntryDetailPanel.test.tsx
+  4a88dd7d06511611 1-51
+src/components/logcat/LogEntryDetailPanel.tsx
+  4a88dd7d06511611 5,25-37,43,45-48,52,55-56,59-64,66,72-74,78,82-85,88-89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "ef27e57d135e557f3c7c785936f87df96d32a96b",
+  "prompts": {
+    "4a88dd7d06511611": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "526f7238-ab05-427c-a4f2-ee399d8cd793",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 203,
+      "total_deletions": 175,
+      "accepted_lines": 198,
+      "overriden_lines": 0
+    }
+  }
+}
