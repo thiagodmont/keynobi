@@ -13,3 +13,4 @@ export { Toggle, type ToggleProps } from "./Toggle";
 export { Select, type SelectProps, type SelectOption } from "./Select";
 export { TagInput, type TagInputProps } from "./TagInput";
 export { Input, type InputProps, type InputType, type InputState } from "./Input";
+export { Checkbox, type CheckboxProps } from "./Checkbox";

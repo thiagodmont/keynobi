@@ -1,0 +1,22 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: var(--font-size-ui);
+  color: var(--text-primary);
+  user-select: none;
+}
+
+.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.input {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: inherit;
+  flex-shrink: 0;
+}
