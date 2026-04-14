@@ -33,6 +33,7 @@ import { uiState, toggleDeviceSidebar } from "@/stores/ui.store";
 import { showToast } from "@/components/ui";
 import { Icon } from "@/components/ui";
 import { showDialog } from "@/components/ui";
+import { AvdContextMenu } from "@/components/device/AvdContextMenu";
 import { CreateDeviceDialog } from "./CreateDeviceDialog";
 import { DownloadSystemImageDialog } from "./DownloadSystemImageDialog";
 
@@ -754,76 +755,6 @@ function AvdRow(props: {
         </Show>
       </Show>
     </div>
-  );
-}
-
-// ── AVD context menu ──────────────────────────────────────────────────────────
-
-function AvdContextMenu(props: {
-  onClose: () => void;
-  onWipe: () => void;
-  onDelete: () => void;
-}): JSX.Element {
-  return (
-    <>
-      <div
-        style={{ position: "fixed", inset: "0", "z-index": "1999" }}
-        onClick={() => props.onClose()}
-      />
-      <div
-        style={{
-          position: "absolute",
-          right: "0",
-          bottom: "calc(100% + 4px)",
-          "z-index": "2000",
-          background: "var(--bg-tertiary)",
-          border: "1px solid var(--border)",
-          "border-radius": "6px",
-          "box-shadow": "0 4px 16px rgba(0,0,0,0.4)",
-          "min-width": "150px",
-          padding: "4px",
-          "white-space": "nowrap",
-        }}
-      >
-        <ContextMenuItem label="Wipe Data…" onClick={props.onWipe} destructive={false} />
-        <div style={{ height: "1px", background: "var(--border)", margin: "4px 0" }} />
-        <ContextMenuItem label="Delete…" onClick={props.onDelete} destructive={true} />
-      </div>
-    </>
-  );
-}
-
-function ContextMenuItem(props: {
-  label: string;
-  onClick: () => void;
-  destructive: boolean;
-}): JSX.Element {
-  return (
-    <button
-      onClick={() => props.onClick()}
-      style={{
-        display: "block",
-        width: "100%",
-        padding: "6px 10px",
-        background: "none",
-        border: "none",
-        cursor: "pointer",
-        "text-align": "left",
-        "font-size": "12px",
-        "border-radius": "4px",
-        color: props.destructive ? "var(--error, #f87171)" : "var(--text-secondary)",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.background = props.destructive
-          ? "rgba(248,113,113,0.12)"
-          : "var(--bg-hover, rgba(255,255,255,0.08))";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "none";
-      }}
-    >
-      {props.label}
-    </button>
   );
 }
 
