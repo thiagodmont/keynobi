@@ -1,0 +1,35 @@
+src/components/ui/Dialog/index.ts
+  ea106d8db9946cbe 1-2
+src/lib/dialogs.ts
+  ea106d8db9946cbe 1-29
+src/components/ui/Dialog/Dialog.test.tsx
+  ea106d8db9946cbe 1-59
+src/components/ui/Dialog/Dialog.module.css
+  ea106d8db9946cbe 1-53
+src/components/ui/Dialog/Dialog.tsx
+  ea106d8db9946cbe 1-66
+src/components/common/Dialog.tsx
+  ea106d8db9946cbe 1-5
+src/components/ui/index.ts
+  ea106d8db9946cbe 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "85285285b53772bdb5f5330ca0115b1a9d12b8f5",
+  "prompts": {
+    "ea106d8db9946cbe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b2827cff-c836-4cb0-8a38-af281bea85f0",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 216,
+      "total_deletions": 191,
+      "accepted_lines": 215,
+      "overriden_lines": 0
+    }
+  }
+}
