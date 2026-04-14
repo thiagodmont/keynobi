@@ -1,0 +1,42 @@
+.root {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: var(--font-size-ui);
+  font-family: var(--font-ui);
+  outline: none;
+  width: 100%;
+  transition: border-color 0.1s;
+  line-height: 1.5;
+}
+
+.root:focus {
+  border-color: var(--border-focus);
+}
+
+.root::placeholder {
+  color: var(--text-muted);
+}
+
+.root:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.error {
+  border-color: var(--error);
+}
+
+.error:focus {
+  border-color: var(--error);
+}
+
+.resizeNone     { resize: none; }
+.resizeVertical { resize: vertical; }
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
