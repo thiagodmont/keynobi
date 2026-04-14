@@ -27,3 +27,10 @@ export { Dropdown, type DropdownProps, type MenuItem } from "./Dropdown";
 export { Toolbar, type ToolbarProps, type ToolbarItemDef } from "./Toolbar";
 export { DialogHost, showDialog, type DialogButton, type DialogButtonStyle } from "./Dialog";
 export { ToastContainer, showToast, dismissToast, toasts, type Toast, type ToastKind } from "./Toast";
+export {
+  CommandPalette,
+  openPalette,
+  closePalette,
+  isPaletteOpen,
+  type PaletteMode,
+} from "./CommandPalette";

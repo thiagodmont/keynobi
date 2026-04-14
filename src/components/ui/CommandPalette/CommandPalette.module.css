@@ -1,0 +1,89 @@
+.backdrop {
+  background: rgba(0, 0, 0, 0.3);
+  inset: 0;
+  position: fixed;
+  z-index: 1000;
+}
+
+.palette {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  left: 50%;
+  max-height: 400px;
+  overflow: hidden;
+  position: absolute;
+  top: 20%;
+  transform: translateX(-50%);
+  width: 560px;
+}
+
+.inputWrapper {
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+}
+
+.input {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-sizing: border-box;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+  padding: 6px 10px;
+  width: 100%;
+}
+
+.input:focus {
+  border-color: var(--border-focus);
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.item {
+  align-items: center;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  gap: 8px;
+  padding: 6px 12px;
+}
+
+.item.active {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.detail {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.item.active .detail {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.empty {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 16px;
+  text-align: center;
+}
