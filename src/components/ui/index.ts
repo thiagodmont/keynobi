@@ -19,3 +19,4 @@ export { FormField, type FormFieldProps } from "./FormField";
 export { ScrollArea, type ScrollAreaProps } from "./ScrollArea";
 export { Panel, type PanelProps } from "./Panel";
 export { Tabs, type TabsProps, type TabDef } from "./Tabs";
+export { EmptyState, type EmptyStateProps } from "./EmptyState";
