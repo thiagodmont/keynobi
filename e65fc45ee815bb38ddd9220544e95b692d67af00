@@ -1,0 +1,55 @@
+src/components/device/DeviceSidebar.tsx
+  4a88dd7d06511611 44-45,47,551-552,625,682-683,711-712
+AGENTS.md
+  4a88dd7d06511611 40-41
+src/components/logcat/QueryBar.tsx
+  4a88dd7d06511611 8-11,61-65,67-71,73-77,79-83,85-89,91-95,536-537
+docs/USER_MANUAL.md
+  4a88dd7d06511611 23,553-555,559-564
+src/components/layout/StatusBar.tsx
+  4a88dd7d06511611 35,37,39,139-140,169-170,223,226,228,230,303-305
+src/components/logcat/logcat-levels.ts
+  4a88dd7d06511611 2-20
+src/components/device/DevicePickerDialog.tsx
+  4a88dd7d06511611 330,337
+src/components/logcat/LogEntryDetailPanel.test.tsx
+  4a88dd7d06511611 2,51-59
+src/components/build/BuildHistoryPanel.test.ts
+  4a88dd7d06511611 33-41
+src/components/build/BuildHistoryPanel.tsx
+  4a88dd7d06511611 121,137,207
+src/components/logcat/LogcatPanel.tsx
+  4a88dd7d06511611 860,865,874,903,1132,1311-1315,1319,1323,1335,1394,1397-1398,1400,1434-1436,1454,1456,1458,1470-1471,1511,1515-1517,1521,1529,1538-1540,1607,1616
+docs/CODE_PATTERN.md
+  4a88dd7d06511611 288-296,355-364
+src/components/device/AvdContextMenu.test.tsx
+  4a88dd7d06511611 1-42
+src/components/mcp/McpPanel.tsx
+  4a88dd7d06511611 46-50,99,123,135,252,254,263,269,334-338
+src/components/device/DownloadSystemImageDialog.tsx
+  4a88dd7d06511611 209,421,485
+src/components/device/DevicePanel.tsx
+  4a88dd7d06511611 491-494,573-574,603-604,606,611-612,726-729
+src/components/ui/Dropdown/Dropdown.tsx
+  4a88dd7d06511611 79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "e65fc45ee815bb38ddd9220544e95b692d67af00",
+  "prompts": {
+    "4a88dd7d06511611": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "526f7238-ab05-427c-a4f2-ee399d8cd793",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 248,
+      "total_deletions": 115,
+      "accepted_lines": 248,
+      "overriden_lines": 0
+    }
+  }
+}
