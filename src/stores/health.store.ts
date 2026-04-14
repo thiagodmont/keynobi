@@ -15,7 +15,7 @@ import { createMemo } from "solid-js";
 import { settingsState } from "@/stores/settings.store";
 import { runHealthChecks } from "@/lib/tauri-api";
 import type { SystemHealthReport } from "@/bindings";
-import { showToast } from "@/stores/ui.store";
+import { showToast } from "@/components/ui";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
