@@ -35,6 +35,8 @@
 npm run test              # run all frontend tests once
 npm run test:watch        # watch mode during development
 npm run test:ui           # Vitest browser UI
+npm run lint              # Check lint rules
+npm run typescript:check  # Check typescript 
 ```
 
 **Design system / UI refactor PRs:** run `npm test && npm run typescript:check && npm run lint` before merge (see `docs/CODE_PATTERN.md` §Testing Patterns — verification gate).
