@@ -1,0 +1,29 @@
+src-tauri/src/models/settings.rs
+  040389a539281072 414-422
+src-tauri/src/services/log_store.rs
+  040389a539281072 264-270
+src-tauri/src/services/settings_manager.rs
+  040389a539281072 332-351
+src/lib/logcat-ui-lines.test.ts
+  040389a539281072 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "5914145e7b7fa45fce7b5c19481c3da17cf8f421",
+  "prompts": {
+    "040389a539281072": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "245a72a8-75e0-401e-ae63-6337e65f53d1",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 87,
+      "total_deletions": 0,
+      "accepted_lines": 87,
+      "overriden_lines": 0
+    }
+  }
+}
