@@ -12,8 +12,8 @@ import {
   loadVariants,
 } from "@/stores/variant.store";
 import { projectState } from "@/stores/project.store";
-import Icon from "@/components/common/Icon";
-import { showToast } from "@/components/common/Toast";
+import { Icon } from "@/components/ui";
+import { showToast } from "@/components/ui";
 import { formatError } from "@/lib/tauri-api";
 
 // ── Variant picker signal ─────────────────────────────────────────────────────

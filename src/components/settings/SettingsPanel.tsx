@@ -7,7 +7,7 @@ import {
   SettingNumberInput,
 } from "@/components/settings/SettingRow";
 import { AndroidSdkStatus, JavaStatus } from "@/components/settings/ToolStatus";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 
 type Category = "user" | "tools" | "advanced";
 

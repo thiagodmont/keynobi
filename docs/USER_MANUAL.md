@@ -20,6 +20,7 @@ The distributed app and installer are named **Keynobi**.
 8. [Health Center](#8-health-center)
 9. [Keyboard Shortcuts](#9-keyboard-shortcuts)
 10. [Claude Code Integration](#10-claude-code-integration)
+11. [Theme and colors](#11-theme-and-colors)
 
 ---
 
@@ -549,9 +550,15 @@ For **UI automation**, use `find_ui_elements` to locate controls, then `ui_tap` 
 
 The status bar shows an **MCP** pill:
 - **Dim** when idle (no server process or client activity detected)
-- **Blue** when an MCP server process is alive (stdio transport)
-- **Amber** when the GUI believes a server run is in progress
-- **Green** when a client (e.g. Claude Code) is connected — the pill may show the client name
+- **Info (blue)** when an MCP server process is alive (stdio transport)
+- **Warning (amber)** when the GUI believes a server run is in progress
+- **Success (green)** when a client (e.g. Claude Code) is connected — the pill may show the client name
 - **Click** opens the MCP activity panel (setup, copied command reminder, activity log)
 
 The **Health Center** (Cmd+Shift+H) shows MCP integration status and the exact `claude mcp add` command with your real binary path.
+
+---
+
+## 11. Theme and colors
+
+The app uses **CSS variables** in `src/styles/theme.css` (backgrounds, text, borders, and **semantic** colors: success, error, warning, info). Build status, device connection state, log levels, logcat chips, and status-bar indicators draw from these tokens so the UI stays consistent. Toolbar icon buttons use the shared **IconButton** control; destructive actions in menus use a dedicated **destructive** style where applicable.

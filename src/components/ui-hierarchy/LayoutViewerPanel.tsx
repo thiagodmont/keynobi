@@ -8,7 +8,7 @@ import {
   onCleanup,
 } from "solid-js";
 import type { UiNode } from "@/bindings";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 import {
   COLLAPSED_WRAPPERS_CLASS,
   buildNodeSummaryLine,

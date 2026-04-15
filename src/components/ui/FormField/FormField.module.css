@@ -1,0 +1,32 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.label {
+  font-size: var(--font-size-ui);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.required {
+  color: var(--error);
+  font-size: var(--font-size-ui);
+}
+
+.description {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.error {
+  font-size: 11px;
+  color: var(--error);
+}

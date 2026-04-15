@@ -30,9 +30,10 @@ import {
 } from "@/lib/tauri-api";
 import type { Device, AvdInfo } from "@/bindings";
 import { uiState, toggleDeviceSidebar } from "@/stores/ui.store";
-import { showToast } from "@/components/common/Toast";
-import { Icon } from "@/components/common/Icon";
-import { showDialog } from "@/components/common/Dialog";
+import { showToast } from "@/components/ui";
+import { Icon } from "@/components/ui";
+import { showDialog } from "@/components/ui";
+import { AvdContextMenu } from "@/components/device/AvdContextMenu";
 import { CreateDeviceDialog } from "./CreateDeviceDialog";
 import { DownloadSystemImageDialog } from "./DownloadSystemImageDialog";
 
@@ -40,10 +41,10 @@ import { DownloadSystemImageDialog } from "./DownloadSystemImageDialog";
 
 function connectionColor(state: Device["connectionState"]): string {
   switch (state) {
-    case "online":       return "#4ade80";
-    case "unauthorized": return "#fbbf24";
+    case "online":       return "var(--success)";
+    case "unauthorized": return "var(--warning)";
     case "offline":
-    default:             return "#6b7280";
+    default:             return "var(--text-muted)";
   }
 }
 
@@ -547,8 +548,8 @@ function ConnectedDeviceRow(props: {
               "flex-shrink": "0",
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.color = "var(--error, #f87171)";
-              (e.currentTarget as HTMLElement).style.background = "rgba(248,113,113,0.1)";
+              (e.currentTarget as HTMLElement).style.color = "var(--error)";
+              (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--error) 10%, transparent)";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
@@ -576,7 +577,6 @@ function AvdRow(props: {
   onWipe: () => void;
 }): JSX.Element {
   const [hover, setHover] = createSignal(false);
-  const [menuOpen, setMenuOpen] = createSignal(false);
 
   return (
     <div
@@ -621,7 +621,7 @@ function AvdRow(props: {
               width: "7px",
               height: "7px",
               "border-radius": "50%",
-              background: "#4ade80",
+              background: "var(--success)",
               border: "1.5px solid var(--bg-secondary)",
             }}
           />
@@ -678,8 +678,8 @@ function AvdRow(props: {
                     "border-radius": "3px",
                   }}
                   onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.color = "var(--error, #f87171)";
-                    (e.currentTarget as HTMLElement).style.background = "rgba(248,113,113,0.1)";
+                    (e.currentTarget as HTMLElement).style.color = "var(--error)";
+                    (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--error) 10%, transparent)";
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
@@ -707,8 +707,8 @@ function AvdRow(props: {
                 }}
                 onMouseEnter={(e) => {
                   if (!props.launching) {
-                    (e.currentTarget as HTMLElement).style.color = "#4ade80";
-                    (e.currentTarget as HTMLElement).style.background = "rgba(74,222,128,0.1)";
+                    (e.currentTarget as HTMLElement).style.color = "var(--success)";
+                    (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--success) 10%, transparent)";
                   }
                 }}
                 onMouseLeave={(e) => {
@@ -721,109 +721,38 @@ function AvdRow(props: {
             </Show>
 
             {/* Overflow menu button */}
-            <div style={{ position: "relative" }}>
-              <button
-                onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-                title="More options"
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--text-muted)",
-                  "font-size": "13px",
-                  padding: "2px 3px",
-                  "border-radius": "3px",
-                  "line-height": "1",
-                  display: "flex",
-                  "align-items": "center",
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
-              >
-                ···
-              </button>
-              <Show when={menuOpen()}>
-                <AvdContextMenu
-                  onClose={() => setMenuOpen(false)}
-                  onWipe={() => { setMenuOpen(false); props.onWipe(); }}
-                  onDelete={() => { setMenuOpen(false); props.onDelete(); }}
-                />
-              </Show>
+            <div onClick={(e) => e.stopPropagation()}>
+              <AvdContextMenu
+                onWipe={props.onWipe}
+                onDelete={props.onDelete}
+                trigger={
+                  <button
+                    type="button"
+                    title="More options"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "var(--text-muted)",
+                      "font-size": "13px",
+                      padding: "2px 3px",
+                      "border-radius": "3px",
+                      "line-height": "1",
+                      display: "flex",
+                      "align-items": "center",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+                  >
+                    ···
+                  </button>
+                }
+              />
             </div>
           </div>
         </Show>
       </Show>
     </div>
-  );
-}
-
-// ── AVD context menu ──────────────────────────────────────────────────────────
-
-function AvdContextMenu(props: {
-  onClose: () => void;
-  onWipe: () => void;
-  onDelete: () => void;
-}): JSX.Element {
-  return (
-    <>
-      <div
-        style={{ position: "fixed", inset: "0", "z-index": "1999" }}
-        onClick={() => props.onClose()}
-      />
-      <div
-        style={{
-          position: "absolute",
-          right: "0",
-          bottom: "calc(100% + 4px)",
-          "z-index": "2000",
-          background: "var(--bg-tertiary)",
-          border: "1px solid var(--border)",
-          "border-radius": "6px",
-          "box-shadow": "0 4px 16px rgba(0,0,0,0.4)",
-          "min-width": "150px",
-          padding: "4px",
-          "white-space": "nowrap",
-        }}
-      >
-        <ContextMenuItem label="Wipe Data…" onClick={props.onWipe} destructive={false} />
-        <div style={{ height: "1px", background: "var(--border)", margin: "4px 0" }} />
-        <ContextMenuItem label="Delete…" onClick={props.onDelete} destructive={true} />
-      </div>
-    </>
-  );
-}
-
-function ContextMenuItem(props: {
-  label: string;
-  onClick: () => void;
-  destructive: boolean;
-}): JSX.Element {
-  return (
-    <button
-      onClick={() => props.onClick()}
-      style={{
-        display: "block",
-        width: "100%",
-        padding: "6px 10px",
-        background: "none",
-        border: "none",
-        cursor: "pointer",
-        "text-align": "left",
-        "font-size": "12px",
-        "border-radius": "4px",
-        color: props.destructive ? "var(--error, #f87171)" : "var(--text-secondary)",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.background = props.destructive
-          ? "rgba(248,113,113,0.12)"
-          : "var(--bg-hover, rgba(255,255,255,0.08))";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "none";
-      }}
-    >
-      {props.label}
-    </button>
   );
 }
 

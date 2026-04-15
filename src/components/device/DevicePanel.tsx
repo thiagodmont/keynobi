@@ -25,9 +25,8 @@ import {
 } from "@/lib/tauri-api";
 import type { Device, AvdInfo } from "@/bindings";
 import { toggleDeviceSidebar } from "@/stores/ui.store";
-import { showToast } from "@/components/common/Toast";
-import Icon from "@/components/common/Icon";
-import { showDialog } from "@/components/common/Dialog";
+import { Icon, IconButton, EmptyState, Button, showToast, showDialog } from "@/components/ui";
+import { AvdContextMenu } from "@/components/device/AvdContextMenu";
 import { CreateDeviceDialog } from "./CreateDeviceDialog";
 
 export interface DevicePanelProps {
@@ -155,7 +154,8 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
               "flex-shrink": "0",
             }}
           >
-            <ToolbarBtn
+            <IconButton
+              size="md"
               title="Refresh devices"
               onClick={handleRefresh}
               disabled={refreshing()}
@@ -165,7 +165,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
                   <Icon name="spinner" size={13} color="var(--text-muted)" />
                 </span>
               </Show>
-            </ToolbarBtn>
+            </IconButton>
 
             <div style={{ "flex": "1" }} />
 
@@ -207,7 +207,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
                   <EmptyState
                     icon="device"
                     title="No devices connected"
-                    message="Connect a physical device via USB or launch a virtual device below."
+                    description="Connect a physical device via USB or launch a virtual device below."
                   />
                 }
               >
@@ -238,8 +238,12 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
                   <EmptyState
                     icon="device"
                     title="No virtual devices"
-                    message='Create a virtual device to run your app in the emulator.'
-                    action={{ label: "+ New Device", onClick: () => setShowCreateDialog(true) }}
+                    description="Create a virtual device to run your app in the emulator."
+                    action={
+                      <Button variant="primary" size="sm" onClick={() => setShowCreateDialog(true)}>
+                        + New Device
+                      </Button>
+                    }
                   />
                 }
               >
@@ -484,7 +488,10 @@ function DeviceRow(props: {
             padding: "3px 5px", "border-radius": "3px",
             "flex-shrink": "0",
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--error, #f87171)"; (e.currentTarget as HTMLElement).style.background = "rgba(248,113,113,0.1)"; }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.color = "var(--error)";
+            (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--error) 10%, transparent)";
+          }}
           onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLElement).style.background = "none"; }}
         >
           ✕
@@ -506,7 +513,6 @@ function AvdRow(props: {
   onDelete: () => void;
   onWipe: () => void;
 }): JSX.Element {
-  const [menuOpen, setMenuOpen] = createSignal(false);
 
   return (
     <div
@@ -563,8 +569,8 @@ function AvdRow(props: {
                 "font-weight": "500",
                 padding: "1px 6px",
                 "border-radius": "10px",
-                background: "rgba(74,222,128,0.15)",
-                color: "#4ade80",
+                background: "color-mix(in srgb, var(--success) 15%, transparent)",
+                color: "var(--success)",
                 "flex-shrink": "0",
               }}
             >
@@ -593,16 +599,16 @@ function AvdRow(props: {
               title="Stop emulator"
               style={{
                 padding: "4px 10px",
-                background: "rgba(248,113,113,0.12)",
-                border: "1px solid rgba(248,113,113,0.3)",
+                background: "color-mix(in srgb, var(--error) 12%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--error) 30%, transparent)",
                 "border-radius": "4px",
-                color: "#f87171",
+                color: "var(--error)",
                 "font-size": "11px",
                 cursor: "pointer",
                 "font-weight": "500",
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(248,113,113,0.22)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(248,113,113,0.12)"; }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--error) 22%, transparent)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--error) 12%, transparent)"; }}
             >
               Stop
             </button>
@@ -639,125 +645,43 @@ function AvdRow(props: {
         </Show>
 
         {/* Overflow menu */}
-        <div style={{ position: "relative" }}>
-          <button
-            onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-            title="More options"
-            style={{
-              width: "26px",
-              height: "26px",
-              display: "flex",
-              "align-items": "center",
-              "justify-content": "center",
-              background: "none",
-              border: "1px solid transparent",
-              "border-radius": "4px",
-              cursor: "pointer",
-              color: "var(--text-muted)",
-              "font-size": "14px",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.08))";
-              (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "none";
-              (e.currentTarget as HTMLElement).style.borderColor = "transparent";
-            }}
-          >
-            ···
-          </button>
-          <Show when={menuOpen()}>
-            <AvdContextMenu
-              onClose={() => setMenuOpen(false)}
-              isRunning={props.isRunning}
-              onWipe={() => { setMenuOpen(false); props.onWipe(); }}
-              onDelete={() => { setMenuOpen(false); props.onDelete(); }}
-            />
-          </Show>
+        <div onClick={(e) => e.stopPropagation()}>
+          <AvdContextMenu
+            onWipe={props.onWipe}
+            onDelete={props.onDelete}
+            trigger={
+              <button
+                type="button"
+                title="More options"
+                style={{
+                  width: "26px",
+                  height: "26px",
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  background: "none",
+                  border: "1px solid transparent",
+                  "border-radius": "4px",
+                  cursor: "pointer",
+                  color: "var(--text-muted)",
+                  "font-size": "14px",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.08))";
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "none";
+                  (e.currentTarget as HTMLElement).style.borderColor = "transparent";
+                }}
+              >
+                ···
+              </button>
+            }
+          />
         </div>
       </div>
     </div>
-  );
-}
-
-// ── AVD context menu ──────────────────────────────────────────────────────────
-
-function AvdContextMenu(props: {
-  isRunning: boolean;
-  onClose: () => void;
-  onWipe: () => void;
-  onDelete: () => void;
-}): JSX.Element {
-  return (
-    <>
-      {/* Click-away backdrop */}
-      <div
-        style={{ position: "fixed", inset: "0", "z-index": "1999" }}
-        onClick={() => props.onClose()}
-      />
-      <div
-        style={{
-          position: "absolute",
-          right: "0",
-          bottom: "calc(100% + 4px)",
-          "z-index": "2000",
-          background: "var(--bg-tertiary)",
-          border: "1px solid var(--border)",
-          "border-radius": "6px",
-          "box-shadow": "0 4px 16px rgba(0,0,0,0.4)",
-          "min-width": "160px",
-          padding: "4px",
-          "white-space": "nowrap",
-        }}
-      >
-        <ContextMenuItem
-          label="Wipe Data…"
-          onClick={props.onWipe}
-          destructive={false}
-        />
-        <div style={{ height: "1px", background: "var(--border)", margin: "4px 0" }} />
-        <ContextMenuItem
-          label="Delete…"
-          onClick={props.onDelete}
-          destructive={true}
-        />
-      </div>
-    </>
-  );
-}
-
-function ContextMenuItem(props: {
-  label: string;
-  onClick: () => void;
-  destructive: boolean;
-}): JSX.Element {
-  return (
-    <button
-      onClick={() => props.onClick()}
-      style={{
-        display: "block",
-        width: "100%",
-        padding: "6px 10px",
-        background: "none",
-        border: "none",
-        cursor: "pointer",
-        "text-align": "left",
-        "font-size": "12px",
-        "border-radius": "4px",
-        color: props.destructive ? "var(--error, #f87171)" : "var(--text-secondary)",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.background = props.destructive
-          ? "rgba(248,113,113,0.12)"
-          : "var(--bg-hover, rgba(255,255,255,0.08))";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "none";
-      }}
-    >
-      {props.label}
-    </button>
   );
 }
 
@@ -795,106 +719,11 @@ function SectionHeader(props: { label: string; count: number }): JSX.Element {
   );
 }
 
-function EmptyState(props: {
-  icon: string;
-  title: string;
-  message: string;
-  action?: { label: string; onClick: () => void };
-}): JSX.Element {
-  return (
-    <div
-      style={{
-        display: "flex",
-        "flex-direction": "column",
-        "align-items": "center",
-        "justify-content": "center",
-        gap: "8px",
-        padding: "24px 16px",
-        color: "var(--text-muted)",
-        "text-align": "center",
-      }}
-    >
-      <Icon name={props.icon} size={28} color="var(--text-muted)" />
-      <div>
-        <div style={{ "font-size": "13px", "font-weight": "500", color: "var(--text-secondary)", "margin-bottom": "4px" }}>
-          {props.title}
-        </div>
-        <div style={{ "font-size": "11px", "line-height": "1.5", "max-width": "240px" }}>
-          {props.message}
-        </div>
-      </div>
-      <Show when={props.action}>
-        {(action) => (
-          <button
-            onClick={action().onClick}
-            style={{
-              "margin-top": "4px",
-              padding: "5px 14px",
-              background: "var(--accent)",
-              color: "#fff",
-              border: "none",
-              "border-radius": "4px",
-              "font-size": "12px",
-              "font-weight": "500",
-              cursor: "pointer",
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.85"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-          >
-            {action().label}
-          </button>
-        )}
-      </Show>
-    </div>
-  );
-}
-
-function ToolbarBtn(props: {
-  title: string;
-  onClick: () => void;
-  disabled?: boolean;
-  children: JSX.Element;
-}): JSX.Element {
-  return (
-    <button
-      onClick={() => props.onClick()}
-      disabled={props.disabled}
-      title={props.title}
-      style={{
-        width: "26px",
-        height: "26px",
-        display: "flex",
-        "align-items": "center",
-        "justify-content": "center",
-        background: "none",
-        border: "1px solid transparent",
-        "border-radius": "4px",
-        cursor: props.disabled ? "default" : "pointer",
-        color: "var(--text-muted)",
-        opacity: props.disabled ? "0.4" : "1",
-        transition: "background 0.1s",
-      }}
-      onMouseEnter={(e) => {
-        if (!props.disabled) {
-          (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.08))";
-          (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
-        }
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "none";
-        (e.currentTarget as HTMLElement).style.borderColor = "transparent";
-      }}
-    >
-      {props.children}
-    </button>
-  );
-}
-
 function connectionStateColor(state: Device["connectionState"]): string {
   switch (state) {
-    case "online":       return "#4ade80";
-    case "offline":      return "#6b7280";
-    case "unauthorized": return "#fbbf24";
-    default:             return "#6b7280";
+    case "online":       return "var(--success)";
+    case "offline":      return "var(--text-muted)";
+    case "unauthorized": return "var(--warning)";
+    default:             return "var(--text-muted)";
   }
 }

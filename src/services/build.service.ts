@@ -329,7 +329,7 @@ async function resolveDevice(): Promise<string | null> {
  * otherwise show the error in a Toast.
  */
 export async function jumpToBuildError(error: BuildError): Promise<void> {
-  const { showToast } = await import("@/components/common/Toast");
+  const { showToast } = await import("@/components/ui");
   const { openInStudio } = await import("@/lib/tauri-api");
 
   if (error.file) {

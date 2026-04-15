@@ -12,7 +12,7 @@ import {
   setSystemImages,
   setDeviceDefinitions,
 } from "@/stores/device.store";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 
 export interface CreateDeviceDialogProps {
   onClose: () => void;

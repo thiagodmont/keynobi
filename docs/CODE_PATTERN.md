@@ -285,6 +285,15 @@ import type { Diagnostic } from "@/bindings";
 interface DiagnosticWithCount extends Diagnostic { count: number; }
 ```
 
+### 7. Design system (`src/components/ui/`)
+
+Reusable atoms and layout pieces live under `src/components/ui/` with **CSS Modules** and **`var(--*)` tokens** from `src/styles/theme.css`. Import from `@/components/ui` via the barrel file.
+
+- **`Button` vs `IconButton`**: Use `Button` for labeled actions (primary/secondary/ghost/danger). Use **`IconButton`** for compact toolbar controls (fixed square hit target, `title` for tooltip, optional `active` / `size="sm" | "md"`).
+- **`Dropdown` / `MenuItem`**: Set `destructive: true` on items that remove data so they get error-colored styling.
+- **Colors**: Prefer semantic tokens (`var(--success)`, `var(--error)`, `var(--info)`, `var(--warning)`, `var(--text-muted)`) instead of hardcoded hex in app components. For translucent tints, use `color-mix(in srgb, var(--token) N%, transparent)` where needed.
+- **Roadmap**: Prefer existing **`Panel`**, **`Tabs`**, and **`Toolbar`** when replacing duplicated headers or tab rows. For icon-only controls, **`Tooltip`** is preferred over bare `title` for accessibility (migrate incrementally).
+
 ---
 
 ## IPC / Tauri Bridge Patterns
@@ -342,6 +351,16 @@ Test files live next to the code they test: `editor.store.test.ts` beside `edito
 - Mock all Tauri APIs in `src/test/setup.ts` — tests run in jsdom without a real Tauri runtime.
 - Use a `resetState()` helper in `beforeEach` to restore stores to defaults.
 - Test behavior, not implementation: assert on exported state and the effects of actions.
+
+### Design system and UI refactors (verification gate)
+
+Before merging PRs that touch `src/components/ui/`, shared panel styling, or broad token/color refactors, run all of:
+
+```bash
+npm test && npm run typescript:check && npm run lint
+```
+
+This is the project’s standard gate for catching broken imports, type errors, and regressions without relying on a separate coverage threshold.
 
 ```typescript
 beforeEach(() => { resetUIState(); });

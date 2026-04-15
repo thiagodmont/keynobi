@@ -7,7 +7,7 @@ import { type JSX, For, Show, createSignal, createMemo } from "solid-js";
 import { deviceState, setLaunchingAvd } from "@/stores/device.store";
 import { launchAvd } from "@/lib/tauri-api";
 import type { Device, AvdInfo } from "@/bindings";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 
 // ── Module-level promise resolver ─────────────────────────────────────────────
 
@@ -327,14 +327,14 @@ function DeviceRow(props: {
       <div style={{ "flex-shrink": "0" }}>
         <Show when={props.launching}>
           <span class="lsp-spinner">
-            <Icon name="spinner" size={12} color="#60a5fa" />
+            <Icon name="spinner" size={12} color="var(--info)" />
           </span>
         </Show>
         <Show when={props.running && !props.launching}>
           <span
             style={{
               "font-size": "10px",
-              color: "#4ade80",
+              color: "var(--success)",
               background: "rgba(74,222,128,0.12)",
               padding: "1px 6px",
               "border-radius": "10px",

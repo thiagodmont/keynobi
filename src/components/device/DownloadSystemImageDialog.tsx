@@ -17,7 +17,7 @@ import {
 import { Portal } from "solid-js/web";
 import type { AvailableSystemImage } from "@/bindings";
 import { listAvailableSystemImages, downloadSystemImage } from "@/lib/tauri-api";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 
 export interface DownloadSystemImageDialogProps {
   onClose: () => void;
@@ -206,7 +206,7 @@ export function DownloadSystemImageDialog(
                 }}
               >
                 <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between", "margin-bottom": "8px" }}>
-                  <span style={{ "font-size": "12px", "font-weight": "500", color: dl().error ? "var(--error, #f87171)" : dl().done ? "#4ade80" : "var(--text-primary)" }}>
+                  <span style={{ "font-size": "12px", "font-weight": "500", color: dl().error ? "var(--error)" : dl().done ? "var(--success)" : "var(--text-primary)" }}>
                     {dl().error ? "Download failed" : dl().done ? "Download complete" : "Downloading…"}
                   </span>
                   <Show when={dl().done}>
@@ -418,7 +418,7 @@ function SystemImageRow(props: {
           "flex-shrink": "0",
         }}
       >
-        <span style={{ "font-size": "11px", "font-weight": "600", color: props.image.installed ? "#4ade80" : "var(--text-muted)" }}>
+        <span style={{ "font-size": "11px", "font-weight": "600", color: props.image.installed ? "var(--success)" : "var(--text-muted)" }}>
           {props.image.apiLevel}
         </span>
       </div>
@@ -482,7 +482,7 @@ function SystemImageRow(props: {
               "align-items": "center",
               gap: "4px",
               "font-size": "11px",
-              color: "#4ade80",
+              color: "var(--success)",
               "font-weight": "500",
             }}
           >

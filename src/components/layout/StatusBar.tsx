@@ -9,7 +9,7 @@ import { VariantSelectorPill } from "@/components/build/VariantSelector";
 import { setActiveTab } from "@/stores/ui.store";
 import { mcpState } from "@/stores/mcp.store";
 import { openMcpPanel } from "@/components/mcp/McpPanel";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 import { appMemoryBytes, logFolderBytes, rotationTriggered } from "@/stores/monitor.store";
 import { settingsState } from "@/stores/settings.store";
 
@@ -32,11 +32,11 @@ function HealthIndicator(): JSX.Element {
   const dotColor = () => {
     switch (overall()) {
       case "ok":
-        return "#4ade80";
+        return "var(--success)";
       case "warning":
-        return "#fbbf24";
+        return "var(--warning)";
       case "error":
-        return "#f87171";
+        return "var(--error)";
       default:
         return "rgba(255,255,255,0.4)";
     }
@@ -136,8 +136,8 @@ function MemoryIndicator(): JSX.Element {
 
   const color = () => {
     const mb = bytes() / (1024 * 1024);
-    if (mb >= 500) return "#f87171";
-    if (mb >= 300) return "#fbbf24";
+    if (mb >= 500) return "var(--error)";
+    if (mb >= 300) return "var(--warning)";
     return "rgba(255,255,255,0.6)";
   };
 
@@ -166,8 +166,8 @@ function LogSizeIndicator(): JSX.Element {
   const color = () => {
     const maxBytes = (settingsState.advanced.logMaxSizeMb ?? 500) * 1024 * 1024;
     const pct = maxBytes > 0 ? bytes() / maxBytes : 0;
-    if (rotating() || pct >= 0.9) return "#f87171";
-    if (pct >= 0.7) return "#fbbf24";
+    if (rotating() || pct >= 0.9) return "var(--error)";
+    if (pct >= 0.7) return "var(--warning)";
     return "rgba(255,255,255,0.6)";
   };
 
@@ -220,14 +220,14 @@ function BuildStatusIndicator(): JSX.Element {
   });
 
   const color = createMemo(() => {
-    if (deployPhase() === "installing" || deployPhase() === "launching") return "#60a5fa";
+    if (deployPhase() === "installing" || deployPhase() === "launching") return "var(--info)";
     switch (phase()) {
       case "running":
-        return "#fbbf24";
+        return "var(--warning)";
       case "success":
-        return "#4ade80";
+        return "var(--success)";
       case "failed":
-        return "#f87171";
+        return "var(--error)";
       default:
         return "rgba(255,255,255,0.4)";
     }
@@ -300,9 +300,9 @@ function McpStatusIndicator(): JSX.Element {
   const clientName = () => mcpState.clientName;
 
   const dotColor = () => {
-    if (mcpState.clientName) return "#4ade80"; // client actively connected
-    if (mcpState.serverAlive) return "#60a5fa"; // server alive, no client
-    if (mcpState.running) return "#fbbf24"; // GUI-mode server running
+    if (mcpState.clientName) return "var(--success)"; // client actively connected
+    if (mcpState.serverAlive) return "var(--info)"; // server alive, no client
+    if (mcpState.running) return "var(--warning)"; // GUI-mode server running
     return "rgba(255,255,255,0.3)"; // idle
   };
 

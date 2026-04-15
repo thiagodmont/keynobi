@@ -43,11 +43,11 @@ function kindLabel(kind: string): string {
 
 function kindColor(kind: string): string {
   switch (kind) {
-    case "tool_call":    return "#60a5fa";
-    case "resource_read": return "#a78bfa";
-    case "prompt":       return "#34d399";
-    case "lifecycle":    return "rgba(255,255,255,0.4)";
-    default:             return "rgba(255,255,255,0.4)";
+    case "tool_call":     return "var(--info)";
+    case "resource_read": return "var(--accent)";
+    case "prompt":        return "var(--success)";
+    case "lifecycle":     return "rgba(255,255,255,0.4)";
+    default:              return "rgba(255,255,255,0.4)";
   }
 }
 
@@ -96,7 +96,7 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
         {/* Name */}
         <span
           style={{
-            color: isError() ? "#f87171" : "var(--text-primary)",
+            color: isError() ? "var(--error)" : "var(--text-primary)",
             "font-size": "12px",
             "font-family": "var(--font-mono)",
             overflow: "hidden",
@@ -120,7 +120,7 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
               width: "6px",
               height: "6px",
               "border-radius": "50%",
-              background: isError() ? "#f87171" : "#4ade80",
+              background: isError() ? "var(--error)" : "var(--success)",
               "flex-shrink": "0",
             }}
           />
@@ -132,7 +132,7 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
         <div
           style={{
             padding: "4px 12px 8px 144px",
-            color: isError() ? "#fca5a5" : "rgba(255,255,255,0.55)",
+            color: isError() ? "color-mix(in srgb, var(--error) 75%, var(--text-primary))" : "rgba(255,255,255,0.55)",
             "font-size": "11px",
             "font-family": "var(--font-mono)",
             "white-space": "pre-wrap",
@@ -249,9 +249,9 @@ export function McpPanel(): JSX.Element {
                 gap: "5px",
                 padding: "2px 8px",
                 background: mcpState.serverAlive
-                  ? "rgba(74,222,128,0.12)"
+                  ? "color-mix(in srgb, var(--success) 12%, transparent)"
                   : "rgba(255,255,255,0.06)",
-                border: `1px solid ${mcpState.serverAlive ? "rgba(74,222,128,0.3)" : "rgba(255,255,255,0.1)"}`,
+                border: `1px solid ${mcpState.serverAlive ? "color-mix(in srgb, var(--success) 30%, transparent)" : "rgba(255,255,255,0.1)"}`,
                 "border-radius": "4px",
               }}
             >
@@ -260,13 +260,13 @@ export function McpPanel(): JSX.Element {
                   width: "6px",
                   height: "6px",
                   "border-radius": "50%",
-                  background: mcpState.serverAlive ? "#4ade80" : "rgba(255,255,255,0.25)",
+                  background: mcpState.serverAlive ? "var(--success)" : "rgba(255,255,255,0.25)",
                 }}
               />
               <span
                 style={{
                   "font-size": "11px",
-                  color: mcpState.serverAlive ? "#4ade80" : "rgba(255,255,255,0.5)",
+                  color: mcpState.serverAlive ? "var(--success)" : "rgba(255,255,255,0.5)",
                 }}
               >
                 {mcpState.serverAlive
@@ -331,9 +331,11 @@ export function McpPanel(): JSX.Element {
               onClick={handleCopy}
               title="Copy to clipboard"
               style={{
-                background: copied() ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.08)",
-                border: `1px solid ${copied() ? "rgba(74,222,128,0.3)" : "rgba(255,255,255,0.12)"}`,
-                color: copied() ? "#4ade80" : "rgba(255,255,255,0.7)",
+                background: copied()
+                  ? "color-mix(in srgb, var(--success) 15%, transparent)"
+                  : "rgba(255,255,255,0.08)",
+                border: `1px solid ${copied() ? "color-mix(in srgb, var(--success) 30%, transparent)" : "rgba(255,255,255,0.12)"}`,
+                color: copied() ? "var(--success)" : "rgba(255,255,255,0.7)",
                 "border-radius": "4px",
                 padding: "4px 10px",
                 cursor: "pointer",

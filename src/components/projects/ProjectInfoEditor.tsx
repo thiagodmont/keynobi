@@ -9,7 +9,7 @@ import { type JSX, createSignal, Show, createEffect } from "solid-js";
 import { Portal } from "solid-js/web";
 import { getProjectAppInfo, saveProjectAppInfo, formatError } from "@/lib/tauri-api";
 import { projectState } from "@/stores/project.store";
-import { showToast } from "@/components/common/Toast";
+import { showToast } from "@/components/ui";
 import type { ProjectAppInfo } from "@/bindings";
 
 // ── Module-level open/close signal ────────────────────────────────────────────

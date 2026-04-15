@@ -1,0 +1,24 @@
+@keyframes ui-dot-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.root {
+  display: inline-block;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Sizes */
+.sm { width: 6px; height: 6px; }
+.md { width: 8px; height: 8px; }
+
+/* Statuses */
+.ok      { background: var(--success); }
+.warning { background: var(--warning); }
+.error   { background: var(--error); }
+.idle    { background: var(--text-muted); }
+.active  {
+  background: var(--accent);
+  animation: ui-dot-pulse 1.2s ease-in-out infinite;
+}

@@ -1,0 +1,56 @@
+wing: keynobi
+rooms:
+- name: perf_metrics
+  description: Files from perf-metrics/
+  keywords:
+  - perf_metrics
+  - perf-metrics
+- name: release
+  description: Files from release/
+  keywords:
+  - release
+- name: documentation
+  description: Files from docs/
+  keywords:
+  - documentation
+  - docs
+- name: public
+  description: Files from public/
+  keywords:
+  - public
+- name: scripts
+  description: Files from scripts/
+  keywords:
+  - scripts
+- name: src_tauri
+  description: Files from src-tauri/
+  keywords:
+  - src_tauri
+  - src-tauri
+- name: src
+  description: Files from src/
+  keywords:
+  - src
+- name: testing
+  description: Files from tests/
+  keywords:
+  - testing
+  - tests
+- name: frontend
+  description: Files from components/
+  keywords:
+  - frontend
+  - components
+- name: design
+  description: Files from assets/
+  keywords:
+  - design
+  - assets
+- name: backend
+  description: Files from services/
+  keywords:
+  - backend
+  - services
+- name: general
+  description: Files that don't fit other rooms
+  keywords: []

@@ -1,0 +1,31 @@
+.root {
+  position: relative;
+  height: 4px;
+  background: var(--bg-quaternary);
+  border-radius: 2px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.md { height: 6px; }
+
+.fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.2s ease;
+}
+
+.default { background: var(--accent); }
+.success  { background: var(--success); }
+.warning  { background: var(--warning); }
+
+@keyframes pb-sweep {
+  0%   { transform: translateX(-150%); }
+  50%  { transform: translateX(100%); }
+  100% { transform: translateX(100%); }
+}
+
+.indeterminate {
+  width: 45%;
+  animation: pb-sweep 1.4s ease-in-out infinite;
+}

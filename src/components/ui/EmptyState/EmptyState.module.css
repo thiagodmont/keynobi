@@ -1,0 +1,32 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.icon {
+  opacity: 0.4;
+  margin-bottom: 4px;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.description {
+  font-size: var(--font-size-ui);
+  color: var(--text-muted);
+  max-width: 280px;
+  line-height: 1.5;
+}
+
+.action {
+  margin-top: 8px;
+}

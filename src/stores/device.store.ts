@@ -8,7 +8,7 @@ import {
   listenDeviceListChanged,
   startDevicePolling,
 } from "@/lib/tauri-api";
-import { showToast } from "@/stores/ui.store";
+import { showToast } from "@/components/ui";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

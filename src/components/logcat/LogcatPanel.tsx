@@ -28,10 +28,10 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { save } from "@tauri-apps/plugin-dialog";
 import { selectedDevice } from "@/stores/device.store";
 import { settingsState } from "@/stores/settings.store";
-import { showToast } from "@/components/common/Toast";
-import { VirtualList, type VirtualListHandle } from "@/components/common/VirtualList";
+import { showToast } from "@/components/ui";
+import { VirtualList, type VirtualListHandle } from "@/components/ui";
 import { QueryBar } from "@/components/logcat/QueryBar";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 import {
   parseFilterGroups,
   matchesFilterGroups,
@@ -857,12 +857,12 @@ export function LogcatPanel(): JSX.Element {
         <Show
           when={logcatStore.streaming}
           fallback={
-            <button onClick={handleStart} title="Start Logcat" style={btnStyle("#4ade80")}>
+            <button onClick={handleStart} title="Start Logcat" style={btnStyle("var(--success)")}>
               <Icon name="play" size={13} /> Start
             </button>
           }
         >
-          <button onClick={handleStop} title="Stop Logcat" style={btnStyle("#f87171")}>
+          <button onClick={handleStop} title="Stop Logcat" style={btnStyle("var(--error)")}>
             <Icon name="stop" size={13} /> Stop
           </button>
         </Show>
@@ -871,7 +871,7 @@ export function LogcatPanel(): JSX.Element {
         <button
           onClick={() => setPaused((v) => !v)}
           title={paused() ? "Resume" : "Pause new entries"}
-          style={btnStyle(paused() ? "#fbbf24" : "var(--text-muted)")}
+          style={btnStyle(paused() ? "var(--warning)" : "var(--text-muted)")}
         >
           {paused() ? "▶" : "⏸"}
         </button>
@@ -900,7 +900,7 @@ export function LogcatPanel(): JSX.Element {
               onClick={jumpToLastCrash}
               title={`${crashes()} crash${crashes() !== 1 ? "es" : ""} — click to jump`}
               style={{
-                ...btnStyle("#f87171"),
+                ...btnStyle("var(--error)"),
                 gap: "3px",
                 animation: "lsp-dot-pulse 3s ease-in-out infinite",
               }}
@@ -1129,7 +1129,7 @@ export function LogcatPanel(): JSX.Element {
 
         {/* Streaming dot */}
         <Show when={logcatStore.streaming}>
-          <span style={{ width: "6px", height: "6px", "border-radius": "50%", background: "#4ade80", "flex-shrink": "0", animation: "lsp-dot-pulse 2s ease-in-out infinite" }} />
+          <span style={{ width: "6px", height: "6px", "border-radius": "50%", background: "var(--success)", "flex-shrink": "0", animation: "lsp-dot-pulse 2s ease-in-out infinite" }} />
         </Show>
       </div>
 
@@ -1308,17 +1308,19 @@ function SeparatorRow(props: { entry: LogcatEntry }): JSX.Element {
         height: `${ROW_HEIGHT}px`,
         "min-height": `${ROW_HEIGHT}px`,
         padding: "0 8px",
-        background: isDied() ? "rgba(248,113,113,0.10)" : "rgba(74,222,128,0.07)",
-        "border-top": `1px solid ${isDied() ? "rgba(248,113,113,0.3)" : "rgba(74,222,128,0.2)"}`,
-        "border-bottom": `1px solid ${isDied() ? "rgba(248,113,113,0.3)" : "rgba(74,222,128,0.2)"}`,
+        background: isDied()
+          ? "color-mix(in srgb, var(--error) 10%, transparent)"
+          : "color-mix(in srgb, var(--success) 7%, transparent)",
+        "border-top": `1px solid ${isDied() ? "color-mix(in srgb, var(--error) 30%, transparent)" : "color-mix(in srgb, var(--success) 20%, transparent)"}`,
+        "border-bottom": `1px solid ${isDied() ? "color-mix(in srgb, var(--error) 30%, transparent)" : "color-mix(in srgb, var(--success) 20%, transparent)"}`,
         overflow: "hidden",
       }}
     >
-      <span style={{ flex: "1", "border-top": `1px dashed ${isDied() ? "rgba(248,113,113,0.3)" : "rgba(74,222,128,0.2)"}` }} />
+      <span style={{ flex: "1", "border-top": `1px dashed ${isDied() ? "color-mix(in srgb, var(--error) 30%, transparent)" : "color-mix(in srgb, var(--success) 20%, transparent)"}` }} />
       <span
         style={{
           "font-size": "10px",
-          color: isDied() ? "#f87171" : "#4ade80",
+          color: isDied() ? "var(--error)" : "var(--success)",
           "font-weight": "600",
           "white-space": "nowrap",
           padding: "0 10px",
@@ -1330,7 +1332,7 @@ function SeparatorRow(props: { entry: LogcatEntry }): JSX.Element {
       <span style={{ "font-size": "10px", color: "var(--text-muted)", "flex-shrink": "0" }}>
         {props.entry.timestamp}
       </span>
-      <span style={{ flex: "1", "border-top": `1px dashed ${isDied() ? "rgba(248,113,113,0.3)" : "rgba(74,222,128,0.2)"}` }} />
+      <span style={{ flex: "1", "border-top": `1px dashed ${isDied() ? "color-mix(in srgb, var(--error) 30%, transparent)" : "color-mix(in srgb, var(--success) 20%, transparent)"}` }} />
     </div>
   );
 }
@@ -1389,13 +1391,13 @@ function StudioJumpButton(props: { message: string }): JSX.Element {
           gap: "3px",
           padding: "1px 6px",
           "border-radius": "3px",
-          border: `1px solid ${studioReady() ? "rgba(96,165,250,0.4)" : "rgba(156,163,175,0.3)"}`,
+          border: `1px solid ${studioReady() ? "color-mix(in srgb, var(--info) 40%, transparent)" : "color-mix(in srgb, var(--text-muted) 30%, transparent)"}`,
           background: hovered()
             ? studioReady()
-              ? "rgba(96,165,250,0.15)"
-              : "rgba(156,163,175,0.1)"
+              ? "color-mix(in srgb, var(--info) 15%, transparent)"
+              : "color-mix(in srgb, var(--text-muted) 10%, transparent)"
             : "transparent",
-          color: studioReady() ? "rgba(96,165,250,0.9)" : "var(--text-disabled)",
+          color: studioReady() ? "var(--info)" : "var(--text-disabled)",
           cursor: opening() ? "wait" : studioReady() ? "pointer" : "not-allowed",
           "font-size": "9px",
           "font-family": "var(--font-ui)",
@@ -1429,9 +1431,9 @@ function LogcatRow(props: {
   // Left border: crash group lines get a softer indicator than crash headers
   const borderColor = () => {
     if (props.selected) return "var(--accent)";
-    if (props.entry.isCrash) return "#f87171";
-    if (hasAnr()) return "#fbbf24";
-    if (inCrashGroup()) return "rgba(248,113,113,0.4)";
+    if (props.entry.isCrash) return "var(--error)";
+    if (hasAnr()) return "var(--warning)";
+    if (inCrashGroup()) return "color-mix(in srgb, var(--error) 40%, transparent)";
     return "transparent";
   };
 
@@ -1449,11 +1451,11 @@ function LogcatRow(props: {
         background: props.selected
           ? "rgba(var(--accent-rgb, 59,130,246),0.25)"
           : props.jsonSelected
-          ? "rgba(96,165,250,0.12)"
+          ? "color-mix(in srgb, var(--info) 12%, transparent)"
           : props.entry.isCrash
-          ? "rgba(248,113,113,0.12)"
+          ? "color-mix(in srgb, var(--error) 12%, transparent)"
           : hasAnr()
-          ? "rgba(251,191,36,0.08)"
+          ? "color-mix(in srgb, var(--warning) 8%, transparent)"
           : cfg().bg,
         "border-left": `2px solid ${borderColor()}`,
         overflow: "hidden",
@@ -1465,8 +1467,8 @@ function LogcatRow(props: {
       onMouseLeave={(e) => {
         if (!props.selected && !props.jsonSelected) {
           (e.currentTarget as HTMLElement).style.background =
-            props.entry.isCrash ? "rgba(248,113,113,0.12)" :
-            hasAnr() ? "rgba(251,191,36,0.08)" :
+            props.entry.isCrash ? "color-mix(in srgb, var(--error) 12%, transparent)" :
+            hasAnr() ? "color-mix(in srgb, var(--warning) 8%, transparent)" :
             cfg().bg;
         }
       }}
@@ -1506,15 +1508,17 @@ function LogcatRow(props: {
           title="Click to view formatted JSON"
           style={{
             "font-size": "9px",
-            color: props.jsonSelected ? "#fff" : "#60a5fa",
+            color: props.jsonSelected ? "var(--accent-fg)" : "var(--info)",
             "flex-shrink": "0",
             opacity: "1",
             "font-weight": "600",
-            background: props.jsonSelected ? "rgba(96,165,250,0.5)" : "rgba(96,165,250,0.1)",
+            background: props.jsonSelected
+              ? "color-mix(in srgb, var(--info) 50%, transparent)"
+              : "color-mix(in srgb, var(--info) 10%, transparent)",
             padding: "0 4px",
             "border-radius": "2px",
             cursor: "pointer",
-            border: "1px solid rgba(96,165,250,0.3)",
+            border: "1px solid color-mix(in srgb, var(--info) 30%, transparent)",
           }}
         >
           {"{}"}</span>
@@ -1522,7 +1526,7 @@ function LogcatRow(props: {
 
       {/* ANR badge */}
       <Show when={hasAnr()}>
-        <span style={{ "font-size": "9px", color: "#fbbf24", "flex-shrink": "0", "font-weight": "600", background: "rgba(251,191,36,0.1)", padding: "0 3px", "border-radius": "2px" }}>
+        <span style={{ "font-size": "9px", color: "var(--warning)", "flex-shrink": "0", "font-weight": "600", background: "color-mix(in srgb, var(--warning) 10%, transparent)", padding: "0 3px", "border-radius": "2px" }}>
           ANR
         </span>
       </Show>
@@ -1531,9 +1535,9 @@ function LogcatRow(props: {
       <span
         style={{
           flex: "1",
-          color: props.entry.isCrash ? "#f87171" :
-                 hasAnr() ? "#fbbf24" :
-                 cfg().color === "#4ade80" ? "var(--text-primary)" : cfg().color,
+          color: props.entry.isCrash ? "var(--error)" :
+                 hasAnr() ? "var(--warning)" :
+                 props.entry.level.toLowerCase() === "info" ? "var(--text-primary)" : cfg().color,
           "white-space": "nowrap",
           overflow: "hidden",
           "text-overflow": "ellipsis",
@@ -1600,7 +1604,7 @@ function JsonDetailPanel(props: {
         "border-bottom": "1px solid var(--border)",
         "flex-shrink": "0",
       }}>
-        <span style={{ "font-size": "10px", color: "#60a5fa", "font-weight": "600" }}>JSON</span>
+        <span style={{ "font-size": "10px", color: "var(--info)", "font-weight": "600" }}>JSON</span>
         <span style={{ "font-size": "10px", color: "var(--text-muted)", flex: "1", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
           {props.entry.tag}: {props.entry.timestamp}
         </span>
@@ -1609,7 +1613,7 @@ function JsonDetailPanel(props: {
           title="Copy JSON"
           style={{
             background: "none", border: "1px solid var(--border)",
-            color: copied() ? "#4ade80" : "var(--text-muted)",
+            color: copied() ? "var(--success)" : "var(--text-muted)",
             "border-radius": "3px", cursor: "pointer",
             "font-size": "10px", padding: "1px 6px",
           }}

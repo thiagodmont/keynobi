@@ -1,0 +1,46 @@
+.root {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  border-width: 1px;
+  border-style: solid;
+  font-size: var(--font-size-ui);
+  line-height: 1.5;
+}
+
+.info    { background: var(--info-bg);    border-color: var(--info-border);    color: var(--info); }
+.warning { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning); }
+.error   { background: var(--error-bg);   border-color: var(--error-border);   color: var(--error); }
+.success { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
+
+.content {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.actions {
+  margin-top: 8px;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.closeBtn:hover {
+  opacity: 1;
+}

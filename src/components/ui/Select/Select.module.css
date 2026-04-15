@@ -1,0 +1,21 @@
+.root {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: var(--font-size-ui);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.1s;
+}
+
+.root:focus {
+  border-color: var(--border-focus);
+}
+
+.root:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

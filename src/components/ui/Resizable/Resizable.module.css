@@ -1,0 +1,22 @@
+.handle {
+  flex-shrink: 0;
+  background: transparent;
+  transition: background 0.1s;
+  position: relative;
+}
+
+.handle:hover,
+.handle.dragging {
+  background: var(--accent);
+  opacity: 0.4;
+}
+
+.horizontal {
+  width: 4px;
+  cursor: col-resize;
+}
+
+.vertical {
+  height: 4px;
+  cursor: row-resize;
+}

@@ -1,7 +1,7 @@
 import { type JSX, For, Show } from "solid-js";
 import type { BuildRecord, BuildResult, BuildStatus } from "@/bindings";
 import { buildState } from "@/stores/build.store";
-import Icon from "@/components/common/Icon";
+import { Icon } from "@/components/ui";
 
 export interface BuildHistoryPanelProps {
   /** ID of the currently selected history entry. null = current build. */
@@ -21,10 +21,10 @@ export function statusIcon(status: BuildStatus): string {
 }
 
 export function statusColor(status: BuildStatus): string {
-  if (status.state === "success") return "#4ade80";
-  if (status.state === "failed") return "#f87171";
+  if (status.state === "success") return "var(--success)";
+  if (status.state === "failed") return "var(--error)";
   if (status.state === "cancelled") return "rgba(255,255,255,0.3)";
-  return "#60a5fa"; // running / idle
+  return "var(--info)"; // running / idle
 }
 
 export function durationLabel(status: BuildStatus): string {
@@ -118,7 +118,7 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
             background: isCurrentSelected()
               ? "rgba(255,255,255,0.09)"
               : "transparent",
-            "border-left": `2px solid ${isCurrentSelected() ? "#60a5fa" : "transparent"}`,
+            "border-left": `2px solid ${isCurrentSelected() ? "var(--info)" : "transparent"}`,
             "border-right": "none",
             "border-top": "none",
             "border-bottom": "1px solid var(--border-subtle, rgba(255,255,255,0.05))",
@@ -134,7 +134,7 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
               "margin-bottom": "2px",
             }}
           >
-            <span style={{ "font-size": "9px", color: "#60a5fa" }}>⟳</span>
+            <span style={{ "font-size": "9px", color: "var(--info)" }}>⟳</span>
             <span
               style={{
                 "font-size": "9px",
@@ -204,7 +204,7 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
                 {dur ? `${dur} · ` : ""}{rel}
               </div>
               <Show when={errs > 0}>
-                <div style={{ "font-size": "9px", color: "#f87171" }}>
+                <div style={{ "font-size": "9px", color: "var(--error)" }}>
                   {errs} error{errs !== 1 ? "s" : ""}
                 </div>
               </Show>

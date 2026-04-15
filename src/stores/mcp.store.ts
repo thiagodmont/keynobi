@@ -12,7 +12,7 @@ import {
   getMcpActivity,
   getMcpServerStatus,
 } from "@/lib/tauri-api";
-import { showToast } from "@/stores/ui.store";
+import { showToast } from "@/components/ui";
 
 export type { McpActivityEntry };
 

@@ -5,7 +5,7 @@ import {
   createMemo,
   createSignal,
 } from "solid-js";
-import { VirtualList } from "@/components/common/VirtualList";
+import { VirtualList } from "@/components/ui";
 import type { LogEntry, LogLevel } from "@/bindings";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
