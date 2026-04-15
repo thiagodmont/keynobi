@@ -74,6 +74,7 @@ describe("Dialog", () => {
     });
     expect(screen.getByText("First")).not.toBeNull();
     expect(screen.queryByText("Second")).toBeNull();
+    expect(document.querySelectorAll("[data-testid='dialog-backdrop']").length).toBe(1);
     fireEvent.click(screen.getByText("Next"));
     expect(await p1).toBe("next");
     expect(screen.getByText("Second")).not.toBeNull();

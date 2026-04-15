@@ -1,4 +1,4 @@
-import { createSignal, For, Show, type JSX } from "solid-js";
+import { createSignal, For, type JSX } from "solid-js";
 import { Portal } from "solid-js/web";
 import styles from "./Dialog.module.css";
 
@@ -18,10 +18,20 @@ interface PendingDialog {
 }
 
 const [dialogQueue, setDialogQueue] = createSignal<PendingDialog[]>([]);
+/** Shown dialog only; unchanged when another dialog is queued behind the current one (avoids remounting the open UI). */
+const [activeDialog, setActiveDialog] = createSignal<PendingDialog | null>(null);
 
 export function showDialog(dialog: Omit<PendingDialog, "resolve">): Promise<string> {
   return new Promise((resolve) => {
-    setDialogQueue((q) => [...q, { ...dialog, resolve }]);
+    const entry: PendingDialog = { ...dialog, resolve };
+    let wasEmpty = false;
+    setDialogQueue((q) => {
+      wasEmpty = q.length === 0;
+      return [...q, entry];
+    });
+    if (wasEmpty) {
+      setActiveDialog(entry);
+    }
   });
 }
 
@@ -31,6 +41,7 @@ function resolve(value: string) {
   const [first, ...rest] = q;
   first.resolve(value);
   setDialogQueue(rest);
+  setActiveDialog(rest[0] ?? null);
 }
 
 /** Resolves any queued dialogs and clears the queue. For unit tests only. */
@@ -39,37 +50,42 @@ export function resetDialogHostForTests(): void {
     d.resolve("cancel");
   }
   setDialogQueue([]);
+  setActiveDialog(null);
 }
 
 export function DialogHost(): JSX.Element {
   return (
-    <Show when={dialogQueue()[0]} keyed>
-      {(dialog) => (
-        <Portal>
-          <div
-            data-testid="dialog-backdrop"
-            class={styles.backdrop}
-            onClick={() => resolve("cancel")}
-          >
-            <div class={styles.box} onClick={(e) => e.stopPropagation()}>
-              <div class={styles.title}>{dialog.title}</div>
-              <div class={styles.message}>{dialog.message}</div>
-              <div class={styles.actions}>
-                <For each={dialog.buttons.slice().reverse()}>
-                  {(btn) => (
-                    <button
-                      class={[styles.btn, styles[btn.style]].join(" ")}
-                      onClick={() => resolve(btn.value)}
-                    >
-                      {btn.label}
-                    </button>
-                  )}
-                </For>
+    <>
+      {() => {
+        const dialog = activeDialog();
+        if (!dialog) return null;
+        return (
+          <Portal>
+            <div
+              data-testid="dialog-backdrop"
+              class={styles.backdrop}
+              onClick={() => resolve("cancel")}
+            >
+              <div class={styles.box} onClick={(e) => e.stopPropagation()}>
+                <div class={styles.title}>{dialog.title}</div>
+                <div class={styles.message}>{dialog.message}</div>
+                <div class={styles.actions}>
+                  <For each={dialog.buttons.slice().reverse()}>
+                    {(btn) => (
+                      <button
+                        class={[styles.btn, styles[btn.style]].join(" ")}
+                        onClick={() => resolve(btn.value)}
+                      >
+                        {btn.label}
+                      </button>
+                    )}
+                  </For>
+                </div>
               </div>
             </div>
-          </div>
-        </Portal>
-      )}
-    </Show>
+          </Portal>
+        );
+      }}
+    </>
   );
 }
