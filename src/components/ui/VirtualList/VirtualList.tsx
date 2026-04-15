@@ -33,6 +33,8 @@ import {
 
 export interface VirtualListHandle {
   scrollToBottom: () => void;
+  /** Scroll so row `index` is vertically centered; disables auto-scroll-at-bottom tracking. */
+  scrollToIndex: (index: number) => void;
 }
 
 export interface VirtualListProps<T> {
@@ -92,6 +94,9 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
   const [containerHeight, setContainerHeight] = createSignal(600);
   const [scrollTop, setScrollTop] = createSignal(0);
 
+  // Declared before onMount so imperative `scrollToIndex` can assign it safely.
+  let wasAtBottom = true;
+
   onMount(() => {
     // Measure once synchronously.
     setContainerHeight(outerRef.clientHeight || 600);
@@ -104,10 +109,17 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
     ro.observe(outerRef);
     onCleanup(() => ro.disconnect());
 
-    // Expose imperative scroll-to-bottom API to the parent.
+    // Expose imperative scroll APIs to the parent.
     props.handle?.({
       scrollToBottom: () => {
         outerRef.scrollTop = outerRef.scrollHeight;
+      },
+      scrollToIndex: (index: number) => {
+        const rh = props.rowHeight;
+        const targetTop = index * rh;
+        const viewportMid = containerHeight() / 2;
+        outerRef.scrollTop = Math.max(0, targetTop - viewportMid + rh / 2);
+        wasAtBottom = false;
       },
     });
   });
@@ -136,10 +148,6 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
   const offsetY = () => startIndex() * props.rowHeight;
 
   // ── Auto-scroll ───────────────────────────────────────────────────────────
-
-  // Track whether we were at the bottom before each batch so we can decide
-  // whether to scroll after the DOM updates.
-  let wasAtBottom = true;
 
   // Called whenever items change AND autoScroll is requested.
   // We schedule via queueMicrotask so the DOM has updated before we read

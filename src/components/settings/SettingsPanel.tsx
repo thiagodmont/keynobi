@@ -6,6 +6,13 @@ import {
   SettingToggle,
   SettingNumberInput,
 } from "@/components/settings/SettingRow";
+import {
+  clampLogcatMaxUiLines,
+  clampLogcatRingMaxEntries,
+  LOGCAT_RING_ABS_MAX,
+  LOGCAT_RING_MIN,
+  LOGCAT_MIN_UI_LINES,
+} from "@/lib/logcat-ui-lines";
 import { AndroidSdkStatus, JavaStatus } from "@/components/settings/ToolStatus";
 import { Icon } from "@/components/ui";
 
@@ -352,6 +359,58 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
           <SettingToggle
             checked={settingsState.logcat.autoStart}
             onChange={(v) => updateSetting("logcat", "autoStart", v)}
+          />
+        </SettingRow>
+      </Show>
+      <Show
+        when={props.matchesSearch(
+          "Logcat ring buffer",
+          "Maximum entries stored in the logcat capture ring before oldest lines are dropped"
+        )}
+      >
+        <SettingRow
+          label="Ring buffer size"
+          description="How many log lines the app keeps in the capture buffer (1k–100k). The Logcat panel cannot retain more lines than this."
+        >
+          <SettingNumberInput
+            value={settingsState.logcat.ringMaxEntries}
+            min={LOGCAT_RING_MIN}
+            max={LOGCAT_RING_ABS_MAX}
+            step={1000}
+            onChange={(v) => {
+              const r = clampLogcatRingMaxEntries(v);
+              updateSetting("logcat", "ringMaxEntries", r);
+              updateSetting(
+                "logcat",
+                "maxUiLines",
+                clampLogcatMaxUiLines(settingsState.logcat.maxUiLines, r)
+              );
+            }}
+          />
+        </SettingRow>
+      </Show>
+      <Show
+        when={props.matchesSearch(
+          "Logcat max lines",
+          "Maximum lines kept in the Logcat panel buffer ring memory"
+        )}
+      >
+        <SettingRow
+          label="Max lines in Logcat"
+          description="How many log lines the Logcat panel keeps in memory and loads from the capture buffer. Cannot exceed the ring buffer size."
+        >
+          <SettingNumberInput
+            value={settingsState.logcat.maxUiLines}
+            min={LOGCAT_MIN_UI_LINES}
+            max={settingsState.logcat.ringMaxEntries}
+            step={500}
+            onChange={(v) =>
+              updateSetting(
+                "logcat",
+                "maxUiLines",
+                clampLogcatMaxUiLines(v, settingsState.logcat.ringMaxEntries)
+              )
+            }
           />
         </SettingRow>
       </Show>

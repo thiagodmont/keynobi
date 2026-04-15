@@ -50,7 +50,10 @@ fn load_settings_from_path(path: &std::path::Path) -> (AppSettings, bool) {
             }
             // Parse for actual use (serde(default) handles forward compat).
             match serde_json::from_str::<AppSettings>(&content) {
-                Ok(settings) => (settings, false),
+                Ok(mut settings) => {
+                    crate::models::settings::normalize_logcat_section(&mut settings.logcat);
+                    (settings, false)
+                }
                 Err(e) => {
                     tracing::warn!("Settings file is corrupted (using defaults): {e}");
                     (AppSettings::default(), true)
@@ -77,7 +80,10 @@ pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create settings directory: {e}"))?;
 
-    let json = serde_json::to_string_pretty(settings)
+    let mut normalized = settings.clone();
+    crate::models::settings::normalize_logcat_section(&mut normalized.logcat);
+
+    let json = serde_json::to_string_pretty(&normalized)
         .map_err(|e| format!("Failed to serialize settings: {e}"))?;
 
     let path = settings_file();

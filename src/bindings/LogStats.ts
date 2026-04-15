@@ -11,6 +11,11 @@ export type LogStats = { totalIngested: bigint,
 countsByLevel: [bigint, bigint, bigint, bigint, bigint, bigint, bigint], crashCount: bigint, jsonCount: bigint, packagesSeen: number, 
 /**
  * Percentage of the ring buffer currently in use (0.0 – 100.0).
- * Computed as `(current_len / MAX_LOGCAT_ENTRIES) * 100`.
+ * Computed as `(current_len / configured_ring_capacity) * 100`.
  */
-bufferUsagePct: number, };
+bufferUsagePct: number, 
+/**
+ * Current number of entries in the in-memory ring buffer (all lines stored;
+ * independent of the active stream filter used for IPC).
+ */
+bufferEntryCount: bigint, };

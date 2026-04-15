@@ -1,12 +1,18 @@
 use crate::models::logcat::{EntryFlags, LogStats, ProcessedEntry};
+use crate::models::settings::{LOGCAT_RING_ABS_MAX, LOGCAT_RING_DEFAULT, LOGCAT_RING_MIN};
 use std::collections::VecDeque;
 
-/// Maximum entries kept in the ring buffer before the oldest is evicted.
-pub const MAX_LOGCAT_ENTRIES: usize = 50_000;
+/// Hard ceiling for logcat ring size (must match `settings::LOGCAT_RING_ABS_MAX`).
+pub const LOGCAT_RING_ABS_MAX_ENTRIES: usize = LOGCAT_RING_ABS_MAX as usize;
 
-/// Pre-allocation size: large enough that a busy app never triggers a
-/// reallocation in the first few seconds.
-const INITIAL_CAPACITY: usize = 10_000;
+/// Default ring capacity when settings are unavailable.
+pub const LOGCAT_RING_DEFAULT_CAPACITY: usize = LOGCAT_RING_DEFAULT as usize;
+
+/// Minimum ring capacity (must match `settings::LOGCAT_RING_MIN`).
+pub const LOGCAT_RING_MIN_ENTRIES: usize = LOGCAT_RING_MIN as usize;
+
+/// Pre-allocation hint: large enough that a busy app rarely reallocates early on.
+const INITIAL_CAPACITY_MAX: usize = 10_000;
 
 // ── LogStore ──────────────────────────────────────────────────────────────────
 
@@ -35,13 +41,41 @@ pub struct LogStore {
 
 impl LogStore {
     pub fn new() -> Self {
+        Self::with_capacity(LOGCAT_RING_DEFAULT_CAPACITY)
+    }
+
+    /// Ring buffer capacity (oldest entries are evicted once `len == capacity`).
+    pub fn with_capacity(capacity: usize) -> Self {
+        let capacity = capacity
+            .clamp(LOGCAT_RING_MIN_ENTRIES, LOGCAT_RING_ABS_MAX_ENTRIES);
+        let initial = usize::min(INITIAL_CAPACITY_MAX, capacity).max(256);
         LogStore {
-            entries: VecDeque::with_capacity(INITIAL_CAPACITY),
-            capacity: MAX_LOGCAT_ENTRIES,
+            entries: VecDeque::with_capacity(initial),
+            capacity,
             crash_ids: VecDeque::new(),
             json_ids: VecDeque::new(),
             stats: LogStats::default(),
         }
+    }
+
+    /// Configured maximum entries before eviction (ring size).
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    /// Change ring capacity. When shrinking, evicts oldest entries until `len <= new_cap`.
+    pub fn set_capacity(&mut self, new_cap: usize) {
+        let new_cap = new_cap.clamp(LOGCAT_RING_MIN_ENTRIES, LOGCAT_RING_ABS_MAX_ENTRIES);
+        if new_cap == self.capacity {
+            return;
+        }
+        while self.entries.len() > new_cap {
+            if let Some(evicted) = self.entries.pop_front() {
+                self.remove_from_indexes(evicted.id, evicted.flags);
+            }
+        }
+        self.capacity = new_cap;
     }
 
     /// Insert a processed entry into the store.
@@ -216,7 +250,7 @@ mod tests {
 
     #[test]
     fn eviction_removes_from_indexes() {
-        let mut store = LogStore { capacity: 2, ..LogStore::new() };
+        let mut store = LogStore { capacity: 2, ..LogStore::with_capacity(2) };
         // entry 1: crash
         store.push(make_entry(1, EntryFlags::CRASH));
         store.push(make_entry(2, 0));
@@ -224,6 +258,21 @@ mod tests {
         // Push 3rd entry — entry 1 should be evicted, removing from crash_ids
         store.push(make_entry(3, 0));
         assert_eq!(store.crash_ids().len(), 0, "crash entry should be removed on eviction");
+    }
+
+    #[test]
+    fn set_capacity_shrink_evicts_oldest() {
+        let mut store = LogStore::with_capacity(10_000);
+        for i in 1..=2000 {
+            store.push(make_entry(i, 0));
+        }
+        assert_eq!(store.len(), 2000);
+        // Minimum ring size is LOGCAT_RING_MIN (1000); shrinking evicts oldest first.
+        store.set_capacity(1000);
+        assert_eq!(store.len(), 1000);
+        assert_eq!(store.iter().next().unwrap().id, 1001);
+        assert_eq!(store.iter().last().unwrap().id, 2000);
+        assert_eq!(store.capacity(), 1000);
     }
 
     #[test]

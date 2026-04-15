@@ -1,6 +1,8 @@
 use crate::models::error::AppError;
-use crate::models::settings::AppSettings;
+use crate::models::settings::{self, AppSettings};
+use crate::services::logcat::LogcatState;
 use crate::services::settings_manager;
+use tauri::State;
 
 #[tauri::command]
 pub async fn get_settings() -> Result<AppSettings, String> {
@@ -13,6 +15,7 @@ pub async fn get_settings() -> Result<AppSettings, String> {
 #[tauri::command]
 pub async fn save_settings(
     app_handle: tauri::AppHandle,
+    logcat_state: State<'_, LogcatState>,
     settings: AppSettings,
 ) -> Result<(), AppError> {
     // Register the Android SDK directory as an accessible fs scope.
@@ -27,10 +30,23 @@ pub async fn save_settings(
         }
     }
 
+    let ring_cap = settings::clamp_logcat_ring_capacity_usize({
+        let mut tmp = settings.clone();
+        settings::normalize_logcat_section(&mut tmp.logcat);
+        tmp.logcat.ring_max_entries
+    });
+
     tokio::task::spawn_blocking(move || settings_manager::save_settings(&settings))
         .await
         .map_err(|e| AppError::SettingsError(format!("Failed to save settings: {e}")))?
-        .map_err(AppError::SettingsError)
+        .map_err(AppError::SettingsError)?;
+
+    {
+        let mut state = logcat_state.lock().await;
+        state.store.set_capacity(ring_cap);
+    }
+
+    Ok(())
 }
 
 #[tauri::command]

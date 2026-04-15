@@ -130,6 +130,24 @@ pub struct BuildSettings {
     pub build_log_max_folder_mb: u32,
 }
 
+fn default_logcat_max_ui_lines() -> u32 {
+    20_000
+}
+
+fn default_logcat_ring_max_entries() -> u32 {
+    50_000
+}
+
+/// Minimum logcat ring size and minimum `max_ui_lines`.
+pub const LOGCAT_RING_MIN: u32 = 1_000;
+/// Hard ceiling for logcat ring size (memory bound; `LogStore` clamps to this).
+pub const LOGCAT_RING_ABS_MAX: u32 = 100_000;
+/// Default ring capacity (historical app default).
+pub const LOGCAT_RING_DEFAULT: u32 = 50_000;
+
+/// Minimum `LogcatSettings.max_ui_lines` (same numeric floor as the ring minimum).
+pub const LOGCAT_MAX_UI_LINES_MIN: u32 = LOGCAT_RING_MIN;
+
 /// Logcat settings.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
 #[serde(rename_all = "camelCase", default)]
@@ -137,6 +155,32 @@ pub struct BuildSettings {
 pub struct LogcatSettings {
     /// Automatically start logcat streaming when a device connects.
     pub auto_start: bool,
+    /// Maximum lines the Logcat panel keeps in memory and requests per backfill.
+    #[serde(default = "default_logcat_max_ui_lines")]
+    pub max_ui_lines: u32,
+    /// Maximum entries in the in-memory logcat ring before oldest lines are dropped.
+    #[serde(default = "default_logcat_ring_max_entries")]
+    pub ring_max_entries: u32,
+}
+
+/// Clamp a user-provided ring size to the allowed range.
+#[inline]
+pub fn clamp_logcat_ring_capacity_u32(n: u32) -> u32 {
+    n.clamp(LOGCAT_RING_MIN, LOGCAT_RING_ABS_MAX)
+}
+
+/// Ring size as `usize` for `LogStore`.
+#[inline]
+pub fn clamp_logcat_ring_capacity_usize(n: u32) -> usize {
+    clamp_logcat_ring_capacity_u32(n) as usize
+}
+
+/// Coerce ring and UI limits to valid ranges and ensure `max_ui_lines <= ring_max_entries`.
+pub fn normalize_logcat_section(logcat: &mut LogcatSettings) {
+    logcat.ring_max_entries = clamp_logcat_ring_capacity_u32(logcat.ring_max_entries);
+    logcat.max_ui_lines = logcat
+        .max_ui_lines
+        .clamp(LOGCAT_MAX_UI_LINES_MIN, logcat.ring_max_entries);
 }
 
 /// Telemetry / crash-reporting settings.
@@ -233,7 +277,11 @@ impl Default for BuildSettings {
 
 impl Default for LogcatSettings {
     fn default() -> Self {
-        Self { auto_start: true }
+        Self {
+            auto_start: true,
+            max_ui_lines: default_logcat_max_ui_lines(),
+            ring_max_entries: default_logcat_ring_max_entries(),
+        }
     }
 }
 
@@ -333,5 +381,35 @@ mod tests {
         let parsed: AppSettings = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.build.build_log_retention_days, 14);
         assert_eq!(parsed.build.build_log_max_folder_mb, 200);
+    }
+
+    #[test]
+    fn partial_logcat_json_uses_default_max_ui_lines() {
+        let json = r#"{"logcat":{"autoStart":false}}"#;
+        let parsed: AppSettings = serde_json::from_str(json).unwrap();
+        assert!(!parsed.logcat.auto_start);
+        assert_eq!(parsed.logcat.max_ui_lines, 20_000);
+        assert_eq!(parsed.logcat.ring_max_entries, 50_000);
+    }
+
+    #[test]
+    fn normalize_logcat_clamps_ring_and_ui() {
+        let mut l = LogcatSettings {
+            auto_start: true,
+            ring_max_entries: 900,
+            max_ui_lines: 99_000,
+        };
+        normalize_logcat_section(&mut l);
+        assert_eq!(l.ring_max_entries, LOGCAT_RING_MIN);
+        assert_eq!(l.max_ui_lines, LOGCAT_RING_MIN);
+
+        let mut l2 = LogcatSettings {
+            auto_start: true,
+            ring_max_entries: 10_000,
+            max_ui_lines: 50_000,
+        };
+        normalize_logcat_section(&mut l2);
+        assert_eq!(l2.ring_max_entries, 10_000);
+        assert_eq!(l2.max_ui_lines, 10_000);
     }
 }

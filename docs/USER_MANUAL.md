@@ -230,6 +230,10 @@ Selecting a package inserts a `package:` token into the query bar, which trigger
 
 When a log entry's message contains valid JSON, a `{}` badge appears on the row. Click the badge to open the **JSON Detail Panel** at the bottom of the log, which shows the JSON formatted and syntax-highlighted. Click **Copy** to copy the raw JSON, or **✕** to close the panel.
 
+### Keyboard navigation in the log list
+
+With the **Logcat** tab active (and focus not in the query bar, a text field, or the command palette), use **↑** and **↓** to move the selection between log lines. Process start/stop separator rows are skipped. The focused line shows a **thick accent bar** on the left (the same bar marks the row shown in the **Entry Detail** panel); Shift+click ranges use a lighter tint on all included rows, with the bar on the anchor row only. The list scrolls to keep the focused row in view. **Esc** closes the detail panel. Plain **click** still toggles the detail panel for the same row.
+
 ### Controls
 
 - **Start / Stop** — Begin or end logcat streaming
@@ -239,10 +243,11 @@ When a log entry's message contains valid JSON, a `{}` badge appears on the row.
 - **☰ Filters** — Open the saved filters dropdown (Quick Filters + your saved filters)
 - **↓ Export** — Save the currently filtered entries to a `.log` file
 - **⎘ N rows** — Copy multiple selected rows (Shift+click to select a range)
+- **Line count** (right side of the first toolbar row) — With a filter active, shows **`shown / ring`** (for example `50 / 1,000`): lines currently listed after all filters, then the **total lines stored in the app’s logcat ring buffer** (includes lines hidden by the stream filter and not sent to the list). With no query, a single total is shown when it matches the ring. Hover the count for details.
 
 ### Ring Buffer
 
-The logcat ring buffer holds up to **50,000 entries** in memory. The oldest entries are evicted when the buffer is full. All entries since starting are kept until you click Clear.
+The logcat ring buffer size is configurable under **Settings → Logcat → Ring buffer size** (default **50,000** entries, up to **100,000**). The oldest entries are evicted when the buffer is full. All entries since starting are kept until you click Clear. The **listed** lines in the panel are capped separately by **Max lines in Logcat** (default 20k) and cannot exceed the ring size.
 
 ### Crash Detection
 
@@ -371,6 +376,12 @@ Use **Auto-detect** to find the SDK from your shell environment.
 Set the path to your JDK installation. Required for Gradle builds.
 
 Use **Auto-detect** to find Java from your shell environment.
+
+### Logcat
+
+- **Auto-start on connect** — Start logcat streaming when a device connects (on by default).
+- **Ring buffer size** — How many lines the app stores in the in-memory capture ring before the oldest are dropped (default **50,000**, range **1,000**–**100,000**). Changing it applies immediately after settings save.
+- **Max lines in Logcat** — How many lines the Logcat tab keeps in the UI list and requests when loading from the capture buffer (default **20,000**). It cannot exceed the ring buffer size.
 
 ### Build Settings (persisted automatically)
 

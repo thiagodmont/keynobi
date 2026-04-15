@@ -79,7 +79,8 @@ pub async fn get_logcat_entries(
     );
 
     let state = logcat_state.lock().await;
-    let limit = count.unwrap_or(1000).min(20_000);
+    let cap = state.store.capacity();
+    let limit = count.unwrap_or(1000).min(cap);
     Ok(state.store.query(&filter, limit))
 }
 
@@ -134,9 +135,10 @@ pub async fn set_logcat_filter(
 pub async fn get_logcat_stats(logcat_state: State<'_, LogcatState>) -> Result<LogStats, String> {
     let state = logcat_state.lock().await;
     let mut stats = state.store.stats.clone();
-    stats.buffer_usage_pct =
-        (state.store.len() as f32 / crate::services::log_store::MAX_LOGCAT_ENTRIES as f32)
-            * 100.0;
+    let len = state.store.len() as u64;
+    stats.buffer_entry_count = len;
+    let cap = state.store.capacity().max(1) as f32;
+    stats.buffer_usage_pct = (len as f32 / cap) * 100.0;
     Ok(stats)
 }
 

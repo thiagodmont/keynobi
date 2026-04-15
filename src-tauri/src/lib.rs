@@ -33,6 +33,7 @@ use commands::telemetry::send_native_sentry_test_event;
 use commands::studio::open_in_studio;
 use commands::variant::{get_variants_from_gradle, get_variants_preview, set_active_variant};
 use models::log_entry::LogEntry;
+use models::settings as app_settings_model;
 use services::adb_manager::DeviceState;
 use services::build_runner::BuildState;
 use services::process_manager::ProcessManager;
@@ -181,6 +182,14 @@ pub fn run() {
         .manage(Arc::new(Mutex::new(VecDeque::<LogEntry>::new())) as LogBuffer)
         .setup(move |app| {
             let (settings, settings_corrupted) = services::settings_manager::load_settings();
+
+            let ring_cap =
+                app_settings_model::clamp_logcat_ring_capacity_usize(settings.logcat.ring_max_entries);
+            let logcat_state = app.state::<services::logcat::LogcatState>();
+            tauri::async_runtime::block_on(async {
+                let mut st = logcat_state.lock().await;
+                st.store.set_capacity(ring_cap);
+            });
 
             if settings_corrupted {
                 let handle = app.handle().clone();

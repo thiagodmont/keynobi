@@ -6,6 +6,7 @@ import {
   createSignal,
 } from "solid-js";
 import { VirtualList } from "@/components/ui";
+import { formatBuildLogToolbarCount } from "./log-viewer-toolbar-count";
 import type { LogEntry, LogLevel } from "@/bindings";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -195,6 +196,13 @@ export function LogViewer(props: LogViewerProps): JSX.Element {
   const totalCount = () => props.entries.length;
   const filteredCount = () => filtered().length;
   const isFiltered = () => levelFilter() !== "all" || sourceFilter() !== "all" || search() !== "";
+  const buildLogToolbarCount = createMemo(() =>
+    formatBuildLogToolbarCount({
+      filterActive: isFiltered(),
+      visible: filteredCount(),
+      total: totalCount(),
+    })
+  );
 
   return (
     <div
@@ -314,22 +322,19 @@ export function LogViewer(props: LogViewerProps): JSX.Element {
           }}
         />
 
-        {/* Entry count */}
+        {/* Entry count — labeled visible vs total in panel */}
         <span
+          title={buildLogToolbarCount().title}
           style={{
             "font-family": "var(--font-ui)",
             "font-size": "11px",
             color: "var(--text-muted)",
             "white-space": "nowrap",
             "flex-shrink": "0",
+            "cursor": "default",
           }}
         >
-          <Show
-            when={isFiltered()}
-            fallback={<>{totalCount()} entries</>}
-          >
-            {filteredCount()}/{totalCount()}
-          </Show>
+          {buildLogToolbarCount().text}
         </span>
 
         {/* Spacer */}

@@ -140,8 +140,11 @@ pub struct LogStats {
     pub json_count: u64,
     pub packages_seen: usize,
     /// Percentage of the ring buffer currently in use (0.0 – 100.0).
-    /// Computed as `(current_len / MAX_LOGCAT_ENTRIES) * 100`.
+    /// Computed as `(current_len / configured_ring_capacity) * 100`.
     pub buffer_usage_pct: f32,
+    /// Current number of entries in the in-memory ring buffer (all lines stored;
+    /// independent of the active stream filter used for IPC).
+    pub buffer_entry_count: u64,
 }
 
 // ── LogcatFilterSpec ──────────────────────────────────────────────────────────

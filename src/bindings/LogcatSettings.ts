@@ -7,4 +7,12 @@ export type LogcatSettings = {
 /**
  * Automatically start logcat streaming when a device connects.
  */
-autoStart: boolean, };
+autoStart: boolean, 
+/**
+ * Maximum lines the Logcat panel keeps in memory and requests per backfill.
+ */
+maxUiLines: number, 
+/**
+ * Maximum entries in the in-memory logcat ring before oldest lines are dropped.
+ */
+ringMaxEntries: number, };

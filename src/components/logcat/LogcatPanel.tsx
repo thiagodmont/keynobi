@@ -15,6 +15,7 @@ import {
   clearLogcat,
   getLogcatEntries,
   getLogcatStatus,
+  getLogcatStats,
   setLogcatFilter,
   listenLogcatEntries,
   listenLogcatCleared,
@@ -29,7 +30,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { selectedDevice } from "@/stores/device.store";
 import { settingsState } from "@/stores/settings.store";
 import { showToast } from "@/components/ui";
-import { VirtualList, type VirtualListHandle } from "@/components/ui";
+import { VirtualList, type VirtualListHandle, isPaletteOpen } from "@/components/ui";
 import { QueryBar } from "@/components/logcat/QueryBar";
 import { Icon } from "@/components/ui";
 import {
@@ -63,6 +64,14 @@ import {
 } from "@/lib/logcat-filter-storage";
 import { openInStudio } from "@/lib/tauri-api";
 import { healthState } from "@/stores/health.store";
+import { uiState } from "@/stores/ui.store";
+import {
+  clampSelectionIndices,
+  nextSelectableIndex,
+} from "./logcat-selection-nav";
+import { rowFocusMarked, rowInSelectionRange } from "./logcat-row-selection";
+import { formatLogcatToolbarCount } from "./logcat-toolbar-count";
+import { clampLogcatMaxUiLines, clampLogcatRingMaxEntries } from "@/lib/logcat-ui-lines";
 
 // ── EntryFlags (mirrors Rust EntryFlags consts) ────────────────────────────────
 const ENTRY_FLAGS = {
@@ -74,7 +83,12 @@ const ENTRY_FLAGS = {
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
-const MAX_UI_ENTRIES = 20_000;
+function maxUiLinesCap(): number {
+  return clampLogcatMaxUiLines(
+    settingsState.logcat.maxUiLines,
+    settingsState.logcat.ringMaxEntries
+  );
+}
 
 let evictionPending = false;
 let lastEvictionTime = 0;
@@ -263,6 +277,13 @@ const AGE_PILLS = [
   { label: "All", value: null  },
 ] as const;
 
+function isLogcatTypingTarget(target: unknown): boolean {
+  if (!target || !(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
 export function LogcatPanel(): JSX.Element {
   const [query, setQuery] = createSignal("");
   const [debouncedQuery, setDebouncedQuery] = createSignal("");
@@ -302,6 +323,9 @@ export function LogcatPanel(): JSX.Element {
 
   // Currently active backend filter spec (for sync between filter changes and new entries)
   const [_activeBackendSpec, setActiveBackendSpec] = createSignal<LogcatFilterSpec>({ minLevel: null, tag: null, text: null, package: null, onlyCrashes: false });
+
+  /** Rust `LogStore::len()` from `get_logcat_stats`; null if IPC failed. */
+  const [ringBufferTotal, setRingBufferTotal] = createSignal<number | null>(null);
 
   let unlistenEntries: (() => void) | undefined;
   let unlistenCleared: (() => void) | undefined;
@@ -395,6 +419,15 @@ export function LogcatPanel(): JSX.Element {
     }
   }
 
+  async function refreshLogcatRingStats(): Promise<void> {
+    try {
+      const s = await getLogcatStats();
+      setRingBufferTotal(Number(s.bufferEntryCount));
+    } catch {
+      setRingBufferTotal(null);
+    }
+  }
+
   // ── Backend filter sync ───────────────────────────────────────────────────────
   //
   // When the debounced query changes, we:
@@ -415,7 +448,7 @@ export function LogcatPanel(): JSX.Element {
 
       // Fetch backfill from stored buffer with the same filter.
       const entries = await getLogcatEntries({
-        count: MAX_UI_ENTRIES,
+        count: maxUiLinesCap(),
         minLevel: spec.minLevel ?? undefined,
         tag: spec.tag ?? undefined,
         text: spec.text ?? undefined,
@@ -431,6 +464,7 @@ export function LogcatPanel(): JSX.Element {
       ingestForSuggestions(entries);
       flushSuggestions(true);
     } catch { /* ignore — don't break the UI if IPC fails */ }
+    await refreshLogcatRingStats();
   }
 
   // Trigger backend filter sync whenever the debounced query changes.
@@ -480,6 +514,49 @@ export function LogcatPanel(): JSX.Element {
     updateQuery(next.trimEnd() ? next.trimEnd() + " " : "");
   });
 
+  // When Settings changes the in-memory ring size, resync the list from Rust.
+  let prevRingCap: number | undefined;
+  createEffect(() => {
+    const ring = clampLogcatRingMaxEntries(settingsState.logcat.ringMaxEntries);
+    if (prevRingCap !== undefined && ring !== prevRingCap) {
+      void syncBackendFilter(parseFilterGroups(debouncedQuery()));
+      void refreshLogcatRingStats();
+    }
+    prevRingCap = ring;
+  });
+
+  // When Settings changes the Logcat UI line cap: trim immediately if lowered, or
+  // backfill from the ring buffer if raised.
+  let prevLogcatMaxUi: number | undefined;
+  createEffect(() => {
+    const cap = maxUiLinesCap();
+    if (prevLogcatMaxUi !== undefined) {
+      if (cap < prevLogcatMaxUi) {
+        const len = logcatStore.entries.length;
+        const excess = len - cap;
+        if (excess > 0) {
+          setLogcatStore(
+            produce((s) => {
+              s.entries.splice(0, excess);
+            })
+          );
+          if (!autoScroll()) {
+            setScrollCompensate((c) => c + excess * ROW_HEIGHT);
+          }
+          setCrashIndicesFull(
+            logcatStore.entries.reduce<number[]>((acc, e, i) => {
+              if (e.isCrash) acc.push(i);
+              return acc;
+            }, [])
+          );
+        }
+      } else if (cap > prevLogcatMaxUi) {
+        void syncBackendFilter(parseFilterGroups(debouncedQuery()));
+      }
+    }
+    prevLogcatMaxUi = cap;
+  });
+
   // ── Lifecycle ─────────────────────────────────────────────────────────────────
 
   onMount(async () => {
@@ -506,7 +583,7 @@ export function LogcatPanel(): JSX.Element {
 
     try {
       const entries = await getLogcatEntries({
-        count: MAX_UI_ENTRIES,
+        count: maxUiLinesCap(),
         // Apply the restored spec so the backfill is already filtered
         minLevel: restoredSpec?.minLevel ?? undefined,
         tag: restoredSpec?.tag ?? undefined,
@@ -532,7 +609,7 @@ export function LogcatPanel(): JSX.Element {
     unlistenEntries = await listenLogcatEntries((newEntries) => {
       if (paused()) return;
       const n = Date.now();
-      const shouldEvict = logcatStore.entries.length + newEntries.length > MAX_UI_ENTRIES;
+      const shouldEvict = logcatStore.entries.length + newEntries.length > maxUiLinesCap();
       if (shouldEvict && n - lastEvictionTime > EVICTION_INTERVAL_MS) {
         evictionPending = true;
         lastEvictionTime = n;
@@ -549,8 +626,8 @@ export function LogcatPanel(): JSX.Element {
       setLogcatStore(
         produce((s) => {
           for (const e of newEntries) s.entries.push(e);
-          if (evictionPending && s.entries.length > MAX_UI_ENTRIES) {
-            dropped = s.entries.length - MAX_UI_ENTRIES;
+          if (evictionPending && s.entries.length > maxUiLinesCap()) {
+            dropped = s.entries.length - maxUiLinesCap();
             s.entries.splice(0, dropped);
             evictionPending = false;
             didEvict = true;
@@ -585,6 +662,7 @@ export function LogcatPanel(): JSX.Element {
       clearSuggestions();
       setAutoScroll(true);
       virtualListRef?.scrollToBottom();
+      void refreshLogcatRingStats();
     });
 
     // Auto-start on device connect
@@ -611,6 +689,22 @@ export function LogcatPanel(): JSX.Element {
     });
 
     nowTimer = setInterval(() => setNow(Date.now()), 5_000);
+    void refreshLogcatRingStats();
+  });
+
+  // Refresh ring count when the user opens the Logcat tab (denominator is Rust-only).
+  createEffect(() => {
+    if (uiState.activeTab === "logcat") void refreshLogcatRingStats();
+  });
+
+  // Keep ring-buffer denominator fresh while streaming (cheap IPC; throttled).
+  createEffect(() => {
+    if (!logcatStore.streaming || uiState.activeTab !== "logcat") return;
+    void refreshLogcatRingStats();
+    const id = window.setInterval(() => {
+      void refreshLogcatRingStats();
+    }, 2_000);
+    onCleanup(() => clearInterval(id));
   });
 
   onCleanup(() => {
@@ -631,6 +725,7 @@ export function LogcatPanel(): JSX.Element {
       const device = selectedDevice();
       await startLogcat(device?.serial ?? undefined);
       setLogcatStore("streaming", true);
+      void refreshLogcatRingStats();
     } catch (e) {
       showToast(`Failed to start logcat: ${formatError(e)}`, "error");
     }
@@ -640,6 +735,7 @@ export function LogcatPanel(): JSX.Element {
     try {
       await stopLogcat();
       setLogcatStore("streaming", false);
+      void refreshLogcatRingStats();
     } catch (e) {
       showToast(`Failed to stop logcat: ${formatError(e)}`, "error");
     }
@@ -818,6 +914,57 @@ export function LogcatPanel(): JSX.Element {
 
   const [selectedDetailEntry, setSelectedDetailEntry] = createSignal<LogcatEntry | null>(null);
 
+  // Clamp row selection when the filtered list shrinks or clears; drop detail if the entry vanished.
+  createEffect(() => {
+    const entries = filteredEntries();
+    const n = entries.length;
+    const anchor = selectionAnchor();
+    const end = selectionEnd();
+
+    if (n === 0) {
+      if (anchor !== null) setSelectionAnchor(null);
+      if (end !== null) setSelectionEnd(null);
+      if (selectedDetailEntry() !== null) setSelectedDetailEntry(null);
+      return;
+    }
+
+    const { anchor: na, end: nb } = clampSelectionIndices(anchor, end, n);
+    if (na !== anchor) setSelectionAnchor(na);
+    if (nb !== end) setSelectionEnd(nb);
+
+    const detail = selectedDetailEntry();
+    if (detail !== null && !entries.some((e) => e.id === detail.id)) {
+      setSelectedDetailEntry(null);
+    }
+  });
+
+  // Arrow keys: move selection, show bottom detail, scroll into view (Logcat tab only).
+  onMount(() => {
+    function handleLogcatGlobalKeydown(e: KeyboardEvent): void {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      if (uiState.activeTab !== "logcat") return;
+      if (isPaletteOpen()) return;
+      if (isLogcatTypingTarget(e.target)) return;
+
+      const entries = filteredEntries();
+      if (entries.length === 0) return;
+
+      const direction: 1 | -1 = e.key === "ArrowDown" ? 1 : -1;
+      const nextIdx = nextSelectableIndex(entries, selectionAnchor(), direction);
+      if (nextIdx === null) return;
+
+      e.preventDefault();
+      setSelectionEnd(null);
+      setSelectionAnchor(nextIdx);
+      setSelectedDetailEntry(entries[nextIdx]);
+      setAutoScroll(false);
+      virtualListRef?.scrollToIndex(nextIdx);
+    }
+
+    document.addEventListener("keydown", handleLogcatGlobalKeydown);
+    onCleanup(() => document.removeEventListener("keydown", handleLogcatGlobalKeydown));
+  });
+
   function handleJsonBadgeClick(e: MouseEvent, entry: LogcatEntry) {
     e.stopPropagation();
     setSelectedJsonEntry((prev: LogcatEntry | null) => (prev?.id === entry.id ? null : entry));
@@ -827,7 +974,13 @@ export function LogcatPanel(): JSX.Element {
   // ── UI helpers ────────────────────────────────────────────────────────────────
 
   const isFiltered = () => query().trim() !== "";
-  const count = () => filteredEntries().length;
+  const toolbarCount = createMemo(() =>
+    formatLogcatToolbarCount({
+      queryActive: isFiltered(),
+      visible: filteredEntries().length,
+      ringTotal: ringBufferTotal(),
+    })
+  );
   const crashes = () => crashIndices().length;
   const selRange = () => getSelectionRange();
   const selCount = () => {
@@ -1120,11 +1273,12 @@ export function LogcatPanel(): JSX.Element {
 
         <div style={{ flex: "1" }} />
 
-        {/* Entry count */}
-        <span style={{ "font-size": "11px", color: "var(--text-muted)", "flex-shrink": "0" }}>
-          {isFiltered()
-            ? `${count().toLocaleString()} / ${logcatStore.entries.length.toLocaleString()}`
-            : `${count().toLocaleString()}`}
+        {/* Entry count — labeled visible vs buffer (see logcat-toolbar-count.ts) */}
+        <span
+          title={toolbarCount().title}
+          style={{ "font-size": "11px", color: "var(--text-muted)", "flex-shrink": "0", "cursor": "default" }}
+        >
+          {toolbarCount().text}
         </span>
 
         {/* Streaming dot */}
@@ -1254,15 +1408,16 @@ export function LogcatPanel(): JSX.Element {
             if (entry.kind === "processDied" || entry.kind === "processStarted") {
               return <SeparatorRow entry={entry} />;
             }
-            const range = getSelectionRange();
-            const selected = range !== null && idx >= range[0] && idx <= range[1];
-            const isJsonSelected = () => selectedJsonEntry()?.id === entry.id;
             return (
-              <LogcatRow
+              <LogcatVirtualRow
                 entry={entry}
-                selected={selected}
-                jsonSelected={isJsonSelected()}
-                onClick={(e) => handleRowClick(idx, e)}
+                index={idx}
+                getSelectionRange={getSelectionRange}
+                getAnchor={() => selectionAnchor()}
+                getEnd={() => selectionEnd()}
+                getDetailEntry={() => selectedDetailEntry()}
+                getJsonEntry={() => selectedJsonEntry()}
+                onRowClick={(e) => handleRowClick(idx, e)}
                 onJsonClick={(e) => handleJsonBadgeClick(e, entry)}
               />
             );
@@ -1288,6 +1443,50 @@ export function LogcatPanel(): JSX.Element {
         )}
       </Show>
     </div>
+  );
+}
+
+/**
+ * Wraps {@link LogcatRow} so selection/detail signals are read inside `createMemo`.
+ * VirtualList's inner `<For>` does not re-invoke `renderRow` when only selection changes;
+ * this child re-subscribes so the focus stripe and range tint stay in sync with clicks and keyboard.
+ */
+function LogcatVirtualRow(props: {
+  entry: LogcatEntry;
+  index: number;
+  getSelectionRange: () => [number, number] | null;
+  getAnchor: () => number | null;
+  getEnd: () => number | null;
+  getDetailEntry: () => LogcatEntry | null;
+  getJsonEntry: () => LogcatEntry | null;
+  onRowClick: (e: MouseEvent) => void;
+  onJsonClick: (e: MouseEvent) => void;
+}): JSX.Element {
+  const inSelectionRange = createMemo(() =>
+    rowInSelectionRange(props.index, props.getSelectionRange())
+  );
+
+  const focusMarked = createMemo(() =>
+    rowFocusMarked(
+      props.index,
+      props.getAnchor(),
+      props.getEnd(),
+      props.getDetailEntry(),
+      props.entry.id
+    )
+  );
+
+  const jsonSelected = createMemo(() => props.getJsonEntry()?.id === props.entry.id);
+
+  return (
+    <LogcatRow
+      entry={props.entry}
+      inSelectionRange={inSelectionRange()}
+      focusMarked={focusMarked()}
+      jsonSelected={jsonSelected()}
+      onClick={props.onRowClick}
+      onJsonClick={props.onJsonClick}
+    />
   );
 }
 
@@ -1417,7 +1616,10 @@ function StudioJumpButton(props: { message: string }): JSX.Element {
 
 function LogcatRow(props: {
   entry: LogcatEntry;
-  selected: boolean;
+  /** Row index lies in the Shift+click copy range (or single anchor). */
+  inSelectionRange: boolean;
+  /** Primary line: detail panel entry, or anchor when no detail / multi-range stripe on anchor only. */
+  focusMarked: boolean;
   jsonSelected: boolean;
   onClick: (e: MouseEvent) => void;
   onJsonClick: (e: MouseEvent) => void;
@@ -1428,14 +1630,25 @@ function LogcatRow(props: {
   // Entries in a crash group but not the header get a subtle left border variation
   const inCrashGroup = () => props.entry.crashGroupId !== null && !props.entry.isCrash;
 
-  // Left border: crash group lines get a softer indicator than crash headers
-  const borderColor = () => {
-    if (props.selected) return "var(--accent)";
+  // Left border when not showing the focus accent stripe
+  const semanticBorderColor = () => {
     if (props.entry.isCrash) return "var(--error)";
     if (hasAnr()) return "var(--warning)";
     if (inCrashGroup()) return "color-mix(in srgb, var(--error) 40%, transparent)";
     return "transparent";
   };
+
+  const ACCENT_RANGE_BG = "rgba(var(--accent-rgb, 59,130,246),0.14)";
+  const ACCENT_FOCUS_BG = "rgba(var(--accent-rgb, 59,130,246),0.28)";
+
+  function defaultRowBackground(): string {
+    if (props.focusMarked) return ACCENT_FOCUS_BG;
+    if (props.inSelectionRange) return ACCENT_RANGE_BG;
+    if (props.jsonSelected) return "color-mix(in srgb, var(--info) 12%, transparent)";
+    if (props.entry.isCrash) return "color-mix(in srgb, var(--error) 12%, transparent)";
+    if (hasAnr()) return "color-mix(in srgb, var(--warning) 8%, transparent)";
+    return cfg().bg;
+  }
 
   return (
     <div
@@ -1448,28 +1661,26 @@ function LogcatRow(props: {
         padding: "0 10px",
         height: `${ROW_HEIGHT}px`,
         "min-height": `${ROW_HEIGHT}px`,
-        background: props.selected
-          ? "rgba(var(--accent-rgb, 59,130,246),0.25)"
-          : props.jsonSelected
-          ? "color-mix(in srgb, var(--info) 12%, transparent)"
-          : props.entry.isCrash
-          ? "color-mix(in srgb, var(--error) 12%, transparent)"
-          : hasAnr()
-          ? "color-mix(in srgb, var(--warning) 8%, transparent)"
-          : cfg().bg,
-        "border-left": `2px solid ${borderColor()}`,
+        background: defaultRowBackground(),
+        "border-left": props.focusMarked
+          ? "4px solid var(--accent)"
+          : `2px solid ${semanticBorderColor()}`,
         overflow: "hidden",
         cursor: "pointer",
       }}
       onMouseEnter={(e) => {
-        if (!props.selected && !props.jsonSelected) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)";
+        if (!props.focusMarked && !props.inSelectionRange && !props.jsonSelected) {
+          (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)";
+        }
       }}
       onMouseLeave={(e) => {
-        if (!props.selected && !props.jsonSelected) {
+        if (!props.focusMarked && !props.inSelectionRange && !props.jsonSelected) {
           (e.currentTarget as HTMLElement).style.background =
             props.entry.isCrash ? "color-mix(in srgb, var(--error) 12%, transparent)" :
             hasAnr() ? "color-mix(in srgb, var(--warning) 8%, transparent)" :
             cfg().bg;
+        } else {
+          (e.currentTarget as HTMLElement).style.background = defaultRowBackground();
         }
       }}
     >

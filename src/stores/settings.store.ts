@@ -37,6 +37,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   logcat: {
     autoStart: true,
+    maxUiLines: 20_000,
+    ringMaxEntries: 50_000,
   },
   mcp: {
     autoStart: false,
