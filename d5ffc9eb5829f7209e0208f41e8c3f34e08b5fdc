@@ -1,0 +1,65 @@
+src-tauri/src/commands/logcat.rs
+  040389a539281072 82-83,138-141
+src/components/logcat/logcat-toolbar-count.test.ts
+  040389a539281072 1-51
+src-tauri/src/models/settings.rs
+  040389a539281072 133-150,158-183,280-284,385-414
+src-tauri/src/models/logcat.rs
+  040389a539281072 143,145-147
+src/components/logcat/logcat-selection-nav.ts
+  040389a539281072 1-52
+src/components/logcat/LogcatPanel.tsx
+  040389a539281072 18,33,67-74,86-91,280-286,327-329,422-430,451,467,517-559,586,612,629-630,665,692-707,728,738,917-967,977-983,1276-1281,1412,1414-1420,1449-1492,1619-1622,1633-1634,1641-1652,1664-1667,1672-1674,1677,1682-1683
+src/components/common/LogViewer.tsx
+  040389a539281072 9,199-205,325,327,334,337
+src-tauri/src/services/log_store.rs
+  040389a539281072 2,5-6,8-15,44-51,53-54,61-78,253,263-275
+src/components/settings/SettingsPanel.tsx
+  040389a539281072 9-15,365-416
+src/components/logcat/logcat-row-selection.ts
+  040389a539281072 1-26
+src/lib/logcat-ui-lines.ts
+  040389a539281072 1-19
+src/components/common/log-viewer-toolbar-count.ts
+  040389a539281072 1-30
+src/components/common/log-viewer-toolbar-count.test.ts
+  040389a539281072 1-20
+src-tauri/src/commands/settings.rs
+  040389a539281072 2-3,5,18,33-38,42-49
+src/components/logcat/logcat-selection-nav.test.ts
+  040389a539281072 1-78
+src/components/logcat/logcat-row-selection.test.ts
+  040389a539281072 1-65
+src/components/logcat/logcat-toolbar-count.ts
+  040389a539281072 1-41
+docs/USER_MANUAL.md
+  040389a539281072 233-236,246,250,380-385
+src/stores/settings.store.ts
+  040389a539281072 40-41
+src/components/ui/VirtualList/VirtualList.tsx
+  040389a539281072 36-37,97-99,112,117-122
+src-tauri/src/services/settings_manager.rs
+  040389a539281072 53-56,83-86
+src-tauri/src/lib.rs
+  040389a539281072 36,186-193
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "d5ffc9eb5829f7209e0208f41e8c3f34e08b5fdc",
+  "prompts": {
+    "040389a539281072": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "245a72a8-75e0-401e-ae63-6337e65f53d1",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 1075,
+      "total_deletions": 234,
+      "accepted_lines": 908,
+      "overriden_lines": 0
+    }
+  }
+}
