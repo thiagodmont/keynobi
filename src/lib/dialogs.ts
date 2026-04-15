@@ -1,4 +1,4 @@
-import { showDialog } from "@/components/ui/Dialog";
+import { showDialog } from "@/components/ui";
 
 export type SaveDialogResult = "save" | "discard" | "cancel";
 export type CloseDialogResult = "save-all" | "discard-all" | "cancel";

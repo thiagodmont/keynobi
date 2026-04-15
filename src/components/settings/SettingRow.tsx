@@ -1,8 +1,5 @@
 import { type JSX, Show } from "solid-js";
-import { Toggle } from "@/components/ui/Toggle";
-import { Select } from "@/components/ui/Select";
-import { TagInput } from "@/components/ui/TagInput";
-import { Input } from "@/components/ui/Input";
+import { Toggle, Select, TagInput, Input } from "@/components/ui";
 
 interface SettingRowProps {
   label: string;

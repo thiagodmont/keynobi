@@ -10,10 +10,10 @@
   line-height: 1.5;
 }
 
-.info    { background: rgba(0, 122, 204, 0.1);   border-color: rgba(0, 122, 204, 0.3);   color: var(--info); }
-.warning { background: rgba(204, 167, 0, 0.1);   border-color: rgba(204, 167, 0, 0.3);   color: var(--warning); }
-.error   { background: rgba(241, 76, 76, 0.1);   border-color: rgba(241, 76, 76, 0.3);   color: var(--error); }
-.success { background: rgba(76, 175, 80, 0.1);   border-color: rgba(76, 175, 80, 0.3);   color: var(--success); }
+.info    { background: var(--info-bg);    border-color: var(--info-border);    color: var(--info); }
+.warning { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning); }
+.error   { background: var(--error-bg);   border-color: var(--error-border);   color: var(--error); }
+.success { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
 
 .content {
   flex: 1;

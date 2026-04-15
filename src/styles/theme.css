@@ -30,6 +30,26 @@
   --success: #4caf50;
   --info: #75beff;
 
+  /*
+   * Stacking scale (z-index):
+   *   tooltips / dropdowns  — 1000
+   *   dialogs               — 9000
+   *   toasts                — 9999  (must float above dialogs)
+   */
+
+  /* Semantic background tints — derived; update via color tokens above */
+  --error-bg:      color-mix(in srgb, var(--error)   10%, var(--bg-primary));
+  --warning-bg:    color-mix(in srgb, var(--warning) 10%, var(--bg-primary));
+  --success-bg:    color-mix(in srgb, var(--success) 10%, var(--bg-primary));
+  --info-bg:       color-mix(in srgb, var(--info)    10%, var(--bg-primary));
+
+  /* Semantic border tints */
+  --error-border:   color-mix(in srgb, var(--error)   30%, transparent);
+  --warning-border: color-mix(in srgb, var(--warning) 30%, transparent);
+  --success-border: color-mix(in srgb, var(--success) 30%, transparent);
+  --info-border:    color-mix(in srgb, var(--info)    30%, transparent);
+  --accent-border:  color-mix(in srgb, var(--accent)  30%, transparent);
+
   /* Fonts */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", "Menlo", "Consolas", monospace;

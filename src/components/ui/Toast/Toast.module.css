@@ -27,10 +27,10 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.error   { background: #3d1a1a; color: #f87171; border: 1px solid #7f1d1d; }
-.info    { background: #1a2a3d; color: #93c5fd; border: 1px solid #1e3a5f; }
-.success { background: #1a3d1f; color: #86efac; border: 1px solid #14532d; }
-.warning { background: #3d2e1a; color: #fbbf24; border: 1px solid #92400e; }
+.error   { background: color-mix(in srgb, var(--error)   12%, var(--bg-secondary)); color: var(--error);   border: 1px solid color-mix(in srgb, var(--error)   35%, transparent); }
+.info    { background: color-mix(in srgb, var(--info)    12%, var(--bg-secondary)); color: var(--info);    border: 1px solid color-mix(in srgb, var(--info)    35%, transparent); }
+.success { background: color-mix(in srgb, var(--success) 12%, var(--bg-secondary)); color: var(--success); border: 1px solid color-mix(in srgb, var(--success) 35%, transparent); }
+.warning { background: color-mix(in srgb, var(--warning) 12%, var(--bg-secondary)); color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent); }
 
 .message { flex: 1; }
 

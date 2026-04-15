@@ -5,6 +5,7 @@ import {
   createSignal,
   createEffect,
   createMemo,
+  onCleanup,
 } from "solid-js";
 import { Portal } from "solid-js/web";
 import { searchActions } from "@/lib/action-registry";
@@ -18,8 +19,8 @@ const [paletteState, setPaletteState] = createSignal<{ open: boolean; mode: Pale
   mode: "commands",
 });
 
-export function openPalette(_mode: string = "commands"): void {
-  setPaletteState({ open: true, mode: "commands" });
+export function openPalette(mode: PaletteMode = "commands"): void {
+  setPaletteState({ open: true, mode });
 }
 
 export function closePalette(): void {
@@ -47,7 +48,8 @@ export function CommandPalette(): JSX.Element {
     if (paletteState().open) {
       setQuery("");
       setSelectedIndex(0);
-      setTimeout(() => inputRef?.focus(), 10);
+      const timer = setTimeout(() => inputRef?.focus(), 10);
+      onCleanup(() => clearTimeout(timer));
     }
   });
 
@@ -98,16 +100,19 @@ export function CommandPalette(): JSX.Element {
                 role="combobox"
                 aria-expanded="true"
                 aria-autocomplete="list"
+                aria-controls="cp-listbox"
+                aria-activedescendant={results()[selectedIndex()] ? `cp-opt-${results()[selectedIndex()].id}` : undefined}
                 value={query()}
                 onInput={(e) => { setQuery(e.currentTarget.value); setSelectedIndex(0); }}
                 onKeyDown={handleKeyDown}
                 class={styles.input}
               />
             </div>
-            <div role="listbox" class={styles.list}>
+            <div role="listbox" id="cp-listbox" class={styles.list}>
               <For each={results()}>
                 {(item, index) => (
                   <div
+                    id={`cp-opt-${item.id}`}
                     role="option"
                     aria-selected={index() === selectedIndex()}
                     onClick={() => item.action()}

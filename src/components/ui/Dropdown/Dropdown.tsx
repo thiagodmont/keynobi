@@ -2,13 +2,9 @@ import { createSignal, createEffect, onCleanup, For, Show, type JSX } from "soli
 import { Portal } from "solid-js/web";
 import styles from "./Dropdown.module.css";
 
-export interface MenuItem {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-  separator?: boolean;
-  destructive?: boolean;
-}
+export type MenuItem =
+  | { separator: true; label?: never; onClick?: never; disabled?: never; destructive?: never }
+  | { separator?: false; label: string; onClick: () => void; disabled?: boolean; destructive?: boolean };
 
 export interface DropdownProps {
   trigger: JSX.Element;
@@ -71,7 +67,7 @@ export function Dropdown(props: DropdownProps): JSX.Element {
       e.preventDefault();
       const idx = activeIndex();
       if (idx >= 0 && idx < items.length) {
-        items[idx].onClick();
+        items[idx].onClick?.();
         close();
       }
     }
@@ -118,6 +114,7 @@ export function Dropdown(props: DropdownProps): JSX.Element {
             style={{
               left: `${menuPos.x}px`,
               top: `${menuPos.y}px`,
+              transform: props.placement === "top" ? "translateY(-100%)" : undefined,
             }}
           >
             {(() => {

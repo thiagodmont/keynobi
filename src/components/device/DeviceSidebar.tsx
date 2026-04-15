@@ -577,7 +577,6 @@ function AvdRow(props: {
   onWipe: () => void;
 }): JSX.Element {
   const [hover, setHover] = createSignal(false);
-  const [menuOpen, setMenuOpen] = createSignal(false);
 
   return (
     <div
@@ -722,34 +721,33 @@ function AvdRow(props: {
             </Show>
 
             {/* Overflow menu button */}
-            <div style={{ position: "relative" }}>
-              <button
-                onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-                title="More options"
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--text-muted)",
-                  "font-size": "13px",
-                  padding: "2px 3px",
-                  "border-radius": "3px",
-                  "line-height": "1",
-                  display: "flex",
-                  "align-items": "center",
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
-              >
-                ···
-              </button>
-              <Show when={menuOpen()}>
-                <AvdContextMenu
-                  onClose={() => setMenuOpen(false)}
-                  onWipe={() => { setMenuOpen(false); props.onWipe(); }}
-                  onDelete={() => { setMenuOpen(false); props.onDelete(); }}
-                />
-              </Show>
+            <div onClick={(e) => e.stopPropagation()}>
+              <AvdContextMenu
+                onWipe={props.onWipe}
+                onDelete={props.onDelete}
+                trigger={
+                  <button
+                    type="button"
+                    title="More options"
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "var(--text-muted)",
+                      "font-size": "13px",
+                      padding: "2px 3px",
+                      "border-radius": "3px",
+                      "line-height": "1",
+                      display: "flex",
+                      "align-items": "center",
+                    }}
+                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+                  >
+                    ···
+                  </button>
+                }
+              />
             </div>
           </div>
         </Show>

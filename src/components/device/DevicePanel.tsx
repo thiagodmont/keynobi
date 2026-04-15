@@ -513,7 +513,6 @@ function AvdRow(props: {
   onDelete: () => void;
   onWipe: () => void;
 }): JSX.Element {
-  const [menuOpen, setMenuOpen] = createSignal(false);
 
   return (
     <div
@@ -646,41 +645,40 @@ function AvdRow(props: {
         </Show>
 
         {/* Overflow menu */}
-        <div style={{ position: "relative" }}>
-          <button
-            onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
-            title="More options"
-            style={{
-              width: "26px",
-              height: "26px",
-              display: "flex",
-              "align-items": "center",
-              "justify-content": "center",
-              background: "none",
-              border: "1px solid transparent",
-              "border-radius": "4px",
-              cursor: "pointer",
-              color: "var(--text-muted)",
-              "font-size": "14px",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.08))";
-              (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "none";
-              (e.currentTarget as HTMLElement).style.borderColor = "transparent";
-            }}
-          >
-            ···
-          </button>
-          <Show when={menuOpen()}>
-            <AvdContextMenu
-              onClose={() => setMenuOpen(false)}
-              onWipe={() => { setMenuOpen(false); props.onWipe(); }}
-              onDelete={() => { setMenuOpen(false); props.onDelete(); }}
-            />
-          </Show>
+        <div onClick={(e) => e.stopPropagation()}>
+          <AvdContextMenu
+            onWipe={props.onWipe}
+            onDelete={props.onDelete}
+            trigger={
+              <button
+                type="button"
+                title="More options"
+                style={{
+                  width: "26px",
+                  height: "26px",
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "center",
+                  background: "none",
+                  border: "1px solid transparent",
+                  "border-radius": "4px",
+                  cursor: "pointer",
+                  color: "var(--text-muted)",
+                  "font-size": "14px",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.08))";
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "none";
+                  (e.currentTarget as HTMLElement).style.borderColor = "transparent";
+                }}
+              >
+                ···
+              </button>
+            }
+          />
         </div>
       </div>
     </div>

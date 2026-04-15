@@ -32,7 +32,7 @@ export function CopyableText(props: CopyableTextProps): JSX.Element {
         type="button"
         class={styles.copyBtn}
         onClick={handleCopy}
-        aria-label="Copy"
+        aria-label={`Copy ${props.text}`}
       >
         <Icon name="copy" size={12} />
       </button>

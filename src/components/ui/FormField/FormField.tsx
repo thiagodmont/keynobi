@@ -1,7 +1,8 @@
-import { type JSX, Show } from "solid-js";
+import { type JSX, Show, createUniqueId } from "solid-js";
 import styles from "./FormField.module.css";
 
 export interface FormFieldProps {
+  id?: string;
   label: string;
   description?: string;
   error?: string;
@@ -11,10 +12,11 @@ export interface FormFieldProps {
 }
 
 export function FormField(props: FormFieldProps): JSX.Element {
+  const fieldId = props.id ?? createUniqueId();
   return (
     <div class={[styles.root, props.class].filter(Boolean).join(" ")}>
       <div class={styles.header}>
-        <span class={styles.label}>{props.label}</span>
+        <label for={fieldId} class={styles.label}>{props.label}</label>
         <Show when={props.required}>
           <span class={styles.required} aria-hidden="true">*</span>
         </Show>

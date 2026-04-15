@@ -26,33 +26,33 @@
 }
 
 .success {
-  background: rgba(76, 175, 80, 0.12);
+  background: var(--success-bg);
   color: var(--success);
-  border: 1px solid rgba(76, 175, 80, 0.3);
+  border: 1px solid var(--success-border);
 }
 
 .error {
-  background: rgba(241, 76, 76, 0.12);
+  background: var(--error-bg);
   color: var(--error);
-  border: 1px solid rgba(241, 76, 76, 0.3);
+  border: 1px solid var(--error-border);
 }
 
 .warning {
-  background: rgba(204, 167, 0, 0.12);
+  background: var(--warning-bg);
   color: var(--warning);
-  border: 1px solid rgba(204, 167, 0, 0.3);
+  border: 1px solid var(--warning-border);
 }
 
 .info {
-  background: rgba(117, 190, 255, 0.12);
+  background: var(--info-bg);
   color: var(--info);
-  border: 1px solid rgba(117, 190, 255, 0.3);
+  border: 1px solid var(--info-border);
 }
 
 .accent {
   background: var(--accent-bg);
   color: var(--accent);
-  border: 1px solid rgba(0, 122, 204, 0.3);
+  border: 1px solid var(--accent-border);
 }
 
 /* Modifier */

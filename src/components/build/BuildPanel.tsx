@@ -72,7 +72,7 @@ export function BuildPanel(): JSX.Element {
   });
 
   const summaryColor = createMemo(() => {
-    if (deployPhase() === "installing" || deployPhase() === "launching") return "#60a5fa";
+    if (deployPhase() === "installing" || deployPhase() === "launching") return "var(--info)";
     switch (phase()) {
       case "success": return "var(--success, #4ade80)";
       case "failed":  return "var(--error, #f87171)";

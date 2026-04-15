@@ -37,6 +37,8 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
             <button
               type="button"
               disabled={item.disabled}
+              title={item.label}
+              aria-label={item.label}
               aria-pressed={item.active ? "true" : undefined}
               class={[
                 styles.item,

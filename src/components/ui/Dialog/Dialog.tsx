@@ -66,8 +66,14 @@ export function DialogHost(): JSX.Element {
               class={styles.backdrop}
               onClick={() => resolve("cancel")}
             >
-              <div class={styles.box} onClick={(e) => e.stopPropagation()}>
-                <div class={styles.title}>{dialog.title}</div>
+              <div
+                class={styles.box}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="dialog-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div id="dialog-title" class={styles.title}>{dialog.title}</div>
                 <div class={styles.message}>{dialog.message}</div>
                 <div class={styles.actions}>
                   <For each={dialog.buttons.slice().reverse()}>

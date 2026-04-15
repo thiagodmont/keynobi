@@ -1,7 +1,7 @@
 import { createStore } from "solid-js/store";
 import { createSignal } from "solid-js";
 import { listen } from "@tauri-apps/api/event";
-import { showToast } from "@/components/ui/Toast";
+import { showToast } from "@/components/ui";
 
 export type MainTab = "build" | "logcat" | "layout";
 

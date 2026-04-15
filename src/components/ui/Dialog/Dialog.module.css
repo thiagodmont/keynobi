@@ -45,9 +45,10 @@
   font-size: 13px;
   cursor: pointer;
   font-weight: 500;
-  border: none;
+  border-width: 1px;
+  border-style: solid;
 }
 
-.primary   { background: var(--accent); color: var(--accent-fg); }
-.danger    { background: transparent; color: var(--error); border: 1px solid var(--error) !important; }
-.secondary { background: transparent; color: var(--text-secondary); border: 1px solid var(--border) !important; }
+.primary   { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
+.danger    { background: transparent; color: var(--error); border-color: var(--error); }
+.secondary { background: transparent; color: var(--text-secondary); border-color: var(--border); }

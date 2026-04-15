@@ -1,6 +1,7 @@
 import { beforeEach, describe, it, expect } from "vitest";
 import { render, fireEvent, screen } from "@solidjs/testing-library";
-import { DialogHost, resetDialogHostForTests, showDialog } from "./Dialog";
+import { DialogHost, showDialog } from "./Dialog";
+import { resetDialogHostForTests } from "./Dialog.test-utils";
 
 describe("Dialog", () => {
   beforeEach(() => {
