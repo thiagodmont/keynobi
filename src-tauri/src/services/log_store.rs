@@ -261,6 +261,14 @@ mod tests {
     }
 
     #[test]
+    fn with_capacity_clamps_to_allowed_bounds() {
+        let low = LogStore::with_capacity(100);
+        assert_eq!(low.capacity(), LOGCAT_RING_MIN_ENTRIES);
+        let high = LogStore::with_capacity(500_000);
+        assert_eq!(high.capacity(), LOGCAT_RING_ABS_MAX_ENTRIES);
+    }
+
+    #[test]
     fn set_capacity_shrink_evicts_oldest() {
         let mut store = LogStore::with_capacity(10_000);
         for i in 1..=2000 {

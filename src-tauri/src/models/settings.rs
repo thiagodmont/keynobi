@@ -411,5 +411,14 @@ mod tests {
         normalize_logcat_section(&mut l2);
         assert_eq!(l2.ring_max_entries, 10_000);
         assert_eq!(l2.max_ui_lines, 10_000);
+
+        let mut l3 = LogcatSettings {
+            auto_start: true,
+            ring_max_entries: 200_000,
+            max_ui_lines: 20_000,
+        };
+        normalize_logcat_section(&mut l3);
+        assert_eq!(l3.ring_max_entries, LOGCAT_RING_ABS_MAX);
+        assert_eq!(l3.max_ui_lines, 20_000);
     }
 }

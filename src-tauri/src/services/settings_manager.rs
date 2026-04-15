@@ -329,6 +329,27 @@ mod tests {
     }
 
     #[test]
+    fn load_settings_from_path_normalizes_extreme_logcat_values() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"logcat":{"ringMaxEntries":500000,"maxUiLines":200000,"autoStart":true}}"#,
+        )
+        .unwrap();
+        let (settings, corrupted) = load_settings_from_path(&path);
+        assert!(!corrupted);
+        assert_eq!(
+            settings.logcat.ring_max_entries,
+            crate::models::settings::LOGCAT_RING_ABS_MAX
+        );
+        assert_eq!(
+            settings.logcat.max_ui_lines,
+            crate::models::settings::LOGCAT_RING_ABS_MAX
+        );
+    }
+
+    #[test]
     fn load_settings_from_path_no_corruption_flag_when_file_missing() {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("nonexistent.json");
