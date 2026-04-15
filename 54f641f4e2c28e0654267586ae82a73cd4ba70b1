@@ -1,0 +1,25 @@
+src/components/ui/Dialog/Dialog.tsx
+  f5ffadcfadb0369c 21-22,26-34,44,53,60
+src/components/ui/Dialog/Dialog.test.tsx
+  f5ffadcfadb0369c 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "54f641f4e2c28e0654267586ae82a73cd4ba70b1",
+  "prompts": {
+    "f5ffadcfadb0369c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2174eaa7-2be1-4016-8e28-5e1c8d7dbae4",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 15,
+      "total_deletions": 2,
+      "accepted_lines": 15,
+      "overriden_lines": 0
+    }
+  }
+}
