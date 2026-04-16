@@ -7,6 +7,23 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.13] — 2026-04-16
+
+### Added
+- add defaultVariant to VariantList and update related logic
+- implement auto-scroll settings for log panels
+- enhance logcat settings and UI with keyboard navigation and buffer management
+- move to a design system (#3)
+- persist and surface active build variant in set_active_variant / list_build_variants
+- infer product flavors from APK output directory when not declared in build file
+- fallback to convention plugin .kt files for SDK level detection
+
+### Fixed
+- surface ADB recovery hint when devices are offline in list_devices
+- remove commandLog from UI hierarchy responses; trim layoutContext to wmSize+wmDensity
+
+---
+
 ## [0.1.12] — 2026-04-13
 
 ### Added
