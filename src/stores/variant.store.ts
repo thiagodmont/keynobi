@@ -25,7 +25,11 @@ export interface VariantStoreState {
 // Keyed by project root path. Survives project switches; cleared only when the
 // app restarts (module re-initialisation). Avoids re-running the expensive
 // `./gradlew :app:tasks` query when the user switches back to a known project.
-const variantCache = new Map<string, BuildVariant[]>();
+interface CachedGradleVariants {
+  variants: BuildVariant[];
+  defaultVariant: string | null;
+}
+const variantCache = new Map<string, CachedGradleVariants>();
 
 /** Clear the cache for a specific root (or all roots when called with no argument). */
 export function clearVariantCache(root?: string): void {
@@ -60,7 +64,7 @@ export const hasVariants = createMemo(() => variantState.variants.length > 0);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Pick the active variant: respect saved setting, fall back to first in list. */
+/** Pick the active variant: respect saved setting, Gradle default hint, then first in list. */
 function resolveActive(list: VariantList, currentActive: string | null): string | null {
   // Honour the saved/restored setting if it's present in the returned list.
   if (list.active && list.variants.some((v) => v.name === list.active)) {
@@ -69,6 +73,13 @@ function resolveActive(list: VariantList, currentActive: string | null): string 
   // Keep the currently-selected variant if it still exists after a refresh.
   if (currentActive && list.variants.some((v) => v.name === currentActive)) {
     return currentActive;
+  }
+  // Android Studio–aligned default from Gradle (`isDefault`, `.idea`, heuristics).
+  if (
+    list.defaultVariant &&
+    list.variants.some((v) => v.name === list.defaultVariant)
+  ) {
+    return list.defaultVariant;
   }
   // Fall back to the first variant.
   return list.variants[0]?.name ?? null;
@@ -133,8 +144,15 @@ async function runLoadVariants(): Promise<void> {
 
   if (cached) {
     setVariantState({
-      variants: cached,
-      activeVariant: resolveActive({ variants: cached, active: null }, variantState.activeVariant),
+      variants: cached.variants,
+      activeVariant: resolveActive(
+        {
+          variants: cached.variants,
+          active: null,
+          defaultVariant: cached.defaultVariant,
+        },
+        variantState.activeVariant,
+      ),
       fromGradle: true,
       gradleLoading: false,
       gradleError: null,
@@ -146,7 +164,10 @@ async function runLoadVariants(): Promise<void> {
   try {
     const full = await getVariantsFromGradle();
     if (cacheKey !== null) {
-      variantCache.set(cacheKey, full.variants);
+      variantCache.set(cacheKey, {
+        variants: full.variants,
+        defaultVariant: full.defaultVariant,
+      });
     }
     setVariantState({
       variants: full.variants,

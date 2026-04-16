@@ -24,6 +24,7 @@ const sampleVariant: BuildVariant = {
 const sampleList: VariantList = {
   variants: [sampleVariant],
   active: "debug",
+  defaultVariant: null,
 };
 
 function resetProjectState() {
@@ -134,5 +135,43 @@ describe("loadVariants cache", () => {
     expect(variantState.variants[0].name).toBe("debug");
     expect(variantState.fromGradle).toBe(true);
     expect(variantState.gradleLoading).toBe(false);
+  });
+});
+
+describe("loadVariants defaultVariant", () => {
+  beforeEach(() => {
+    setProject("/projects/flavors", "flavors");
+    resetVariantState();
+    clearVariantCache();
+    mockPreview.mockReset();
+    mockGradle.mockReset();
+  });
+
+  const paidDebug: BuildVariant = {
+    name: "paidDebug",
+    buildType: "debug",
+    flavors: ["paid"],
+    assembleTask: "assemblePaidDebug",
+    installTask: "installPaidDebug",
+  };
+  const freeDebug: BuildVariant = {
+    name: "freeDebug",
+    buildType: "debug",
+    flavors: ["free"],
+    assembleTask: "assembleFreeDebug",
+    installTask: "installFreeDebug",
+  };
+
+  const dualList: VariantList = {
+    variants: [paidDebug, freeDebug],
+    active: null,
+    defaultVariant: "freeDebug",
+  };
+
+  it("selects defaultVariant when it is not the first entry", async () => {
+    mockPreview.mockResolvedValue(dualList);
+    mockGradle.mockResolvedValue(dualList);
+    await loadVariants();
+    expect(variantState.activeVariant).toBe("freeDebug");
   });
 });

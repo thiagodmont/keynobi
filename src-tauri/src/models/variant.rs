@@ -27,6 +27,8 @@ pub struct VariantList {
     pub variants: Vec<BuildVariant>,
     /// Currently selected variant name.
     pub active: Option<String>,
+    /// Gradle / IDE–aligned default when nothing is persisted (e.g. `isDefault` flavors).
+    pub default_variant: Option<String>,
 }
 
 

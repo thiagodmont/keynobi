@@ -8,4 +8,8 @@ export type VariantList = { variants: Array<BuildVariant>,
 /**
  * Currently selected variant name.
  */
-active: string | null, };
+active: string | null, 
+/**
+ * Gradle / IDE–aligned default when nothing is persisted (e.g. `isDefault` flavors).
+ */
+defaultVariant: string | null, };

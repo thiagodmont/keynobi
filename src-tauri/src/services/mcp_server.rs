@@ -425,11 +425,16 @@ impl AndroidMcpServer {
     }
 
     /// List available build variants.
-    #[tool(description = "List available build variants (build types + product flavors) for the current Android project, and which one is currently active.")]
+    #[tool(description = "List available build variants (build types + product flavors) for the current Android project, which variant Keynobi treats as the Gradle/Android Studio default (`defaultVariant`), and which one is persisted as active in settings (`active`).")]
     async fn list_build_variants(&self) -> Result<CallToolResult, McpError> {
         let gradle_root = match self.get_gradle_root().await {
             Some(r) => r,
-            None => return Ok(CallToolResult::structured(json!({ "variants": [], "active": null, "error": "No project open" }))),
+            None => return Ok(CallToolResult::structured(json!({
+                "variants": [],
+                "active": null,
+                "defaultVariant": null,
+                "error": "No project open"
+            }))),
         };
         let candidates = [
             gradle_root.join("app").join("build.gradle.kts"),
@@ -439,8 +444,10 @@ impl AndroidMcpServer {
         for path in &candidates {
             if path.is_file() {
                 if let Ok(content) = std::fs::read_to_string(path) {
-                    if let Some(list) = variant_manager::parse_variants_from_gradle(path, &content) {
+                    if let Some(mut list) = variant_manager::parse_variants_from_gradle(path, &content) {
                         if !list.variants.is_empty() {
+                            list.default_variant =
+                                variant_manager::infer_default_variant_name(&gradle_root, &list.variants);
                             let names: Vec<&str> = list.variants.iter().map(|v| v.name.as_str()).collect();
                             let active = self
                                 .get_gradle_root()
@@ -450,6 +457,7 @@ impl AndroidMcpServer {
                                 });
                             return Ok(CallToolResult::structured(json!({
                                 "active": active,
+                                "defaultVariant": list.default_variant,
                                 "variants": names,
                             })));
                         }
@@ -457,7 +465,12 @@ impl AndroidMcpServer {
                 }
             }
         }
-        Ok(CallToolResult::structured(json!({ "variants": [], "active": null, "error": "Could not parse build variants. Ensure a project is open and build.gradle.kts exists." })))
+        Ok(CallToolResult::structured(json!({
+            "variants": [],
+            "active": null,
+            "defaultVariant": null,
+            "error": "Could not parse build variants. Ensure a project is open and build.gradle.kts exists."
+        })))
     }
 
     /// Set the active build variant.

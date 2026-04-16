@@ -49,8 +49,10 @@ pub async fn get_variants_preview(
             Err(_) => continue,
         };
 
-        if let Some(list) = variant_manager::parse_variants_from_gradle(path, &content) {
+        if let Some(mut list) = variant_manager::parse_variants_from_gradle(path, &content) {
             if !list.variants.is_empty() {
+                list.default_variant =
+                    variant_manager::infer_default_variant_name(&gradle_root, &list.variants);
                 return Ok(restore_active(list));
             }
         }
@@ -132,8 +134,10 @@ pub async fn get_variants_from_gradle(
             continue;
         }
 
-        let list = variant_manager::parse_variants_from_tasks_output(&combined);
+        let mut list = variant_manager::parse_variants_from_tasks_output(&combined);
         if !list.variants.is_empty() {
+            list.default_variant =
+                variant_manager::infer_default_variant_name(&gradle_root, &list.variants);
             return Ok(restore_active(list));
         }
     }
