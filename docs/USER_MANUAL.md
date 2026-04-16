@@ -130,6 +130,8 @@ The Build panel streams Gradle output in real time.
 - **Log tab** — Raw streaming Gradle output with ANSI colors
 - **Problems tab** — Structured list of errors and warnings with file paths
 
+The log toolbar includes **↓** to turn follow-tail (auto-scroll to the latest line) on or off. Whether follow-tail starts enabled when you open the app is set under **Settings → Advanced → Auto-scroll build log to end** (on by default).
+
 ### Build Variants
 
 - Click the variant pill in the status bar (e.g. `debug`) to open the variant picker
@@ -232,12 +234,13 @@ When a log entry's message contains valid JSON, a `{}` badge appears on the row.
 
 ### Keyboard navigation in the log list
 
-With the **Logcat** tab active (and focus not in the query bar, a text field, or the command palette), use **↑** and **↓** to move the selection between log lines. Process start/stop separator rows are skipped. The focused line shows a **thick accent bar** on the left (the same bar marks the row shown in the **Entry Detail** panel); Shift+click ranges use a lighter tint on all included rows, with the bar on the anchor row only. The list scrolls to keep the focused row in view. **Esc** closes the detail panel. Plain **click** still toggles the detail panel for the same row.
+With the **Logcat** tab active (and focus not in the query bar, a text field, or the command palette), use **↑** and **↓** to move the selection between log lines. Process start/stop separator rows are skipped. The focused line shows a **thick accent bar** on the left (the same bar marks the row shown in the **Entry Detail** panel); Shift+click ranges use a lighter tint on all included rows, with the bar on the anchor row only. The list scrolls to keep the focused row in view. **Esc** closes the detail panel. Plain **click** still toggles the detail panel for the same row. While a line is selected (mouse or keyboard) or the JSON detail panel is open, new log lines do not auto-scroll the list; use **↓** in the toolbar to return to the end and resume follow-tail.
 
 ### Controls
 
 - **Start / Stop** — Begin or end logcat streaming
 - **Pause / Resume** — Pause new entries (no data is lost, buffer continues)
+- **↓** (first toolbar row) — Jump to the latest entry and resume follow-tail. Clears row selection, JSON detail, and entry detail so new lines can auto-scroll again.
 - **Clear** — Clear the display buffer and the in-memory ring buffer
 - **Age pills** — Quick-select time window (30s, 1m, 5m, 15m, 1h, All)
 - **☰ Filters** — Open the saved filters dropdown (Quick Filters + your saved filters)
@@ -380,8 +383,13 @@ Use **Auto-detect** to find Java from your shell environment.
 ### Logcat
 
 - **Auto-start on connect** — Start logcat streaming when a device connects (on by default).
+- **Auto-scroll Logcat to end** — When on (default), the Logcat tab opens with follow-tail enabled so new lines scroll into view. Follow-tail pauses automatically while a log line is selected, while the JSON detail panel is open, or when you scroll away from the bottom; use the **↓** control in the Logcat toolbar to jump to the end and resume. You can still pause follow-tail from that toolbar at any time.
 - **Ring buffer size** — How many lines the app stores in the in-memory capture ring before the oldest are dropped (default **50,000**, range **1,000**–**100,000**). Changing it applies immediately after settings save.
 - **Max lines in Logcat** — How many lines the Logcat tab keeps in the UI list and requests when loading from the capture buffer (default **20,000**). It cannot exceed the ring buffer size.
+
+### Advanced (Build)
+
+Under **Settings → Advanced**, the **Build** section includes **Auto-scroll build log to end** (on by default), which sets the initial follow-tail state for the Build log tab. The log toolbar **↓** still toggles follow-tail for the current session.
 
 ### Build Settings (persisted automatically)
 

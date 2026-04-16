@@ -364,6 +364,22 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
       </Show>
       <Show
         when={props.matchesSearch(
+          "Auto-scroll Logcat",
+          "Follow new log lines scroll to end Logcat panel default"
+        )}
+      >
+        <SettingRow
+          label="Auto-scroll Logcat to end"
+          description="When the Logcat tab opens, start with follow-tail on (new lines scroll into view). You can still pause from the Logcat toolbar."
+        >
+          <SettingToggle
+            checked={settingsState.logcat.autoScrollToEnd}
+            onChange={(v) => updateSetting("logcat", "autoScrollToEnd", v)}
+          />
+        </SettingRow>
+      </Show>
+      <Show
+        when={props.matchesSearch(
           "Logcat ring buffer",
           "Maximum entries stored in the logcat capture ring before oldest lines are dropped"
         )}
@@ -521,6 +537,23 @@ function AdvancedSettings(props: {
           <SettingToggle
             checked={settingsState.build.autoInstallOnBuild}
             onChange={(v) => updateSetting("build", "autoInstallOnBuild", v)}
+          />
+        </SettingRow>
+      </Show>
+
+      <Show
+        when={props.matchesSearch(
+          "Auto-scroll build log",
+          "Follow build output scroll to end default"
+        )}
+      >
+        <SettingRow
+          label="Auto-scroll build log to end"
+          description="When you open the Build tab, start with follow-tail on for the build output. You can still pause from the build log toolbar."
+        >
+          <SettingToggle
+            checked={settingsState.build.autoScrollBuildLog}
+            onChange={(v) => updateSetting("build", "autoScrollBuildLog", v)}
           />
         </SettingRow>
       </Show>

@@ -14,6 +14,7 @@ import type { LogEntry } from "@/stores/log.store";
 import { Icon, IconButton, showToast } from "@/components/ui";
 import { BuildHistoryPanel, relativeTime } from "@/components/build/BuildHistoryPanel";
 import { projectState } from "@/stores/project.store";
+import { settingsState } from "@/stores/settings.store";
 import { formatError, getBuildLogEntries } from "@/lib/tauri-api";
 
 type ViewMode = "log" | "problems";
@@ -276,6 +277,7 @@ export function BuildPanel(): JSX.Element {
             </Show>
             <LogViewer
               entries={logEntries()}
+              defaultAutoScroll={settingsState.build.autoScrollBuildLog}
               onClear={selectedHistoryId() !== null ? undefined : () => buildLogStore.clearEntries()}
               showSource={false}
               emptyMessage={

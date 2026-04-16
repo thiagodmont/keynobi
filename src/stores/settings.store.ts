@@ -32,11 +32,13 @@ const DEFAULT_SETTINGS: AppSettings = {
   },
   build: {
     autoInstallOnBuild: true,
+    autoScrollBuildLog: true,
     buildLogRetentionDays: 7,
     buildLogMaxFolderMb: 100,
   },
   logcat: {
     autoStart: true,
+    autoScrollToEnd: true,
     maxUiLines: 20_000,
     ringMaxEntries: 50_000,
   },

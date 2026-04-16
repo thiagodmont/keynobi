@@ -72,6 +72,7 @@ import {
 import { rowFocusMarked, rowInSelectionRange } from "./logcat-row-selection";
 import { formatLogcatToolbarCount } from "./logcat-toolbar-count";
 import { clampLogcatMaxUiLines, clampLogcatRingMaxEntries } from "@/lib/logcat-ui-lines";
+import { effectiveLogcatFollowTail } from "@/lib/logcat-follow-tail";
 
 // ── EntryFlags (mirrors Rust EntryFlags consts) ────────────────────────────────
 const ENTRY_FLAGS = {
@@ -295,7 +296,7 @@ export function LogcatPanel(): JSX.Element {
     _queryDebounce = setTimeout(() => setDebouncedQuery(q), 150);
   }
 
-  const [autoScroll, setAutoScroll] = createSignal(true);
+  const [autoScroll, setAutoScroll] = createSignal(settingsState.logcat.autoScrollToEnd !== false);
   const [scrollCompensate, setScrollCompensate] = createSignal(0);
   let virtualListRef: VirtualListHandle | undefined;
   const [paused, setPaused] = createSignal(false);
@@ -308,6 +309,17 @@ export function LogcatPanel(): JSX.Element {
   // Row selection
   const [selectionAnchor, setSelectionAnchor] = createSignal<number | null>(null);
   const [selectionEnd, setSelectionEnd] = createSignal<number | null>(null);
+
+  const [selectedJsonEntry, setSelectedJsonEntry] = createSignal<LogcatEntry | null>(null);
+  const [selectedDetailEntry, setSelectedDetailEntry] = createSignal<LogcatEntry | null>(null);
+
+  const followTailForList = createMemo(() =>
+    effectiveLogcatFollowTail({
+      autoScroll: autoScroll(),
+      selectionAnchor: selectionAnchor(),
+      selectedJsonEntry: selectedJsonEntry(),
+    })
+  );
 
   // Preset / saved filter UI
   const [presetsOpen, setPresetsOpen] = createSignal(false);
@@ -540,7 +552,7 @@ export function LogcatPanel(): JSX.Element {
               s.entries.splice(0, excess);
             })
           );
-          if (!autoScroll()) {
+          if (!followTailForList()) {
             setScrollCompensate((c) => c + excess * ROW_HEIGHT);
           }
           setCrashIndicesFull(
@@ -635,7 +647,7 @@ export function LogcatPanel(): JSX.Element {
         })
       );
 
-      if (didEvict && !autoScroll()) {
+      if (didEvict && !followTailForList()) {
         setScrollCompensate(c => c + dropped * ROW_HEIGHT);
       }
 
@@ -905,14 +917,6 @@ export function LogcatPanel(): JSX.Element {
     const q = setAgeInQuery(query(), value);
     updateQuery(q.trimEnd() ? q.trimEnd() + " " : "");
   }
-
-  // ── JSON viewer state ─────────────────────────────────────────────────────────
-
-  const [selectedJsonEntry, setSelectedJsonEntry] = createSignal<LogcatEntry | null>(null);
-
-  // ── Detail panel state ────────────────────────────────────────────────────────
-
-  const [selectedDetailEntry, setSelectedDetailEntry] = createSignal<LogcatEntry | null>(null);
 
   // Clamp row selection when the filtered list shrinks or clears; drop detail if the entry vanished.
   createEffect(() => {
@@ -1257,6 +1261,10 @@ export function LogcatPanel(): JSX.Element {
         {/* Scroll to end */}
         <button
           onClick={() => {
+            setSelectionAnchor(null);
+            setSelectionEnd(null);
+            setSelectedJsonEntry(null);
+            setSelectedDetailEntry(null);
             setAutoScroll(true);
             virtualListRef?.scrollToBottom();
           }}
@@ -1392,7 +1400,7 @@ export function LogcatPanel(): JSX.Element {
         <VirtualList
           items={filteredEntries()}
           rowHeight={ROW_HEIGHT}
-          autoScroll={autoScroll()}
+          autoScroll={followTailForList()}
           scrollCompensate={scrollCompensate()}
           jumpTo={jumpTarget()}
           onScrolledToBottom={() => setAutoScroll(true)}

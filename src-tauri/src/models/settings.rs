@@ -124,10 +124,17 @@ pub struct AdvancedSettings {
 pub struct BuildSettings {
     /// Automatically install and launch the app after a successful build.
     pub auto_install_on_build: bool,
+    /// When true, the build log panel follows new output (scrolls to end) until paused.
+    #[serde(default = "default_true")]
+    pub auto_scroll_build_log: bool,
     /// Days to keep build log files in ~/.keynobi/build-logs/ (default: 7).
     pub build_log_retention_days: u32,
     /// Max total size of ~/.keynobi/build-logs/ in MB before size-based rotation (default: 100).
     pub build_log_max_folder_mb: u32,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn default_logcat_max_ui_lines() -> u32 {
@@ -155,6 +162,9 @@ pub const LOGCAT_MAX_UI_LINES_MIN: u32 = LOGCAT_RING_MIN;
 pub struct LogcatSettings {
     /// Automatically start logcat streaming when a device connects.
     pub auto_start: bool,
+    /// When true, the Logcat panel follows new lines (scrolls to end) until paused.
+    #[serde(default = "default_true")]
+    pub auto_scroll_to_end: bool,
     /// Maximum lines the Logcat panel keeps in memory and requests per backfill.
     #[serde(default = "default_logcat_max_ui_lines")]
     pub max_ui_lines: u32,
@@ -269,6 +279,7 @@ impl Default for BuildSettings {
     fn default() -> Self {
         Self {
             auto_install_on_build: true,
+            auto_scroll_build_log: true,
             build_log_retention_days: 7,
             build_log_max_folder_mb: 100,
         }
@@ -279,6 +290,7 @@ impl Default for LogcatSettings {
     fn default() -> Self {
         Self {
             auto_start: true,
+            auto_scroll_to_end: true,
             max_ui_lines: default_logcat_max_ui_lines(),
             ring_max_entries: default_logcat_ring_max_entries(),
         }
@@ -371,6 +383,7 @@ mod tests {
     #[test]
     fn build_log_settings_have_correct_defaults() {
         let d = BuildSettings::default();
+        assert!(d.auto_scroll_build_log);
         assert_eq!(d.build_log_retention_days, 7);
         assert_eq!(d.build_log_max_folder_mb, 100);
     }
@@ -381,6 +394,7 @@ mod tests {
         let parsed: AppSettings = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.build.build_log_retention_days, 14);
         assert_eq!(parsed.build.build_log_max_folder_mb, 200);
+        assert!(parsed.build.auto_scroll_build_log);
     }
 
     #[test]
@@ -388,6 +402,7 @@ mod tests {
         let json = r#"{"logcat":{"autoStart":false}}"#;
         let parsed: AppSettings = serde_json::from_str(json).unwrap();
         assert!(!parsed.logcat.auto_start);
+        assert!(parsed.logcat.auto_scroll_to_end);
         assert_eq!(parsed.logcat.max_ui_lines, 20_000);
         assert_eq!(parsed.logcat.ring_max_entries, 50_000);
     }
@@ -396,6 +411,7 @@ mod tests {
     fn normalize_logcat_clamps_ring_and_ui() {
         let mut l = LogcatSettings {
             auto_start: true,
+            auto_scroll_to_end: true,
             ring_max_entries: 900,
             max_ui_lines: 99_000,
         };
@@ -405,6 +421,7 @@ mod tests {
 
         let mut l2 = LogcatSettings {
             auto_start: true,
+            auto_scroll_to_end: true,
             ring_max_entries: 10_000,
             max_ui_lines: 50_000,
         };
@@ -414,6 +431,7 @@ mod tests {
 
         let mut l3 = LogcatSettings {
             auto_start: true,
+            auto_scroll_to_end: true,
             ring_max_entries: 200_000,
             max_ui_lines: 20_000,
         };

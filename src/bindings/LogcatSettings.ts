@@ -9,6 +9,10 @@ export type LogcatSettings = {
  */
 autoStart: boolean, 
 /**
+ * When true, the Logcat panel follows new lines (scrolls to end) until paused.
+ */
+autoScrollToEnd: boolean, 
+/**
  * Maximum lines the Logcat panel keeps in memory and requests per backfill.
  */
 maxUiLines: number, 

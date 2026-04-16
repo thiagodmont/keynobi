@@ -34,6 +34,12 @@ describe("settings.store", () => {
     expect(d.lsp.requestTimeoutSec).toBe(30);
   });
 
+  it("has follow-tail defaults for logcat and build log", () => {
+    const d = getDefaults();
+    expect(d.logcat.autoScrollToEnd).toBe(true);
+    expect(d.build.autoScrollBuildLog).toBe(true);
+  });
+
   it("updateSetting changes appearance settings", () => {
     updateSetting("appearance", "uiFontSize", 14);
     expect(settingsState.appearance.uiFontSize).toBe(14);

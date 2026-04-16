@@ -10,6 +10,10 @@ export type BuildSettings = {
  */
 autoInstallOnBuild: boolean, 
 /**
+ * When true, the build log panel follows new output (scrolls to end) until paused.
+ */
+autoScrollBuildLog: boolean, 
+/**
  * Days to keep build log files in ~/.keynobi/build-logs/ (default: 7).
  */
 buildLogRetentionDays: number, 

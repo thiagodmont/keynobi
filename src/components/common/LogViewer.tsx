@@ -22,6 +22,8 @@ export interface LogViewerProps {
   showSource?: boolean;
   /** Placeholder text shown when there are no entries. */
   emptyMessage?: string;
+  /** When false, the log list starts with follow-tail paused. Default true. */
+  defaultAutoScroll?: boolean;
 }
 
 // ── Level metadata ─────────────────────────────────────────────────────────────
@@ -157,7 +159,7 @@ export function LogViewer(props: LogViewerProps): JSX.Element {
   const [sourceFilter, setSourceFilter] = createSignal<string>("all");
   const [search, setSearch] = createSignal("");
   const [showTimestamps, setShowTimestamps] = createSignal(true);
-  const [autoScroll, setAutoScroll] = createSignal(true);
+  const [autoScroll, setAutoScroll] = createSignal(props.defaultAutoScroll !== false);
   const [copiedAll, setCopiedAll] = createSignal(false);
 
   // Derive unique sorted sources from the current entries.
