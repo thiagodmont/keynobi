@@ -1,0 +1,33 @@
+src-tauri/src/models/variant.rs
+  f77fbd3fceb89666 30-31
+src-tauri/src/services/mcp_server.rs
+  f77fbd3fceb89666 428,432-437,447,449-450,460,468-473
+src-tauri/src/commands/variant.rs
+  f77fbd3fceb89666 52,54-55,137,139-140
+src-tauri/src/services/variant_manager.rs
+  f77fbd3fceb89666 2,4,117-121,307-594,667-671,883-982
+src/stores/variant.store.ts
+  f77fbd3fceb89666 28-32,67,77-82,147-155,167-170
+src/stores/variant.loadVariants.test.ts
+  f77fbd3fceb89666 27,140-177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "ba81038b27011d3a0fd5b12ce99c5941d9fd475d",
+  "prompts": {
+    "f77fbd3fceb89666": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "19135839-c5de-4cd0-9be5-843a04762006",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 506,
+      "total_deletions": 29,
+      "accepted_lines": 490,
+      "overriden_lines": 0
+    }
+  }
+}
