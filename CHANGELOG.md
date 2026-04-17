@@ -7,6 +7,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.15] — 2026-04-17
+
+### Added
+- implement code-signing and notarization for DMGs in CI
+
+### Fixed
+- enhance documentation and workflow for signing secrets
+
+---
+
 ## [0.1.14] — 2026-04-17
 
 ### Added
