@@ -9,4 +9,4 @@ All DMG downloads are on the [GitHub Releases page](../../releases).
 - **Apple Silicon (M1/M2/M3/M4):** download the `_arm64.dmg`
 - **Intel Mac:** download the `_intel.dmg`
 
-> **First launch:** The builds are unsigned. Right-click the app → **Open** to bypass Gatekeeper. This is only needed once.
+GitHub Release DMGs are **code-signed and notarized** in CI (see [RELEASING.md](../RELEASING.md) and the [Tauri 2 macOS signing guide](https://v2.tauri.app/distribute/sign/macos/)). Local builds from source may still be ad-hoc signed unless you configure a Developer ID identity on your machine.

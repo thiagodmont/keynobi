@@ -87,11 +87,69 @@ jobs:
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
+      # Developer ID signing + App Store Connect API notarization (Tauri 2):
+      # https://v2.tauri.app/distribute/sign/macos/
+      - name: Import Developer ID certificate (CI keychain)
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APPLE_CERTIFICATE:-}" ] || [ -z "${APPLE_CERTIFICATE_PASSWORD:-}" ] || [ -z "${KEYCHAIN_PASSWORD:-}" ]; then
+            echo "::error::Release builds require APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, and KEYCHAIN_PASSWORD. See RELEASING.md."
+            exit 1
+          fi
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          rm -f certificate.p12
+          security find-identity -v -p codesigning build.keychain
+          CERT_LINES=$(security find-identity -v -p codesigning build.keychain | grep "Developer ID Application:" || true)
+          if [ -z "$CERT_LINES" ]; then
+            echo "::error::No Developer ID Application identity in keychain after import."
+            exit 1
+          fi
+          COUNT=$(echo "$CERT_LINES" | wc -l | tr -d ' ')
+          if [ "$COUNT" != "1" ]; then
+            echo "::error::Expected exactly one Developer ID Application identity, found $COUNT:"
+            echo "$CERT_LINES"
+            exit 1
+          fi
+          CERT_ID=$(echo "$CERT_LINES" | awk -F'"' '{print $2}')
+          echo "APPLE_SIGNING_IDENTITY=$CERT_ID" >> "$GITHUB_ENV"
+
+      - name: Prepare App Store Connect API key for notarization
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+          APPLE_API_PRIVATE_KEY_BASE64: ${{ secrets.APPLE_API_PRIVATE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APPLE_API_KEY:-}" ]; then
+            echo "::error::Missing APPLE_API_KEY repository secret (App Store Connect Key ID). See RELEASING.md."
+            exit 1
+          fi
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          if [ -n "${APPLE_API_PRIVATE_KEY:-}" ]; then
+            printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$KEY_PATH"
+          elif [ -n "${APPLE_API_PRIVATE_KEY_BASE64:-}" ]; then
+            echo "$APPLE_API_PRIVATE_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          else
+            echo "::error::Missing APPLE_API_PRIVATE_KEY or APPLE_API_PRIVATE_KEY_BASE64 (.p8 key). See RELEASING.md."
+            exit 1
+          fi
+          echo "APPLE_API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+
       - name: Build DMG
         env:
-          # Unsigned build — consistent with scripts/build-dmg.sh.
-          # Users bypass Gatekeeper once on first launch (right-click → Open).
-          APPLE_SIGNING_IDENTITY: "-"
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          # APPLE_SIGNING_IDENTITY and APPLE_API_KEY_PATH come from GITHUB_ENV (prior steps).
           # Sentry DSNs at compile time (optional; still gated by user Settings in-app).
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           VITE_SENTRY_DSN: ${{ secrets.VITE_SENTRY_DSN }}
@@ -100,6 +158,11 @@ jobs:
           SENTRY_ORG: keynobi
           SENTRY_PROJECT: javascript-solid
         run: |
+          set -euo pipefail
+          if [ -z "${APPLE_API_ISSUER:-}" ]; then
+            echo "::error::Missing APPLE_API_ISSUER repository secret (App Store Connect Issuer ID). See RELEASING.md."
+            exit 1
+          fi
           npm run tauri build -- --target ${{ matrix.target }} --bundles dmg -f telemetry
 
       - name: Locate and rename DMG

@@ -32,7 +32,7 @@ git push origin main
 
 The release workflow will automatically:
 - Detect the version bump
-- Build Apple Silicon + Intel DMGs in parallel
+- Code-sign and notarize Apple Silicon + Intel DMGs in parallel (requires repository secrets below)
 - Create git tag `v0.1.1`
 - Publish a GitHub Release with both DMGs attached
 
@@ -90,12 +90,31 @@ The WebView **CSP** in `tauri.conf.json` must allow `connect-src` to Sentry inge
 
 ---
 
+## Apple code signing and notarization (CI)
+
+Release DMGs are **Developer ID**–signed and **notarized** via [App Store Connect API keys](https://appstoreconnect.apple.com/access/integrations/api), as described in the [Tauri 2 macOS signing guide](https://v2.tauri.app/distribute/sign/macos/).
+
+Configure these **repository secrets** in GitHub (**Settings → Secrets and variables → Actions**). A missing required secret fails the release build with a clear error.
+
+| Secret | Purpose |
+|--------|---------|
+| `APPLE_CERTIFICATE` | Base64-encoded `.p12` export of your **Developer ID Application** certificate (see Tauri doc: `openssl base64 -A -in certificate.p12`). |
+| `APPLE_CERTIFICATE_PASSWORD` | Password used when exporting the `.p12`. |
+| `KEYCHAIN_PASSWORD` | Any strong random string; used only on the runner to create/unlock an ephemeral keychain (not your Apple ID). |
+| `APPLE_API_ISSUER` | App Store Connect **Issuer ID** (UUID above the API keys table). |
+| `APPLE_API_KEY` | App Store Connect **Key ID** (10-character id from the key row). This is **not** the `.p8` file contents. |
+| `APPLE_API_PRIVATE_KEY` | Full text of the downloaded `AuthKey_*.p8` file (`-----BEGIN PRIVATE KEY-----` … `-----END PRIVATE KEY-----`). Multiline paste is supported. |
+| `APPLE_API_PRIVATE_KEY_BASE64` | **Optional alternative** to `APPLE_API_PRIVATE_KEY`: single-line base64 of the `.p8` file (`openssl base64 -A -in AuthKey_XXX.p8`). Use one or the other, not both. |
+
+Create the API key in App Store Connect with **Developer** access (per Tauri). The workflow writes the private key to `$RUNNER_TEMP` and sets `APPLE_API_KEY_PATH` for the Tauri build; you do not configure `APPLE_API_KEY_PATH` as a secret.
+
+---
+
 ## Notes
 
 - **Only version bumps trigger a release.** Pushing doc updates, lint fixes, or
   CI changes to `main` does not create a release.
-- **Builds are unsigned.** Users see a Gatekeeper prompt on first launch
-  (right-click → Open). This is expected for the v0.x beta.
+- **Release builds require Apple signing secrets.** Local `scripts/build-dmg.sh` may still use ad-hoc signing for developer machines; CI release builds do not.
 - **If the workflow fails:** fix the underlying issue, then re-run the failed
   job from the GitHub Actions UI (Actions → Release → Re-run failed jobs).
   Do not push a new version bump just to re-trigger — that creates a duplicate
