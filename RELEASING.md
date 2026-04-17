@@ -94,7 +94,7 @@ The WebView **CSP** in `tauri.conf.json` must allow `connect-src` to Sentry inge
 
 Release DMGs are **Developer ID**–signed and **notarized** via [App Store Connect API keys](https://appstoreconnect.apple.com/access/integrations/api), as described in the [Tauri 2 macOS signing guide](https://v2.tauri.app/distribute/sign/macos/).
 
-Configure these **repository secrets** in GitHub (**Settings → Secrets and variables → Actions**). A missing required secret fails the release build with a clear error.
+Configure these secrets in GitHub under **Settings → Secrets and variables → Actions**, in the **`keynobi_app`** environment (the release workflow’s `build` job uses `environment: keynobi_app` so environment-scoped secrets are available). You can use the same names as **environment secrets** (or repository secrets; both are visible to that job). A missing required value fails the release build with a clear error.
 
 | Secret | Purpose |
 |--------|---------|
@@ -107,6 +107,15 @@ Configure these **repository secrets** in GitHub (**Settings → Secrets and var
 | `APPLE_API_PRIVATE_KEY_BASE64` | **Optional alternative** to `APPLE_API_PRIVATE_KEY`: single-line base64 of the `.p8` file (`openssl base64 -A -in AuthKey_XXX.p8`). Use one or the other, not both. |
 
 Create the API key in App Store Connect with **Developer** access (per Tauri). The workflow writes the private key to `$RUNNER_TEMP` and sets `APPLE_API_KEY_PATH` for the Tauri build; you do not configure `APPLE_API_KEY_PATH` as a secret.
+
+### Troubleshooting “missing or empty” signing secrets
+
+GitHub **does not** clear secret values before your script runs; masking only hides them in **logs**. If the workflow reports a secret as empty, the runner truly did not receive a value. Common causes:
+
+- **Wrong place:** Secrets must be under **Settings → Secrets and variables → Actions** for this repository (not Dependabot-only, not Codespaces-only, unless you use those runners).
+- **Wrong name:** Names are case-sensitive (`APPLE_CERTIFICATE`, not `Apple_Certificate`).
+- **Organization secret:** If the secret lives at the **org** level, this repo must be **allowed** in the org secret’s repository list.
+- **Environment secrets:** The release **`build`** job uses **`environment: keynobi_app`**. Signing and notarization secrets must exist on that environment (or as repository secrets, which are still available). If you use a different environment name, update `.github/workflows/release.yml` to match.
 
 ---
 

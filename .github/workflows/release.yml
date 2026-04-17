@@ -58,6 +58,7 @@ jobs:
     needs: check
     if: needs.check.outputs.should_release == 'true'
     runs-on: macos-latest
+    environment: keynobi_app
     strategy:
       matrix:
         include:
@@ -96,8 +97,14 @@ jobs:
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "${APPLE_CERTIFICATE:-}" ] || [ -z "${APPLE_CERTIFICATE_PASSWORD:-}" ] || [ -z "${KEYCHAIN_PASSWORD:-}" ]; then
-            echo "::error::Release builds require APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, and KEYCHAIN_PASSWORD. See RELEASING.md."
+          # Secrets are injected as normal env vars on the runner; log masking does not empty them.
+          # If any check fails: verify repository Actions secrets (exact names), org secret repo access, or environment-scoped secrets + workflow `environment:`.
+          missing=
+          [ -z "${APPLE_CERTIFICATE:-}" ] && missing="${missing} APPLE_CERTIFICATE"
+          [ -z "${APPLE_CERTIFICATE_PASSWORD:-}" ] && missing="${missing} APPLE_CERTIFICATE_PASSWORD"
+          [ -z "${KEYCHAIN_PASSWORD:-}" ] && missing="${missing} KEYCHAIN_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::Release signing secrets missing or empty:$missing. Add them under Settings → Secrets and variables → Actions (repository secrets). See RELEASING.md."
             exit 1
           fi
           echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
