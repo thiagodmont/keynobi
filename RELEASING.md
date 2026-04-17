@@ -35,7 +35,6 @@ The release workflow will automatically:
 - Build Apple Silicon + Intel DMGs in parallel
 - Create git tag `v0.1.1`
 - Publish a GitHub Release with both DMGs attached
-- Update `release/latest.json`
 
 Monitor progress at: **Actions → Release** in the GitHub repository.
 
@@ -97,8 +96,6 @@ The WebView **CSP** in `tauri.conf.json` must allow `connect-src` to Sentry inge
   CI changes to `main` does not create a release.
 - **Builds are unsigned.** Users see a Gatekeeper prompt on first launch
   (right-click → Open). This is expected for the v0.x beta.
-- **Do not edit `release/latest.json` manually.** It is updated automatically
-  by the publish job.
 - **If the workflow fails:** fix the underlying issue, then re-run the failed
   job from the GitHub Actions UI (Actions → Release → Re-run failed jobs).
   Do not push a new version bump just to re-trigger — that creates a duplicate

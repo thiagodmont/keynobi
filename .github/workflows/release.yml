@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
 
-# Required to create tags, releases, and push release/latest.json back to main.
+# Required to create tags and GitHub Releases.
 permissions:
   contents: write
 
@@ -123,7 +123,7 @@ jobs:
           path: ${{ steps.dmg.outputs.path }}
           retention-days: 1
 
-  # ── Job 3: Create GitHub Release and update release/latest.json ─────────────
+  # ── Job 3: Create git tag and GitHub Release ────────────────────────────────
   publish:
     name: Publish release
     needs: [check, build]
@@ -145,11 +145,6 @@ jobs:
         with:
           name: dmg-intel
 
-      - name: Configure git identity
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
       - name: Create and push tag
         run: |
           VERSION=${{ needs.check.outputs.version }}
@@ -166,31 +161,3 @@ jobs:
             --generate-notes \
             "Keynobi_${VERSION}_arm64.dmg" \
             "Keynobi_${VERSION}_intel.dmg"
-
-      - name: Update release/latest.json
-        run: |
-          VERSION=${{ needs.check.outputs.version }}
-          REPO=${{ github.repository }}
-          DATE=$(date -u +%Y-%m-%d)
-
-          git pull --rebase origin main
-
-          jq -n \
-            --arg version  "$VERSION" \
-            --arg tag      "v$VERSION" \
-            --arg date     "$DATE" \
-            --arg repo     "$REPO" \
-            '{
-              version:     $version,
-              tag:         $tag,
-              releaseDate: $date,
-              releaseUrl:  ("https://github.com/" + $repo + "/releases/tag/v" + $version),
-              downloads: {
-                applesilicon: ("https://github.com/" + $repo + "/releases/download/v" + $version + "/Keynobi_" + $version + "_arm64.dmg"),
-                intel:        ("https://github.com/" + $repo + "/releases/download/v" + $version + "/Keynobi_" + $version + "_intel.dmg")
-              }
-            }' > release/latest.json
-
-          git add release/latest.json
-          git commit -m "chore: update release/latest.json to v${VERSION} [skip ci]"
-          git push origin main

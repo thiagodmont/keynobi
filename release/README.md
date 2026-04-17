@@ -1,25 +1,6 @@
 # Release Artifacts
 
-This folder contains only a release manifest — no binary files are committed here.
-
-## `latest.json`
-
-Machine-readable metadata for the most recent release. Updated automatically by
-the release workflow on every new version.
-
-**Format:**
-```json
-{
-  "version": "0.1.1",
-  "tag": "v0.1.1",
-  "releaseDate": "2026-04-06",
-  "releaseUrl": "https://github.com/owner/repo/releases/tag/v0.1.1",
-  "downloads": {
-    "applesilicon": "https://github.com/owner/repo/releases/download/v0.1.1/Keynobi_0.1.1_arm64.dmg",
-    "intel": "https://github.com/owner/repo/releases/download/v0.1.1/Keynobi_0.1.1_intel.dmg"
-  }
-}
-```
+This folder documents how releases are distributed. Binary DMGs are not committed here; they are attached to each version on GitHub Releases.
 
 ## Downloads
 
