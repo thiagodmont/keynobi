@@ -1,0 +1,27 @@
+release/README.md
+  db2a9f4aea79119f 12
+.github/workflows/release.yml
+  db2a9f4aea79119f 90-147,150-152,161-165
+RELEASING.md
+  db2a9f4aea79119f 35,93-112,117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "7250c0f184574a2023ae0e88d4b88b7c26288ddd",
+  "prompts": {
+    "db2a9f4aea79119f": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "b3cb6e2d-8f9f-46c6-8ea5-7e888b0a9929",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 89,
+      "total_deletions": 7,
+      "accepted_lines": 89,
+      "overriden_lines": 0
+    }
+  }
+}
