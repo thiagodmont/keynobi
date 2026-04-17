@@ -52,14 +52,14 @@ The app automatically restores the last-active project. No need to re-open the f
 
 ## 2. Layout Overview
 
-The window has a **title bar** (draggable; shows the app name and current project), a **tab bar** with **Build**, **Logcat**, and **Layout**, **sidebars** on the left and right, and a **status bar** at the bottom.
+The window has a **title bar** (draggable; shows the app name and current project, plus a **Build** button that always opens the Build panel), a **tab bar** with **Logcat**, **Layout**, and **Build**, **sidebars** on the left and right, and a **status bar** at the bottom.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│  Title bar (app name — project name)                                        │
-├───┬──[ Build ]──[ Logcat ]──[ Layout ]───────────────────────────────────┬───┤
+│  Title bar (app — project)                                    [ Build ]     │
+├───┬──[ Logcat ]──[ Layout ]──[ Build ]───────────────────────────────────┬───┤
 │ P │                                                                      │ D │
-│ r │  Active tab content (Build, Logcat, or Layout)                        │ e │
+│ r │  Active tab content (Logcat, Layout, or Build)                         │ e │
 │ o │                                                                      │ v │
 │ j │                                                                      │ i │
 │ e │                                                                      │ c │

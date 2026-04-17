@@ -267,9 +267,9 @@ export function App(): JSX.Element {
   });
 
   const tabs: { id: MainTab; label: string }[] = [
-    { id: "build", label: "Build" },
     { id: "logcat", label: "Logcat" },
     { id: "layout", label: "Layout" },
+    { id: "build", label: "Build" },
   ];
 
   return (
@@ -340,9 +340,6 @@ export function App(): JSX.Element {
 
             {/* Panel content area */}
             <div style={{ flex: "1", overflow: "hidden", display: "flex", "flex-direction": "column" }}>
-              <div style={{ display: uiState.activeTab === "build" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
-                <BuildPanel />
-              </div>
               <div style={{ display: uiState.activeTab === "logcat" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
                 <LogcatPanel />
               </div>
@@ -350,6 +347,9 @@ export function App(): JSX.Element {
                 <AppErrorBoundary>
                   <LayoutViewerPanel />
                 </AppErrorBoundary>
+              </div>
+              <div style={{ display: uiState.activeTab === "build" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
+                <BuildPanel />
               </div>
             </div>
           </div>

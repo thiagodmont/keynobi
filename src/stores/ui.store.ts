@@ -13,7 +13,7 @@ interface UIState {
 }
 
 const [uiState, setUIState] = createStore<UIState>({
-  activeTab: "build",
+  activeTab: "logcat",
   bottomPanelHeight: 300,
   sidebarCollapsed: false,
   deviceSidebarCollapsed: false,

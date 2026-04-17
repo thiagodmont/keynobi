@@ -8,7 +8,7 @@ import {
 // Reset state to defaults before each test.
 function resetUIState() {
   setUIState({
-    activeTab: "build",
+    activeTab: "logcat",
     bottomPanelHeight: 300,
   });
 }
@@ -18,8 +18,8 @@ function resetUIState() {
 describe("setActiveTab", () => {
   beforeEach(resetUIState);
 
-  it("starts on the build tab", () => {
-    expect(uiState.activeTab).toBe("build");
+  it("starts on the logcat tab", () => {
+    expect(uiState.activeTab).toBe("logcat");
   });
 
   it("switches to logcat", () => {

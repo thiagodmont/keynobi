@@ -1,0 +1,58 @@
+name: Bug report
+description: Something is broken or incorrect
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. For **security** issues, use [private reporting](https://github.com/thiagodmont/keynobi/security) instead of this form.
+
+  - type: input
+    id: version
+    attributes:
+      label: Keynobi version or commit
+      description: App version (About) or `git rev-parse --short HEAD`
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Keynobi currently targets macOS only
+      options:
+        - macOS (Apple Silicon)
+        - macOS (Intel)
+        - Other / unsure
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots (optional)
+      description: Redact paths or secrets before pasting.

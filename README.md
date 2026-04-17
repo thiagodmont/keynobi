@@ -1,44 +1,73 @@
 # Keynobi
 
-A focused **Android development companion** built with Tauri 2.0 + SolidJS. Not a full IDE — designed to run *alongside* Android Studio and Claude Code, providing best-in-class build logs, logcat streaming, device management, and an MCP server so AI agents can trigger builds, read crash logs, and control devices directly.
+[![CI](https://github.com/thiagodmont/keynobi/actions/workflows/ci.yml/badge.svg)](https://github.com/thiagodmont/keynobi/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**Platform:** macOS only (v0.x beta)  
-**Language support:** Kotlin + Gradle projects
+A focused **Android development companion** for macOS — Tauri 2 + SolidJS. Not a full IDE: it sits **next to** Android Studio and your editor so you get readable Gradle output, live logcat, devices/AVDs, and health checks in one native window. Optional **MCP** lets tools like Claude Code run builds, pull errors, and inspect devices without clicking through the UI.
 
-Product pitch for developers: [PITCH.md](PITCH.md). End-user guide (UI, shortcuts, MCP): [docs/USER_MANUAL.md](docs/USER_MANUAL.md).
+**Platform:** macOS only (v0.x beta) · **Projects:** Kotlin + Gradle
 
 ---
 
-## Table of Contents
+## Table of contents
 
-- [What It Does](#what-it-does)
+- [Why Keynobi](#why-keynobi)
+- [How it works](#how-it-works)
+- [Features](#features)
 - [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Development Workflow](#development-workflow)
-- [Building a DMG for Distribution](#building-a-dmg-for-distribution)
-- [Project Structure](#project-structure)
-- [Architecture Overview](#architecture-overview)
-- [Keyboard Shortcuts](#keyboard-shortcuts)
+- [Quick start](#quick-start)
+- [Development](#development)
+- [Building a DMG](#building-a-dmg-for-distribution)
+- [Repository layout](#repository-layout)
+- [Architecture](#architecture-overview)
+- [Contributing](#contributing)
+- [Keyboard shortcuts](#keyboard-shortcuts)
 - [Troubleshooting](#troubleshooting)
 - [Roadmap](#roadmap)
 
 ---
 
-## What It Does
+## Why Keynobi
 
-| Feature | Status |
-|---|---|
-| Open Android/Gradle project, multi-project registry | ✅ |
-| Streaming Gradle builds with ANSI log + structured error list | ✅ |
-| Build variant selector (buildTypes × productFlavors) | ✅ |
-| One-click Run → Build → Install → Launch | ✅ |
-| Real-time logcat streaming (50K ring buffer, 100 ms batching) | ✅ |
-| Logcat filters: level, tag, text; crash detection | ✅ |
-| Connected device + AVD management; Create/Delete/Wipe AVDs | ✅ |
-| System health checks (Java, SDK, ADB, Gradle, disk) | ✅ |
-| Command palette (`Cmd+Shift+P`) with action registry | ✅ |
-| Project app info editor (versionName / versionCode) | ✅ |
-| MCP server — Claude Code / `keynobi` transport (`--mcp`) | ✅ |
+Gradle and `adb` already give you the truth — but the signal is buried in noisy terminals and scattered windows. Keynobi is a **single place** to watch builds (ANSI + structured errors), tail logcat with filters, manage emulators, and sanity-check your toolchain. If you use AI agents, the MCP server exposes the same capabilities so the agent can act on real device and build state instead of guessing.
+
+More product context: [PITCH.md](PITCH.md). Full UI and MCP reference: [docs/USER_MANUAL.md](docs/USER_MANUAL.md).
+
+---
+
+## How it works
+
+Typical loop:
+
+1. **Open a Gradle project** (or add several to the registry). Keynobi finds the Gradle root and remembers it per project.
+2. **Build** — stream `./gradlew` output with ANSI coloring, parse errors into a list you can jump from, pick variants (build types × flavors), and run **Build → Install → Launch** when you want a tight loop without leaving the app.
+3. **Observe** — **Logcat** streams through Rust (ring buffer + batched events) so the UI stays fast; filter by level, tag, or free text and watch for crashes.
+4. **Devices** — see USB devices and AVDs, create/wipe/delete emulators, and keep **Health** (Java, SDK, ADB, Gradle, disk) honest.
+5. **Agents (optional)** — start the MCP server so external clients can invoke the same operations over stdio.
+
+```
+You: open project → pick variant → build / run
+              ↓
+     SolidJS UI  ←Tauri IPC→  Rust (processes, adb, gradle, logcat)
+              ↓                           ↓
+        panels & palette              device + build truth
+```
+
+For the full layer diagram and design notes, see [Architecture](#architecture-overview) below.
+
+---
+
+## Features
+
+| Area | What you get |
+|------|----------------|
+| **Projects** | Multi-project registry, Gradle root detection, app `versionName` / `versionCode` editor |
+| **Builds** | Streaming log, structured errors, variant matrix, clean/cancel, one-click run to device |
+| **Logcat** | Live stream, filters, crash detection, large-session-safe buffering (see architecture) |
+| **Devices & AVDs** | Connected devices, emulator lifecycle (create / wipe / delete) |
+| **Health** | Java, Android SDK, ADB, Gradle, disk checks with actionable hints |
+| **Shell** | Command palette (`Cmd+Shift+P`) backed by a single action registry |
+| **MCP** | Claude Code / `keynobi` transport (`--mcp`) for agent-driven workflows |
 
 ---
 
@@ -79,211 +108,70 @@ cargo tauri --version  # tauri-cli 2.x.x
 
 ---
 
-## Quick Start
+## Quick start
 
 ```bash
-# 1. Clone the repo
-git clone <repo-url>
+git clone https://github.com/thiagodmont/keynobi.git
 cd keynobi
-
-# 2. Install JavaScript dependencies
 npm install
-
-# 3. Launch the development app
 npm run tauri dev
 ```
 
-`npm run tauri dev` does three things in parallel:
-1. Starts the **Vite** dev server on `http://localhost:1420` (frontend hot-reload)
-2. Compiles the **Rust backend** with `cargo` (only on first run or when `.rs` files change)
-3. Opens a **native macOS window** with the app
+`npm run tauri dev` runs Vite on `http://localhost:1420`, compiles the Rust backend when needed, and opens a native window.
 
-> **First run note:** The initial Rust compilation downloads and compiles ~400 crates and takes 3–8 minutes. Subsequent starts are typically under 5 seconds.
+> **First run:** initial Rust dependency build often takes **3–8 minutes**; later runs are usually seconds.
 
 ---
 
-## Development Workflow
+## Development
 
-### Start the dev server
-
-```bash
-npm run tauri dev
-```
-
-- **Frontend changes** (`.tsx`, `.ts`, `.css`): hot-reloaded instantly, no restart needed.
-- **Rust backend changes** (`.rs` files): Tauri automatically recompiles and relaunches.
-
-### Type-check the frontend
+Day to day:
 
 ```bash
-npx tsc --noEmit
-```
-
-### Lint and format
-
-```bash
+npm run tauri dev        # app + hot reload (TS/CSS); Rust rebuilds on .rs changes
 npm run lint
-npm run format       # prettier on src/**/*.{ts,tsx,css}
-cargo fmt            # rustfmt on all Rust source
+npm run typescript:check
+npm run test
+cd src-tauri && cargo test && cargo clippy -- -D warnings
+npm run generate:bindings   # after Rust model / TS export changes
 ```
 
-### Check the Rust backend
-
-```bash
-cd src-tauri
-cargo check          # fast type + borrow check
-cargo clippy         # extended lint
-```
-
-### Run tests
-
-```bash
-npm run test         # Vitest frontend tests
-cd src-tauri && cargo test   # Rust unit tests
-```
-
-### Regenerate TypeScript bindings
-
-Run after any Rust model type change:
-
-```bash
-npm run generate:bindings
-```
+**Contributors:** full checklist, CI parity, and review expectations are in [CONTRIBUTING.md](CONTRIBUTING.md) (and [AGENTS.md](AGENTS.md) for the end-to-end feature checklist).
 
 ---
 
-## Building a DMG for Distribution
+## Building a DMG for distribution
 
 ```bash
-# Apple Silicon Mac (M1/M2/M3) — default
+# Apple Silicon (default)
 ./scripts/build-dmg.sh
 
-# Intel Mac
+# Intel
 ./scripts/build-dmg.sh --intel
 
-# Universal binary (runs on both architectures)
+# Universal
 ./scripts/build-dmg.sh --universal
 ```
 
-Or use the npm aliases:
+Or:
 
 ```bash
-npm run build:dmg           # Apple Silicon
-npm run build:dmg:intel     # Intel x86_64
-npm run build:dmg:universal # Universal
+npm run build:dmg
+npm run build:dmg:intel
+npm run build:dmg:universal
 ```
 
-Output: a `.dmg` under `src-tauri/target/<rust-triple>/release/bundle/dmg/`. The filename follows `productName` and version from [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) (e.g. `Keynobi_0.1.x_*.dmg`). CI releases rename artifacts to `Keynobi_<version>_arm64.dmg` / `Keynobi_<version>_intel.dmg`.
-
-> **Unsigned builds:** The DMG is built without a Developer ID certificate. On first launch, testers must right-click the app → **Open** to bypass Gatekeeper. See [Apple's documentation](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac) for details.
+Output lives under `src-tauri/target/<rust-triple>/release/bundle/dmg/`. CI releases rename artifacts to `Keynobi_<version>_arm64.dmg` / `Keynobi_<version>_intel.dmg`. Unsigned builds: right-click the app → **Open** once to satisfy Gatekeeper ([Apple help](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac)).
 
 ---
 
-## Project Structure
+## Repository layout
 
-```
-keynobi/
-├── src/                                # Frontend — SolidJS + TypeScript
-│   ├── App.tsx                         # Root layout + action/keybinding registry
-│   ├── stores/
-│   │   ├── build.store.ts             # Build state, streaming logs, error list
-│   │   ├── device.store.ts            # Connected devices, AVD state
-│   │   ├── health.store.ts            # App health checks
-│   │   ├── project.store.ts           # Project root, name, Gradle root
-│   │   ├── projects.store.ts          # Multi-project registry
-│   │   ├── settings.store.ts          # App settings
-│   │   ├── ui.store.ts                # Active tab, panel visibility
-│   │   ├── variant.store.ts           # Build variants
-│   │   └── log.store.ts               # Generic log store factory
-│   ├── services/
-│   │   ├── build.service.ts           # Build orchestration
-│   │   └── project.service.ts         # Project open + navigation history
-│   ├── components/
-│   │   ├── build/
-│   │   │   ├── BuildPanel.tsx         # Streaming ANSI log + error list
-│   │   │   └── VariantSelector.tsx    # Build variant dropdown in status bar
-│   │   ├── device/
-│   │   │   └── DevicePanel.tsx        # Devices + AVD management (Create/Delete/Wipe)
-│   │   ├── logcat/
-│   │   │   └── LogcatPanel.tsx        # Real-time logcat, filters, crash detection
-│   │   ├── ui-hierarchy/
-│   │   │   └── LayoutViewerPanel.tsx  # UI Automator / accessibility hierarchy tree
-│   │   ├── health/
-│   │   │   └── HealthPanel.tsx        # Java, SDK, ADB, Gradle, disk checks
-│   │   ├── settings/
-│   │   │   ├── SettingsPanel.tsx
-│   │   │   ├── SettingRow.tsx
-│   │   │   └── ToolStatus.tsx         # SDK/Java path pickers
-│   │   ├── projects/
-│   │   │   ├── ProjectSidebar.tsx     # Project registry, Add Project (Cmd+O)
-│   │   │   ├── WelcomePanel.tsx       # Empty state when no project is open
-│   │   │   └── ProjectInfoEditor.tsx  # versionName / versionCode
-│   │   ├── mcp/
-│   │   │   └── McpPanel.tsx           # MCP setup + activity log (Cmd+Shift+M)
-│   │   ├── layout/
-│   │   │   ├── TitleBar.tsx           # Custom title bar (app + project name)
-│   │   │   └── StatusBar.tsx          # Settings, project, health, build, MCP, variant…
-│   │   └── common/
-│   │       ├── CommandPalette.tsx     # Cmd+Shift+P action palette
-│   │       ├── LogViewer.tsx          # Shared ANSI log renderer
-│   │       ├── VirtualList.tsx        # Virtualized list for large buffers
-│   │       ├── Toast.tsx              # Auto-dismiss notifications
-│   │       ├── Dialog.tsx             # Modal dialogs
-│   │       ├── Resizable.tsx          # Drag-to-resize splitter
-│   │       └── Icon.tsx               # Inline SVG icon library
-│   ├── lib/
-│   │   ├── tauri-api.ts              # Typed wrappers for all Tauri IPC calls
-│   │   ├── keybindings.ts            # Global keyboard shortcut registry
-│   │   ├── action-registry.ts        # Command palette action registry
-│   │   ├── fuzzy-match.ts            # Fuzzy matching utility
-│   │   ├── ansi-strip.ts             # ANSI escape code stripping
-│   │   └── file-utils.ts             # File type utilities
-│   └── bindings/                     # Auto-generated TypeScript types (ts-rs)
-│
-├── src-tauri/                         # Rust backend — Tauri 2.0
-│   ├── Cargo.toml
-│   ├── tauri.conf.json
-│   ├── capabilities/
-│   │   └── default.json              # Tauri 2.0 security permissions
-│   └── src/
-│       ├── lib.rs                    # Tauri builder, state, command registration
-│       ├── commands/
-│       │   ├── build.rs              # Gradle task commands
-│       │   ├── device.rs             # ADB / AVD commands
-│       │   ├── file_system.rs        # Project open, Gradle root detection
-│       │   ├── health.rs             # Health check commands
-│       │   ├── logcat.rs             # Logcat streaming commands
-│       │   ├── settings.rs           # Settings persistence commands
-│       │   ├── variant.rs            # Build variant commands
-│       │   └── mcp.rs                # MCP setup status, Claude registration helpers
-│       ├── services/
-│       │   ├── mcp_server.rs         # MCP stdio server (tools, prompts, resources)
-│       │   ├── adb_manager.rs        # ADB device polling
-│       │   ├── build_runner.rs       # ./gradlew execution, output parsing
-│       │   ├── fs_manager.rs         # Gradle root detection
-│       │   ├── logcat.rs             # Parser, ring buffer (50K entries)
-│       │   ├── process_manager.rs    # Child process lifecycle + SIGTERM
-│       │   ├── settings_manager.rs   # ~/.keynobi/settings.json
-│       │   └── variant_manager.rs    # buildTypes × productFlavors parsing
-│       └── models/
-│           ├── build.rs
-│           ├── device.rs
-│           ├── error.rs
-│           ├── health.rs
-│           ├── log_entry.rs
-│           ├── settings.rs
-│           └── variant.rs
-│
-├── scripts/
-│   └── build-dmg.sh                  # One-command DMG builder
-├── package.json
-├── vite.config.ts
-└── tsconfig.json
-```
+The full file tree and “what lives where” lives in **[docs/CODE_PATTERN.md](docs/CODE_PATTERN.md#project-structure)** so this README stays readable.
 
 ---
 
-## Architecture Overview
+## Architecture overview
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -319,20 +207,26 @@ adb logcat + build output          run_gradle_task, get_build_errors,
                                    get_logcat_entries, list_devices…
 ```
 
-**Key design decisions:**
+**Design choices (short):**
 
-- **Ring buffer, 50K entries** — Logcat entries are stored in Rust, never serialized to disk. The frontend only receives what's visible. This keeps memory flat regardless of session length.
-- **100 ms batch emit** — `adb logcat` fires events at very high frequency. Batching at the Rust layer prevents flooding the SolidJS store with thousands of individual signals.
-- **Atomic file writes** — project settings go through write-to-temp → `rename()`. A crash mid-save cannot corrupt state.
-- **Mutex discipline** — Rust state is locked, cloned, then the lock is dropped before any `await`. Nothing is ever held across an async boundary.
-- **`ts-rs` bindings** — every Rust model type derives `TS`. After changing a model, run `npm run generate:bindings` to keep the TypeScript side in sync.
+- **Ring buffer (50K)** for logcat in Rust; the UI only receives what it needs — bounded memory.
+- **~100 ms batching** of log events before crossing to the frontend to avoid signal storms.
+- **Atomic settings writes** (temp + rename) so crashes mid-save do not corrupt JSON.
+- **Mutex discipline** — no lock held across `await`; see `docs/CODE_PATTERN.md`.
+- **`ts-rs`** — regenerate TypeScript with `npm run generate:bindings` after model changes.
 
 ---
 
-## Keyboard Shortcuts
+## Contributing
+
+We welcome issues and pull requests. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations, and [SECURITY.md](SECURITY.md) for reporting vulnerabilities. [AGENTS.md](AGENTS.md) is the maintainer-oriented checklist (also useful for advanced contributions).
+
+---
+
+## Keyboard shortcuts
 
 | Shortcut | Action |
-|---|---|
+|----------|--------|
 | `Cmd+Shift+P` | Command palette |
 | `Cmd+Shift+W` | Setup wizard |
 | `Cmd+,` | Settings |
@@ -355,17 +249,15 @@ Use the command palette for **Cancel Build**, **Clean Project**, **Copy MCP Setu
 
 ### `cargo: command not found` when running `npm run tauri dev`
 
-Rust is installed but not on your shell's `PATH`. Add this to `~/.zshrc`:
+Add to `~/.zshrc`:
 
 ```bash
 source "$HOME/.cargo/env"
 ```
 
-Restart your terminal and retry.
+Restart the terminal.
 
 ### Port 1420 is already in use
-
-Another instance of the dev server is running. Kill it:
 
 ```bash
 lsof -ti:1420 | xargs kill -9
@@ -373,16 +265,22 @@ lsof -ti:1420 | xargs kill -9
 
 ### First `tauri dev` is very slow
 
-Expected — Rust compiles all dependencies from source on first run (~3–8 minutes). Subsequent builds only recompile changed crates (typically 2–5 seconds).
+Expected on first compile (~3–8 minutes). Later incremental builds are typically seconds.
 
 ### ADB not found / devices not appearing
 
-Open **Settings** (`Cmd+,`) and set the Android SDK path. **Health Center** (`Cmd+Shift+H`) shows which tools are missing and suggest fixes.
+**Settings** (`Cmd+,`) → Android SDK path. **Health Center** (`Cmd+Shift+H`) lists missing tools.
 
 ### `App can't be opened because it is from an unidentified developer`
 
-The build is unsigned. Right-click the app in Applications → **Open**, then click **Open** in the dialog. This only needs to be done once.
+Unsigned build: right-click the app → **Open** once.
 
 ### White flash on launch
 
-Ensure `index.html` has `background: #1e1e1e` on `body`. If you see a flash after a fresh build, verify `global.css` is imported before any component renders.
+Ensure `index.html` sets `body { background: #1e1e1e; }` and `global.css` loads early.
+
+---
+
+## Roadmap
+
+Direction and ideas live in [PITCH.md](PITCH.md). Open [issues](https://github.com/thiagodmont/keynobi/issues) to discuss priorities.

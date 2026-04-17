@@ -80,3 +80,5 @@ At the end of every development session:
 - Update `docs/CODE_PATTERN.md` and `docs/DOMAIN_PATTERN.md` when a new code pattern is established.
 - Update `docs/BEST_PRACTICES.md` if foundational architecture or principles change.
 - Update `docs/USER_MANUAL.md` when new user-visible features or keyboard shortcuts are added.
+
+Human contributors: the same expectations are summarized for PRs in [CONTRIBUTING.md](CONTRIBUTING.md) (CI commands, bindings, and doc updates).

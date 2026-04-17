@@ -18,43 +18,111 @@ This document captures the conventions we follow in this repo. These are foundat
 
 ## Project Structure
 
+Detailed layout of the repository (high-level map for contributors). The [README](../README.md) links here instead of duplicating this tree.
+
 ```
 keynobi/
-├── src/                        # Frontend (SolidJS + TypeScript)
-│   ├── bindings/               # Auto-generated Rust-to-TS types (DO NOT EDIT)
-│   ├── components/             # UI components (organized by domain)
-│   │   ├── build/              # Build output panel
-│   │   ├── common/             # Shared UI primitives (Icon, Toast, Dialog, ...)
-│   │   ├── device/             # Device management and AVD panels
-│   │   ├── health/             # System health checks
-│   │   ├── layout/             # Shell: Sidebar, StatusBar, PanelContainer, ...
-│   │   ├── logcat/             # Logcat viewer
-│   │   ├── ui-hierarchy/      # Layout / UI Automator tree viewer
-│   │   ├── mcp/               # MCP server panel
-│   │   ├── projects/           # Project switcher and recent projects
-│   │   └── settings/           # Settings panel
-│   ├── lib/                    # Pure logic, no UI
-│   │   ├── action-registry.ts  # Central app action registry
-│   │   ├── fuzzy-match.ts      # Fuzzy search utility
-│   │   ├── keybindings.ts      # Global keybinding system
-│   │   ├── file-utils.ts
-│   │   ├── logcat-query.ts     # Logcat filter query parser
-│   │   └── tauri-api.ts        # Typed Tauri IPC wrappers
-│   ├── services/               # Async flows combining stores + IPC
-│   │   ├── build.service.ts    # Build + deploy orchestration
-│   │   └── project.service.ts  # Project open/switch/navigation
-│   ├── stores/                 # SolidJS reactive stores ({domain}.store.ts)
-│   ├── test/                   # Vitest setup and Tauri API mocks
-│   └── styles/                 # Global CSS and theme variables
+├── src/                                # Frontend — SolidJS + TypeScript
+│   ├── App.tsx                         # Root layout + action/keybinding registry
+│   ├── stores/
+│   │   ├── build.store.ts             # Build state, streaming logs, error list
+│   │   ├── device.store.ts            # Connected devices, AVD state
+│   │   ├── health.store.ts            # App health checks
+│   │   ├── project.store.ts           # Project root, name, Gradle root
+│   │   ├── projects.store.ts          # Multi-project registry
+│   │   ├── settings.store.ts          # App settings
+│   │   ├── ui.store.ts                # Active tab, panel visibility
+│   │   ├── variant.store.ts           # Build variants
+│   │   └── log.store.ts               # Generic log store factory
+│   ├── services/
+│   │   ├── build.service.ts           # Build orchestration
+│   │   └── project.service.ts         # Project open + navigation history
+│   ├── components/
+│   │   ├── build/
+│   │   │   ├── BuildPanel.tsx         # Streaming ANSI log + error list
+│   │   │   └── VariantSelector.tsx    # Build variant dropdown in status bar
+│   │   ├── device/
+│   │   │   └── DevicePanel.tsx        # Devices + AVD management (Create/Delete/Wipe)
+│   │   ├── logcat/
+│   │   │   └── LogcatPanel.tsx        # Real-time logcat, filters, crash detection
+│   │   ├── ui-hierarchy/
+│   │   │   └── LayoutViewerPanel.tsx  # UI Automator / accessibility hierarchy tree
+│   │   ├── health/
+│   │   │   └── HealthPanel.tsx        # Java, SDK, ADB, Gradle, disk checks
+│   │   ├── settings/
+│   │   │   ├── SettingsPanel.tsx
+│   │   │   ├── SettingRow.tsx
+│   │   │   └── ToolStatus.tsx         # SDK/Java path pickers
+│   │   ├── projects/
+│   │   │   ├── ProjectSidebar.tsx     # Project registry, Add Project (Cmd+O)
+│   │   │   ├── WelcomePanel.tsx       # Empty state when no project is open
+│   │   │   └── ProjectInfoEditor.tsx  # versionName / versionCode
+│   │   ├── mcp/
+│   │   │   └── McpPanel.tsx           # MCP setup + activity log (Cmd+Shift+M)
+│   │   ├── layout/
+│   │   │   ├── TitleBar.tsx           # Custom title bar (app + project name)
+│   │   │   └── StatusBar.tsx          # Settings, project, health, build, MCP, variant…
+│   │   └── common/
+│   │       ├── CommandPalette.tsx     # Cmd+Shift+P action palette
+│   │       ├── LogViewer.tsx          # Shared ANSI log renderer
+│   │       ├── VirtualList.tsx        # Virtualized list for large buffers
+│   │       ├── Toast.tsx              # Auto-dismiss notifications
+│   │       ├── Dialog.tsx             # Modal dialogs
+│   │       ├── Resizable.tsx          # Drag-to-resize splitter
+│   │       └── Icon.tsx               # Inline SVG icon library
+│   ├── lib/
+│   │   ├── tauri-api.ts              # Typed wrappers for all Tauri IPC calls
+│   │   ├── keybindings.ts            # Global keyboard shortcut registry
+│   │   ├── action-registry.ts        # Command palette action registry
+│   │   ├── fuzzy-match.ts            # Fuzzy matching utility
+│   │   ├── ansi-strip.ts             # ANSI escape code stripping
+│   │   ├── logcat-query.ts           # Logcat filter query parser
+│   │   └── file-utils.ts             # File type utilities
+│   ├── test/                         # Vitest setup and Tauri API mocks
+│   ├── styles/                       # Global CSS and theme variables
+│   └── bindings/                     # Auto-generated TypeScript types (ts-rs) — DO NOT EDIT
 │
-├── src-tauri/                  # Rust backend
-│   ├── src/
-│   │   ├── commands/           # Tauri IPC command handlers (thin layer)
-│   │   ├── models/             # Shared data types (Serialize + ts-rs exports)
-│   │   └── services/           # Business logic (no Tauri dependency)
-│   └── benches/                # Criterion benchmarks
+├── src-tauri/                         # Rust backend — Tauri 2.0
+│   ├── Cargo.toml
+│   ├── tauri.conf.json
+│   ├── capabilities/
+│   │   └── default.json              # Tauri 2.0 security permissions
+│   ├── benches/                      # Criterion benchmarks
+│   └── src/
+│       ├── lib.rs                    # Tauri builder, state, command registration
+│       ├── commands/
+│       │   ├── build.rs              # Gradle task commands
+│       │   ├── device.rs             # ADB / AVD commands
+│       │   ├── file_system.rs        # Project open, Gradle root detection
+│       │   ├── health.rs             # Health check commands
+│       │   ├── logcat.rs             # Logcat streaming commands
+│       │   ├── settings.rs           # Settings persistence commands
+│       │   ├── variant.rs            # Build variant commands
+│       │   └── mcp.rs                # MCP setup status, Claude registration helpers
+│       ├── services/
+│       │   ├── mcp_server.rs         # MCP stdio server (tools, prompts, resources)
+│       │   ├── adb_manager.rs        # ADB device polling
+│       │   ├── build_runner.rs       # ./gradlew execution, output parsing
+│       │   ├── fs_manager.rs         # Gradle root detection
+│       │   ├── logcat.rs             # Parser, ring buffer (50K entries)
+│       │   ├── process_manager.rs    # Child process lifecycle + SIGTERM
+│       │   ├── settings_manager.rs   # ~/.keynobi/settings.json
+│       │   └── variant_manager.rs    # buildTypes × productFlavors parsing
+│       └── models/
+│           ├── build.rs
+│           ├── device.rs
+│           ├── error.rs
+│           ├── health.rs
+│           ├── log_entry.rs
+│           ├── settings.rs
+│           └── variant.rs
 │
-└── docs/                       # Architecture documentation
+├── scripts/
+│   └── build-dmg.sh                  # One-command DMG builder
+├── docs/                             # Architecture and user documentation
+├── package.json
+├── vite.config.ts
+└── tsconfig.json
 ```
 
 ---
