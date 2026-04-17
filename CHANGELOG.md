@@ -7,6 +7,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.16] — 2026-04-17
+
+### Added
+- enhance user experience with new features and documentation updates
+
+---
+
 ## [0.1.15] — 2026-04-17
 
 ### Added
