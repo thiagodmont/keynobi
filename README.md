@@ -3,35 +3,67 @@
 [![CI](https://github.com/thiagodmont/keynobi/actions/workflows/ci.yml/badge.svg)](https://github.com/thiagodmont/keynobi/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A focused **Android development companion** for macOS — Tauri 2 + SolidJS. Not a full IDE: it sits **next to** Android Studio and your editor so you get readable Gradle output, live logcat, devices/AVDs, and health checks in one native window. Optional **MCP** lets tools like Claude Code run builds, pull errors, and inspect devices without clicking through the UI.
+A focused **Android development companion** for macOS — Tauri 2 + SolidJS. It sits **next to** Android Studio so you get readable Gradle output, live logcat, devices/AVDs, and health checks in one native window. With a **MCP** that lets tools like Claude Code run builds, read logs, pull errors, and inspect devices without clicking through the UI.
 
 **Platform:** macOS only (v0.x beta) · **Projects:** Kotlin + Gradle
+
+Download the application on the release build and let us know if it helps in your workflow!
 
 ---
 
 ## Table of contents
 
 - [Why Keynobi](#why-keynobi)
-- [How it works](#how-it-works)
+- [Keyboard shortcuts](#keyboard-shortcuts)
 - [Features](#features)
-- [Prerequisites](#prerequisites)
+- [How it works](#how-it-works)
+- [Setup for contributing](#setup-for-contributing)
 - [Quick start](#quick-start)
 - [Development](#development)
-- [Building a DMG](#building-a-dmg-for-distribution)
-- [Repository layout](#repository-layout)
-- [Architecture](#architecture-overview)
 - [Contributing](#contributing)
-- [Keyboard shortcuts](#keyboard-shortcuts)
 - [Troubleshooting](#troubleshooting)
-- [Roadmap](#roadmap)
 
 ---
 
 ## Why Keynobi
 
-Gradle and `adb` already give you the truth — but the signal is buried in noisy terminals and scattered windows. Keynobi is a **single place** to watch builds (ANSI + structured errors), tail logcat with filters, manage emulators, and sanity-check your toolchain. If you use AI agents, the MCP server exposes the same capabilities so the agent can act on real device and build state instead of guessing.
+Gradle and `adb` already give you the truth — but the signal is buried in noisy terminals and scattered windows. Keynobi is a **single place** to watch builds, tail logcat with filters, manage emulators, and sanity-check your toolchain. If you use AI agents, the MCP server exposes the same capabilities so the agent can act on real device and build state instead of guessing.
 
-More product context: [PITCH.md](PITCH.md). Full UI and MCP reference: [docs/USER_MANUAL.md](docs/USER_MANUAL.md).
+---
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+Shift+P` | Command palette |
+| `Cmd+Shift+W` | Setup wizard |
+| `Cmd+,` | Settings |
+| `Cmd+O` | Open / add project folder |
+| `Cmd+R` | Run App (build → install → launch) |
+| `Cmd+Shift+R` | Build only (no deploy) |
+| `Cmd+Shift+V` | Select build variant |
+| `Cmd+1` | Build tab |
+| `Cmd+2` | Logcat tab |
+| `Cmd+3` | Toggle Devices sidebar |
+| `Cmd+B` | Toggle Projects sidebar |
+| `Cmd+Shift+H` | Health Center |
+| `Cmd+Shift+M` | MCP activity panel |
+
+Use the command palette for **Cancel Build**, **Clean Project**, **Copy MCP Setup Command**, and other actions without default shortcuts.
+
+---
+
+## Features
+
+| Area | What you get |
+|------|----------------|
+| **Projects** | Multi-project registry, Gradle root detection, app `versionName` / `versionCode` editor |
+| **Builds** | Streaming log, structured errors, variant matrix, clean/cancel, one-click run to device |
+| **Logcat** | Live stream, filters, crash detection, large-session-safe buffering (see architecture) |
+| **Devices & AVDs** | Connected devices, emulator lifecycle (create / wipe / delete) |
+| **Health** | Java, Android SDK, ADB, Gradle, disk checks with actionable hints |
+| **Shell** | Command palette (`Cmd+Shift+P`) backed by a single action registry |
+| **MCP** | Claude Code / `keynobi` transport (`--mcp`) for agent-driven workflows |
 
 ---
 
@@ -57,21 +89,8 @@ For the full layer diagram and design notes, see [Architecture](#architecture-ov
 
 ---
 
-## Features
-
-| Area | What you get |
-|------|----------------|
-| **Projects** | Multi-project registry, Gradle root detection, app `versionName` / `versionCode` editor |
-| **Builds** | Streaming log, structured errors, variant matrix, clean/cancel, one-click run to device |
-| **Logcat** | Live stream, filters, crash detection, large-session-safe buffering (see architecture) |
-| **Devices & AVDs** | Connected devices, emulator lifecycle (create / wipe / delete) |
-| **Health** | Java, Android SDK, ADB, Gradle, disk checks with actionable hints |
-| **Shell** | Command palette (`Cmd+Shift+P`) backed by a single action registry |
-| **MCP** | Claude Code / `keynobi` transport (`--mcp`) for agent-driven workflows |
-
----
-
-## Prerequisites
+## Setup for contributing 
+This part here is if you want to run it locally or contribute with development. You can download the and install the last build in the release section.
 
 ### 1. Rust (stable toolchain)
 
@@ -140,73 +159,6 @@ npm run generate:bindings   # after Rust model / TS export changes
 
 ---
 
-## Building a DMG for distribution
-
-```bash
-# Apple Silicon (default)
-./scripts/build-dmg.sh
-
-# Intel
-./scripts/build-dmg.sh --intel
-
-# Universal
-./scripts/build-dmg.sh --universal
-```
-
-Or:
-
-```bash
-npm run build:dmg
-npm run build:dmg:intel
-npm run build:dmg:universal
-```
-
-Output lives under `src-tauri/target/<rust-triple>/release/bundle/dmg/`. CI releases rename artifacts to `Keynobi_<version>_arm64.dmg` / `Keynobi_<version>_intel.dmg`. Unsigned builds: right-click the app → **Open** once to satisfy Gatekeeper ([Apple help](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac)).
-
----
-
-## Repository layout
-
-The full file tree and “what lives where” lives in **[docs/CODE_PATTERN.md](docs/CODE_PATTERN.md#project-structure)** so this README stays readable.
-
----
-
-## Architecture overview
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                  macOS Application (Tauri 2.0)                   │
-│                                                                  │
-│  ┌──────────────────────────┐  ┌──────────────────────────────┐  │
-│  │   Frontend (WKWebView)   │  │   Rust Backend (src-tauri)   │  │
-│  │  SolidJS + TypeScript    │  │                              │  │
-│  │                          │  │  Core Services               │  │
-│  │  ┌────────────────────┐  │  │   fs_manager (gradle root)   │  │
-│  │  │ BuildPanel         │  │  │   process_manager            │  │
-│  │  │  ANSI log          │  │  │   settings_manager           │  │
-│  │  │  Error list        │  │  │                              │  │
-│  │  ├────────────────────┤  │  │  Android Services            │  │
-│  │  │ LogcatPanel        │  │  │   build_runner (gradlew)     │  │
-│  │  │  50K ring buffer   │  │  │   variant_manager            │  │
-│  │  │  Level/tag filters │  │  │   adb_manager (poll 2s)      │  │
-│  │  ├────────────────────┤  │  │   logcat (ring buffer 50K)   │  │
-│  │  │ DevicePanel        │  │  │   mcp_server (stdio MCP)     │  │
-│  │  │  Devices + AVDs    │  │  │                              │  │
-│  │  ├────────────────────┤  │  │                              │  │
-│  │  │ HealthPanel        │  │  │                              │  │
-│  │  │ SettingsPanel      │  │  └──────────────────────────────┘  │
-│  │  │ CommandPalette     │  │                ▲                   │
-│  │  └────────────────────┘  │                │ Tauri IPC         │
-│  └────────────┬─────────────┘                │ (invoke/emit)     │
-│               └──────────────────────────────┘                   │
-└──────────────────────────────────────────────────────────────────┘
-         │                                    │
-         ▼                                    ▼
-Android Device / Emulator          Claude Code / MCP clients
-adb logcat + build output          run_gradle_task, get_build_errors,
-                                   get_logcat_entries, list_devices…
-```
-
 **Design choices (short):**
 
 - **Ring buffer (50K)** for logcat in Rust; the UI only receives what it needs — bounded memory.
@@ -223,29 +175,7 @@ We welcome issues and pull requests. Please read [CONTRIBUTING.md](CONTRIBUTING.
 
 ---
 
-## Keyboard shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Cmd+Shift+P` | Command palette |
-| `Cmd+Shift+W` | Setup wizard |
-| `Cmd+,` | Settings |
-| `Cmd+O` | Open / add project folder |
-| `Cmd+R` | Run App (build → install → launch) |
-| `Cmd+Shift+R` | Build only (no deploy) |
-| `Cmd+Shift+V` | Select build variant |
-| `Cmd+1` | Build tab |
-| `Cmd+2` | Logcat tab |
-| `Cmd+3` | Toggle Devices sidebar |
-| `Cmd+B` | Toggle Projects sidebar |
-| `Cmd+Shift+H` | Health Center |
-| `Cmd+Shift+M` | MCP activity panel |
-
-Use the command palette for **Cancel Build**, **Clean Project**, **Copy MCP Setup Command**, and other actions without default shortcuts.
-
----
-
-## Troubleshooting
+## Troubleshooting (Only for development)
 
 ### `cargo: command not found` when running `npm run tauri dev`
 
@@ -278,9 +208,3 @@ Unsigned build: right-click the app → **Open** once.
 ### White flash on launch
 
 Ensure `index.html` sets `body { background: #1e1e1e; }` and `global.css` loads early.
-
----
-
-## Roadmap
-
-Direction and ideas live in [PITCH.md](PITCH.md). Open [issues](https://github.com/thiagodmont/keynobi/issues) to discuss priorities.
