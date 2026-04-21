@@ -51,7 +51,7 @@ base64 = "0.22.1"
 # Recursive directory walking for source file lookup
 walkdir = "2"
 # Process memory monitoring (RSS) for the status bar monitor
-sysinfo = "0.33"
+sysinfo = "0.38"
 # Optional Sentry crash reporting (enabled via --features telemetry)
 # `transport` is required for HTTPS submission; without it the client is inert.
 sentry = { version = "0.47", optional = true, default-features = false, features = ["backtrace", "contexts", "panic", "transport"] }
