@@ -206,12 +206,12 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Apple Silicon DMG
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dmg-arm64
 
       - name: Download Intel DMG
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: dmg-intel
 
