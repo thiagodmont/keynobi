@@ -41,6 +41,7 @@
     "solid-js": "^1.9.3"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@sentry/vite-plugin": "^5.1.1",
     "@solidjs/testing-library": "^0.8.10",
     "@tauri-apps/cli": "^2",
