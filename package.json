@@ -44,7 +44,7 @@
     "@sentry/vite-plugin": "^5.1.1",
     "@solidjs/testing-library": "^0.8.10",
     "@tauri-apps/cli": "^2",
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.0",
     "@typescript-eslint/parser": "^8.58.2",
     "@vitest/ui": "^4.1.1",
     "eslint": "^9.0.0",
