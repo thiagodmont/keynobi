@@ -1,0 +1,23 @@
+src-tauri/src/services/ui_hierarchy_parse.rs
+  c721a3b201a96505 303-313
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "4729a8ea78bf4929c687d0a3af239ac6df6e8af2",
+  "prompts": {
+    "c721a3b201a96505": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a2585495-e880-43ac-83c4-2203762f02aa",
+        "model": "default"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 12,
+      "total_deletions": 2,
+      "accepted_lines": 12,
+      "overriden_lines": 0
+    }
+  }
+}
