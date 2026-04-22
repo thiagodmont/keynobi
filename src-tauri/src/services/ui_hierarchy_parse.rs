@@ -300,7 +300,17 @@ pub fn compute_screen_hash(root: &UiNode) -> String {
     });
     let joined = parts.into_iter().collect::<Vec<_>>().join(";");
     let digest = Sha256::digest(joined.as_bytes());
-    format!("{digest:x}")
+    encode_hex_lower(digest.as_ref())
+}
+
+fn encode_hex_lower(bytes: &[u8]) -> String {
+    const LUT: &[u8; 16] = b"0123456789abcdef";
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        s.push(LUT[(b >> 4) as usize] as char);
+        s.push(LUT[(b & 0xf) as usize] as char);
+    }
+    s
 }
 
 /// Extract flat interactive rows (depth-first), capped for MCP payloads.
