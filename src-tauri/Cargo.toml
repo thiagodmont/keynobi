@@ -42,7 +42,7 @@ regex = "1"
 # UI Automator hierarchy XML (read-only DOM)
 roxmltree = "0.21"
 # Stable screen hash for hierarchy snapshots
-sha2 = "0.10"
+sha2 = "0.11"
 # Official MCP SDK — provides JSON-RPC 2.0 framing, stdio transport, tool macros
 rmcp = { version = "1.5.0", features = ["server", "macros", "transport-io", "schemars"] }
 # JSON Schema generation for MCP tool input schemas
