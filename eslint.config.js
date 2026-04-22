@@ -87,6 +87,8 @@ export default [
       "no-console": ["warn", { allow: ["warn", "error"] }],
       "prefer-const": "error",
       eqeqeq: ["error", "always"],
+      // ESLint 10 recommended enables this; it flags `let ref!: T` assigned only via JSX `ref` (common in Solid).
+      "no-unassigned-vars": "off",
     },
   },
   {
