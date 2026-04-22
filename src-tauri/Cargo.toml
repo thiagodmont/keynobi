@@ -40,7 +40,7 @@ libc = "0.2"
 # Regex for build output parsing
 regex = "1"
 # UI Automator hierarchy XML (read-only DOM)
-roxmltree = "0.20"
+roxmltree = "0.21"
 # Stable screen hash for hierarchy snapshots
 sha2 = "0.10"
 # Official MCP SDK — provides JSON-RPC 2.0 framing, stdio transport, tool macros
