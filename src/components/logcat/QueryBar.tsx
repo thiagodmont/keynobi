@@ -599,7 +599,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                               onClick={(e) => e.stopPropagation()}
                               onMouseDown={(e) => e.stopPropagation()}
                               placeholder="Edit filter…"
-                              style={{ ...inlineSlotStyle(), "flex-shrink": "1" }}
+                              style={{ ...inlineSlotStyle(), flex: "0 1 auto" }}
                             />
                           </Show>
                           {/* AND badge between pills in the same group */}
@@ -702,7 +702,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                       onClick={(e) => e.stopPropagation()}
                       onMouseDown={(e) => e.stopPropagation()}
                       placeholder="Edit filter…"
-                      style={{ ...inlineSlotStyle(), "flex-shrink": "1" }}
+                      style={{ ...inlineSlotStyle(), flex: "0 1 auto" }}
                     />
                   </Show>
                 </div>
@@ -996,6 +996,7 @@ function groupBoxStyle(): Record<string, string> {
     "border-radius": "8px",
     background: "rgba(255,255,255,0.04)",
     "flex-shrink": "0",
+    "max-width": "100%",
   };
 }
 
