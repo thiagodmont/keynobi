@@ -1,0 +1,23 @@
+src/lib/logcat-query.ts
+  238e46704a589c46 707-712
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "efc3c8c12a19d06c5002b8691d2c64585c300972",
+  "prompts": {
+    "238e46704a589c46": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f4a4904-26dd-4c60-962b-07efdee977fe",
+        "model": "<synthetic>"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 1,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    }
+  }
+}
