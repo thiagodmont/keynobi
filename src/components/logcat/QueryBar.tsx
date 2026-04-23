@@ -153,6 +153,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
   const committed = createMemo(() => queryState().committed);
   const draft = createMemo(() => queryState().draft);
   const pillGroups = createMemo(() => buildQueryBarPillGroups(committed()));
+  const multiGroup = createMemo(() => pillGroups().filter((g) => g.length > 0).length >= 2);
 
   function totalPillCount(): number {
     return pillGroups().reduce((n, gr) => n + gr.length, 0);
@@ -573,131 +574,138 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                   </span>
                 </Show>
 
-                {/* Tokens in this group */}
-                <For each={group}>
-                  {(token, ti) => {
-                    const s = getTokenStyle(token);
-                    const negated = token.startsWith("-");
-                    return (
-                      <>
-                        <Show
-                          when={inlineEdit()?.groupIdx === gi() && inlineEdit()?.tokenIdx === ti()}
-                        >
-                          <input
-                            ref={inlineEditRef}
-                            type="text"
-                            spellcheck={false}
-                            value={inlineEdit()?.text ?? ""}
-                            onInput={handleInlineInput}
-                            onKeyDown={handleInlineKeyDown}
-                            onBlur={handleInlineBlur}
-                            onClick={(e) => e.stopPropagation()}
-                            onMouseDown={(e) => e.stopPropagation()}
-                            placeholder="Edit filter…"
-                            style={{ ...inlineSlotStyle(), "flex-shrink": "1" }}
-                          />
-                        </Show>
-                        {/* AND badge between pills in the same group */}
-                        <Show when={ti() > 0}>
-                          <span
-                            style={{
-                              "font-size": "9px",
-                              "font-weight": "600",
-                              "letter-spacing": "0.04em",
-                              color: "var(--text-muted)",
-                              border: "1px dashed var(--border)",
-                              "border-radius": "10px",
-                              padding: "1px 5px",
-                              "flex-shrink": "0",
-                              "user-select": "none",
-                            }}
+                {/* Group container: visible box only when 2+ groups exist */}
+                <div style={multiGroup() ? groupBoxStyle() : { display: "contents" }}>
+                  {/* Tokens in this group */}
+                  <For each={group}>
+                    {(token, ti) => {
+                      const s = getTokenStyle(token);
+                      const negated = token.startsWith("-");
+                      return (
+                        <>
+                          <Show
+                            when={
+                              inlineEdit()?.groupIdx === gi() && inlineEdit()?.tokenIdx === ti()
+                            }
                           >
-                            AND
-                          </span>
-                        </Show>
+                            <input
+                              ref={inlineEditRef}
+                              type="text"
+                              spellcheck={false}
+                              value={inlineEdit()?.text ?? ""}
+                              onInput={handleInlineInput}
+                              onKeyDown={handleInlineKeyDown}
+                              onBlur={handleInlineBlur}
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              placeholder="Edit filter…"
+                              style={{ ...inlineSlotStyle(), "flex-shrink": "1" }}
+                            />
+                          </Show>
+                          {/* AND badge between pills in the same group */}
+                          <Show when={ti() > 0}>
+                            <span
+                              style={{
+                                "font-size": "9px",
+                                "font-weight": "600",
+                                "letter-spacing": "0.04em",
+                                color: "var(--text-muted)",
+                                border: "1px dashed var(--border)",
+                                "border-radius": "10px",
+                                padding: "1px 5px",
+                                "flex-shrink": "0",
+                                "user-select": "none",
+                              }}
+                            >
+                              AND
+                            </span>
+                          </Show>
 
-                        {/* Token pill — stop click bubbling so the container does not
-                            focus the draft on the same gesture (would skip focusing
-                            the inline editor and leave the pill removed). */}
-                        <span
-                          onClick={(e) => e.stopPropagation()}
-                          style={{
-                            display: "inline-flex",
-                            "align-items": "center",
-                            gap: "2px",
-                            "font-size": "10px",
-                            "font-family": "var(--font-mono)",
-                            color: s.color,
-                            background: s.bg,
-                            border: `1px solid ${s.border}`,
-                            "border-radius": "10px",
-                            padding: "1px 4px 1px 6px",
-                            "flex-shrink": "0",
-                            "white-space": "nowrap",
-                            opacity: negated ? "0.65" : "1",
-                          }}
-                        >
+                          {/* Token pill — stop click bubbling so the container does not
+                              focus the draft on the same gesture (would skip focusing
+                              the inline editor and leave the pill removed). */}
                           <span
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              editToken(gi(), ti(), token);
-                            }}
-                            title="Edit filter"
-                            style={{ cursor: "text", "user-select": "none" }}
-                          >
-                            {token}
-                          </span>
-                          <button
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              removeToken(gi(), ti());
-                            }}
-                            title="Remove filter"
+                            onClick={(e) => e.stopPropagation()}
                             style={{
-                              background: "none",
-                              border: "none",
-                              color: s.color,
-                              cursor: "pointer",
-                              padding: "0 1px",
-                              "font-size": "9px",
-                              "line-height": "1",
-                              opacity: "0.55",
-                              display: "flex",
+                              display: "inline-flex",
                               "align-items": "center",
-                            }}
-                            onMouseEnter={(e) => {
-                              (e.currentTarget as HTMLElement).style.opacity = "1";
-                            }}
-                            onMouseLeave={(e) => {
-                              (e.currentTarget as HTMLElement).style.opacity = "0.55";
+                              gap: "2px",
+                              "font-size": "10px",
+                              "font-family": "var(--font-mono)",
+                              color: s.color,
+                              background: s.bg,
+                              border: `1px solid ${s.border}`,
+                              "border-radius": "10px",
+                              padding: "1px 4px 1px 6px",
+                              "flex-shrink": "0",
+                              "white-space": "nowrap",
+                              opacity: negated ? "0.65" : "1",
                             }}
                           >
-                            ✕
-                          </button>
-                        </span>
-                      </>
-                    );
-                  }}
-                </For>
-                <Show
-                  when={inlineEdit()?.groupIdx === gi() && inlineEdit()?.tokenIdx === group.length}
-                >
-                  <input
-                    ref={inlineEditRef}
-                    type="text"
-                    spellcheck={false}
-                    value={inlineEdit()?.text ?? ""}
-                    onInput={handleInlineInput}
-                    onKeyDown={handleInlineKeyDown}
-                    onBlur={handleInlineBlur}
-                    onClick={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    placeholder="Edit filter…"
-                    style={{ ...inlineSlotStyle(), "flex-shrink": "1" }}
-                  />
-                </Show>
+                            <span
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                editToken(gi(), ti(), token);
+                              }}
+                              title="Edit filter"
+                              style={{ cursor: "text", "user-select": "none" }}
+                            >
+                              {token}
+                            </span>
+                            <button
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                removeToken(gi(), ti());
+                              }}
+                              title="Remove filter"
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: s.color,
+                                cursor: "pointer",
+                                padding: "0 1px",
+                                "font-size": "9px",
+                                "line-height": "1",
+                                opacity: "0.55",
+                                display: "flex",
+                                "align-items": "center",
+                              }}
+                              onMouseEnter={(e) => {
+                                (e.currentTarget as HTMLElement).style.opacity = "1";
+                              }}
+                              onMouseLeave={(e) => {
+                                (e.currentTarget as HTMLElement).style.opacity = "0.55";
+                              }}
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        </>
+                      );
+                    }}
+                  </For>
+                  <Show
+                    when={
+                      inlineEdit()?.groupIdx === gi() && inlineEdit()?.tokenIdx === group.length
+                    }
+                  >
+                    <input
+                      ref={inlineEditRef}
+                      type="text"
+                      spellcheck={false}
+                      value={inlineEdit()?.text ?? ""}
+                      onInput={handleInlineInput}
+                      onKeyDown={handleInlineKeyDown}
+                      onBlur={handleInlineBlur}
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      placeholder="Edit filter…"
+                      style={{ ...inlineSlotStyle(), "flex-shrink": "1" }}
+                    />
+                  </Show>
+                </div>
               </>
             </Show>
           )}
@@ -975,6 +983,19 @@ function connectorBtnStyle(): Record<string, string> {
     padding: "2px 6px",
     "white-space": "nowrap",
     transition: "color 0.1s, border-color 0.1s",
+  };
+}
+
+function groupBoxStyle(): Record<string, string> {
+  return {
+    display: "inline-flex",
+    "align-items": "center",
+    gap: "3px",
+    padding: "3px 6px",
+    border: "1px solid rgba(255,255,255,0.10)",
+    "border-radius": "8px",
+    background: "rgba(255,255,255,0.04)",
+    "flex-shrink": "0",
   };
 }
 
