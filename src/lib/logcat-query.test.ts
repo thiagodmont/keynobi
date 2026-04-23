@@ -1973,3 +1973,34 @@ describe("parseFilterGroups — optional outer parens", () => {
     );
   });
 });
+
+// ── buildQueryBarPillGroups — paren normalization ─────────────────────────────
+
+describe("buildQueryBarPillGroups — paren normalization", () => {
+  it("strips group-boundary parens attached to tokens", () => {
+    expect(buildQueryBarPillGroups(["(level:error", "tag:App)", "|", "message:crash"])).toEqual([
+      ["level:error", "tag:App"],
+      ["message:crash"],
+    ]);
+  });
+
+  it("skips standalone ( and ) tokens", () => {
+    expect(buildQueryBarPillGroups(["(", "level:error", ")", "|", "crash"])).toEqual([
+      ["level:error"],
+      ["crash"],
+    ]);
+  });
+
+  it("does not strip trailing ) that is part of a value expression (contains :()", () => {
+    expect(buildQueryBarPillGroups(["message:(pattern)"])).toEqual([["message:(pattern)"]]);
+  });
+
+  it("strips leading ( only — when token is the only one in its group", () => {
+    expect(buildQueryBarPillGroups(["(level:error"])).toEqual([["level:error"]]);
+  });
+
+  it("empty tokens produced by stripping are removed", () => {
+    // "(" alone would become "" after stripping — should be filtered out
+    expect(buildQueryBarPillGroups(["("])).toEqual([[]]);
+  });
+});

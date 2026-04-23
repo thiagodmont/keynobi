@@ -691,6 +691,18 @@ export function pasteIntoMessageKeyDraft(
   return { newDraft, cursor: prefix.length + wrapped.length };
 }
 
+function normalizeGroupParenTokens(group: string[]): string[] {
+  if (group.length === 0) return group;
+  const result = [...group];
+  if (result[0].startsWith("(")) result[0] = result[0].slice(1);
+  const last = result.length - 1;
+  // Don't strip trailing ) when it's part of a value like message:(pattern)
+  if (result[last].endsWith(")") && !result[last].includes(":(")) {
+    result[last] = result[last].slice(0, -1);
+  }
+  return result.filter((t) => t.length > 0);
+}
+
 /**
  * OR-group layout of committed parts (`|` starts a new group; `&&` / `&` skipped).
  */
@@ -699,11 +711,11 @@ export function buildQueryBarPillGroups(committed: string[]): string[][] {
   for (const part of committed) {
     if (part === "|") {
       groups.push([]);
-    } else if (part !== "&&" && part !== "&") {
+    } else if (part !== "&&" && part !== "&" && part !== "(" && part !== ")") {
       groups[groups.length - 1].push(part);
     }
   }
-  return groups;
+  return groups.map(normalizeGroupParenTokens);
 }
 
 /** True when the last structural committed part is `|` (draft starts a new OR group). */
