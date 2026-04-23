@@ -1,0 +1,23 @@
+src/components/logcat/QueryBar.tsx
+  238e46704a589c46 602,705,999
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "f7bf9b8aa0b911adc5cb2fbc8450026d3531721a",
+  "prompts": {
+    "238e46704a589c46": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f4a4904-26dd-4c60-962b-07efdee977fe",
+        "model": "<synthetic>"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 2,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    }
+  }
+}
