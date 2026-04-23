@@ -923,8 +923,14 @@ function splitOnOrSeparator(raw: string): string[] {
 
 function stripGroupParens(s: string): string {
   const t = s.trim();
-  if (t.startsWith("(") && t.endsWith(")")) return t.slice(1, -1).trim();
-  return t;
+  if (!t.startsWith("(") || !t.endsWith(")")) return t;
+  let depth = 0;
+  for (let i = 0; i < t.length - 1; i++) {
+    if (t[i] === "(") depth++;
+    else if (t[i] === ")") depth--;
+    if (depth === 0) return t; // outer ( closed before end — not a wrapping pair
+  }
+  return t.slice(1, -1).trim();
 }
 
 /**
