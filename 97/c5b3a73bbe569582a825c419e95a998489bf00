@@ -1,0 +1,25 @@
+src/lib/logcat-query.ts
+  238e46704a589c46 924-929,938
+src/lib/logcat-query.test.ts
+  238e46704a589c46 1944-1949,1951-1955,1957-1961,1963-1971,1973-1975
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "97c5b3a73bbe569582a825c419e95a998489bf00",
+  "prompts": {
+    "238e46704a589c46": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f4a4904-26dd-4c60-962b-07efdee977fe",
+        "model": "<synthetic>"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 39,
+      "total_deletions": 1,
+      "accepted_lines": 35,
+      "overriden_lines": 4
+    }
+  }
+}
