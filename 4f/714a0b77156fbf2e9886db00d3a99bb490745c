@@ -1,0 +1,25 @@
+src/lib/logcat-query.ts
+  238e46704a589c46 694-705,714,718
+src/lib/logcat-query.test.ts
+  238e46704a589c46 1976-1980,1982,1984-1987,1989,1991-1994,1996-2006
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "4f714a0b77156fbf2e9886db00d3a99bb490745c",
+  "prompts": {
+    "238e46704a589c46": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f4a4904-26dd-4c60-962b-07efdee977fe",
+        "model": "<synthetic>"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 45,
+      "total_deletions": 2,
+      "accepted_lines": 40,
+      "overriden_lines": 5
+    }
+  }
+}
