@@ -1,0 +1,23 @@
+docs/plans/2026-04-23-filter-group-visual.md
+  238e46704a589c46 1-467
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "6e5719ef3ca2a591d501c3f1df98468c7f622122",
+  "prompts": {
+    "238e46704a589c46": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f4a4904-26dd-4c60-962b-07efdee977fe",
+        "model": "<synthetic>"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 470,
+      "total_deletions": 3,
+      "accepted_lines": 467,
+      "overriden_lines": 0
+    }
+  }
+}
