@@ -704,7 +704,12 @@ function normalizeGroupParenTokens(group: string[]): string[] {
 }
 
 /**
- * OR-group layout of committed parts (`|` starts a new group; `&&` / `&` skipped).
+ * OR-group layout of committed parts.
+ * - `|` starts a new group.
+ * - Standalone `(`, `)`, `&&`, and `&` tokens are skipped.
+ * - Group-boundary parens attached to tokens (e.g. `"(level:error"`, `"tag:App)"`) are
+ *   stripped via `normalizeGroupParenTokens`. Value-parens (`"message:(pattern)"`) are
+ *   preserved — detected by the presence of `:(` in the token.
  */
 export function buildQueryBarPillGroups(committed: string[]): string[][] {
   const groups: string[][] = [[]];
