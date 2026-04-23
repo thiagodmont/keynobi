@@ -16,7 +16,12 @@
 
 import { describe, it, expect } from "vitest";
 import { parseQueryState, buildQuery } from "./QueryBar";
-import { setPackageInQuery, setAgeInQuery } from "@/lib/logcat-query";
+import {
+  rebuildCommittedAfterRemovingPill,
+  quoteMessageTokenForEditDraft,
+  setPackageInQuery,
+  setAgeInQuery,
+} from "@/lib/logcat-query";
 
 // ── parseQueryState — trailing-space convention ───────────────────────────────
 
@@ -67,7 +72,7 @@ describe("parseQueryState — trailing-space convention", () => {
 
   it("quoted string containing a space is treated as a single token", () => {
     expect(parseQueryState('tag:"hello world" ')).toEqual({
-      committed: ['tag:"hello world"'],
+      committed: ["tag:hello world"],
       draft: "",
     });
   });
@@ -78,11 +83,57 @@ describe("parseQueryState — trailing-space convention", () => {
       draft: 'tag:"hello world"',
     });
   });
+
+  it("message with quoted spaces is one committed pill when trailing space", () => {
+    expect(parseQueryState('message:"hello world" ')).toEqual({
+      committed: ["message:hello world"],
+      draft: "",
+    });
+  });
+
+  it("message:socket login splits (AND) without quotes", () => {
+    expect(parseQueryState("message:socket login")).toEqual({
+      committed: ["message:socket"],
+      draft: "login",
+    });
+  });
+
+  it("edit-pill flow: rebuild committed + buildQuery restores parse state", () => {
+    const full = "level:error tag:App ";
+    const { committed } = parseQueryState(full);
+    const next = rebuildCommittedAfterRemovingPill(committed, 0, 1, false);
+    const q = buildQuery(next, "tag:App");
+    expect(parseQueryState(q)).toEqual({ committed: ["level:error"], draft: "tag:App" });
+  });
+
+  it("edit-pill for message with spaces uses quoted draft so it is not split", () => {
+    const full = 'level:error message:"hello world" ';
+    const { committed } = parseQueryState(full);
+    const token = committed[1]!;
+    expect(token).toBe("message:hello world");
+    const next = rebuildCommittedAfterRemovingPill(committed, 0, 1, false);
+    const draft = quoteMessageTokenForEditDraft(token);
+    expect(draft).toBe('message:"hello world"');
+    const q = buildQuery(next, draft);
+    expect(parseQueryState(q)).toEqual({
+      committed: ["level:error"],
+      draft: 'message:"hello world"',
+    });
+  });
 });
 
 // ── buildQuery ────────────────────────────────────────────────────────────────
 
 describe("buildQuery — trailing-space convention", () => {
+  it("serializes multi-word message so parse round-trips with another pill", () => {
+    const q = buildQuery(["level:error", "message:hello world"], "");
+    expect(q).toBe('level:error message:"hello world" ');
+    expect(parseQueryState(q)).toEqual({
+      committed: ["level:error", "message:hello world"],
+      draft: "",
+    });
+  });
+
   it("appends trailing space when committed and no draft (all-pills state)", () => {
     expect(buildQuery(["package:mine"], "")).toBe("package:mine ");
   });

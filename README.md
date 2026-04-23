@@ -3,7 +3,7 @@
 [![CI](https://github.com/thiagodmont/keynobi/actions/workflows/ci.yml/badge.svg)](https://github.com/thiagodmont/keynobi/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A focused **Android development companion** for macOS — Tauri 2 + SolidJS. It sits **next to** Android Studio so you get readable Gradle output, live logcat, devices/AVDs, and health checks in one native window. With a **MCP** that lets tools like Claude Code run builds, read logs, pull errors, and inspect devices without clicking through the UI.
+A focused **Android development companion** for macOS. It sits **next to** Android Studio so you get readable Gradle output, live logcat, devices/AVDs, and health checks in one native window. With a **MCP** that lets tools like Claude Code run builds, read logs, pull errors, and inspect devices without clicking through the UI.
 
 **Platform:** macOS only (v0.x beta) · **Projects:** Kotlin + Gradle
 
@@ -27,7 +27,7 @@ Download the application on the release build and let us know if it helps in you
 
 ## Why Keynobi
 
-Gradle and `adb` already give you the truth — but the signal is buried in noisy terminals and scattered windows. Keynobi is a **single place** to watch builds, tail logcat with filters, manage emulators, and sanity-check your toolchain. If you use AI agents, the MCP server exposes the same capabilities so the agent can act on real device and build state instead of guessing.
+Keynobi is a **single place** to watch builds, tail logcat with filters, manage emulators, and sanity-check your toolchain. If you use AI agents, the MCP server exposes the same capabilities so the agent can act on real device and build state instead of guessing.
 
 ---
 
@@ -77,20 +77,10 @@ Typical loop:
 4. **Devices** — see USB devices and AVDs, create/wipe/delete emulators, and keep **Health** (Java, SDK, ADB, Gradle, disk) honest.
 5. **Agents (optional)** — start the MCP server so external clients can invoke the same operations over stdio.
 
-```
-You: open project → pick variant → build / run
-              ↓
-     SolidJS UI  ←Tauri IPC→  Rust (processes, adb, gradle, logcat)
-              ↓                           ↓
-        panels & palette              device + build truth
-```
-
-For the full layer diagram and design notes, see [Architecture](#architecture-overview) below.
-
 ---
 
 ## Setup for contributing 
-This part here is if you want to run it locally or contribute with development. You can download the and install the last build in the release section.
+This part here is only if you want to run it locally or contribute with development. You can download the and install the last build in the release section.
 
 ### 1. Rust (stable toolchain)
 
@@ -173,38 +163,3 @@ npm run generate:bindings   # after Rust model / TS export changes
 
 We welcome issues and pull requests. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations, and [SECURITY.md](SECURITY.md) for reporting vulnerabilities. [AGENTS.md](AGENTS.md) is the maintainer-oriented checklist (also useful for advanced contributions).
 
----
-
-## Troubleshooting (Only for development)
-
-### `cargo: command not found` when running `npm run tauri dev`
-
-Add to `~/.zshrc`:
-
-```bash
-source "$HOME/.cargo/env"
-```
-
-Restart the terminal.
-
-### Port 1420 is already in use
-
-```bash
-lsof -ti:1420 | xargs kill -9
-```
-
-### First `tauri dev` is very slow
-
-Expected on first compile (~3–8 minutes). Later incremental builds are typically seconds.
-
-### ADB not found / devices not appearing
-
-**Settings** (`Cmd+,`) → Android SDK path. **Health Center** (`Cmd+Shift+H`) lists missing tools.
-
-### `App can't be opened because it is from an unidentified developer`
-
-Unsigned build: right-click the app → **Open** once.
-
-### White flash on launch
-
-Ensure `index.html` sets `body { background: #1e1e1e; }` and `global.css` loads early.

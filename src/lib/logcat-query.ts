@@ -27,35 +27,50 @@ import type { LogcatEntry } from "@/lib/tauri-api";
 // ── Token types ───────────────────────────────────────────────────────────────
 
 export type QueryToken =
-  | { type: "level";    value: string;  negate: boolean }
-  | { type: "tag";      value: string;  negate: boolean; regex: boolean }
-  | { type: "message";  value: string;  negate: boolean; regex: boolean }
-  | { type: "package";  value: string;  negate: boolean }
-  | { type: "age";      seconds: number }
-  | { type: "is";       value: string }
-  | { type: "freetext"; value: string;  negate: boolean };
+  | { type: "level"; value: string; negate: boolean }
+  | { type: "tag"; value: string; negate: boolean; regex: boolean }
+  | { type: "message"; value: string; negate: boolean; regex: boolean }
+  | { type: "package"; value: string; negate: boolean }
+  | { type: "age"; seconds: number }
+  | { type: "is"; value: string }
+  | { type: "freetext"; value: string; negate: boolean };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-export const LEVEL_NAMES = [
-  "verbose", "debug", "info", "warn", "error", "fatal",
-] as const;
+export const LEVEL_NAMES = ["verbose", "debug", "info", "warn", "error", "fatal"] as const;
 
 export const QUERY_KEYS = [
-  "level:", "tag:", "tag~:", "-tag:", "message:", "message~:", "-message:",
-  "package:", "age:", "is:",
+  "level:",
+  "tag:",
+  "tag~:",
+  "-tag:",
+  "message:",
+  "message~:",
+  "-message:",
+  "package:",
+  "age:",
+  "is:",
 ];
 
 export const AGE_SUGGESTIONS = ["30s", "1m", "5m", "15m", "1h", "6h", "1d"];
 export const IS_SUGGESTIONS = ["crash", "stacktrace"];
 
 const LEVEL_PRIORITY: Record<string, number> = {
-  verbose: 0, v: 0,
-  debug: 1, d: 1,
-  info: 2, i: 2,
-  warn: 3, w: 3, warning: 3,
-  error: 4, e: 4,
-  fatal: 5, f: 5, assert: 5, a: 5,
+  verbose: 0,
+  v: 0,
+  debug: 1,
+  d: 1,
+  info: 2,
+  i: 2,
+  warn: 3,
+  w: 3,
+  warning: 3,
+  error: 4,
+  e: 4,
+  fatal: 5,
+  f: 5,
+  assert: 5,
+  a: 5,
 };
 
 // ── Age parser ────────────────────────────────────────────────────────────────
@@ -65,34 +80,98 @@ export function parseAge(value: string): number | null {
   if (!m) return null;
   const n = parseFloat(m[1]);
   switch (m[2].toLowerCase()) {
-    case "s": return n;
-    case "m": return n * 60;
-    case "h": return n * 3600;
-    case "d": return n * 86400;
-    default: return null;
+    case "s":
+      return n;
+    case "m":
+      return n * 60;
+    case "h":
+      return n * 3600;
+    case "d":
+      return n * 86400;
+    default:
+      return null;
   }
 }
 
 // ── Query parser ──────────────────────────────────────────────────────────────
 
-export function parseQuery(raw: string): QueryToken[] {
-  if (!raw.trim()) return [];
-
-  // Split on whitespace, respecting double-quoted strings.
-  // Standalone && / & tokens between conditions are explicit AND connectors
-  // and are skipped (AND is already the implicit default between tokens).
+/**
+ * Split a raw query on whitespace, respecting double-quoted regions.
+ * Quote characters are not included in parts (they only toggle splitting).
+ * Same semantics as the historical `parseQuery` lexer — QueryBar uses this
+ * for committed vs draft boundaries.
+ */
+export function splitRawQueryParts(raw: string): string[] {
   const parts: string[] = [];
   let current = "";
   let inQuote = false;
   for (const ch of raw) {
-    if (ch === '"') { inQuote = !inQuote; continue; }
+    if (ch === '"') {
+      inQuote = !inQuote;
+      continue;
+    }
     if (ch === " " && !inQuote) {
-      if (current) { parts.push(current); current = ""; }
+      if (current) {
+        parts.push(current);
+        current = "";
+      }
     } else {
       current += ch;
     }
   }
   if (current) parts.push(current);
+  return parts;
+}
+
+/**
+ * Split the query bar value into committed pill tokens and the trailing draft,
+ * matching {@link splitRawQueryParts} / {@link parseQuery} quote rules (quote
+ * chars delimit regions and are not stored inside token text).
+ *
+ * The draft is always a suffix substring of `value` so literal `"` typed by
+ * the user round-trips in the text input.
+ */
+export function parseQueryBarState(value: string): { committed: string[]; draft: string } {
+  if (!value.trim()) return { committed: [], draft: "" };
+
+  const parts: string[] = [];
+  let current = "";
+  let inQuote = false;
+  let committedEnd = 0;
+
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (ch === '"') {
+      inQuote = !inQuote;
+      continue;
+    }
+    if (ch === " " && !inQuote) {
+      if (current) {
+        parts.push(current);
+        current = "";
+      }
+      committedEnd = i + 1;
+      continue;
+    }
+    current += ch;
+  }
+
+  if (inQuote) {
+    return { committed: parts, draft: value.slice(committedEnd) };
+  }
+
+  if (value.endsWith(" ")) {
+    if (current) parts.push(current);
+    return { committed: parts, draft: "" };
+  }
+
+  return { committed: parts, draft: value.slice(committedEnd) };
+}
+
+export function parseQuery(raw: string): QueryToken[] {
+  if (!raw.trim()) return [];
+
+  const parts = splitRawQueryParts(raw);
 
   const tokens: QueryToken[] = [];
 
@@ -214,8 +293,7 @@ export interface StackFrameInfo {
  * Matches: `\tat com.example.app.Foo.bar(Foo.kt:42)`
  *            group1=full qualified class+method  group2=filename  group3=line
  */
-const STACK_FRAME_RE =
-  /^\s+at\s+([\w$.]+)\.([\w$<>]+)\(([\w$]+\.(?:kt|java)):(\d+)\)/;
+const STACK_FRAME_RE = /^\s+at\s+([\w$.]+)\.([\w$<>]+)\(([\w$]+\.(?:kt|java)):(\d+)\)/;
 
 /**
  * Parse a logcat stack frame line into its constituent parts.
@@ -245,7 +323,7 @@ const FRAMEWORK_PREFIXES = [
   "com.google.android.",
   "com.google.firebase.",
   "com.google.gson.",
-  "com.google.common.",   // Guava
+  "com.google.common.", // Guava
   "java.",
   "javax.",
   "kotlin.",
@@ -298,11 +376,7 @@ export function isSeparatorEntry(entry: LogcatEntry): boolean {
  * @param tokens   Parsed tokens (from `parseQuery`).
  * @param now      `Date.now()` — passed in so the caller controls time.
  */
-export function matchesQuery(
-  entry: LogcatEntry,
-  tokens: QueryToken[],
-  now: number
-): boolean {
+export function matchesQuery(entry: LogcatEntry, tokens: QueryToken[], now: number): boolean {
   if (tokens.length === 0) return true;
 
   // Separator entries bypass all filters except age.
@@ -310,7 +384,10 @@ export function matchesQuery(
     const ageToken = tokens.find((t) => t.type === "age");
     if (!ageToken) return true;
     const entryTime = parseLogcatTimestamp(entry.timestamp);
-    return entryTime === 0 || now - entryTime <= (ageToken as { type: "age"; seconds: number }).seconds * 1000;
+    return (
+      entryTime === 0 ||
+      now - entryTime <= (ageToken as { type: "age"; seconds: number }).seconds * 1000
+    );
   }
 
   for (const token of tokens) {
@@ -340,8 +417,7 @@ function matchToken(entry: LogcatEntry, token: QueryToken, now: number): boolean
       return token.negate ? !matches : matches;
     }
     case "package": {
-      const resolvedValue =
-        token.value === "mine" ? (_minePackage ?? "mine") : token.value;
+      const resolvedValue = token.value === "mine" ? (_minePackage ?? "mine") : token.value;
       const haystack = (entry.package ?? entry.tag).toLowerCase();
       const matches = haystack.includes(resolvedValue.toLowerCase());
       return token.negate ? !matches : matches;
@@ -403,14 +479,20 @@ function safeRegexTest(pattern: string, target: string): boolean {
 
 /** Replace or insert an `age:` token in a raw query string. */
 export function setAgeInQuery(query: string, age: string | null): string {
-  const withoutAge = query.replace(/\bage:\S+/g, "").replace(/\s+/g, " ").trim();
+  const withoutAge = query
+    .replace(/\bage:\S+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!age) return withoutAge;
   return withoutAge ? `${withoutAge} age:${age}` : `age:${age}`;
 }
 
 /** Replace or insert a `package:` token in a raw query string. */
 export function setPackageInQuery(query: string, pkg: string | null): string {
-  const withoutPkg = query.replace(/\bpackage:\S+/g, "").replace(/\s+/g, " ").trim();
+  const withoutPkg = query
+    .replace(/\bpackage:\S+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
   if (!pkg) return withoutPkg;
   return withoutPkg ? `${withoutPkg} package:${pkg}` : `package:${pkg}`;
 }
@@ -470,22 +552,37 @@ export function getFrontendOnlyTokens(tokens: QueryToken[]): QueryToken[] {
     // For backend-handleable tokens: first occurrence goes to backend, rest → frontend
     switch (token.type) {
       case "level":
-        if (!levelConsumed) { levelConsumed = true; return false; }
+        if (!levelConsumed) {
+          levelConsumed = true;
+          return false;
+        }
         return true;
       case "tag":
-        if (!tagConsumed) { tagConsumed = true; return false; }
+        if (!tagConsumed) {
+          tagConsumed = true;
+          return false;
+        }
         return true;
       case "message":
-        if (!textConsumed) { textConsumed = true; return false; }
+        if (!textConsumed) {
+          textConsumed = true;
+          return false;
+        }
         return true;
       case "package":
-        if (!packageConsumed) { packageConsumed = true; return false; }
+        if (!packageConsumed) {
+          packageConsumed = true;
+          return false;
+        }
         return true;
       case "is":
         // is:crash → onlyCrashes flag (boolean, no overflow); handled above for stacktrace
         return false;
       case "freetext":
-        if (!textConsumed) { textConsumed = true; return false; }
+        if (!textConsumed) {
+          textConsumed = true;
+          return false;
+        }
         return true;
       default:
         return false;
@@ -505,8 +602,8 @@ export function getActiveTokenContext(query: string): {
     return { key: null, partial: "", offset: query.length };
   }
 
-  const lastSpace = query.lastIndexOf(" ");
-  const lastToken = query.slice(lastSpace + 1);
+  const parts = splitRawQueryParts(query);
+  const lastToken = parts.length > 0 ? parts[parts.length - 1] : "";
 
   // Skip the token if it is a bare AND connector (e.g. user typed "&&" without
   // trailing space — show full suggestions rather than filtering by "&&").
@@ -514,10 +611,14 @@ export function getActiveTokenContext(query: string): {
     return { key: null, partial: "", offset: query.length };
   }
 
+  let offset = 0;
+  for (let i = 0; i < parts.length - 1; i++) {
+    offset += parts[i].length + 1;
+  }
+
   const negated = lastToken.startsWith("-");
   const token = negated ? lastToken.slice(1) : lastToken;
   const colonIdx = token.indexOf(":");
-  const offset = lastSpace + 1;
 
   if (colonIdx > 0) {
     return {
@@ -529,6 +630,268 @@ export function getActiveTokenContext(query: string): {
   return { key: null, partial: token, offset };
 }
 
+/** Prefix for message / msg / message~ keys (optional leading `-`). */
+const MESSAGE_DRAFT_PREFIX = /^(-?)((?:message~)|(?:message)|(?:msg)):/;
+
+/**
+ * Append a closing `"` when the draft is a message filter with an odd number
+ * of `"` in the value (after `:`), so the lexer never sees an unterminated quote.
+ */
+export function balanceMessageDraftQuotes(draft: string): string {
+  if (!MESSAGE_DRAFT_PREFIX.test(draft)) return draft;
+  const colon = draft.indexOf(":");
+  const tail = draft.slice(colon + 1);
+  let q = 0;
+  for (const ch of tail) if (ch === '"') q++;
+  if (q % 2 === 1) return `${draft}"`;
+  return draft;
+}
+
+// ── Query bar (pill UI) — pure helpers tested without the Solid component ─────
+
+/** Draft before `:` matches `message:` / `msg:` / `message~:` (optional `-`). */
+const MESSAGE_KEY_SPACE_PREFIX = /^(-?)(message~|message|msg):([^"\s]*)$/;
+
+/**
+ * When the user presses Space inside an unquoted message-key value, insert an
+ * opening `"` so the space stays inside one filter token (see QueryBar).
+ */
+export function applyMessageKeySpaceAutoQuote(
+  draft: string,
+  cursor: number
+): { draft: string; cursor: number } | null {
+  const before = draft.slice(0, cursor);
+  const after = draft.slice(cursor);
+  if (!MESSAGE_KEY_SPACE_PREFIX.test(before)) return null;
+  const colon = before.indexOf(":");
+  const head = before.slice(0, colon + 1);
+  const val = before.slice(colon + 1);
+  const newBefore = `${head}"${val} `;
+  return { draft: newBefore + after, cursor: newBefore.length };
+}
+
+const MESSAGE_KEY_PREFIX_ONLY = /^(-?)(message~|message|msg):$/;
+
+/**
+ * Paste multi-word text right after `message:` / `msg:` / `message~:` by
+ * wrapping in quotes. Returns null to keep default paste behavior.
+ */
+export function pasteIntoMessageKeyDraft(
+  draft: string,
+  selStart: number,
+  selEnd: number,
+  clip: string
+): { newDraft: string; cursor: number } | null {
+  if (!clip.includes(" ")) return null;
+  const prefix = draft.slice(0, selStart);
+  if (!MESSAGE_KEY_PREFIX_ONLY.test(prefix)) return null;
+  const wrapped = `"${clip.replace(/"/g, "")}"`;
+  const suffix = draft.slice(selEnd);
+  const newDraft = `${prefix}${wrapped}${suffix}`;
+  return { newDraft, cursor: prefix.length + wrapped.length };
+}
+
+/**
+ * OR-group layout of committed parts (`|` starts a new group; `&&` / `&` skipped).
+ */
+export function buildQueryBarPillGroups(committed: string[]): string[][] {
+  const groups: string[][] = [[]];
+  for (const part of committed) {
+    if (part === "|") {
+      groups.push([]);
+    } else if (part !== "&&" && part !== "&") {
+      groups[groups.length - 1].push(part);
+    }
+  }
+  return groups;
+}
+
+/** True when the last structural committed part is `|` (draft starts a new OR group). */
+export function committedEndsWithOrSeparator(committed: string[]): boolean {
+  if (committed.length === 0) return false;
+  const last = [...committed].reverse().find((p) => p !== "&&" && p !== "&");
+  return last === "|";
+}
+
+/** Flatten non-empty pill groups back to the committed `string[]` wire format. */
+export function flattenPillGroupsToCommitted(
+  filledGroups: string[][],
+  draftInNewGroup: boolean
+): string[] {
+  const newParts: string[] = [];
+  filledGroups.forEach((g, i) => {
+    if (i > 0) newParts.push("|");
+    newParts.push(...g);
+  });
+  if (draftInNewGroup && filledGroups.length > 0) newParts.push("|");
+  return newParts;
+}
+
+/**
+ * Remove one pill token and return the new flat `committed` array (no draft).
+ */
+export function rebuildCommittedAfterRemovingPill(
+  committed: string[],
+  groupIdx: number,
+  tokenIdx: number,
+  draftInNewGroup: boolean
+): string[] {
+  const groups = buildQueryBarPillGroups(committed).map((g) => [...g]);
+  groups[groupIdx].splice(tokenIdx, 1);
+  return flattenPillGroupsToCommitted(
+    groups.filter((g) => g.length > 0),
+    draftInNewGroup
+  );
+}
+
+/** Flat index (0..n) of the pill at `(groupIdx, tokenIdx)` in pill-only groups. */
+export function flatTokenIndexInPillGroups(
+  groups: string[][],
+  groupIdx: number,
+  tokenIdx: number
+): number {
+  let n = 0;
+  for (let g = 0; g < groupIdx; g++) n += groups[g].length;
+  return n + tokenIdx;
+}
+
+/** Insert one pill token at a flat index (preserves OR layout). */
+export function insertPillAtFlatIndex(
+  committed: string[],
+  flatIdx: number,
+  token: string,
+  draftInNewGroup: boolean
+): string[] {
+  const groups = buildQueryBarPillGroups(committed).map((g) => [...g]);
+  if (groups.length === 0 || (groups.length === 1 && groups[0].length === 0)) {
+    return flattenPillGroupsToCommitted([[token]], draftInNewGroup);
+  }
+  let k = flatIdx;
+  for (let gi = 0; gi < groups.length; gi++) {
+    // Use strict `<` so flatIdx equal to this group's length means "first pill
+    // of the next OR group", not "append inside this group".
+    if (k < groups[gi].length) {
+      groups[gi].splice(k, 0, token);
+      return flattenPillGroupsToCommitted(
+        groups.filter((g) => g.length > 0),
+        draftInNewGroup
+      );
+    }
+    k -= groups[gi].length;
+  }
+  const last = groups.length - 1;
+  groups[last].push(token);
+  return flattenPillGroupsToCommitted(
+    groups.filter((g) => g.length > 0),
+    draftInNewGroup
+  );
+}
+
+/**
+ * Insert one pill at `(groupIdx, tokenIdx)` in **pill-group coordinates**.
+ *
+ * Use with the committed array **after** the edited pill was removed: the
+ * edited token originally lived at `(groupIdx, tokenIdx)`, so re-insert with
+ * `groups[groupIdx].splice(tokenIdx, 0, token)`.
+ *
+ * If `groupIdx` is past the last group (e.g. the sole pill of a trailing OR
+ * branch was removed and the empty group was dropped), appends a new OR group
+ * containing `token`.
+ */
+export function insertPillAtGroupPosition(
+  committed: string[],
+  groupIdx: number,
+  tokenIdx: number,
+  token: string,
+  draftInNewGroup: boolean
+): string[] {
+  const groups = buildQueryBarPillGroups(committed).map((g) => [...g]);
+  const hasPill = groups.some((g) => g.length > 0);
+
+  if (!hasPill) {
+    return flattenPillGroupsToCommitted([[token]], draftInNewGroup);
+  }
+
+  if (groupIdx < groups.length) {
+    const row = groups[groupIdx]!;
+    const i = Math.min(Math.max(0, tokenIdx), row.length);
+    row.splice(i, 0, token);
+    return flattenPillGroupsToCommitted(
+      groups.filter((g) => g.length > 0),
+      draftInNewGroup
+    );
+  }
+
+  groups.push([token]);
+  return flattenPillGroupsToCommitted(
+    groups.filter((g) => g.length > 0),
+    draftInNewGroup
+  );
+}
+
+/**
+ * Compute the new committed array when an inline pill edit is confirmed.
+ *
+ * `committed` is the post-removal array (the edited pill was already spliced
+ * out before this call). Multi-token input (e.g. `"level:error tag:App"`)
+ * inserts each piece at consecutive positions rather than creating one broken
+ * pill. Empty / whitespace-only input returns `committed` unchanged (the pill
+ * stays deleted).
+ */
+export function applyInlineEditCommit(
+  committed: string[],
+  groupIdx: number,
+  tokenIdx: number,
+  editText: string,
+  draftInNewGroup: boolean
+): string[] {
+  const balanced = balanceMessageDraftQuotes(editText.trim());
+  if (!balanced) return committed;
+  const pieces = splitRawQueryParts(balanced);
+  if (pieces.length === 0) return committed;
+  let next = committed;
+  for (let i = 0; i < pieces.length; i++) {
+    next = insertPillAtGroupPosition(next, groupIdx, tokenIdx + i, pieces[i]!, draftInNewGroup);
+  }
+  return next;
+}
+
+const MESSAGE_TOKEN_FOR_EDIT = /^(-?)((?:message~)|(?:message)|(?:msg)):(.+)$/s;
+
+/**
+ * Serialize one committed query-bar segment for the raw query string.
+ * Values that contain spaces (would split across tokens) are wrapped in `"`.
+ * Structural parts `|`, `&&`, `&` are unchanged.
+ */
+export function serializeQueryBarCommittedPart(part: string): string {
+  if (part === "|" || part === "&&" || part === "&") return part;
+  if (splitRawQueryParts(part).length <= 1) return part;
+
+  const neg = part.startsWith("-");
+  const body = neg ? part.slice(1) : part;
+  const c = body.indexOf(":");
+  if (c < 0) {
+    const inner = (neg ? body : part).replace(/"/g, "");
+    return neg ? `-"${inner}"` : `"${inner}"`;
+  }
+  if (c <= 0 || c >= body.length - 1) return part;
+
+  const keyColon = body.slice(0, c + 1);
+  const value = body.slice(c + 1);
+  const inner = value.replace(/"/g, "");
+  return `${neg ? "-" : ""}${keyColon}"${inner}"`;
+}
+
+/**
+ * When a `message` / `msg` / `message~` pill is loaded into the draft for editing,
+ * wrap the value in `"` if it contains a space — otherwise `parseQueryBarState`
+ * would split it into multiple tokens.
+ */
+export function quoteMessageTokenForEditDraft(token: string): string {
+  if (!MESSAGE_TOKEN_FOR_EDIT.test(token)) return token;
+  return serializeQueryBarCommittedPart(token);
+}
+
 // ── OR-group support ──────────────────────────────────────────────────────────
 
 /**
@@ -537,23 +900,35 @@ export function getActiveTokenContext(query: string): {
  */
 export type FilterGroup = QueryToken[];
 
+// Split raw on outer | separators only — quote-aware so message:"A|B" is one segment.
+// Quotes are preserved in each segment so parseQuery can strip them via splitRawQueryParts.
+function splitOnOrSeparator(raw: string): string[] {
+  const segments: string[] = [];
+  let current = "";
+  let inQuote = false;
+  for (const ch of raw) {
+    if (ch === '"') {
+      inQuote = !inQuote;
+      current += ch;
+    } else if (ch === "|" && !inQuote) {
+      segments.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  segments.push(current);
+  return segments;
+}
+
 /**
  * Parse a query string that may contain `|`-separated OR groups.
- *
- * "level:error tag:App | is:crash"
- *   → [ [level:error, tag:App], [is:crash] ]
- *
- * A query with no `|` returns a single-element array containing the
- * existing `parseQuery()` result — fully backward-compatible.
- *
- * Empty groups produced by trailing/double pipes are filtered out so that
- * a query like `"level:error | "` continues to filter correctly rather than
- * treating the empty trailing group as an always-true match.
+ * Quote-aware: `|` inside `"..."` is not treated as a group boundary.
+ * Empty groups are filtered so a trailing `|` does not produce an always-true match.
  */
 export function parseFilterGroups(raw: string): FilterGroup[] {
   if (!raw.trim()) return [[]];
-  const groups = raw
-    .split(/\s*\|\s*/)
+  const groups = splitOnOrSeparator(raw)
     .map((segment) => parseQuery(segment.trim()))
     .filter((g) => g.length > 0);
   // Return a single empty group when everything was stripped (empty query edge case)
@@ -571,7 +946,7 @@ export function parseFilterGroups(raw: string): FilterGroup[] {
 export function matchesFilterGroups(
   entry: LogcatEntry,
   groups: FilterGroup[],
-  now: number,
+  now: number
 ): boolean {
   if (groups.length === 0) return true;
   if (groups.length === 1 && groups[0].length === 0) return true;
@@ -612,23 +987,53 @@ export function addAndConnector(query: string): string {
 }
 
 /**
+ * Find the index of the last `|` that appears outside double-quoted regions
+ * in `text`, scanning left from the end. Returns -1 if none found.
+ */
+function lastOuterPipeIndex(text: string): number {
+  let inQuote = false;
+  let lastPipe = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') inQuote = !inQuote;
+    else if (ch === "|" && !inQuote) lastPipe = i;
+  }
+  return lastPipe;
+}
+
+/**
+ * Find the index of the first `|` that appears outside double-quoted regions
+ * in `query` at or after `fromIdx`. Returns -1 if none found.
+ */
+function nextOuterPipeIndex(query: string, fromIdx: number): number {
+  let inQuote = false;
+  for (let i = 0; i < fromIdx; i++) {
+    if (query[i] === '"') inQuote = !inQuote;
+  }
+  for (let i = fromIdx; i < query.length; i++) {
+    const ch = query[i];
+    if (ch === '"') inQuote = !inQuote;
+    else if (ch === "|" && !inQuote) return i;
+  }
+  return -1;
+}
+
+/**
  * Return the segment of the query string that the cursor is currently inside
  * (i.e. the group the user is actively editing). Operates on text to the
  * left of `cursorPos` (defaults to full string).
+ * Quote-aware: `|` inside `"..."` is not treated as a group boundary.
  */
-export function getActiveGroupSegment(
-  query: string,
-  cursorPos?: number,
-): string {
+export function getActiveGroupSegment(query: string, cursorPos?: number): string {
   const pos = cursorPos ?? query.length;
   const text = query.slice(0, pos);
-  const lastPipeInText = text.lastIndexOf("|");
+  const lastPipeInText = lastOuterPipeIndex(text);
 
   // Start of the group the cursor is in
   const groupStart = lastPipeInText === -1 ? 0 : lastPipeInText + 1;
 
-  // End of the group: next pipe at or after cursor position, or end of string
-  const nextPipe = query.indexOf("|", pos);
+  // End of the group: next outer pipe at or after cursor position, or end of string
+  const nextPipe = nextOuterPipeIndex(query, pos);
   const groupEnd = nextPipe === -1 ? query.length : nextPipe;
 
   return query.slice(groupStart, groupEnd).trim();
@@ -637,13 +1042,11 @@ export function getActiveGroupSegment(
 /**
  * Compute the character offset within `query` where the active group begins
  * (the character right after the last `|` separator, or 0 if no `|`).
+ * Quote-aware: `|` inside `"..."` is not treated as a group boundary.
  */
-export function getActiveGroupOffset(
-  query: string,
-  cursorPos?: number,
-): number {
+export function getActiveGroupOffset(query: string, cursorPos?: number): number {
   const text = cursorPos !== undefined ? query.slice(0, cursorPos) : query;
-  const pipeIdx = text.lastIndexOf("|");
+  const pipeIdx = lastOuterPipeIndex(text);
   if (pipeIdx === -1) return 0;
   // Advance past any whitespace that follows the pipe
   let offset = pipeIdx + 1;

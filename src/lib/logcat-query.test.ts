@@ -16,10 +16,24 @@ import {
   setPackageInQuery,
   getPackageFromQuery,
   getActiveTokenContext,
+  parseQueryBarState,
+  balanceMessageDraftQuotes,
+  applyMessageKeySpaceAutoQuote,
+  pasteIntoMessageKeyDraft,
+  buildQueryBarPillGroups,
+  rebuildCommittedAfterRemovingPill,
+  flatTokenIndexInPillGroups,
+  insertPillAtFlatIndex,
+  insertPillAtGroupPosition,
+  committedEndsWithOrSeparator,
+  quoteMessageTokenForEditDraft,
+  serializeQueryBarCommittedPart,
+  splitRawQueryParts,
   setMinePackage,
   isStackTraceLine,
   parseStackFrame,
   isProjectFrame,
+  applyInlineEditCommit,
 } from "./logcat-query";
 import type { LogcatEntry } from "@/lib/tauri-api";
 
@@ -122,7 +136,12 @@ describe("parseQuery — tag tokens", () => {
 describe("parseQuery — message tokens", () => {
   it("parses message:crash", () => {
     const tokens = parseQuery("message:crash");
-    expect(tokens[0]).toMatchObject({ type: "message", value: "crash", negate: false, regex: false });
+    expect(tokens[0]).toMatchObject({
+      type: "message",
+      value: "crash",
+      negate: false,
+      regex: false,
+    });
   });
 
   it("parses msg: alias", () => {
@@ -277,7 +296,9 @@ describe("matchesQuery — message filter", () => {
 
   it("regex message matching", () => {
     const tokens = parseQuery("message~:Null.*Exception");
-    expect(matchesQuery(makeEntry({ message: "NullPointerException: ..." }), tokens, NOW)).toBe(true);
+    expect(matchesQuery(makeEntry({ message: "NullPointerException: ..." }), tokens, NOW)).toBe(
+      true
+    );
     expect(matchesQuery(makeEntry({ message: "Hello" }), tokens, NOW)).toBe(false);
   });
 });
@@ -379,8 +400,12 @@ describe("matchesQuery — is filter", () => {
 
   it("is:stacktrace matches stack trace lines", () => {
     const tokens = parseQuery("is:stacktrace");
-    expect(matchesQuery(makeEntry({ message: "  at com.example.Foo.bar(Foo.kt:42)" }), tokens, NOW)).toBe(true);
-    expect(matchesQuery(makeEntry({ message: "Caused by: java.lang.NullPointerException" }), tokens, NOW)).toBe(true);
+    expect(
+      matchesQuery(makeEntry({ message: "  at com.example.Foo.bar(Foo.kt:42)" }), tokens, NOW)
+    ).toBe(true);
+    expect(
+      matchesQuery(makeEntry({ message: "Caused by: java.lang.NullPointerException" }), tokens, NOW)
+    ).toBe(true);
     expect(matchesQuery(makeEntry({ message: "Hello world" }), tokens, NOW)).toBe(false);
   });
 });
@@ -505,6 +530,327 @@ describe("getActiveTokenContext", () => {
     const ctx = getActiveTokenContext("tag~:My");
     expect(ctx.key).toBe("tag");
   });
+
+  it("message value with spaces inside quotes is one token", () => {
+    const ctx = getActiveTokenContext('message:"hello world"');
+    expect(ctx.key).toBe("message");
+    expect(ctx.partial).toBe("hello world");
+    expect(ctx.offset).toBe(0);
+  });
+
+  it("message:socket login keeps login as separate tail token", () => {
+    const ctx = getActiveTokenContext("message:socket login");
+    expect(ctx.key).toBeNull();
+    expect(ctx.partial).toBe("login");
+  });
+
+  it("negated message with quoted spaces is one token", () => {
+    const ctx = getActiveTokenContext('-message:"foo bar"');
+    expect(ctx.key).toBe("message");
+    expect(ctx.partial).toBe("foo bar");
+    expect(ctx.offset).toBe(0);
+  });
+});
+
+// ── parseQueryBarState / splitRawQueryParts ────────────────────────────────────
+
+describe("splitRawQueryParts", () => {
+  it("splits on spaces outside quotes", () => {
+    expect(splitRawQueryParts("a b c")).toEqual(["a", "b", "c"]);
+  });
+
+  it("does not split inside quoted regions", () => {
+    expect(splitRawQueryParts('x "a b" y')).toEqual(["x", "a b", "y"]);
+  });
+});
+
+describe("parseQueryBarState", () => {
+  it("matches committed + draft split for multi-token query", () => {
+    expect(parseQueryBarState("level:error tag:App")).toEqual({
+      committed: ["level:error"],
+      draft: "tag:App",
+    });
+  });
+
+  it("unclosed quote keeps full suffix as draft", () => {
+    expect(parseQueryBarState('message:"hello')).toEqual({
+      committed: [],
+      draft: 'message:"hello',
+    });
+  });
+});
+
+describe("balanceMessageDraftQuotes", () => {
+  it("appends closing quote when odd count in value", () => {
+    expect(balanceMessageDraftQuotes('message:"hello')).toBe('message:"hello"');
+  });
+
+  it("leaves balanced drafts unchanged", () => {
+    expect(balanceMessageDraftQuotes('message:"hello"')).toBe('message:"hello"');
+  });
+
+  it("ignores non-message drafts", () => {
+    expect(balanceMessageDraftQuotes("tag:foo")).toBe("tag:foo");
+  });
+});
+
+// ── Query bar pure helpers (space / paste / pill rebuild) ───────────────────
+
+describe("applyMessageKeySpaceAutoQuote", () => {
+  it("inserts opening quote before first in-value space at end", () => {
+    const d = "message:hello";
+    expect(applyMessageKeySpaceAutoQuote(d, d.length)).toEqual({
+      draft: 'message:"hello ',
+      cursor: 15,
+    });
+  });
+
+  it("handles msg: alias", () => {
+    const d = "msg:foo";
+    expect(applyMessageKeySpaceAutoQuote(d, d.length)).toEqual({
+      draft: 'msg:"foo ',
+      cursor: 9,
+    });
+  });
+
+  it("handles message~: regex key", () => {
+    const d = "message~:a";
+    expect(applyMessageKeySpaceAutoQuote(d, d.length)).toEqual({
+      draft: 'message~:"a ',
+      cursor: 12,
+    });
+  });
+
+  it("handles negated message:", () => {
+    const d = "-message:bar";
+    expect(applyMessageKeySpaceAutoQuote(d, d.length)).toEqual({
+      draft: '-message:"bar ',
+      cursor: 14,
+    });
+  });
+
+  it("inserts space inside quoted value when cursor mid-string", () => {
+    const r = applyMessageKeySpaceAutoQuote('message:"hello', 15);
+    expect(r).toBeNull();
+  });
+
+  it("returns null when value already has a quote in the segment", () => {
+    expect(applyMessageKeySpaceAutoQuote('message:"hello ', 16)).toBeNull();
+  });
+
+  it("returns null for tag:", () => {
+    expect(applyMessageKeySpaceAutoQuote("tag:hello", 8)).toBeNull();
+  });
+
+  it("returns null when cursor before colon", () => {
+    expect(applyMessageKeySpaceAutoQuote("message:hello", 5)).toBeNull();
+  });
+});
+
+describe("pasteIntoMessageKeyDraft", () => {
+  it("wraps multi-word clip after message:", () => {
+    expect(pasteIntoMessageKeyDraft("message:", 8, 8, "a b c")).toEqual({
+      newDraft: 'message:"a b c"',
+      cursor: 15,
+    });
+  });
+
+  it("strips double quotes from pasted text", () => {
+    expect(pasteIntoMessageKeyDraft("msg:", 4, 4, 'say "hi" now')).toEqual({
+      newDraft: 'msg:"say hi now"',
+      cursor: 16,
+    });
+  });
+
+  it("replaces selection and positions cursor after insert", () => {
+    expect(pasteIntoMessageKeyDraft('message:"x"', 8, 11, "full line here")).toEqual({
+      newDraft: 'message:"full line here"',
+      cursor: 24,
+    });
+  });
+
+  it("returns null when clip has no spaces", () => {
+    expect(pasteIntoMessageKeyDraft("message:", 8, 8, "nospaces")).toBeNull();
+  });
+
+  it("returns null when prefix is not exactly the key and colon", () => {
+    expect(pasteIntoMessageKeyDraft("message:partial", 17, 17, "a b")).toBeNull();
+  });
+
+  it("supports message~:", () => {
+    const d = "message~:";
+    expect(pasteIntoMessageKeyDraft(d, d.length, d.length, "a b")).toEqual({
+      newDraft: 'message~:"a b"',
+      cursor: 14,
+    });
+  });
+});
+
+describe("buildQueryBarPillGroups", () => {
+  it("splits OR groups on |", () => {
+    expect(buildQueryBarPillGroups(["level:error", "|", "is:crash"])).toEqual([
+      ["level:error"],
+      ["is:crash"],
+    ]);
+  });
+
+  it("skips && and & in display groups", () => {
+    expect(buildQueryBarPillGroups(["level:error", "&&", "tag:App"])).toEqual([
+      ["level:error", "tag:App"],
+    ]);
+  });
+});
+
+describe("committedEndsWithOrSeparator", () => {
+  it("is true when last structural token is |", () => {
+    expect(committedEndsWithOrSeparator(["level:error", "|"])).toBe(true);
+  });
+
+  it("is false when last token is not |", () => {
+    expect(committedEndsWithOrSeparator(["level:error", "tag:App"])).toBe(false);
+  });
+});
+
+describe("serializeQueryBarCommittedPart", () => {
+  it("quotes message value with spaces", () => {
+    expect(serializeQueryBarCommittedPart("message:hello world")).toBe('message:"hello world"');
+  });
+
+  it("passes through structural tokens", () => {
+    expect(serializeQueryBarCommittedPart("|")).toBe("|");
+    expect(serializeQueryBarCommittedPart("&&")).toBe("&&");
+    expect(serializeQueryBarCommittedPart("&")).toBe("&");
+  });
+
+  it("leaves single-part tokens unchanged", () => {
+    expect(serializeQueryBarCommittedPart("level:error")).toBe("level:error");
+    expect(serializeQueryBarCommittedPart("tag:App")).toBe("tag:App");
+  });
+
+  it("quotes tag and package when value has spaces", () => {
+    expect(serializeQueryBarCommittedPart("tag:My App")).toBe('tag:"My App"');
+    expect(serializeQueryBarCommittedPart("package:my app id")).toBe('package:"my app id"');
+  });
+
+  it("quotes bare multi-word freetext", () => {
+    expect(serializeQueryBarCommittedPart("hello world")).toBe('"hello world"');
+  });
+
+  it("quotes negated bare multi-word", () => {
+    expect(serializeQueryBarCommittedPart("-noise here")).toBe('-"noise here"');
+  });
+});
+
+describe("quoteMessageTokenForEditDraft", () => {
+  it("wraps message value when it contains a space", () => {
+    expect(quoteMessageTokenForEditDraft("message:hello world")).toBe('message:"hello world"');
+  });
+
+  it("leaves single-word message tokens unchanged", () => {
+    expect(quoteMessageTokenForEditDraft("message:crash")).toBe("message:crash");
+  });
+
+  it("handles msg: and negation", () => {
+    expect(quoteMessageTokenForEditDraft("msg:a b")).toBe('msg:"a b"');
+    expect(quoteMessageTokenForEditDraft("-message:x y")).toBe('-message:"x y"');
+  });
+
+  it("ignores non-message tokens", () => {
+    expect(quoteMessageTokenForEditDraft("tag:hello world")).toBe("tag:hello world");
+  });
+});
+
+describe("rebuildCommittedAfterRemovingPill", () => {
+  it("removes a token from a single group", () => {
+    expect(rebuildCommittedAfterRemovingPill(["level:error", "tag:App"], 0, 1, false)).toEqual([
+      "level:error",
+    ]);
+  });
+
+  it("removes first token", () => {
+    expect(rebuildCommittedAfterRemovingPill(["level:error", "tag:App"], 0, 0, false)).toEqual([
+      "tag:App",
+    ]);
+  });
+
+  it("removes token from second OR group", () => {
+    expect(
+      rebuildCommittedAfterRemovingPill(["level:error", "|", "is:crash", "tag:X"], 1, 0, false)
+    ).toEqual(["level:error", "|", "tag:X"]);
+  });
+
+  it("drops empty OR group and keeps | between survivors", () => {
+    expect(rebuildCommittedAfterRemovingPill(["a", "|", "b"], 1, 0, false)).toEqual(["a"]);
+  });
+
+  it("appends trailing | when draftInNewGroup and pills remain", () => {
+    expect(rebuildCommittedAfterRemovingPill(["level:error", "tag:App"], 0, 0, true)).toEqual([
+      "tag:App",
+      "|",
+    ]);
+  });
+});
+
+describe("flatTokenIndexInPillGroups", () => {
+  it("counts tokens in prior groups", () => {
+    const g = [["a", "b"], ["c"]];
+    expect(flatTokenIndexInPillGroups(g, 0, 0)).toBe(0);
+    expect(flatTokenIndexInPillGroups(g, 0, 1)).toBe(1);
+    expect(flatTokenIndexInPillGroups(g, 1, 0)).toBe(2);
+  });
+});
+
+describe("insertPillAtFlatIndex", () => {
+  it("inserts at the start of the first group", () => {
+    expect(insertPillAtFlatIndex(["level:error", "&&", "tag:App"], 0, "is:crash", false)).toEqual([
+      "is:crash",
+      "level:error",
+      "tag:App",
+    ]);
+  });
+
+  it("inserts between two AND pills", () => {
+    expect(insertPillAtFlatIndex(["level:error", "&&", "tag:App"], 1, "is:crash", false)).toEqual([
+      "level:error",
+      "is:crash",
+      "tag:App",
+    ]);
+  });
+
+  it("inserts at the end of the last group", () => {
+    expect(insertPillAtFlatIndex(["level:error", "&&", "tag:App"], 2, "is:crash", false)).toEqual([
+      "level:error",
+      "tag:App",
+      "is:crash",
+    ]);
+  });
+
+  it("inserts at the start of the second OR group (not tail of first group)", () => {
+    expect(insertPillAtFlatIndex(["a", "|", "b"], 1, "c", false)).toEqual(["a", "|", "c", "b"]);
+  });
+
+  it("inserts into an empty committed list", () => {
+    expect(insertPillAtFlatIndex([], 0, "level:error", false)).toEqual(["level:error"]);
+  });
+});
+
+describe("insertPillAtGroupPosition", () => {
+  it("re-inserts at end of first OR branch without moving into the next branch", () => {
+    // Same shape as rebuildCommittedAfterRemovingPill after dropping the 3rd pill in branch 0:
+    const afterRemove = ["tag:A", "tag:B", "|", "tag:C"];
+    const next = insertPillAtGroupPosition(afterRemove, 0, 2, "tag:D", false);
+    expect(next).toEqual(["tag:A", "tag:B", "tag:D", "|", "tag:C"]);
+  });
+
+  it("re-opens a dropped trailing OR branch when groupIdx is past the end", () => {
+    const afterRemove = ["tag:A", "tag:B", "tag:C"];
+    const next = insertPillAtGroupPosition(afterRemove, 1, 0, "tag:D", false);
+    expect(next).toEqual(["tag:A", "tag:B", "tag:C", "|", "tag:D"]);
+  });
+
+  it("inserts into an empty query", () => {
+    expect(insertPillAtGroupPosition([], 0, 0, "level:error", false)).toEqual(["level:error"]);
+  });
 });
 
 // ── isStackTraceLine ──────────────────────────────────────────────────────────
@@ -537,7 +883,9 @@ describe("setPackageInQuery", () => {
   });
 
   it("replaces existing package token", () => {
-    expect(setPackageInQuery("level:error package:com.old", "com.new")).toBe("level:error package:com.new");
+    expect(setPackageInQuery("level:error package:com.old", "com.new")).toBe(
+      "level:error package:com.new"
+    );
   });
 
   it("removes package token when null is passed", () => {
@@ -1150,7 +1498,9 @@ describe("getFrontendOnlyTokens — mixed queries", () => {
     // message:socket → backend (no overflow)
     // message:IPPROTO_TCP → frontend (overflow)
     // -tag:system → frontend (negated)
-    const tokens = parseQuery("level:error tag:OkHttp message:socket message:IPPROTO_TCP -tag:system");
+    const tokens = parseQuery(
+      "level:error tag:OkHttp message:socket message:IPPROTO_TCP -tag:system"
+    );
     const fe = getFrontendOnlyTokens(tokens);
     expect(fe).toHaveLength(2);
     expect(fe[0]).toMatchObject({ type: "message", value: "IPPROTO_TCP" });
@@ -1364,5 +1714,230 @@ describe("isProjectFrame", () => {
 
   it("returns false for com.google.android. prefix", () => {
     expect(isProjectFrame("com.google.android.gms.common.GoogleApiAvailability")).toBe(false);
+  });
+});
+
+// ── Bug regression: getActiveTokenContext negated freetext partial ─────────────
+//
+// Before fix: `partial: lastToken` kept the `-` prefix, so typing `-err` produced
+// partial="-err" and suggestions like "error (level shorthand)" never appeared.
+// After fix: `partial: token` (de-negated), matching the same contract used for
+// the key-colon branch.
+
+describe("getActiveTokenContext — negated freetext partial is de-negated", () => {
+  it("strips leading - from partial when no colon is present", () => {
+    const ctx = getActiveTokenContext("-err");
+    expect(ctx.key).toBeNull();
+    expect(ctx.partial).toBe("err");
+  });
+
+  it("strips leading - so key prefix suggestions still appear", () => {
+    const ctx = getActiveTokenContext("-ta");
+    expect(ctx.key).toBeNull();
+    expect(ctx.partial).toBe("ta");
+  });
+
+  it("does not strip - from a plain non-negated freetext token", () => {
+    const ctx = getActiveTokenContext("err");
+    expect(ctx.key).toBeNull();
+    expect(ctx.partial).toBe("err");
+  });
+
+  it("does not affect negated key:value tokens (colon branch unchanged)", () => {
+    const ctx = getActiveTokenContext("-tag:App");
+    expect(ctx.key).toBe("tag");
+    expect(ctx.partial).toBe("App");
+  });
+
+  it("offset is still correct when negated freetext follows committed pills", () => {
+    const ctx = getActiveTokenContext("level:error -ta");
+    expect(ctx.key).toBeNull();
+    expect(ctx.partial).toBe("ta");
+    expect(ctx.offset).toBe(12);
+  });
+});
+
+// ── applyInlineEditCommit ─────────────────────────────────────────────────────
+//
+// Pure helper that computes the new committed array when an inline pill edit is
+// confirmed. Multi-token input produces multiple pills; empty input keeps the
+// post-removal committed unchanged (pill stays deleted).
+
+describe("applyInlineEditCommit — single token (existing round-trip)", () => {
+  it("re-inserts a simple token at its original position", () => {
+    expect(applyInlineEditCommit([], 0, 0, "level:error", false)).toEqual(["level:error"]);
+  });
+
+  it("re-inserts into a group that already has pills", () => {
+    const after = applyInlineEditCommit(["is:crash"], 0, 0, "level:error", false);
+    expect(after).toEqual(["level:error", "is:crash"]);
+  });
+
+  it("handles quoted message value with spaces as a single pill", () => {
+    const after = applyInlineEditCommit([], 0, 0, 'message:"hello world"', false);
+    expect(after).toEqual(["message:hello world"]);
+  });
+});
+
+describe("applyInlineEditCommit — multi-token input creates multiple pills", () => {
+  it("splits two space-separated tokens into two pills", () => {
+    const after = applyInlineEditCommit([], 0, 0, "level:error tag:App", false);
+    expect(after).toEqual(["level:error", "tag:App"]);
+  });
+
+  it("inserts multi-token before an existing trailing pill", () => {
+    const after = applyInlineEditCommit(["is:crash"], 0, 0, "level:error tag:App", false);
+    expect(after).toEqual(["level:error", "tag:App", "is:crash"]);
+  });
+
+  it("three tokens produce three pills in order", () => {
+    const after = applyInlineEditCommit([], 0, 0, "level:error tag:App is:crash", false);
+    expect(after).toEqual(["level:error", "tag:App", "is:crash"]);
+  });
+
+  it("inserts into a second OR group correctly", () => {
+    const after = applyInlineEditCommit(["level:error", "|"], 1, 0, "tag:A tag:B", false);
+    expect(after).toEqual(["level:error", "|", "tag:A", "tag:B"]);
+  });
+});
+
+describe("applyInlineEditCommit — empty / whitespace input deletes the pill", () => {
+  it("returns committed unchanged when edit text is empty", () => {
+    expect(applyInlineEditCommit(["is:crash"], 0, 0, "", false)).toEqual(["is:crash"]);
+  });
+
+  it("returns committed unchanged when edit text is whitespace only", () => {
+    expect(applyInlineEditCommit(["is:crash"], 0, 0, "   ", false)).toEqual(["is:crash"]);
+  });
+});
+
+describe("applyInlineEditCommit — unbalanced message quote is auto-closed", () => {
+  it("closes an odd-count quote in a message value before splitting", () => {
+    const after = applyInlineEditCommit([], 0, 0, 'message:"hello', false);
+    expect(after).toEqual(["message:hello"]);
+  });
+});
+
+// ── Bug regression: parseFilterGroups must be quote-aware ─────────────────
+//
+// `raw.split(/\s*\|\s*/)` splits on ANY `|` including those inside quoted
+// message values such as `message:"A|B"`. The fix uses a quote-aware split
+// that only breaks on `|` outside of double-quoted regions.
+
+describe("parseFilterGroups — pipe inside quoted message value is not an OR separator", () => {
+  it("treats | inside quoted value as literal, not an OR boundary", () => {
+    const groups = parseFilterGroups('message:"A|B"');
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toHaveLength(1);
+    expect(groups[0][0]).toMatchObject({ type: "message", value: "A|B" });
+  });
+
+  it("still splits on | outside quotes", () => {
+    const groups = parseFilterGroups('message:"A|B" | is:crash');
+    expect(groups).toHaveLength(2);
+    expect(groups[0][0]).toMatchObject({ type: "message", value: "A|B" });
+    expect(groups[1][0]).toMatchObject({ type: "is", value: "crash" });
+  });
+
+  it("correctly evaluates a multi-OR query with pipe-in-value filter", () => {
+    function makeE(o: Partial<LogcatEntry> = {}): LogcatEntry {
+      return {
+        id: 1n,
+        timestamp: "",
+        pid: 0,
+        tid: 0,
+        level: "debug",
+        tag: "T",
+        message: "no match",
+        isCrash: false,
+        package: null,
+        kind: "normal",
+        flags: 0,
+        category: "general",
+        crashGroupId: null,
+        jsonBody: null,
+        ...o,
+      };
+    }
+    const groups = parseFilterGroups('message:"A|B" | is:crash');
+    const now = Date.now();
+    expect(matchesFilterGroups(makeE({ message: "prefix A|B suffix" }), groups, now)).toBe(true);
+    expect(matchesFilterGroups(makeE({ isCrash: true }), groups, now)).toBe(true);
+    expect(matchesFilterGroups(makeE({ message: "no match" }), groups, now)).toBe(false);
+  });
+
+  it("handles multiple quoted pipes in the same segment", () => {
+    const groups = parseFilterGroups('message:"a|b|c"');
+    expect(groups).toHaveLength(1);
+    expect(groups[0][0]).toMatchObject({ type: "message", value: "a|b|c" });
+  });
+
+  it("handles quoted value with pipe followed by a real OR", () => {
+    const groups = parseFilterGroups('tag:X message:"p|q" | level:error');
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toHaveLength(2);
+    expect(groups[0][1]).toMatchObject({ type: "message", value: "p|q" });
+    expect(groups[1][0]).toMatchObject({ type: "level", value: "error" });
+  });
+});
+
+// ── Bug regression: getActiveGroupSegment must be quote-aware ────────────
+//
+// text.lastIndexOf("|") and query.indexOf("|") both match pipes inside
+// quoted values.  With `message:"A|B" | is:crash`, cursor at position 10
+// returns `message:"A` (wrong) instead of the full first group.
+
+describe("getActiveGroupSegment — pipe inside quoted value is not a group boundary", () => {
+  it("cursor inside quoted value treats quoted pipe as part of the group", () => {
+    const seg = getActiveGroupSegment('message:"A|B" | is:crash', 10);
+    expect(seg).toBe('message:"A|B"');
+  });
+
+  it("cursor after the real | correctly returns the second group", () => {
+    const seg = getActiveGroupSegment('message:"A|B" | is:crash', 22);
+    expect(seg).toBe("is:crash");
+  });
+
+  it("no quoted pipe: existing behaviour unchanged", () => {
+    expect(getActiveGroupSegment("level:error | is:crash", 5)).toBe("level:error");
+    expect(getActiveGroupSegment("level:error | is:crash", 18)).toBe("is:crash");
+  });
+});
+
+describe("getActiveGroupOffset — pipe inside quoted value is not a group boundary", () => {
+  it("cursor after quoted pipe returns 0 (group starts at string start)", () => {
+    // cursor=12 → text='message:"A|B' — lastIndexOf('|')=10 without fix → returns 11 (wrong)
+    const off = getActiveGroupOffset('message:"A|B" | is:crash', 12);
+    expect(off).toBe(0);
+  });
+
+  it("cursor after the real | returns correct offset past whitespace", () => {
+    const off = getActiveGroupOffset('message:"A|B" | is:crash', 22);
+    // 'message:"A|B" | ' is 16 chars; group 2 starts at 16
+    expect(off).toBe(16);
+  });
+});
+
+// ── Bug regression: handleAddAndConnector duplicate && guard ─────────────
+//
+// The component's handleAddAndConnector logic does not check whether the
+// committed array already ends with && before pushing another one.
+// Clicking +AND twice without typing produces ["A","&&","&&"].
+// The pure addAndConnector helper already has this guard; the component
+// should match it.
+
+describe("addAndConnector — idempotent: does not accumulate duplicate &&", () => {
+  it("returns unchanged string when it already ends with &&", () => {
+    expect(addAndConnector("level:error &&")).toBe("level:error &&");
+  });
+
+  it("returns unchanged string when it ends with &", () => {
+    expect(addAndConnector("level:error &")).toBe("level:error &");
+  });
+});
+
+describe("addOrGroup — idempotent: does not accumulate duplicate |", () => {
+  it("returns unchanged string when it already ends with |", () => {
+    expect(addOrGroup("level:error |")).toBe("level:error |");
   });
 });

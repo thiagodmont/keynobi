@@ -22,19 +22,23 @@
  *   Tab / Enter                — apply selected suggestion
  */
 
-import {
-  type JSX,
-  createSignal,
-  createMemo,
-  For,
-  Show,
-} from "solid-js";
+import { type JSX, createSignal, createMemo, For, Show } from "solid-js";
 import {
   QUERY_KEYS,
   LEVEL_NAMES,
   AGE_SUGGESTIONS,
   IS_SUGGESTIONS,
   getActiveTokenContext,
+  parseQueryBarState,
+  balanceMessageDraftQuotes,
+  buildQueryBarPillGroups,
+  applyMessageKeySpaceAutoQuote,
+  pasteIntoMessageKeyDraft,
+  rebuildCommittedAfterRemovingPill,
+  committedEndsWithOrSeparator,
+  serializeQueryBarCommittedPart,
+  insertPillAtGroupPosition,
+  applyInlineEditCommit,
 } from "@/lib/logcat-query";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -53,7 +57,11 @@ const MAX_SUGGESTIONS = 10;
 
 // ── Token styling ─────────────────────────────────────────────────────────────
 
-interface TokenStyle { color: string; bg: string; border: string }
+interface TokenStyle {
+  color: string;
+  bg: string;
+  border: string;
+}
 
 function getTokenStyle(tokenText: string): TokenStyle {
   const t = tokenText.startsWith("-") ? tokenText.slice(1) : tokenText;
@@ -99,48 +107,11 @@ function getTokenStyle(tokenText: string): TokenStyle {
 // ── Query parsing helpers (local to this component) ───────────────────────────
 
 /**
- * Split the full query into committed parts (everything except the last
- * partial word) and the draft (the word currently being typed).
- *
- * A query that ends in whitespace has an empty draft — all parts committed.
- * Uses a quote-aware tokeniser so that `tag:"hello world"` is treated as
- * a single pill rather than being split at the internal space.
+ * Split the full query into committed parts and the trailing draft.
+ * Uses {@link parseQueryBarState} from `logcat-query` (same lexer as `parseQuery`).
  */
 export function parseQueryState(value: string): { committed: string[]; draft: string } {
-  if (!value.trim()) return { committed: [], draft: "" };
-
-  // Quote-aware split: same logic as parseQuery but we keep track of
-  // whether the value ends with whitespace (outside quotes) to decide
-  // whether the last token is "committed" or still a draft.
-  const parts: string[] = [];
-  let current = "";
-  let inQuote = false;
-  for (const ch of value) {
-    if (ch === '"') {
-      inQuote = !inQuote;
-      current += ch;
-      continue;
-    }
-    if (ch === " " && !inQuote) {
-      if (current) { parts.push(current); current = ""; }
-    } else {
-      current += ch;
-    }
-  }
-
-  // If we're still inside a quote the last token is an incomplete quoted
-  // string — treat it as the draft.
-  if (current) {
-    // A trailing space (outside quotes) means all tokens are committed
-    if (!inQuote && value.endsWith(" ")) {
-      parts.push(current);
-      return { committed: parts, draft: "" };
-    }
-    // Otherwise the last token is the draft
-    return { committed: parts, draft: current };
-  }
-
-  return { committed: parts, draft: "" };
+  return parseQueryBarState(value);
 }
 
 /**
@@ -149,53 +120,76 @@ export function parseQueryState(value: string): { committed: string[]; draft: st
  * so on the next render all parts are recognised as committed (not draft).
  */
 export function buildQuery(committed: string[], draft: string): string {
-  const base = committed.join(" ");
+  const base = committed.map(serializeQueryBarCommittedPart).join(" ");
   if (!draft) return base ? `${base} ` : "";
   return base ? `${base} ${draft}` : draft;
 }
 
-/**
- * Parse committed parts into visual pill groups.
- * `|` → new OR group.   `&&` / `&` → skipped (visual connector only).
- */
-function buildPillGroups(committed: string[]): string[][] {
-  const groups: string[][] = [[]];
-  for (const part of committed) {
-    if (part === "|") {
-      groups.push([]);
-    } else if (part !== "&&" && part !== "&") {
-      groups[groups.length - 1].push(part);
-    }
-  }
-  return groups;
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
+
+interface InlineEditState {
+  /**
+   * Pill coordinates **before** the pill was removed for editing — same indices
+   * used to splice the token back into the post-removal `buildQueryBarPillGroups(committed())`.
+   */
+  groupIdx: number;
+  tokenIdx: number;
+  text: string;
+  originalToken: string;
+}
 
 export function QueryBar(props: QueryBarProps): JSX.Element {
   let draftRef!: HTMLInputElement;
+  let inlineEditRef!: HTMLInputElement;
   let containerRef!: HTMLDivElement;
 
   const [open, setOpen] = createSignal(false);
   const [selectedIdx, setSelectedIdx] = createSignal(0);
+  const [inlineEdit, setInlineEdit] = createSignal<InlineEditState | null>(null);
 
   // ── Parsed state ──────────────────────────────────────────────────────────
 
   const queryState = createMemo(() => parseQueryState(props.value));
   const committed = createMemo(() => queryState().committed);
   const draft = createMemo(() => queryState().draft);
-  const pillGroups = createMemo(() => buildPillGroups(committed()));
+  const pillGroups = createMemo(() => buildQueryBarPillGroups(committed()));
+
+  function totalPillCount(): number {
+    return pillGroups().reduce((n, gr) => n + gr.length, 0);
+  }
+
+  function inlineSlotStyle(): Record<string, string> {
+    return {
+      flex: "1",
+      "min-width": "120px",
+      "max-width": "420px",
+      background: "var(--bg-primary)",
+      border: "1px solid var(--accent)",
+      color: "var(--text-primary)",
+      "font-size": "11px",
+      "font-family": "var(--font-mono)",
+      "border-radius": "10px",
+      padding: "1px 6px",
+      outline: "none",
+    };
+  }
 
   /** True when the draft lives in a new OR group (last committed part is `|`). */
-  const draftInNewGroup = createMemo(() => {
-    const parts = committed();
-    if (parts.length === 0) return false;
-    const last = [...parts].reverse().find((p) => p !== "&&" && p !== "&");
-    return last === "|";
-  });
+  const draftInNewGroup = createMemo(() => committedEndsWithOrSeparator(committed()));
 
   const hasAnyPills = createMemo(() => pillGroups().some((g) => g.length > 0));
   const isActive = createMemo(() => props.value.trim() !== "");
+
+  /**
+   * Editing the sole pill of a trailing OR branch drops that empty group from
+   * `pillGroups()`, so `inlineEdit.groupIdx` is no longer a valid index — render
+   * the inline field after the surviving groups (with an OR badge).
+   */
+  const inlineEditOrphanAfterOrBranch = createMemo(() => {
+    const st = inlineEdit();
+    if (!st) return false;
+    return st.groupIdx >= pillGroups().length;
+  });
 
   // ── Suggestions (based on the draft being typed) ──────────────────────────
 
@@ -206,15 +200,30 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
       const partial = ctx.partial.toLowerCase();
       switch (ctx.key.toLowerCase()) {
         case "level":
-          return LEVEL_NAMES.filter((l) => l.startsWith(partial)).map((l) => ({ display: l, insert: l }));
+          return LEVEL_NAMES.filter((l) => l.startsWith(partial)).map((l) => ({
+            display: l,
+            insert: l,
+          }));
         case "tag":
-          return props.knownTags.filter((t) => t.toLowerCase().includes(partial)).slice(0, MAX_SUGGESTIONS).map((t) => ({ display: t, insert: t }));
+          return props.knownTags
+            .filter((t) => t.toLowerCase().includes(partial))
+            .slice(0, MAX_SUGGESTIONS)
+            .map((t) => ({ display: t, insert: t }));
         case "package":
-          return ["mine", ...props.knownPackages].filter((p) => p.toLowerCase().includes(partial)).slice(0, MAX_SUGGESTIONS).map((p) => ({ display: p, insert: p }));
+          return ["mine", ...props.knownPackages]
+            .filter((p) => p.toLowerCase().includes(partial))
+            .slice(0, MAX_SUGGESTIONS)
+            .map((p) => ({ display: p, insert: p }));
         case "is":
-          return IS_SUGGESTIONS.filter((s) => s.startsWith(partial)).map((s) => ({ display: s, insert: s }));
+          return IS_SUGGESTIONS.filter((s) => s.startsWith(partial)).map((s) => ({
+            display: s,
+            insert: s,
+          }));
         case "age":
-          return AGE_SUGGESTIONS.filter((a) => a.startsWith(partial)).map((a) => ({ display: a, insert: a }));
+          return AGE_SUGGESTIONS.filter((a) => a.startsWith(partial)).map((a) => ({
+            display: a,
+            insert: a,
+          }));
         default:
           return [];
       }
@@ -223,8 +232,13 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
     const partial = ctx.partial.toLowerCase();
     if (!partial) return QUERY_KEYS.map((k) => ({ display: k, insert: k }));
 
-    const keySuggestions = QUERY_KEYS.filter((k) => k.toLowerCase().startsWith(partial)).map((k) => ({ display: k, insert: k }));
-    const levelSuggestions = LEVEL_NAMES.filter((l) => l.startsWith(partial)).map((l) => ({ display: `${l} (level shorthand)`, insert: l }));
+    const keySuggestions = QUERY_KEYS.filter((k) => k.toLowerCase().startsWith(partial)).map(
+      (k) => ({ display: k, insert: k })
+    );
+    const levelSuggestions = LEVEL_NAMES.filter((l) => l.startsWith(partial)).map((l) => ({
+      display: `${l} (level shorthand)`,
+      insert: l,
+    }));
     return [...keySuggestions, ...levelSuggestions].slice(0, MAX_SUGGESTIONS);
   });
 
@@ -243,9 +257,10 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
       // `tag~:` where the key is reported as "tag" (length 3) but the prefix
       // in the draft string is "tag~:" (5 chars including ~ and :).
       const colonPos = draft().indexOf(":", ctx.offset);
-      const keyPart = colonPos >= 0
-        ? draft().slice(ctx.offset, colonPos + 1)
-        : draft().slice(ctx.offset, ctx.offset + ctx.key.length + 1); // fallback
+      const keyPart =
+        colonPos >= 0
+          ? draft().slice(ctx.offset, colonPos + 1)
+          : draft().slice(ctx.offset, ctx.offset + ctx.key.length + 1); // fallback
       newDraft = `${draftBefore}${keyPart}${insert} `;
     } else {
       // When there is no key context the entire draft token is being replaced.
@@ -271,18 +286,62 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
     setOpen(true);
   }
 
+  function handleDraftPaste(e: ClipboardEvent) {
+    const clip = e.clipboardData?.getData("text/plain") ?? "";
+    const input = e.currentTarget as HTMLInputElement;
+    const d = draft();
+    const selStart = input.selectionStart ?? d.length;
+    const selEnd = input.selectionEnd ?? d.length;
+    const merged = pasteIntoMessageKeyDraft(d, selStart, selEnd, clip);
+    if (!merged) return;
+    e.preventDefault();
+    props.onChange(buildQuery(committed(), merged.newDraft));
+    setSelectedIdx(0);
+    setOpen(true);
+    queueMicrotask(() => {
+      input.setSelectionRange(merged.cursor, merged.cursor);
+    });
+  }
+
   function handleKeyDown(e: KeyboardEvent) {
+    const input = e.currentTarget as HTMLInputElement;
+
+    if (e.key === " " || e.code === "Space") {
+      const d = draft();
+      const cursor = input.selectionStart ?? d.length;
+      const applied = applyMessageKeySpaceAutoQuote(d, cursor);
+      if (applied) {
+        e.preventDefault();
+        props.onChange(buildQuery(committed(), applied.draft));
+        setSelectedIdx(0);
+        setOpen(true);
+        queueMicrotask(() => input.setSelectionRange(applied.cursor, applied.cursor));
+        return;
+      }
+    }
+
     // Backspace on empty draft → remove the last committed pill
     if (e.key === "Backspace" && draft() === "") {
       e.preventDefault();
+      if (inlineEdit()) commitInlineEdit();
       const parts = [...committed()];
       // Strip trailing separators
-      while (parts.length > 0 && (parts[parts.length - 1] === "|" || parts[parts.length - 1] === "&&" || parts[parts.length - 1] === "&")) {
+      while (
+        parts.length > 0 &&
+        (parts[parts.length - 1] === "|" ||
+          parts[parts.length - 1] === "&&" ||
+          parts[parts.length - 1] === "&")
+      ) {
         parts.pop();
       }
       if (parts.length > 0) parts.pop();
       // Strip newly-trailing separators
-      while (parts.length > 0 && (parts[parts.length - 1] === "|" || parts[parts.length - 1] === "&&" || parts[parts.length - 1] === "&")) {
+      while (
+        parts.length > 0 &&
+        (parts[parts.length - 1] === "|" ||
+          parts[parts.length - 1] === "&&" ||
+          parts[parts.length - 1] === "&")
+      ) {
         parts.pop();
       }
       props.onChange(buildQuery(parts, ""));
@@ -292,67 +351,155 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
     const suggs = suggestions();
 
     if (e.key === "Escape") {
-      if (open()) { e.preventDefault(); setOpen(false); }
-      else if (props.value) { e.preventDefault(); props.onChange(""); }
+      if (inlineEdit()) {
+        e.preventDefault();
+        cancelInlineEdit();
+        return;
+      }
+      if (open()) {
+        e.preventDefault();
+        setOpen(false);
+      } else if (props.value) {
+        e.preventDefault();
+        props.onChange("");
+      }
       return;
     }
 
     if (!open() || suggs.length === 0) {
       if (e.key === "ArrowDown" && suggs.length > 0) {
-        e.preventDefault(); setOpen(true); setSelectedIdx(0);
+        e.preventDefault();
+        setOpen(true);
+        setSelectedIdx(0);
       }
       return;
     }
 
-    if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIdx((i) => Math.min(i + 1, suggs.length - 1)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIdx((i) => Math.max(i - 1, 0)); }
-    else if (e.key === "Tab" || e.key === "Enter") {
-      if (suggs[selectedIdx()]) { e.preventDefault(); applySelection(suggs[selectedIdx()].insert); }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIdx((i) => Math.min(i + 1, suggs.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIdx((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Tab" || e.key === "Enter") {
+      if (suggs[selectedIdx()]) {
+        e.preventDefault();
+        applySelection(suggs[selectedIdx()].insert);
+      }
     }
   }
 
   function handleBlur() {
+    const balanced = balanceMessageDraftQuotes(draft());
+    if (balanced !== draft()) props.onChange(buildQuery(committed(), balanced));
     setTimeout(() => {
       if (!containerRef?.contains(document.activeElement)) setOpen(false);
     }, 150);
   }
 
+  function commitInlineEdit() {
+    const st = inlineEdit();
+    if (!st) return;
+    const curCommitted = committed();
+    const dig = draftInNewGroup();
+    setInlineEdit(null);
+    const next = applyInlineEditCommit(curCommitted, st.groupIdx, st.tokenIdx, st.text, dig);
+    props.onChange(buildQuery(next, ""));
+  }
+
+  function cancelInlineEdit() {
+    const st = inlineEdit();
+    if (!st) return;
+    const curCommitted = committed();
+    const dig = draftInNewGroup();
+    setInlineEdit(null);
+    const next = insertPillAtGroupPosition(
+      curCommitted,
+      st.groupIdx,
+      st.tokenIdx,
+      st.originalToken,
+      dig
+    );
+    props.onChange(buildQuery(next, ""));
+  }
+
+  function handleInlineInput(e: InputEvent) {
+    setInlineEdit((s) => (s ? { ...s, text: (e.currentTarget as HTMLInputElement).value } : null));
+  }
+
+  function handleInlineKeyDown(e: KeyboardEvent) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitInlineEdit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      cancelInlineEdit();
+    }
+  }
+
+  function handleInlineBlur() {
+    queueMicrotask(() => {
+      if (inlineEdit()) commitInlineEdit();
+    });
+  }
+
   // ── Pill removal ──────────────────────────────────────────────────────────
 
   function removeToken(groupIdx: number, tokenIdx: number) {
-    const groups = pillGroups().map((g) => [...g]);
-    groups[groupIdx].splice(tokenIdx, 1);
-
-    // Rebuild committed parts from modified groups, removing empty groups
-    const filledGroups = groups.filter((g) => g.length > 0);
-    const newParts: string[] = [];
-    filledGroups.forEach((g, i) => {
-      if (i > 0) newParts.push("|");
-      newParts.push(...g);
-    });
-    // Preserve the trailing `|` if draft was in a new group
-    if (draftInNewGroup() && filledGroups.length > 0) newParts.push("|");
-
+    if (inlineEdit()) commitInlineEdit();
+    const newParts = rebuildCommittedAfterRemovingPill(
+      committed(),
+      groupIdx,
+      tokenIdx,
+      draftInNewGroup()
+    );
     props.onChange(buildQuery(newParts, draft()));
+  }
+
+  function editToken(groupIdx: number, tokenIdx: number, tokenText: string) {
+    if (inlineEdit()) commitInlineEdit();
+    const newParts = rebuildCommittedAfterRemovingPill(
+      committed(),
+      groupIdx,
+      tokenIdx,
+      draftInNewGroup()
+    );
+    props.onChange(buildQuery(newParts, ""));
+    setInlineEdit({
+      groupIdx,
+      tokenIdx,
+      text: serializeQueryBarCommittedPart(tokenText),
+      originalToken: tokenText,
+    });
+    // After the same pointer gesture, the container's onClick focuses the draft;
+    // defer so the inline field wins focus after that click phase completes.
+    setTimeout(() => inlineEditRef?.focus(), 0);
   }
 
   // ── AND / OR connector buttons ────────────────────────────────────────────
 
   function handleAddAndConnector() {
-    const d = draft().trim();
+    if (inlineEdit()) commitInlineEdit();
+    const d = balanceMessageDraftQuotes(draft().trim());
     const parts = [...committed()];
     if (d) parts.push(d);
     while (parts.length > 0 && parts[parts.length - 1] === "|") parts.pop();
-    if (parts.length > 0) parts.push("&&");
+    const last = parts[parts.length - 1];
+    if (parts.length > 0 && last !== "&&" && last !== "&") parts.push("&&");
     props.onChange(buildQuery(parts, ""));
     queueMicrotask(() => draftRef?.focus());
   }
 
   function handleAddOrGroup() {
-    const d = draft().trim();
+    if (inlineEdit()) commitInlineEdit();
+    const d = balanceMessageDraftQuotes(draft().trim());
     const parts = [...committed()];
     if (d) parts.push(d);
-    while (parts.length > 0 && (parts[parts.length - 1] === "&&" || parts[parts.length - 1] === "&")) parts.pop();
+    while (
+      parts.length > 0 &&
+      (parts[parts.length - 1] === "&&" || parts[parts.length - 1] === "&")
+    )
+      parts.pop();
     if (parts.length > 0 || d) parts.push("|");
     props.onChange(buildQuery(parts, ""));
     queueMicrotask(() => draftRef?.focus());
@@ -361,10 +508,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div
-      ref={containerRef}
-      style={{ position: "relative", flex: "1", "min-width": "280px" }}
-    >
+    <div ref={containerRef} style={{ position: "relative", flex: "1", "min-width": "280px" }}>
       {/* ── Pill + draft input container ─────────────────────────────────── */}
       {/*                                                                      */}
       {/* Single flex-wrap container. Everything is an inline flex item:       */}
@@ -391,11 +535,16 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
         }}
       >
         {/* Search icon — inline flex item, always at start of first row */}
-        <span style={{
-          "flex-shrink": "0",
-          color: "var(--text-muted)", "font-size": "11px",
-          "pointer-events": "none", opacity: "0.6", "line-height": "1",
-        }}>
+        <span
+          style={{
+            "flex-shrink": "0",
+            color: "var(--text-muted)",
+            "font-size": "11px",
+            "pointer-events": "none",
+            opacity: "0.6",
+            "line-height": "1",
+          }}
+        >
           ⌕
         </span>
 
@@ -406,14 +555,20 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
               <>
                 {/* OR badge between groups */}
                 <Show when={gi() > 0}>
-                  <span style={{
-                    "font-size": "9px", "font-weight": "700", "letter-spacing": "0.05em",
-                    color: "var(--accent)",
-                    background: "rgba(var(--accent-rgb,59,130,246),0.13)",
-                    border: "1px solid rgba(var(--accent-rgb,59,130,246),0.35)",
-                    "border-radius": "10px", padding: "1px 5px",
-                    "flex-shrink": "0", "user-select": "none",
-                  }}>
+                  <span
+                    style={{
+                      "font-size": "9px",
+                      "font-weight": "700",
+                      "letter-spacing": "0.05em",
+                      color: "var(--accent)",
+                      background: "rgba(var(--accent-rgb,59,130,246),0.13)",
+                      border: "1px solid rgba(var(--accent-rgb,59,130,246),0.35)",
+                      "border-radius": "10px",
+                      padding: "1px 5px",
+                      "flex-shrink": "0",
+                      "user-select": "none",
+                    }}
+                  >
                     OR
                   </span>
                 </Show>
@@ -425,43 +580,99 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                     const negated = token.startsWith("-");
                     return (
                       <>
+                        <Show
+                          when={inlineEdit()?.groupIdx === gi() && inlineEdit()?.tokenIdx === ti()}
+                        >
+                          <input
+                            ref={inlineEditRef}
+                            type="text"
+                            spellcheck={false}
+                            value={inlineEdit()?.text ?? ""}
+                            onInput={handleInlineInput}
+                            onKeyDown={handleInlineKeyDown}
+                            onBlur={handleInlineBlur}
+                            onClick={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            placeholder="Edit filter…"
+                            style={{ ...inlineSlotStyle(), "flex-shrink": "1" }}
+                          />
+                        </Show>
                         {/* AND badge between pills in the same group */}
                         <Show when={ti() > 0}>
-                          <span style={{
-                            "font-size": "9px", "font-weight": "600", "letter-spacing": "0.04em",
-                            color: "var(--text-muted)",
-                            border: "1px dashed var(--border)",
-                            "border-radius": "10px", padding: "1px 5px",
-                            "flex-shrink": "0", "user-select": "none",
-                          }}>
+                          <span
+                            style={{
+                              "font-size": "9px",
+                              "font-weight": "600",
+                              "letter-spacing": "0.04em",
+                              color: "var(--text-muted)",
+                              border: "1px dashed var(--border)",
+                              "border-radius": "10px",
+                              padding: "1px 5px",
+                              "flex-shrink": "0",
+                              "user-select": "none",
+                            }}
+                          >
                             AND
                           </span>
                         </Show>
 
-                        {/* Token pill */}
-                        <span style={{
-                          display: "inline-flex", "align-items": "center", gap: "2px",
-                          "font-size": "10px", "font-family": "var(--font-mono)",
-                          color: s.color, background: s.bg,
-                          border: `1px solid ${s.border}`,
-                          "border-radius": "10px",
-                          padding: "1px 4px 1px 6px",
-                          "flex-shrink": "0", "white-space": "nowrap",
-                          opacity: negated ? "0.65" : "1",
-                        }}>
-                          {token}
+                        {/* Token pill — stop click bubbling so the container does not
+                            focus the draft on the same gesture (would skip focusing
+                            the inline editor and leave the pill removed). */}
+                        <span
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            display: "inline-flex",
+                            "align-items": "center",
+                            gap: "2px",
+                            "font-size": "10px",
+                            "font-family": "var(--font-mono)",
+                            color: s.color,
+                            background: s.bg,
+                            border: `1px solid ${s.border}`,
+                            "border-radius": "10px",
+                            padding: "1px 4px 1px 6px",
+                            "flex-shrink": "0",
+                            "white-space": "nowrap",
+                            opacity: negated ? "0.65" : "1",
+                          }}
+                        >
+                          <span
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              editToken(gi(), ti(), token);
+                            }}
+                            title="Edit filter"
+                            style={{ cursor: "text", "user-select": "none" }}
+                          >
+                            {token}
+                          </span>
                           <button
-                            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); removeToken(gi(), ti()); }}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              removeToken(gi(), ti());
+                            }}
                             title="Remove filter"
                             style={{
-                              background: "none", border: "none",
-                              color: s.color, cursor: "pointer",
-                              padding: "0 1px", "font-size": "9px",
-                              "line-height": "1", opacity: "0.55",
-                              display: "flex", "align-items": "center",
+                              background: "none",
+                              border: "none",
+                              color: s.color,
+                              cursor: "pointer",
+                              padding: "0 1px",
+                              "font-size": "9px",
+                              "line-height": "1",
+                              opacity: "0.55",
+                              display: "flex",
+                              "align-items": "center",
                             }}
-                            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-                            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.55"; }}
+                            onMouseEnter={(e) => {
+                              (e.currentTarget as HTMLElement).style.opacity = "1";
+                            }}
+                            onMouseLeave={(e) => {
+                              (e.currentTarget as HTMLElement).style.opacity = "0.55";
+                            }}
                           >
                             ✕
                           </button>
@@ -470,21 +681,97 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                     );
                   }}
                 </For>
+                <Show
+                  when={inlineEdit()?.groupIdx === gi() && inlineEdit()?.tokenIdx === group.length}
+                >
+                  <input
+                    ref={inlineEditRef}
+                    type="text"
+                    spellcheck={false}
+                    value={inlineEdit()?.text ?? ""}
+                    onInput={handleInlineInput}
+                    onKeyDown={handleInlineKeyDown}
+                    onBlur={handleInlineBlur}
+                    onClick={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    placeholder="Edit filter…"
+                    style={{ ...inlineSlotStyle(), "flex-shrink": "1" }}
+                  />
+                </Show>
               </>
             </Show>
           )}
         </For>
 
+        <Show when={inlineEditOrphanAfterOrBranch()}>
+          <span
+            onClick={(e) => e.stopPropagation()}
+            style={{ display: "inline-flex", "align-items": "center", gap: "3px" }}
+          >
+            <span
+              style={{
+                "font-size": "9px",
+                "font-weight": "700",
+                "letter-spacing": "0.05em",
+                color: "var(--accent)",
+                background: "rgba(var(--accent-rgb,59,130,246),0.13)",
+                border: "1px solid rgba(var(--accent-rgb,59,130,246),0.35)",
+                "border-radius": "10px",
+                padding: "1px 5px",
+                "flex-shrink": "0",
+                "user-select": "none",
+              }}
+            >
+              OR
+            </span>
+            <input
+              ref={inlineEditRef}
+              type="text"
+              spellcheck={false}
+              value={inlineEdit()?.text ?? ""}
+              onInput={handleInlineInput}
+              onKeyDown={handleInlineKeyDown}
+              onBlur={handleInlineBlur}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              placeholder="Edit filter…"
+              style={{ ...inlineSlotStyle(), "flex-shrink": "1" }}
+            />
+          </span>
+        </Show>
+
+        <Show when={!!inlineEdit() && totalPillCount() === 0}>
+          <input
+            ref={inlineEditRef}
+            type="text"
+            spellcheck={false}
+            value={inlineEdit()?.text ?? ""}
+            onInput={handleInlineInput}
+            onKeyDown={handleInlineKeyDown}
+            onBlur={handleInlineBlur}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            placeholder="Edit filter…"
+            style={{ ...inlineSlotStyle(), "flex-shrink": "1" }}
+          />
+        </Show>
+
         {/* OR badge before the draft when it starts a new group */}
         <Show when={draftInNewGroup() && hasAnyPills()}>
-          <span style={{
-            "font-size": "9px", "font-weight": "700", "letter-spacing": "0.05em",
-            color: "var(--accent)",
-            background: "rgba(var(--accent-rgb,59,130,246),0.13)",
-            border: "1px solid rgba(var(--accent-rgb,59,130,246),0.35)",
-            "border-radius": "10px", padding: "1px 5px",
-            "flex-shrink": "0", "user-select": "none",
-          }}>
+          <span
+            style={{
+              "font-size": "9px",
+              "font-weight": "700",
+              "letter-spacing": "0.05em",
+              color: "var(--accent)",
+              background: "rgba(var(--accent-rgb,59,130,246),0.13)",
+              border: "1px solid rgba(var(--accent-rgb,59,130,246),0.35)",
+              "border-radius": "10px",
+              padding: "1px 5px",
+              "flex-shrink": "0",
+              "user-select": "none",
+            }}
+          >
             OR
           </span>
         </Show>
@@ -495,10 +782,15 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
         {/* input and buttons always stay together on the same line.           */}
         {/* min-width forces this group to wrap as a unit when pills fill      */}
         {/* the available horizontal space.                                    */}
-        <div style={{
-          flex: "1", display: "flex", "align-items": "center",
-          gap: "3px", "min-width": "180px",
-        }}>
+        <div
+          style={{
+            flex: "1",
+            display: "flex",
+            "align-items": "center",
+            gap: "3px",
+            "min-width": "180px",
+          }}
+        >
           {/* Draft input */}
           <input
             ref={draftRef}
@@ -506,6 +798,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
             spellcheck={false}
             value={draft()}
             onInput={handleDraftInput}
+            onPaste={handleDraftPaste}
             onKeyDown={handleKeyDown}
             onFocus={() => setOpen(true)}
             onClick={() => setOpen(true)}
@@ -518,10 +811,13 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
             style={{
               flex: "1",
               "min-width": "0", // allow shrinking below content size in flex
-              background: "transparent", border: "none",
+              background: "transparent",
+              border: "none",
               color: "var(--text-primary)",
-              "font-size": "11px", "font-family": "var(--font-mono)",
-              outline: "none", padding: "1px 0",
+              "font-size": "11px",
+              "font-family": "var(--font-mono)",
+              outline: "none",
+              padding: "1px 0",
             }}
           />
 
@@ -529,7 +825,10 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
           <Show when={isActive()}>
             <div style={{ display: "flex", gap: "3px", "flex-shrink": "0" }}>
               <button
-                onMouseDown={(e) => { e.preventDefault(); handleAddAndConnector(); }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleAddAndConnector();
+                }}
                 title="Add AND condition — both conditions must match"
                 style={connectorBtnStyle()}
                 onMouseEnter={(e) => {
@@ -544,7 +843,10 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                 + AND
               </button>
               <button
-                onMouseDown={(e) => { e.preventDefault(); handleAddOrGroup(); }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleAddOrGroup();
+                }}
                 title="Add OR group — entries matching either group will be shown"
                 style={connectorBtnStyle()}
                 onMouseEnter={(e) => {
@@ -564,18 +866,32 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
           {/* Clear all — inline at the end of the input row */}
           <Show when={isActive()}>
             <button
-              onMouseDown={(e) => { e.preventDefault(); props.onChange(""); draftRef?.focus(); }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                setInlineEdit(null);
+                props.onChange("");
+                draftRef?.focus();
+              }}
               title="Clear all filters (Esc)"
               style={{
                 "flex-shrink": "0",
-                background: "none", border: "none",
-                color: "var(--text-muted)", cursor: "pointer",
-                "font-size": "11px", padding: "0 2px",
-                "line-height": "1", display: "flex", "align-items": "center",
+                background: "none",
+                border: "none",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+                "font-size": "11px",
+                padding: "0 2px",
+                "line-height": "1",
+                display: "flex",
+                "align-items": "center",
                 opacity: "0.6",
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.6"; }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.opacity = "1";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.opacity = "0.6";
+              }}
             >
               ✕
             </button>
@@ -585,27 +901,42 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
 
       {/* ── Autocomplete dropdown ───────────────────────────────────────── */}
       <Show when={hasSuggestions()}>
-        <div style={{
-          position: "absolute", top: "calc(100% + 3px)", left: "0",
-          "min-width": "220px", "max-width": "360px", "max-height": "260px",
-          "overflow-y": "auto",
-          background: "var(--bg-secondary)", border: "1px solid var(--border)",
-          "border-radius": "4px", "box-shadow": "0 6px 20px rgba(0,0,0,0.45)",
-          "z-index": "600",
-        }}>
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 3px)",
+            left: "0",
+            "min-width": "220px",
+            "max-width": "360px",
+            "max-height": "260px",
+            "overflow-y": "auto",
+            background: "var(--bg-secondary)",
+            border: "1px solid var(--border)",
+            "border-radius": "4px",
+            "box-shadow": "0 6px 20px rgba(0,0,0,0.45)",
+            "z-index": "600",
+          }}
+        >
           <For each={suggestions()}>
             {(s, i) => {
               const isSelected = () => i() === selectedIdx();
               return (
                 <div
-                  onMouseDown={(e) => { e.preventDefault(); applySelection(s.insert); }}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    applySelection(s.insert);
+                  }}
                   onMouseEnter={() => setSelectedIdx(i())}
                   style={{
-                    padding: "5px 10px", "font-size": "11px", "font-family": "var(--font-mono)",
+                    padding: "5px 10px",
+                    "font-size": "11px",
+                    "font-family": "var(--font-mono)",
                     color: isSelected() ? "#fff" : "var(--text-primary)",
                     background: isSelected() ? "var(--accent)" : "transparent",
-                    cursor: "pointer", "white-space": "nowrap",
-                    overflow: "hidden", "text-overflow": "ellipsis",
+                    cursor: "pointer",
+                    "white-space": "nowrap",
+                    overflow: "hidden",
+                    "text-overflow": "ellipsis",
                   }}
                 >
                   {s.display}
@@ -613,11 +944,15 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
               );
             }}
           </For>
-          <div style={{
-            padding: "4px 10px", "font-size": "10px",
-            color: "var(--text-disabled, #4b5563)",
-            "border-top": "1px solid var(--border)", "user-select": "none",
-          }}>
+          <div
+            style={{
+              padding: "4px 10px",
+              "font-size": "10px",
+              color: "var(--text-disabled, #4b5563)",
+              "border-top": "1px solid var(--border)",
+              "user-select": "none",
+            }}
+          >
             ↑↓ navigate · Tab/Enter select · Esc close · && = AND · | = OR group
           </div>
         </div>
@@ -630,10 +965,15 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
 
 function connectorBtnStyle(): Record<string, string> {
   return {
-    background: "none", border: "1px solid var(--border)",
-    color: "var(--text-muted)", "border-radius": "4px", cursor: "pointer",
-    "font-size": "10px", "font-family": "var(--font-mono)",
-    padding: "2px 6px", "white-space": "nowrap",
+    background: "none",
+    border: "1px solid var(--border)",
+    color: "var(--text-muted)",
+    "border-radius": "4px",
+    cursor: "pointer",
+    "font-size": "10px",
+    "font-family": "var(--font-mono)",
+    padding: "2px 6px",
+    "white-space": "nowrap",
     transition: "color 0.1s, border-color 0.1s",
   };
 }
