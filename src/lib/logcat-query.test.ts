@@ -2004,3 +2004,46 @@ describe("buildQueryBarPillGroups — paren normalization", () => {
     expect(buildQueryBarPillGroups(["("])).toEqual([[]]);
   });
 });
+
+// ── parseFilterGroups / matchesFilterGroups — paren round-trip ────────────────
+
+describe("matchesFilterGroups — paren query produces identical results", () => {
+  it("(level:error tag:App) | message:crash matches same entries as without parens", () => {
+    const now = Date.now();
+
+    const withParens = parseFilterGroups("(level:error tag:App) | message:crash");
+    const withoutParens = parseFilterGroups("level:error tag:App | message:crash");
+
+    const entries = [
+      makeEntry({ level: "error", tag: "App", message: "something" }), // matches group 1
+      makeEntry({ level: "debug", tag: "Other", message: "crash" }), // matches group 2
+      makeEntry({ level: "debug", tag: "Other", message: "nothing" }), // matches neither
+    ];
+
+    for (const entry of entries) {
+      expect(matchesFilterGroups(entry, withParens, now)).toBe(
+        matchesFilterGroups(entry, withoutParens, now)
+      );
+    }
+  });
+
+  it("(A) | (B) | (C) matches same entries as A | B | C", () => {
+    const now = Date.now();
+    const withParens = parseFilterGroups("(tag:Alpha) | (tag:Beta) | (tag:Gamma)");
+    const withoutParens = parseFilterGroups("tag:Alpha | tag:Beta | tag:Gamma");
+
+    const alphaEntry = makeEntry({ tag: "Alpha" });
+    const betaEntry = makeEntry({ tag: "Beta" });
+    const otherEntry = makeEntry({ tag: "Other" });
+
+    expect(matchesFilterGroups(alphaEntry, withParens, now)).toBe(
+      matchesFilterGroups(alphaEntry, withoutParens, now)
+    );
+    expect(matchesFilterGroups(betaEntry, withParens, now)).toBe(
+      matchesFilterGroups(betaEntry, withoutParens, now)
+    );
+    expect(matchesFilterGroups(otherEntry, withParens, now)).toBe(
+      matchesFilterGroups(otherEntry, withoutParens, now)
+    );
+  });
+});
