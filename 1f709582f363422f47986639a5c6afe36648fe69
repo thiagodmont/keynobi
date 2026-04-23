@@ -1,0 +1,73 @@
+src/components/logcat/QueryBar.tsx
+  238e46704a589c46 40-41,406,431-434,475,487-488
+  9adbf323ccfe0aae 32-39,110-111,114,123,130-140,143,148,155,157-175,178,183-193,289-305,307-322,326,354-357,365,393-394,400-405,407-408,410-430,435-442,444,449-453,459-464,466-474,476-478,482-483,494-495,583-599,619-621,623,640-650,684-700,706-757,801,871
+src/lib/logcat-query.ts
+  9adbf323ccfe0aae 98-104,123-174,605-606,614-618,633-660,662-682,684-718,720-736,738-750,752-762,764-805,807-831,859-894
+  238e46704a589c46 832-845,847-858,903-923,926-927,931,990-1020,1025,1030,1035-1036,1045,1049
+package.json
+  85f5fae7bbd537e2 38
+src/lib/logcat-query.test.ts
+  9adbf323ccfe0aae 19-31,533-594,597-698,700-765,767-771,773-777,779-788,790-795,797-853
+  238e46704a589c46 36,1718-1858,1860-1942
+src/components/logcat/QueryBar.test.ts
+  9adbf323ccfe0aae 19-23,75,86-97,100-122,128-136
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "1f709582f363422f47986639a5c6afe36648fe69",
+  "prompts": {
+    "238e46704a589c46": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f4a4904-26dd-4c60-962b-07efdee977fe",
+        "model": "<synthetic>"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 335,
+      "total_deletions": 53,
+      "accepted_lines": 327,
+      "overriden_lines": 2
+    },
+    "85f5fae7bbd537e2": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "53f0b5c8-b455-482e-8211-f503d09b674e",
+        "model": "default"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "9adbf323ccfe0aae": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "98cc3d12-1faf-45a4-877e-0569a68840a2",
+        "model": "default"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 1072,
+      "total_deletions": 215,
+      "accepted_lines": 946,
+      "overriden_lines": 14
+    },
+    "c721a3b201a96505": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "a2585495-e880-43ac-83c4-2203762f02aa",
+        "model": "default"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 1
+    }
+  }
+}
