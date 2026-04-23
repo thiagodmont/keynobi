@@ -1941,3 +1941,35 @@ describe("addOrGroup — idempotent: does not accumulate duplicate |", () => {
     expect(addOrGroup("level:error |")).toBe("level:error |");
   });
 });
+
+// ── parseFilterGroups — optional paren syntax ─────────────────────────────────
+
+describe("parseFilterGroups — optional outer parens", () => {
+  it("(A && B) | C produces same groups as A && B | C", () => {
+    expect(parseFilterGroups("(tag:App message:crash) | level:error")).toEqual(
+      parseFilterGroups("tag:App message:crash | level:error")
+    );
+  });
+
+  it("(A) | (B) produces same groups as A | B", () => {
+    expect(parseFilterGroups("(tag:App) | (tag:System)")).toEqual(
+      parseFilterGroups("tag:App | tag:System")
+    );
+  });
+
+  it("parens around a quoted value with pipe inside", () => {
+    expect(parseFilterGroups('(message:"hello|world") | tag:App')).toEqual(
+      parseFilterGroups('message:"hello|world" | tag:App')
+    );
+  });
+
+  it("unmatched leading paren does not throw", () => {
+    expect(() => parseFilterGroups("(tag:App message:crash")).not.toThrow();
+  });
+
+  it("single paren-wrapped group with no pipe", () => {
+    expect(parseFilterGroups("(level:error tag:App)")).toEqual(
+      parseFilterGroups("level:error tag:App")
+    );
+  });
+});

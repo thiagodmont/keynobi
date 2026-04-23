@@ -921,6 +921,12 @@ function splitOnOrSeparator(raw: string): string[] {
   return segments;
 }
 
+function stripGroupParens(s: string): string {
+  const t = s.trim();
+  if (t.startsWith("(") && t.endsWith(")")) return t.slice(1, -1).trim();
+  return t;
+}
+
 /**
  * Parse a query string that may contain `|`-separated OR groups.
  * Quote-aware: `|` inside `"..."` is not treated as a group boundary.
@@ -929,7 +935,7 @@ function splitOnOrSeparator(raw: string): string[] {
 export function parseFilterGroups(raw: string): FilterGroup[] {
   if (!raw.trim()) return [[]];
   const groups = splitOnOrSeparator(raw)
-    .map((segment) => parseQuery(segment.trim()))
+    .map((segment) => parseQuery(stripGroupParens(segment.trim())))
     .filter((g) => g.length > 0);
   // Return a single empty group when everything was stripped (empty query edge case)
   return groups.length > 0 ? groups : [[]];
