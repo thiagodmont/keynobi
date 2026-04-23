@@ -1,0 +1,23 @@
+src/components/logcat/QueryBar.tsx
+  238e46704a589c46 156,577-579,591-619,628,630,632-637,639,641-642,645-681,707-708,989-1001
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "f63df82aed4979c3f3dd5ab9abe181f3d8491c78",
+  "prompts": {
+    "238e46704a589c46": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2f4a4904-26dd-4c60-962b-07efdee977fe",
+        "model": "<synthetic>"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 135,
+      "total_deletions": 118,
+      "accepted_lines": 98,
+      "overriden_lines": 0
+    }
+  }
+}
