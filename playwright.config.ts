@@ -1,11 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// @ts-expect-error process is a nodejs global
+const isCI = !!process.env.CI;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  forbidOnly: isCI,
+  retries: isCI ? 2 : 0,
+  workers: isCI ? 1 : undefined,
   reporter: "html",
   use: {
     baseURL: "http://localhost:1421",
@@ -20,7 +23,7 @@ export default defineConfig({
   webServer: {
     command: "npm run dev:web",
     url: "http://localhost:1421",
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !isCI,
     timeout: 120_000,
   },
 });
