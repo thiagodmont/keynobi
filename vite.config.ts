@@ -7,6 +7,8 @@ import { fileURLToPath } from "url";
 import { tauriMockPlugin } from "./vite-plugin-tauri-mock";
 /// <reference types="vitest" />
 
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+
 const pkg = JSON.parse(
   readFileSync(fileURLToPath(new URL("./package.json", import.meta.url)), "utf-8")
 ) as { version: string };

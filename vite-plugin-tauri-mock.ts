@@ -1,6 +1,8 @@
 import type { Plugin } from "vite";
+// @ts-expect-error process is a nodejs global
 import { resolve } from "path";
 
+// @ts-expect-error process is a nodejs global
 const mockDir = resolve(process.cwd(), "src/test/mock-backend");
 
 function ref(file: string, namedExports: string): string {
