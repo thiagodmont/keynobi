@@ -7,6 +7,19 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.18] — 2026-04-24
+
+### Added
+- show enclosed group container in QueryBar when 2+ OR groups exist
+- normalize group-boundary parens in buildQueryBarPillGroups
+- support optional outer parens in parseFilterGroups
+
+### Fixed
+- cap group box width to prevent inline-flex expansion during inline edit
+- depth-balance check in stripGroupParens
+
+---
+
 ## [0.1.17] — 2026-04-23
 
 ---
