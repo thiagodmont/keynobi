@@ -1,0 +1,23 @@
+docs/CODE_PATTERN.md
+  62ecf3491096bc70 420,424-430
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "929af114482b2808f4d6e8aeddfbf4af27264b0e",
+  "prompts": {
+    "62ecf3491096bc70": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dbce5-2c61-7f21-992f-a3d9e2ea38fb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 23,
+      "total_deletions": 8,
+      "accepted_lines": 23,
+      "overriden_lines": 0
+    }
+  }
+}
