@@ -3,7 +3,7 @@
 use super::device::validate_device_serial;
 use crate::models::error::AppError;
 use crate::models::ui_hierarchy::UiHierarchySnapshot;
-use crate::services::adb_manager::{DeviceState, get_adb_path};
+use crate::services::adb_manager::{get_adb_path, DeviceState};
 use crate::services::settings_manager;
 use crate::services::ui_hierarchy::capture_ui_hierarchy_snapshot;
 use tauri::State;

@@ -1,5 +1,5 @@
-use std::path::{Path, PathBuf};
 use crate::models::settings::AppSettings;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct HealthReport {
@@ -81,8 +81,7 @@ pub async fn run_health_check(
 
 pub fn detect_sdk_path(configured: Option<&str>, project_root: Option<&Path>) -> Option<String> {
     fn is_valid_sdk(path: &Path) -> bool {
-        path.exists()
-            && (path.join("platforms").is_dir() || path.join("platform-tools").is_dir())
+        path.exists() && (path.join("platforms").is_dir() || path.join("platform-tools").is_dir())
     }
 
     fn expand(s: &str) -> PathBuf {
@@ -124,7 +123,11 @@ pub fn detect_sdk_path(configured: Option<&str>, project_root: Option<&Path>) ->
         }
     }
 
-    for candidate in &["~/Library/Android/sdk", "~/Android/Sdk", "~/AppData/Local/Android/Sdk"] {
+    for candidate in &[
+        "~/Library/Android/sdk",
+        "~/Android/Sdk",
+        "~/AppData/Local/Android/Sdk",
+    ] {
         let path = expand(candidate);
         if is_valid_sdk(&path) {
             return Some(path.to_string_lossy().to_string());

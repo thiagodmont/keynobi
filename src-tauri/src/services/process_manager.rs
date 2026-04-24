@@ -61,7 +61,9 @@ impl Default for ProcessManagerInner {
 
 impl ProcessManagerInner {
     pub fn new() -> Self {
-        Self { processes: HashMap::new() }
+        Self {
+            processes: HashMap::new(),
+        }
     }
 }
 
@@ -230,13 +232,17 @@ pub async fn cancel(manager: &Mutex<ProcessManagerInner>, id: ProcessId) {
         if let Some(os_pid) = record.os_pid {
             // Try graceful termination first.
             #[cfg(unix)]
-            unsafe { libc::kill(os_pid as libc::pid_t, libc::SIGTERM) };
+            unsafe {
+                libc::kill(os_pid as libc::pid_t, libc::SIGTERM)
+            };
 
             // Spawn a background task to force-kill if it doesn't die in 5s.
             tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                 #[cfg(unix)]
-                unsafe { libc::kill(os_pid as libc::pid_t, libc::SIGKILL) };
+                unsafe {
+                    libc::kill(os_pid as libc::pid_t, libc::SIGKILL)
+                };
             });
         }
     }
@@ -330,9 +336,15 @@ mod tests {
         // Before cancel: process is in the map.
         {
             let inner = manager.0.lock().await;
-            assert!(inner.processes.contains_key(&id), "process must be in map before cancel");
+            assert!(
+                inner.processes.contains_key(&id),
+                "process must be in map before cancel"
+            );
             // Flag should be false initially.
-            assert!(!inner.processes[&id].cancelled.load(Ordering::SeqCst), "cancelled must be false initially");
+            assert!(
+                !inner.processes[&id].cancelled.load(Ordering::SeqCst),
+                "cancelled must be false initially"
+            );
         }
 
         // Cancel it. The cancel() function sets the flag before removing the record.
@@ -341,7 +353,10 @@ mod tests {
         // After cancel: record is removed from the map (the cancel function removes it).
         {
             let inner = manager.0.lock().await;
-            assert!(!inner.processes.contains_key(&id), "process must be removed after cancel");
+            assert!(
+                !inner.processes.contains_key(&id),
+                "process must be removed after cancel"
+            );
         }
 
         // Give the reader task time to observe the flag and call on_exit.

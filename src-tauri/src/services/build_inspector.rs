@@ -28,10 +28,7 @@ pub struct ProductFlavor {
     pub dimension: Option<String>,
 }
 
-pub fn parse_build_config(
-    gradle_root: &Path,
-    module: &str,
-) -> Result<BuildConfig, String> {
+pub fn parse_build_config(gradle_root: &Path, module: &str) -> Result<BuildConfig, String> {
     let module_dir = gradle_root.join(module);
     if !module_dir.is_dir() {
         return Err(format!(
@@ -49,8 +46,8 @@ pub fn parse_build_config(
         .to_string();
 
     let compile_sdk = extract_int_value(&content, &["compileSdk", "compileSdkVersion"]);
-    let min_sdk     = extract_int_value(&content, &["minSdk", "minSdkVersion"]);
-    let target_sdk  = extract_int_value(&content, &["targetSdk", "targetSdkVersion"]);
+    let min_sdk = extract_int_value(&content, &["minSdk", "minSdkVersion"]);
+    let target_sdk = extract_int_value(&content, &["targetSdk", "targetSdkVersion"]);
 
     let conv = if compile_sdk.is_none() || min_sdk.is_none() || target_sdk.is_none() {
         sdk_from_convention_plugins(gradle_root)
@@ -71,10 +68,10 @@ pub fn parse_build_config(
         module: module.to_string(),
         file: relative,
         compile_sdk: compile_sdk.or(conv.0),
-        min_sdk:     min_sdk.or(conv.1),
-        target_sdk:  target_sdk.or(conv.2),
+        min_sdk: min_sdk.or(conv.1),
+        target_sdk: target_sdk.or(conv.2),
         application_id: extract_string_value(&content, "applicationId"),
-        namespace:      extract_string_value(&content, "namespace"),
+        namespace: extract_string_value(&content, "namespace"),
         build_types,
         product_flavors,
     })
@@ -162,7 +159,10 @@ fn flavors_from_apk_output(
         if parsed_build_types.iter().any(|bt| bt.name == name) {
             continue;
         }
-        flavors.push(ProductFlavor { name, dimension: None });
+        flavors.push(ProductFlavor {
+            name,
+            dimension: None,
+        });
     }
 
     flavors.sort_by(|a, b| a.name.cmp(&b.name));
@@ -320,9 +320,7 @@ fn parse_named_blocks(block: &str) -> Vec<(String, String)> {
             pos += 1;
         }
         let word_start = pos;
-        while pos < bytes.len()
-            && (bytes[pos].is_ascii_alphanumeric() || bytes[pos] == b'_')
-        {
+        while pos < bytes.len() && (bytes[pos].is_ascii_alphanumeric() || bytes[pos] == b'_') {
             pos += 1;
         }
         if pos == word_start {
@@ -386,7 +384,10 @@ fn parse_named_blocks(block: &str) -> Vec<(String, String)> {
         let inner = &block[inner_start..pos];
         pos += 1;
 
-        if !matches!(name.as_str(), "getByName" | "maybeCreate" | "all" | "configureEach") {
+        if !matches!(
+            name.as_str(),
+            "getByName" | "maybeCreate" | "all" | "configureEach"
+        ) {
             result.push((name, inner.to_string()));
         }
     }
@@ -499,7 +500,11 @@ android {
 "#,
         );
         let cfg = parse_build_config(dir.path(), "app").unwrap();
-        let release = cfg.build_types.iter().find(|b| b.name == "release").unwrap();
+        let release = cfg
+            .build_types
+            .iter()
+            .find(|b| b.name == "release")
+            .unwrap();
         assert_eq!(release.minify_enabled, Some(true));
         assert_eq!(release.debuggable, Some(false));
         let debug = cfg.build_types.iter().find(|b| b.name == "debug").unwrap();
@@ -527,7 +532,11 @@ android {
 "#,
         );
         let cfg = parse_build_config(dir.path(), "app").unwrap();
-        let release = cfg.build_types.iter().find(|b| b.name == "release").unwrap();
+        let release = cfg
+            .build_types
+            .iter()
+            .find(|b| b.name == "release")
+            .unwrap();
         assert_eq!(release.minify_enabled, Some(true));
     }
 
@@ -551,7 +560,11 @@ android {
         );
         let cfg = parse_build_config(dir.path(), "app").unwrap();
         assert_eq!(cfg.product_flavors.len(), 2);
-        let free = cfg.product_flavors.iter().find(|f| f.name == "free").unwrap();
+        let free = cfg
+            .product_flavors
+            .iter()
+            .find(|f| f.name == "free")
+            .unwrap();
         assert_eq!(free.dimension.as_deref(), Some("tier"));
     }
 
@@ -605,17 +618,28 @@ android {
         let dir = tempfile::tempdir().unwrap();
         let mod_dir = dir.path().join("app");
         fs::create_dir_all(&mod_dir).unwrap();
-        fs::write(mod_dir.join("build.gradle.kts"), r#"
+        fs::write(
+            mod_dir.join("build.gradle.kts"),
+            r#"
 android {
     defaultConfig {
         applicationId = "com.example.app"
     }
 }
-"#).unwrap();
-        let kt_dir = dir.path()
-            .join("build-logic").join("convention").join("src").join("main").join("kotlin");
+"#,
+        )
+        .unwrap();
+        let kt_dir = dir
+            .path()
+            .join("build-logic")
+            .join("convention")
+            .join("src")
+            .join("main")
+            .join("kotlin");
         fs::create_dir_all(&kt_dir).unwrap();
-        fs::write(kt_dir.join("KotlinAndroid.kt"), r#"
+        fs::write(
+            kt_dir.join("KotlinAndroid.kt"),
+            r#"
 fun configureKotlinAndroid(extension: CommonExtension<*, *, *, *, *, *>) {
     extension.apply {
         compileSdk = 36
@@ -624,11 +648,21 @@ fun configureKotlinAndroid(extension: CommonExtension<*, *, *, *, *, *>) {
         }
     }
 }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
 
         let cfg = parse_build_config(dir.path(), "app").unwrap();
-        assert_eq!(cfg.compile_sdk, Some(36), "compileSdk should come from convention plugin");
-        assert_eq!(cfg.min_sdk, Some(23), "minSdk should come from convention plugin");
+        assert_eq!(
+            cfg.compile_sdk,
+            Some(36),
+            "compileSdk should come from convention plugin"
+        );
+        assert_eq!(
+            cfg.min_sdk,
+            Some(23),
+            "minSdk should come from convention plugin"
+        );
         assert_eq!(cfg.application_id.as_deref(), Some("com.example.app"));
     }
 
@@ -637,18 +671,30 @@ fun configureKotlinAndroid(extension: CommonExtension<*, *, *, *, *, *>) {
         let dir = tempfile::tempdir().unwrap();
         let mod_dir = dir.path().join("app");
         fs::create_dir_all(&mod_dir).unwrap();
-        fs::write(mod_dir.join("build.gradle.kts"), r#"
+        fs::write(
+            mod_dir.join("build.gradle.kts"),
+            r#"
 android {
     compileSdk = 35
     defaultConfig { minSdk = 24 }
 }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         let kt_dir = dir.path().join("build-logic");
         fs::create_dir_all(&kt_dir).unwrap();
-        fs::write(kt_dir.join("KotlinAndroid.kt"), "compileSdk = 36\nminSdk = 21\n").unwrap();
+        fs::write(
+            kt_dir.join("KotlinAndroid.kt"),
+            "compileSdk = 36\nminSdk = 21\n",
+        )
+        .unwrap();
 
         let cfg = parse_build_config(dir.path(), "app").unwrap();
-        assert_eq!(cfg.compile_sdk, Some(35), "module-level compileSdk must win");
+        assert_eq!(
+            cfg.compile_sdk,
+            Some(35),
+            "module-level compileSdk must win"
+        );
         assert_eq!(cfg.min_sdk, Some(24), "module-level minSdk must win");
     }
 
@@ -657,24 +703,37 @@ android {
         let dir = tempfile::tempdir().unwrap();
         let mod_dir = dir.path().join("app");
         fs::create_dir_all(&mod_dir).unwrap();
-        fs::write(mod_dir.join("build.gradle.kts"), r#"
+        fs::write(
+            mod_dir.join("build.gradle.kts"),
+            r#"
 android {
     buildTypes { debug {}; release {} }
 }
-"#).unwrap();
+"#,
+        )
+        .unwrap();
         // Simulate AGP build output: flavors appear as subdirs
         for flavor in &["demo", "prod"] {
             for bt in &["debug", "release"] {
-                let apk_dir = dir.path()
-                    .join("app").join("build").join("outputs").join("apk")
-                    .join(flavor).join(bt);
+                let apk_dir = dir
+                    .path()
+                    .join("app")
+                    .join("build")
+                    .join("outputs")
+                    .join("apk")
+                    .join(flavor)
+                    .join(bt);
                 fs::create_dir_all(&apk_dir).unwrap();
                 fs::write(apk_dir.join(format!("app-{flavor}-{bt}.apk")), b"fake").unwrap();
             }
         }
 
         let cfg = parse_build_config(dir.path(), "app").unwrap();
-        let names: Vec<&str> = cfg.product_flavors.iter().map(|f| f.name.as_str()).collect();
+        let names: Vec<&str> = cfg
+            .product_flavors
+            .iter()
+            .map(|f| f.name.as_str())
+            .collect();
         assert!(names.contains(&"demo"), "expected demo flavor: {names:?}");
         assert!(names.contains(&"prod"), "expected prod flavor: {names:?}");
         assert_eq!(cfg.product_flavors.len(), 2);
@@ -688,12 +747,20 @@ android {
         fs::write(mod_dir.join("build.gradle.kts"), "android {}").unwrap();
         // Only build-type directories — no flavors
         for bt in &["debug", "release"] {
-            let apk_dir = dir.path()
-                .join("app").join("build").join("outputs").join("apk").join(bt);
+            let apk_dir = dir
+                .path()
+                .join("app")
+                .join("build")
+                .join("outputs")
+                .join("apk")
+                .join(bt);
             fs::create_dir_all(&apk_dir).unwrap();
         }
 
         let cfg = parse_build_config(dir.path(), "app").unwrap();
-        assert!(cfg.product_flavors.is_empty(), "build-type dirs must not become flavors");
+        assert!(
+            cfg.product_flavors.is_empty(),
+            "build-type dirs must not become flavors"
+        );
     }
 }

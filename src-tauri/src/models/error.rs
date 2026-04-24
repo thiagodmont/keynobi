@@ -117,8 +117,14 @@ mod app_error_tests {
         let err = AppError::InvalidInput("bad task name".to_string());
         let json = serde_json::to_string(&err).unwrap();
         assert!(json.contains("\"kind\""), "must have kind field: {json}");
-        assert!(json.contains("invalidInput"), "kind must be camelCase: {json}");
-        assert!(json.contains("bad task name"), "must contain message: {json}");
+        assert!(
+            json.contains("invalidInput"),
+            "kind must be camelCase: {json}"
+        );
+        assert!(
+            json.contains("bad task name"),
+            "must contain message: {json}"
+        );
     }
 
     #[test]

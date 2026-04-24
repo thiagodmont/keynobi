@@ -2,7 +2,7 @@
 
 use crate::models::ui_hierarchy::{UiHierarchySnapshot, UiLayoutContext};
 use crate::services::ui_hierarchy_parse::{
-    ParseOutcome, compute_screen_hash, count_interactive_nodes, parse_hierarchy_xml,
+    compute_screen_hash, count_interactive_nodes, parse_hierarchy_xml, ParseOutcome,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::Utc;
@@ -58,7 +58,15 @@ async fn try_exec_out_uiautomator_dump(
     compressed: bool,
 ) -> Option<String> {
     let args: &[&str] = if compressed {
-        &["-s", serial, "exec-out", "uiautomator", "dump", "--compressed", "/dev/tty"]
+        &[
+            "-s",
+            serial,
+            "exec-out",
+            "uiautomator",
+            "dump",
+            "--compressed",
+            "/dev/tty",
+        ]
     } else {
         &["-s", serial, "exec-out", "uiautomator", "dump", "/dev/tty"]
     };
@@ -191,9 +199,7 @@ pub async fn probe_layout_context(adb: &PathBuf, serial: &str) -> (UiLayoutConte
     let sz_fut = Command::new(adb).args(sz_args).output();
     let den_fut = Command::new(adb).args(den_args).output();
 
-    let probe = async {
-        tokio::join!(win_fut, disp_fut, sz_fut, den_fut)
-    };
+    let probe = async { tokio::join!(win_fut, disp_fut, sz_fut, den_fut) };
     let (win_o, disp_o, sz_o, den_o) = match timeout(LAYOUT_PROBE_TIMEOUT, probe).await {
         Ok(quads) => quads,
         Err(_) => {
@@ -287,7 +293,11 @@ pub async fn capture_ui_hierarchy_snapshot(
     command_log.append(&mut dump_cmds);
 
     // Screenshot is best-effort and runs concurrently with nothing (already sequential here).
-    command_log.push(format_adb_command(adb, serial, &["exec-out", "screencap", "-p"]));
+    command_log.push(format_adb_command(
+        adb,
+        serial,
+        &["exec-out", "screencap", "-p"],
+    ));
     let screenshot_b64 = capture_screenshot_b64(adb, serial).await;
 
     Ok(build_snapshot(

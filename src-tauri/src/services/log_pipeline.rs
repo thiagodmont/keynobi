@@ -1,6 +1,4 @@
-use crate::models::logcat::{
-    EntryCategory, EntryFlags, LogcatKind, LogcatLevel, ProcessedEntry,
-};
+use crate::models::logcat::{EntryCategory, EntryFlags, LogcatKind, LogcatLevel, ProcessedEntry};
 use std::collections::{HashMap, HashSet};
 
 // ── RawLogLine ────────────────────────────────────────────────────────────────
@@ -296,8 +294,7 @@ impl LogProcessor for CrashAnalyzer {
         // Using `tag == "AndroidRuntime"` alone is too broad — it also matches
         // normal VM lifecycle messages from tools like `monkey` (used by launch_app),
         // which share the tag but are not crashes.
-        let is_fatal = msg.contains("FATAL EXCEPTION")
-            || msg.contains("Uncaught handler: thread");
+        let is_fatal = msg.contains("FATAL EXCEPTION") || msg.contains("Uncaught handler: thread");
         // ANR: tag check short-circuits the message scan for non-AM lines.
         let is_anr = tag == "ActivityManager" && msg.contains("ANR in");
         let is_native = msg.contains("signal 11 (SIGSEGV)")
@@ -391,16 +388,22 @@ impl LogProcessor for CategoryClassifier {
 fn classify_tag(tag: &str) -> EntryCategory {
     match tag {
         // Network
-        "OkHttp" | "Retrofit" | "Volley" | "HttpClient" | "HttpURLConnection"
-        | "NetworkSecurityConfig" | "ConnectivityManager" | "WifiManager" => EntryCategory::Network,
+        "OkHttp"
+        | "Retrofit"
+        | "Volley"
+        | "HttpClient"
+        | "HttpURLConnection"
+        | "NetworkSecurityConfig"
+        | "ConnectivityManager"
+        | "WifiManager" => EntryCategory::Network,
 
         // App lifecycle
-        "ActivityManager" | "ActivityThread" | "Fragment" | "Application"
-        | "LifecycleObserver" | "ComponentCallbacks" | "WindowManager" => EntryCategory::Lifecycle,
+        "ActivityManager" | "ActivityThread" | "Fragment" | "Application" | "LifecycleObserver"
+        | "ComponentCallbacks" | "WindowManager" => EntryCategory::Lifecycle,
 
         // Performance / rendering
-        "Choreographer" | "SurfaceFlinger" | "GLES" | "OpenGLRenderer"
-        | "Skia" | "RenderThread" | "FrameEvents" | "VSYNC" => EntryCategory::Performance,
+        "Choreographer" | "SurfaceFlinger" | "GLES" | "OpenGLRenderer" | "Skia"
+        | "RenderThread" | "FrameEvents" | "VSYNC" => EntryCategory::Performance,
 
         // GC / memory
         "art" | "dalvikvm" | "GC" | "HeapTaskDaemon" | "zygote" => EntryCategory::Gc,
@@ -409,8 +412,7 @@ fn classify_tag(tag: &str) -> EntryCategory {
         "SQLiteDatabase" | "SQLiteException" | "SQLiteCursor" | "Room" => EntryCategory::Database,
 
         // Security
-        "Keystore" | "KeyGuard" | "CertBlacklist"
-        | "BiometricManager" => EntryCategory::Security,
+        "Keystore" | "KeyGuard" | "CertBlacklist" | "BiometricManager" => EntryCategory::Security,
 
         _ => EntryCategory::General,
     }
@@ -480,9 +482,7 @@ pub fn extract_pid_package(tag: &str, message: &str) -> Option<(i32, String)> {
             let pid_str = &rest[..colon_pos];
             if let Ok(pid) = pid_str.trim().parse::<i32>() {
                 let after_pid = &rest[colon_pos + 1..];
-                let end = after_pid
-                    .find(['/', ' '])
-                    .unwrap_or(after_pid.len());
+                let end = after_pid.find(['/', ' ']).unwrap_or(after_pid.len());
                 let raw_pkg = &after_pid[..end];
                 let pkg = strip_process_suffix(raw_pkg);
                 if looks_like_package(pkg) {
@@ -490,7 +490,10 @@ pub fn extract_pid_package(tag: &str, message: &str) -> Option<(i32, String)> {
                 }
             }
         }
-        let end = rest.find(" for ").or_else(|| rest.find(' ')).unwrap_or(rest.len());
+        let end = rest
+            .find(" for ")
+            .or_else(|| rest.find(' '))
+            .unwrap_or(rest.len());
         let pkg = strip_process_suffix(&rest[..end]);
         if looks_like_package(pkg) {
             return None; // legacy format — no pid available
@@ -523,7 +526,10 @@ pub fn extract_process_death(tag: &str, message: &str) -> Option<String> {
         }
     }
     if let Some(rest) = message.strip_prefix("Force finishing activity ") {
-        let end = rest.find('/').or_else(|| rest.find(' ')).unwrap_or(rest.len());
+        let end = rest
+            .find('/')
+            .or_else(|| rest.find(' '))
+            .unwrap_or(rest.len());
         let pkg = strip_process_suffix(&rest[..end]);
         if looks_like_package(pkg) {
             return Some(pkg.to_owned());
@@ -537,7 +543,9 @@ fn strip_process_suffix(name: &str) -> &str {
 }
 
 fn looks_like_package(s: &str) -> bool {
-    s.contains('.') && s.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+    s.contains('.')
+        && s.chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -781,7 +789,10 @@ mod tests {
         };
 
         let entries = pipeline.run_with_separators(raw, &mut ctx);
-        assert!(entries.len() >= 2, "expected at least separator + main entry");
+        assert!(
+            entries.len() >= 2,
+            "expected at least separator + main entry"
+        );
         let sep = &entries[0];
         assert_eq!(sep.kind, LogcatKind::ProcessDied);
     }
@@ -796,8 +807,14 @@ mod tests {
 
         let ctx = PipelineContext::with_initial_pids(map);
 
-        assert_eq!(ctx.pid_to_package.get(&1234).map(String::as_str), Some("com.example.app"));
-        assert_eq!(ctx.pid_to_package.get(&5678).map(String::as_str), Some("com.google.android.gms"));
+        assert_eq!(
+            ctx.pid_to_package.get(&1234).map(String::as_str),
+            Some("com.example.app")
+        );
+        assert_eq!(
+            ctx.pid_to_package.get(&5678).map(String::as_str),
+            Some("com.google.android.gms")
+        );
     }
 
     #[test]
@@ -809,7 +826,11 @@ mod tests {
         let ctx = PipelineContext::with_initial_pids(map);
 
         assert!(ctx.seen_packages.contains("com.example.app"));
-        assert_eq!(ctx.seen_packages.len(), 1, "duplicate package names must be deduplicated");
+        assert_eq!(
+            ctx.seen_packages.len(),
+            1,
+            "duplicate package names must be deduplicated"
+        );
     }
 
     #[test]
@@ -819,8 +840,10 @@ mod tests {
 
         let ctx = PipelineContext::with_initial_pids(map);
 
-        assert!(ctx.new_packages.contains(&"com.example.first".to_string()),
-            "initial packages must appear in new_packages so the first sync pushes them to state");
+        assert!(
+            ctx.new_packages.contains(&"com.example.first".to_string()),
+            "initial packages must appear in new_packages so the first sync pushes them to state"
+        );
     }
 
     #[test]
@@ -856,8 +879,14 @@ mod tests {
         let ctx_seeded = PipelineContext::with_initial_pids(HashMap::new());
         let ctx_plain = PipelineContext::new();
 
-        assert_eq!(ctx_seeded.pid_to_package.len(), ctx_plain.pid_to_package.len());
-        assert_eq!(ctx_seeded.seen_packages.len(), ctx_plain.seen_packages.len());
+        assert_eq!(
+            ctx_seeded.pid_to_package.len(),
+            ctx_plain.pid_to_package.len()
+        );
+        assert_eq!(
+            ctx_seeded.seen_packages.len(),
+            ctx_plain.seen_packages.len()
+        );
         assert_eq!(ctx_seeded.new_packages.len(), ctx_plain.new_packages.len());
     }
 }

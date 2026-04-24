@@ -103,7 +103,12 @@ pub async fn run_health_checks(
         .android
         .sdk_path
         .as_deref()
-        .map(|sdk| expand_tilde(sdk).join("emulator").join("emulator").is_file())
+        .map(|sdk| {
+            expand_tilde(sdk)
+                .join("emulator")
+                .join("emulator")
+                .is_file()
+        })
         .unwrap_or(false);
 
     // ── Gradle wrapper probe ──────────────────────────────────────────────────
@@ -120,9 +125,7 @@ pub async fn run_health_checks(
     let app_dir = dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join(".keynobi");
-    let lsp_system_dir_ok = tokio::fs::create_dir_all(&app_dir)
-        .await
-        .is_ok();
+    let lsp_system_dir_ok = tokio::fs::create_dir_all(&app_dir).await.is_ok();
 
     // ── Android Studio CLI probe ──────────────────────────────────────────────
     // Uses a login shell so macOS users who set PATH in .zshrc / .zprofile
@@ -179,8 +182,7 @@ mod tests {
             .map(|p| {
                 let root = expand_tilde(p);
                 root.exists()
-                    && (root.join("platforms").is_dir()
-                        || root.join("platform-tools").is_dir())
+                    && (root.join("platforms").is_dir() || root.join("platform-tools").is_dir())
             })
             .unwrap_or(false);
         assert!(!valid);

@@ -1,9 +1,8 @@
 use crate::models::build::{
-    BuildError, BuildErrorSeverity, BuildLine, BuildLineKind, BuildRecord, BuildResult,
-    BuildStatus,
+    BuildError, BuildErrorSeverity, BuildLine, BuildLineKind, BuildRecord, BuildResult, BuildStatus,
 };
 use crate::models::error::AppError;
-use crate::services::build_runner::{self, build_env_vars, BuildState, find_output_apk};
+use crate::services::build_runner::{self, build_env_vars, find_output_apk, BuildState};
 use crate::services::process_manager::{self, ProcessManager, ProcessTermination, SpawnOptions};
 use crate::services::settings_manager;
 use crate::FsState;
@@ -11,8 +10,8 @@ use chrono::Utc;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
-use tauri::{AppHandle, Emitter, State};
 use tauri::ipc::Channel;
+use tauri::{AppHandle, Emitter, State};
 
 // ── Event payloads ─────────────────────────────────────────────────────────────
 
@@ -33,12 +32,19 @@ pub struct BuildCompleteEvent {
 /// Allowed: alphanumeric, colon, hyphen, underscore, dot. Max 256 chars.
 fn validate_gradle_task(task: &str) -> Result<(), AppError> {
     if task.is_empty() {
-        return Err(AppError::InvalidInput("Gradle task name must not be empty".to_string()));
+        return Err(AppError::InvalidInput(
+            "Gradle task name must not be empty".to_string(),
+        ));
     }
     if task.len() > 256 {
-        return Err(AppError::InvalidInput("Gradle task name is too long (max 256 characters)".to_string()));
+        return Err(AppError::InvalidInput(
+            "Gradle task name is too long (max 256 characters)".to_string(),
+        ));
     }
-    if !task.chars().all(|c| c.is_alphanumeric() || matches!(c, ':' | '-' | '_' | '.')) {
+    if !task
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, ':' | '-' | '_' | '.'))
+    {
         return Err(AppError::InvalidInput(format!(
             "Invalid Gradle task name '{task}': only alphanumeric, ':', '-', '_', '.' are allowed"
         )));
@@ -159,7 +165,8 @@ pub async fn run_gradle_task(
                     let flag = success_flag.lock().map(|g| *g).unwrap_or(false);
 
                     let cancelled = matches!(termination, ProcessTermination::Cancelled);
-                    let success = !cancelled && (flag || matches!(termination, ProcessTermination::ExitCode(0)));
+                    let success = !cancelled
+                        && (flag || matches!(termination, ProcessTermination::ExitCode(0)));
 
                     let error_count = errs
                         .iter()
@@ -236,7 +243,8 @@ pub async fn finalize_build(
         error_count,
         warning_count: warn_count,
     };
-    build_runner::record_build_result(&build_state, task, started_at, result, errors, project_root).await;
+    build_runner::record_build_result(&build_state, task, started_at, result, errors, project_root)
+        .await;
     Ok(())
 }
 
@@ -252,9 +260,7 @@ pub async fn cancel_build(
 
 /// Return the current build status.
 #[tauri::command]
-pub async fn get_build_status(
-    build_state: State<'_, BuildState>,
-) -> Result<BuildStatus, String> {
+pub async fn get_build_status(build_state: State<'_, BuildState>) -> Result<BuildStatus, String> {
     Ok(build_state.inner.lock().await.status.clone())
 }
 
@@ -294,9 +300,7 @@ pub async fn get_build_history(
 
 /// Clear all build history (in-memory and on disk).
 #[tauri::command]
-pub async fn clear_build_history(
-    build_state: State<'_, BuildState>,
-) -> Result<(), String> {
+pub async fn clear_build_history(build_state: State<'_, BuildState>) -> Result<(), String> {
     build_runner::clear_history(&build_state).await;
     Ok(())
 }
@@ -330,9 +334,7 @@ pub async fn get_build_log_entries(id: u32) -> Result<Vec<BuildLine>, String> {
 /// including any `applicationIdSuffix` added by the build variant. Use this
 /// after `find_apk_path` to pass the correct package to `launch_app_on_device`.
 #[tauri::command]
-pub async fn get_package_name_from_apk(
-    apk_path: String,
-) -> Result<String, AppError> {
+pub async fn get_package_name_from_apk(apk_path: String) -> Result<String, AppError> {
     let (settings, _) = settings_manager::load_settings();
 
     let aapt2 = crate::services::adb_manager::find_aapt2(&settings).ok_or_else(|| {
@@ -369,8 +371,7 @@ pub async fn find_apk_path(
             .cloned()
             .ok_or("No project open")?
     };
-    Ok(find_output_apk(&gradle_root, &variant)
-        .map(|p| p.to_string_lossy().into_owned()))
+    Ok(find_output_apk(&gradle_root, &variant).map(|p| p.to_string_lossy().into_owned()))
 }
 
 #[cfg(test)]
@@ -396,4 +397,3 @@ mod tests {
         assert!(validate_gradle_task(&"a".repeat(257)).is_err());
     }
 }
-

@@ -31,7 +31,6 @@ pub struct VariantList {
     pub default_variant: Option<String>,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

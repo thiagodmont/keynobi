@@ -50,7 +50,10 @@ pub fn rotate_logs(mut files: Vec<(PathBuf, SystemTime, u64)>, limit: u64) -> bo
         if std::fs::remove_file(path).is_ok() {
             tracing::info!("Size-based log rotation: removed {}", path.display());
         } else {
-            tracing::warn!("Size-based log rotation: could not remove {}, skipping", path.display());
+            tracing::warn!(
+                "Size-based log rotation: could not remove {}, skipping",
+                path.display()
+            );
         }
         // Subtract either way so we don't retry the same file on the next tick.
         total = total.saturating_sub(*size);

@@ -53,10 +53,7 @@ fn task_name(prefix: &str, flavors: &[&str], build_type: &str) -> String {
 ///
 /// Returns `None` if the content cannot yield any variants;
 /// the caller must fall back to the Gradle tasks list in that case.
-pub fn parse_variants_from_gradle(
-    file_path: &Path,
-    content: &str,
-) -> Option<VariantList> {
+pub fn parse_variants_from_gradle(file_path: &Path, content: &str) -> Option<VariantList> {
     let _ = file_path; // path kept for logging / future use
 
     let build_types = extract_block_names(content, "buildTypes");
@@ -200,8 +197,8 @@ fn is_identifier(s: &str) -> bool {
 /// }
 /// ```
 fn extract_flavors(content: &str) -> (Vec<String>, std::collections::HashMap<String, Vec<String>>) {
-    use std::collections::HashMap;
     use regex::Regex;
+    use std::collections::HashMap;
 
     let dim_re = Regex::new(r#"flavorDimensions\s*\(([^)]+)\)"#).expect("static");
     // Note: flavor_re is reserved for future use with multi-line Regex support.
@@ -222,7 +219,9 @@ fn extract_flavors(content: &str) -> (Vec<String>, std::collections::HashMap<Str
 
     // Walk the productFlavors block line-by-line to find flavors with dimension assignments.
     // This avoids the multi-line regex issues with arbitrary Gradle DSL content.
-    let prod_flavors_start = content.find("productFlavors {").map(|p| p + "productFlavors {".len());
+    let prod_flavors_start = content
+        .find("productFlavors {")
+        .map(|p| p + "productFlavors {".len());
     if let Some(start) = prod_flavors_start {
         let block = find_block_content(&content[start..]);
         // Parse each `name { ... dimension "X" ... }` sub-block.
@@ -396,11 +395,9 @@ fn extract_flavor_defaults_per_dimension(content: &str) -> HashMap<String, Strin
     let mut has_explicit_dims = false;
     if let Some(caps) = dim_re.captures(content) {
         let dims_str = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-        has_explicit_dims = dims_str.split(',').any(|d| {
-            !d.trim()
-                .trim_matches(|c| c == '"' || c == '\'')
-                .is_empty()
-        });
+        has_explicit_dims = dims_str
+            .split(',')
+            .any(|d| !d.trim().trim_matches(|c| c == '"' || c == '\'').is_empty());
     }
 
     let prod_start = content
@@ -420,8 +417,7 @@ fn extract_flavor_defaults_per_dimension(content: &str) -> HashMap<String, Strin
             if let Some(dcaps) = dim_inner_re.captures(&body) {
                 let dim = dcaps.get(1).map(|m| m.as_str()).unwrap_or("");
                 if !dim.is_empty() && gradle_body_declares_is_default(&body) {
-                    out.entry(dim.to_string())
-                        .or_insert_with(|| flavor.clone());
+                    out.entry(dim.to_string()).or_insert_with(|| flavor.clone());
                 }
             }
         }
@@ -645,10 +641,15 @@ pub fn parse_variants_from_tasks_output(tasks_output: &str) -> VariantList {
             // e.g. "Debug" → "debug", "FreeDebug" → "freeDebug"
             let name = {
                 let mut chars = suffix.chars();
-                chars.next().map(|c| c.to_lowercase().to_string()).unwrap_or_default()
+                chars
+                    .next()
+                    .map(|c| c.to_lowercase().to_string())
+                    .unwrap_or_default()
                     + chars.as_str()
             };
-            let install_task = install_map.get(&suffix).cloned()
+            let install_task = install_map
+                .get(&suffix)
+                .cloned()
                 .unwrap_or_else(|| format!("install{suffix}"));
             BuildVariant {
                 name: name.clone(),
@@ -683,7 +684,13 @@ fn infer_build_type(suffix: &str) -> String {
     suffix
         .chars()
         .enumerate()
-        .map(|(i, c)| if i == 0 { c.to_lowercase().next().unwrap_or(c) } else { c })
+        .map(|(i, c)| {
+            if i == 0 {
+                c.to_lowercase().next().unwrap_or(c)
+            } else {
+                c
+            }
+        })
         .collect()
 }
 
@@ -703,7 +710,10 @@ mod tests {
 
     #[test]
     fn variant_name_multi_flavor() {
-        assert_eq!(variant_name(&["free", "minApi24"], "release"), "freeMinApi24Release");
+        assert_eq!(
+            variant_name(&["free", "minApi24"], "release"),
+            "freeMinApi24Release"
+        );
     }
 
     #[test]
@@ -713,7 +723,10 @@ mod tests {
 
     #[test]
     fn task_name_assemble_flavor() {
-        assert_eq!(task_name("assemble", &["free"], "release"), "assembleFreeRelease");
+        assert_eq!(
+            task_name("assemble", &["free"], "release"),
+            "assembleFreeRelease"
+        );
     }
 
     #[test]
@@ -756,9 +769,15 @@ android {
         let list = parse_variants_from_gradle(std::path::Path::new("build.gradle"), content)
             .expect("should return a list when buildTypes block is present");
         let names: Vec<&str> = list.variants.iter().map(|v| v.name.as_str()).collect();
-        assert!(names.contains(&"release"), "release must be present: got {names:?}");
+        assert!(
+            names.contains(&"release"),
+            "release must be present: got {names:?}"
+        );
         // debug is AGP-implicit and must be guaranteed by the preview.
-        assert!(names.contains(&"debug"), "debug must be guaranteed in preview: got {names:?}");
+        assert!(
+            names.contains(&"debug"),
+            "debug must be guaranteed in preview: got {names:?}"
+        );
     }
 
     /// When buildTypes block is completely absent, return None so the caller
@@ -774,7 +793,10 @@ android {
 }
 "#;
         let result = parse_variants_from_gradle(std::path::Path::new("build.gradle"), content);
-        assert!(result.is_none(), "should return None when no buildTypes block exists");
+        assert!(
+            result.is_none(),
+            "should return None when no buildTypes block exists"
+        );
     }
 
     /// Custom build type alongside explicitly-declared release — preview returns
@@ -792,9 +814,18 @@ android {
         let list = parse_variants_from_gradle(std::path::Path::new("build.gradle"), content)
             .expect("should return a list");
         let names: Vec<&str> = list.variants.iter().map(|v| v.name.as_str()).collect();
-        assert!(names.contains(&"debug"), "debug must be guaranteed: got {names:?}");
-        assert!(names.contains(&"release"), "release must be present: got {names:?}");
-        assert!(names.contains(&"staging"), "staging must be present: got {names:?}");
+        assert!(
+            names.contains(&"debug"),
+            "debug must be guaranteed: got {names:?}"
+        );
+        assert!(
+            names.contains(&"release"),
+            "release must be present: got {names:?}"
+        );
+        assert!(
+            names.contains(&"staging"),
+            "staging must be present: got {names:?}"
+        );
     }
 
     #[test]
@@ -830,16 +861,38 @@ installDebugAndroidTest - Installs the Debug androidTest.\n\
         let names: Vec<&str> = list.variants.iter().map(|v| v.name.as_str()).collect();
 
         // Real variants must be present.
-        assert!(names.contains(&"debug"), "debug should be present: {names:?}");
-        assert!(names.contains(&"release"), "release should be present: {names:?}");
+        assert!(
+            names.contains(&"debug"),
+            "debug should be present: {names:?}"
+        );
+        assert!(
+            names.contains(&"release"),
+            "release should be present: {names:?}"
+        );
 
         // Test variants must NOT be present.
-        assert!(!names.contains(&"androidTest"), "androidTest must be excluded: {names:?}");
-        assert!(!names.contains(&"debugAndroidTest"), "debugAndroidTest must be excluded: {names:?}");
-        assert!(!names.contains(&"debugUnitTest"), "debugUnitTest must be excluded: {names:?}");
-        assert!(!names.contains(&"releaseUnitTest"), "releaseUnitTest must be excluded: {names:?}");
+        assert!(
+            !names.contains(&"androidTest"),
+            "androidTest must be excluded: {names:?}"
+        );
+        assert!(
+            !names.contains(&"debugAndroidTest"),
+            "debugAndroidTest must be excluded: {names:?}"
+        );
+        assert!(
+            !names.contains(&"debugUnitTest"),
+            "debugUnitTest must be excluded: {names:?}"
+        );
+        assert!(
+            !names.contains(&"releaseUnitTest"),
+            "releaseUnitTest must be excluded: {names:?}"
+        );
 
-        assert_eq!(list.variants.len(), 2, "only debug and release should remain: {names:?}");
+        assert_eq!(
+            list.variants.len(),
+            2,
+            "only debug and release should remain: {names:?}"
+        );
     }
 
     #[test]
@@ -873,7 +926,10 @@ productFlavors {
     fn cartesian_product_two_dimensions() {
         let mut map = std::collections::HashMap::new();
         map.insert("api".to_string(), vec!["v1".to_string(), "v2".to_string()]);
-        map.insert("mode".to_string(), vec!["demo".to_string(), "full".to_string()]);
+        map.insert(
+            "mode".to_string(),
+            vec!["demo".to_string(), "full".to_string()],
+        );
         let dims = vec!["api".to_string(), "mode".to_string()];
         let product = cartesian_product(&dims, &map);
         assert_eq!(product.len(), 4);

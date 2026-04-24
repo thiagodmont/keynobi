@@ -42,18 +42,24 @@ pub async fn get_runtime_state(
         };
     }
 
-    let processes: Vec<ProcessInfo> = futures_util::future::join_all(pids.iter().map(|(pid, name)| {
-        let pid = *pid;
-        let name = name.clone();
-        async move {
-            let (threads, rss) = tokio::join!(
-                get_thread_count(adb, device_serial, pid),
-                get_rss_kb(adb, device_serial, pid)
-            );
-            ProcessInfo { pid, name, thread_count: threads, rss_kb: rss }
-        }
-    }))
-    .await;
+    let processes: Vec<ProcessInfo> =
+        futures_util::future::join_all(pids.iter().map(|(pid, name)| {
+            let pid = *pid;
+            let name = name.clone();
+            async move {
+                let (threads, rss) = tokio::join!(
+                    get_thread_count(adb, device_serial, pid),
+                    get_rss_kb(adb, device_serial, pid)
+                );
+                ProcessInfo {
+                    pid,
+                    name,
+                    thread_count: threads,
+                    rss_kb: rss,
+                }
+            }
+        }))
+        .await;
 
     let total_threads = processes.iter().filter_map(|p| p.thread_count).sum();
     let total_rss_kb = processes.iter().filter_map(|p| p.rss_kb).sum();
@@ -77,13 +83,23 @@ pub async fn restart_app(
     if cold {
         adb_cmd(adb, Some(device_serial), &["shell", "pm", "clear", package]).await?;
     } else {
-        adb_cmd(adb, Some(device_serial), &["shell", "am", "force-stop", package]).await?;
+        adb_cmd(
+            adb,
+            Some(device_serial),
+            &["shell", "am", "force-stop", package],
+        )
+        .await?;
     }
 
     let activity = resolve_launcher_activity(adb, device_serial, package).await?;
 
     let start = std::time::Instant::now();
-    adb_cmd(adb, Some(device_serial), &["shell", "am", "start", "-n", &activity]).await?;
+    adb_cmd(
+        adb,
+        Some(device_serial),
+        &["shell", "am", "start", "-n", &activity],
+    )
+    .await?;
 
     let display_time_ms = wait_for_displayed(adb, device_serial, package, start).await;
 
@@ -133,7 +149,11 @@ async fn get_thread_count(adb: &PathBuf, device_serial: Option<&str>, pid: i32) 
     .await
     .ok()?;
     let count = output.lines().filter(|l| !l.trim().is_empty()).count();
-    if count > 1 { Some((count - 1) as u32) } else { None }
+    if count > 1 {
+        Some((count - 1) as u32)
+    } else {
+        None
+    }
 }
 
 async fn get_rss_kb(adb: &PathBuf, device_serial: Option<&str>, pid: i32) -> Option<u64> {
@@ -183,9 +203,7 @@ async fn resolve_launcher_activity(
         .lines()
         .find(|l| l.contains('/'))
         .map(|l| l.trim().to_string())
-        .ok_or_else(|| {
-            format!("Could not resolve launcher activity for package '{package}'")
-        })
+        .ok_or_else(|| format!("Could not resolve launcher activity for package '{package}'"))
 }
 
 async fn wait_for_displayed(
@@ -212,14 +230,7 @@ async fn wait_for_displayed(
         let output = adb_cmd(
             adb,
             Some(device_serial),
-            &[
-                "logcat",
-                "-d",
-                "-T",
-                &anchor,
-                "-s",
-                "ActivityManager:I",
-            ],
+            &["logcat", "-d", "-T", &anchor, "-s", "ActivityManager:I"],
         )
         .await
         .unwrap_or_default();
@@ -289,7 +300,11 @@ async fn adb_cmd(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let msg = if !stderr.trim().is_empty() { stderr } else { stdout };
+        let msg = if !stderr.trim().is_empty() {
+            stderr
+        } else {
+            stdout
+        };
         return Err(msg);
     }
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
@@ -330,7 +345,8 @@ mod tests {
 
     #[test]
     fn parse_displayed_time_ms_format() {
-        let log = "I ActivityManager: Displayed com.example.app/.MainActivity: +850ms (total +1s200ms)";
+        let log =
+            "I ActivityManager: Displayed com.example.app/.MainActivity: +850ms (total +1s200ms)";
         assert_eq!(parse_displayed_time(log, "com.example.app"), Some(1200));
     }
 

@@ -7,9 +7,8 @@ use regex::Regex;
 use roxmltree::{Error as XmlError, TextPos};
 use std::sync::LazyLock;
 
-static NAMED_ENTITY: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"&(?P<name>[a-zA-Z][a-zA-Z0-9]*);").expect("valid regex")
-});
+static NAMED_ENTITY: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"&(?P<name>[a-zA-Z][a-zA-Z0-9]*);").expect("valid regex"));
 
 /// Strip / replace characters illegal in XML 1.0.
 fn strip_disallowed_xml_chars(s: &str) -> String {
@@ -296,17 +295,15 @@ mod tests {
 
     #[test]
     fn html_symbol_entities_decode_to_characters() {
-        let raw = r#"<hierarchy><node text="A&copy;B&reg;C&trade;D" bounds="[0,0][1,1]"/></hierarchy>"#;
+        let raw =
+            r#"<hierarchy><node text="A&copy;B&reg;C&trade;D" bounds="[0,0][1,1]"/></hierarchy>"#;
         let (s, _) = preprocess_uiautomator_xml(raw);
         let doc = roxmltree::Document::parse(&s).expect("parse");
         let n = doc
             .descendants()
             .find(|n| n.has_tag_name("node"))
             .expect("node");
-        assert_eq!(
-            n.attribute("text"),
-            Some("A\u{A9}B\u{AE}C\u{2122}D")
-        );
+        assert_eq!(n.attribute("text"), Some("A\u{A9}B\u{AE}C\u{2122}D"));
     }
 
     #[test]

@@ -15,35 +15,38 @@
  * Setup: `claude mcp add --transport stdio keynobi -- "/path/to/keynobi" --mcp`
  */
 use crate::services::adb_manager::{self, DeviceState};
+use crate::services::app_inspector;
+use crate::services::build_inspector;
 use crate::services::build_runner::{self, BuildState};
+use crate::services::crash_inspector;
+use crate::services::device_inspector;
+use crate::services::health_inspector;
 use crate::services::logcat::{self, LogcatFilter, LogcatState};
 use crate::services::mcp_activity::{self, McpActivityEntry};
 use crate::services::process_manager::ProcessManager;
 use crate::services::settings_manager;
-use crate::services::variant_manager;
-use crate::services::crash_inspector;
-use crate::services::app_inspector;
-use crate::services::build_inspector;
-use crate::services::device_inspector;
-use crate::services::health_inspector;
 use crate::services::ui_automation;
 use crate::services::ui_hierarchy;
 use crate::services::ui_hierarchy_parse;
+use crate::services::variant_manager;
 use crate::FsState;
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use rmcp::{
-    ErrorData as McpError, RoleServer, ServerHandler, ServiceExt,
-    handler::server::{router::prompt::PromptRouter, router::tool::ToolRouter, wrapper::Parameters},
+    handler::server::{
+        router::prompt::PromptRouter, router::tool::ToolRouter, wrapper::Parameters,
+    },
     model::*,
-    prompt, prompt_handler, prompt_router,
-    schemars,
+    prompt, prompt_handler, prompt_router, schemars,
     service::RequestContext,
-    tool, tool_handler, tool_router,
+    tool, tool_handler, tool_router, ErrorData as McpError, RoleServer, ServerHandler, ServiceExt,
 };
 use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tauri::{AppHandle, Emitter, Manager};
 use tracing::{debug, error, info};
 
@@ -126,7 +129,9 @@ impl AndroidMcpServer {
 pub struct RunGradleTaskParams {
     #[schemars(description = "Gradle task name, e.g. assembleDebug or :app:assembleRelease")]
     pub task: String,
-    #[schemars(description = "Optional build variant to activate before running, e.g. debug or release")]
+    #[schemars(
+        description = "Optional build variant to activate before running, e.g. debug or release"
+    )]
     pub variant: Option<String>,
 }
 
@@ -166,7 +171,9 @@ pub struct GetCrashLogsParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StartLogcatParams {
-    #[schemars(description = "ADB device serial to stream logcat from (optional, uses first connected device)")]
+    #[schemars(
+        description = "ADB device serial to stream logcat from (optional, uses first connected device)"
+    )]
     pub device_serial: Option<String>,
 }
 
@@ -216,13 +223,17 @@ pub struct StopAvdParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct FindApkPathParams {
-    #[schemars(description = "Build variant name, e.g. debug or release (optional, uses active variant)")]
+    #[schemars(
+        description = "Build variant name, e.g. debug or release (optional, uses active variant)"
+    )]
     pub variant: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RunTestsParams {
-    #[schemars(description = "Test type: 'unit' (testDebug), 'connected' (connectedAndroidTest), or a specific Gradle test task")]
+    #[schemars(
+        description = "Test type: 'unit' (testDebug), 'connected' (connectedAndroidTest), or a specific Gradle test task"
+    )]
     pub test_type: String,
 }
 
@@ -230,7 +241,9 @@ pub struct RunTestsParams {
 pub struct GetCrashStackTraceParams {
     #[schemars(description = "Filter to a specific package name, e.g. com.example.app")]
     pub package: Option<String>,
-    #[schemars(description = "Return a specific crash group by ID (from get_crash_logs crash_group_id field)")]
+    #[schemars(
+        description = "Return a specific crash group by ID (from get_crash_logs crash_group_id field)"
+    )]
     pub crash_group_id: Option<u64>,
 }
 
@@ -238,9 +251,13 @@ pub struct GetCrashStackTraceParams {
 pub struct RestartAppParams {
     #[schemars(description = "Android package name, e.g. com.example.app")]
     pub package: String,
-    #[schemars(description = "ADB device serial (from list_devices). Uses first connected device if omitted.")]
+    #[schemars(
+        description = "ADB device serial (from list_devices). Uses first connected device if omitted."
+    )]
     pub device_serial: Option<String>,
-    #[schemars(description = "Cold start: clears app data with pm clear before launching (default true). Set false for warm restart.")]
+    #[schemars(
+        description = "Cold start: clears app data with pm clear before launching (default true). Set false for warm restart."
+    )]
     pub cold: Option<bool>,
 }
 
@@ -248,21 +265,29 @@ pub struct RestartAppParams {
 pub struct GetAppRuntimeStateParams {
     #[schemars(description = "Android package name, e.g. com.example.app")]
     pub package: String,
-    #[schemars(description = "ADB device serial (from list_devices). Uses first connected device if omitted.")]
+    #[schemars(
+        description = "ADB device serial (from list_devices). Uses first connected device if omitted."
+    )]
     pub device_serial: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetBuildConfigParams {
-    #[schemars(description = "Gradle module name (subdirectory), e.g. app (default) or feature-login")]
+    #[schemars(
+        description = "Gradle module name (subdirectory), e.g. app (default) or feature-login"
+    )]
     pub module: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetUiHierarchyParams {
-    #[schemars(description = "ADB device serial (from list_devices). Uses first online device if omitted.")]
+    #[schemars(
+        description = "ADB device serial (from list_devices). Uses first online device if omitted."
+    )]
     pub device_serial: Option<String>,
-    #[schemars(description = "If true, return only interactive rows (bounds, text, actions) — smaller than full tree. Default false.")]
+    #[schemars(
+        description = "If true, return only interactive rows (bounds, text, actions) — smaller than full tree. Default false."
+    )]
     pub interactive_only: Option<bool>,
     #[schemars(description = "Max rows when interactive_only is true (default 80, max 500).")]
     pub max_interactive_rows: Option<u32>,
@@ -276,22 +301,22 @@ impl AndroidMcpServer {
 
     /// Run a Gradle task and wait for completion. Returns exit status + error summary.
     /// After the build, call get_build_errors for structured diagnostics.
-    #[tool(description = "Run a Gradle task (e.g. assembleDebug) and return the result. Use get_build_errors for structured errors after the build.")]
+    #[tool(
+        description = "Run a Gradle task (e.g. assembleDebug) and return the result. Use get_build_errors for structured errors after the build."
+    )]
     async fn run_gradle_task(
         &self,
         Parameters(p): Parameters<RunGradleTaskParams>,
     ) -> Result<CallToolResult, McpError> {
         validate_gradle_task(&p.task)?;
 
-        let gradle_root = self.get_gradle_root().await
-            .ok_or_else(|| McpError::invalid_params(
-                "No project open. Open an Android project first.", None,
-            ))?;
+        let gradle_root = self.get_gradle_root().await.ok_or_else(|| {
+            McpError::invalid_params("No project open. Open an Android project first.", None)
+        })?;
 
-        let gradlew = build_runner::find_gradlew(&gradle_root)
-            .ok_or_else(|| McpError::invalid_params(
-                "gradlew not found. Is this an Android project?", None,
-            ))?;
+        let gradlew = build_runner::find_gradlew(&gradle_root).ok_or_else(|| {
+            McpError::invalid_params("gradlew not found. Is this an Android project?", None)
+        })?;
 
         let (settings, _) = settings_manager::load_settings();
         let env = build_runner::build_env_vars(&settings, &gradle_root);
@@ -320,11 +345,17 @@ impl AndroidMcpServer {
 
         if result.success {
             let msg = if result.errors.is_empty() {
-                format!("BUILD SUCCESSFUL — task '{}' ({}ms)", p.task, result.duration_ms)
+                format!(
+                    "BUILD SUCCESSFUL — task '{}' ({}ms)",
+                    p.task, result.duration_ms
+                )
             } else {
                 format!(
                     "BUILD SUCCESSFUL (with {} warning(s)) — task '{}' ({}ms)\n{}",
-                    result.errors.len(), p.task, result.duration_ms, issue_lines.join("\n")
+                    result.errors.len(),
+                    p.task,
+                    result.duration_ms,
+                    issue_lines.join("\n")
                 )
             };
             Ok(CallToolResult::success(vec![Content::text(msg)]))
@@ -344,51 +375,78 @@ impl AndroidMcpServer {
     }
 
     /// Get the current build status.
-    #[tool(description = "Get the current Gradle build status: idle, running (with task name), success, failed, or cancelled.")]
+    #[tool(
+        description = "Get the current Gradle build status: idle, running (with task name), success, failed, or cancelled."
+    )]
     async fn get_build_status(&self) -> Result<CallToolResult, McpError> {
         let bs = self.build_state.inner.lock().await;
         let (state_str, details) = match &bs.status {
             crate::models::build::BuildStatus::Idle => ("idle", json!(null)),
-            crate::models::build::BuildStatus::Running { task, started_at } => (
-                "running",
-                json!({ "task": task, "started_at": started_at }),
+            crate::models::build::BuildStatus::Running { task, started_at } => {
+                ("running", json!({ "task": task, "started_at": started_at }))
+            }
+            crate::models::build::BuildStatus::Success(r) => (
+                "success",
+                json!({
+                    "duration_ms": r.duration_ms,
+                    "error_count": r.error_count,
+                    "warning_count": r.warning_count
+                }),
             ),
-            crate::models::build::BuildStatus::Success(r) => ("success", json!({
-                "duration_ms": r.duration_ms,
-                "error_count": r.error_count,
-                "warning_count": r.warning_count
-            })),
-            crate::models::build::BuildStatus::Failed(r) => ("failed", json!({
-                "duration_ms": r.duration_ms,
-                "error_count": r.error_count,
-                "warning_count": r.warning_count
-            })),
+            crate::models::build::BuildStatus::Failed(r) => (
+                "failed",
+                json!({
+                    "duration_ms": r.duration_ms,
+                    "error_count": r.error_count,
+                    "warning_count": r.warning_count
+                }),
+            ),
             crate::models::build::BuildStatus::Cancelled => ("cancelled", json!(null)),
         };
         let summary = match &bs.status {
             crate::models::build::BuildStatus::Idle => "Build status: idle".to_owned(),
-            crate::models::build::BuildStatus::Running { task, .. } => format!("Build status: running — task: {task}"),
-            crate::models::build::BuildStatus::Success(r) => format!("Build status: success — {}ms, {} error(s), {} warning(s)", r.duration_ms, r.error_count, r.warning_count),
-            crate::models::build::BuildStatus::Failed(r) => format!("Build status: failed — {} error(s), {} warning(s)", r.error_count, r.warning_count),
+            crate::models::build::BuildStatus::Running { task, .. } => {
+                format!("Build status: running — task: {task}")
+            }
+            crate::models::build::BuildStatus::Success(r) => format!(
+                "Build status: success — {}ms, {} error(s), {} warning(s)",
+                r.duration_ms, r.error_count, r.warning_count
+            ),
+            crate::models::build::BuildStatus::Failed(r) => format!(
+                "Build status: failed — {} error(s), {} warning(s)",
+                r.error_count, r.warning_count
+            ),
             crate::models::build::BuildStatus::Cancelled => "Build status: cancelled".to_owned(),
         };
-        Ok(CallToolResult::structured(json!({ "status": state_str, "details": details, "summary": summary })))
+        Ok(CallToolResult::structured(
+            json!({ "status": state_str, "details": details, "summary": summary }),
+        ))
     }
 
     /// Get structured compiler errors and warnings from the last build.
-    #[tool(description = "Get compiler errors and warnings from the last Gradle build. Each entry includes severity, file path, line number, and message.")]
+    #[tool(
+        description = "Get compiler errors and warnings from the last Gradle build. Each entry includes severity, file path, line number, and message."
+    )]
     async fn get_build_errors(&self) -> Result<CallToolResult, McpError> {
         let bs = self.build_state.inner.lock().await;
         if bs.current_errors.is_empty() {
-            return Ok(CallToolResult::structured(json!({ "errors": [], "count": 0 })));
+            return Ok(CallToolResult::structured(
+                json!({ "errors": [], "count": 0 }),
+            ));
         }
-        let errors: Vec<serde_json::Value> = bs.current_errors.iter().map(|e| json!({
-            "severity": format!("{:?}", e.severity).to_lowercase(),
-            "message": e.message,
-            "file": e.file,
-            "line": e.line,
-            "col": e.col,
-        })).collect();
+        let errors: Vec<serde_json::Value> = bs
+            .current_errors
+            .iter()
+            .map(|e| {
+                json!({
+                    "severity": format!("{:?}", e.severity).to_lowercase(),
+                    "message": e.message,
+                    "file": e.file,
+                    "line": e.line,
+                    "col": e.col,
+                })
+            })
+            .collect();
         Ok(CallToolResult::structured(json!({
             "count": errors.len(),
             "errors": errors
@@ -396,45 +454,78 @@ impl AndroidMcpServer {
     }
 
     /// Get the raw build log output lines.
-    #[tool(description = "Get the raw Gradle build output lines. Useful for diagnosing build issues not captured as structured errors.")]
+    #[tool(
+        description = "Get the raw Gradle build output lines. Useful for diagnosing build issues not captured as structured errors."
+    )]
     async fn get_build_log(
         &self,
         Parameters(p): Parameters<GetBuildLogParams>,
     ) -> Result<CallToolResult, McpError> {
         let (settings_for_mcp, _) = settings_manager::load_settings();
         let mcp_settings = settings_for_mcp.mcp;
-        let lines_req = p.lines.unwrap_or(mcp_settings.build_log_default_lines as usize).min(2000);
-        let log = self.build_state.build_log.lock()
+        let lines_req = p
+            .lines
+            .unwrap_or(mcp_settings.build_log_default_lines as usize)
+            .min(2000);
+        let log = self
+            .build_state
+            .build_log
+            .lock()
             .map_err(|_| McpError::internal_error("Lock poisoned", None))?;
         if log.is_empty() {
-            return Ok(CallToolResult::success(vec![Content::text("Build log is empty. Run a build first.")]));
+            return Ok(CallToolResult::success(vec![Content::text(
+                "Build log is empty. Run a build first.",
+            )]));
         }
-        let lines: Vec<&String> = log.iter().rev().take(lines_req).collect::<Vec<_>>()
-            .into_iter().rev().collect();
-        Ok(CallToolResult::success(vec![Content::text(
-            format!("{} log line(s):\n{}", lines.len(), lines.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n"))
-        )]))
+        let lines: Vec<&String> = log
+            .iter()
+            .rev()
+            .take(lines_req)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "{} log line(s):\n{}",
+            lines.len(),
+            lines
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join("\n")
+        ))]))
     }
 
     /// Cancel a running Gradle build.
-    #[tool(description = "Cancel the currently running Gradle build. Returns immediately if no build is running.")]
+    #[tool(
+        description = "Cancel the currently running Gradle build. Returns immediately if no build is running."
+    )]
     async fn cancel_build(&self) -> Result<CallToolResult, McpError> {
-        let was_running = build_runner::cancel_build(&self.build_state, &self.process_manager).await;
-        let msg = if was_running { "Build cancelled." } else { "No build was running." };
+        let was_running =
+            build_runner::cancel_build(&self.build_state, &self.process_manager).await;
+        let msg = if was_running {
+            "Build cancelled."
+        } else {
+            "No build was running."
+        };
         Ok(CallToolResult::success(vec![Content::text(msg)]))
     }
 
     /// List available build variants.
-    #[tool(description = "List available build variants (build types + product flavors) for the current Android project, which variant Keynobi treats as the Gradle/Android Studio default (`defaultVariant`), and which one is persisted as active in settings (`active`).")]
+    #[tool(
+        description = "List available build variants (build types + product flavors) for the current Android project, which variant Keynobi treats as the Gradle/Android Studio default (`defaultVariant`), and which one is persisted as active in settings (`active`)."
+    )]
     async fn list_build_variants(&self) -> Result<CallToolResult, McpError> {
         let gradle_root = match self.get_gradle_root().await {
             Some(r) => r,
-            None => return Ok(CallToolResult::structured(json!({
-                "variants": [],
-                "active": null,
-                "defaultVariant": null,
-                "error": "No project open"
-            }))),
+            None => {
+                return Ok(CallToolResult::structured(json!({
+                    "variants": [],
+                    "active": null,
+                    "defaultVariant": null,
+                    "error": "No project open"
+                })))
+            }
         };
         let candidates = [
             gradle_root.join("app").join("build.gradle.kts"),
@@ -444,17 +535,21 @@ impl AndroidMcpServer {
         for path in &candidates {
             if path.is_file() {
                 if let Ok(content) = std::fs::read_to_string(path) {
-                    if let Some(mut list) = variant_manager::parse_variants_from_gradle(path, &content) {
+                    if let Some(mut list) =
+                        variant_manager::parse_variants_from_gradle(path, &content)
+                    {
                         if !list.variants.is_empty() {
-                            list.default_variant =
-                                variant_manager::infer_default_variant_name(&gradle_root, &list.variants);
-                            let names: Vec<&str> = list.variants.iter().map(|v| v.name.as_str()).collect();
-                            let active = self
-                                .get_gradle_root()
-                                .await
-                                .and_then(|r| {
-                                    settings_manager::get_active_variant_for_project(&r.to_string_lossy())
-                                });
+                            list.default_variant = variant_manager::infer_default_variant_name(
+                                &gradle_root,
+                                &list.variants,
+                            );
+                            let names: Vec<&str> =
+                                list.variants.iter().map(|v| v.name.as_str()).collect();
+                            let active = self.get_gradle_root().await.and_then(|r| {
+                                settings_manager::get_active_variant_for_project(
+                                    &r.to_string_lossy(),
+                                )
+                            });
                             return Ok(CallToolResult::structured(json!({
                                 "active": active,
                                 "defaultVariant": list.default_variant,
@@ -474,7 +569,9 @@ impl AndroidMcpServer {
     }
 
     /// Set the active build variant.
-    #[tool(description = "Set the active build variant (e.g. debug or release). This persists in settings and affects subsequent builds.")]
+    #[tool(
+        description = "Set the active build variant (e.g. debug or release). This persists in settings and affects subsequent builds."
+    )]
     async fn set_active_variant(
         &self,
         Parameters(p): Parameters<SetVariantParams>,
@@ -494,12 +591,16 @@ impl AndroidMcpServer {
     }
 
     /// Find the output APK path for a given build variant.
-    #[tool(description = "Find the output APK path after a successful build. Returns the path to use with install_apk. Specify variant or uses the active one.")]
+    #[tool(
+        description = "Find the output APK path after a successful build. Returns the path to use with install_apk. Specify variant or uses the active one."
+    )]
     async fn find_apk_path(
         &self,
         Parameters(p): Parameters<FindApkPathParams>,
     ) -> Result<CallToolResult, McpError> {
-        let gradle_root = self.get_gradle_root().await
+        let gradle_root = self
+            .get_gradle_root()
+            .await
             .ok_or_else(|| McpError::invalid_params("No project open", None))?;
 
         let variant = p.variant.as_deref().unwrap_or("debug");
@@ -523,7 +624,9 @@ impl AndroidMcpServer {
     }
 
     /// Run tests for the project.
-    #[tool(description = "Run unit tests or connected Android tests. test_type: 'unit' (testDebug), 'connected' (connectedAndroidTest), or a specific Gradle test task.")]
+    #[tool(
+        description = "Run unit tests or connected Android tests. test_type: 'unit' (testDebug), 'connected' (connectedAndroidTest), or a specific Gradle test task."
+    )]
     async fn run_tests(
         &self,
         Parameters(p): Parameters<RunTestsParams>,
@@ -537,13 +640,18 @@ impl AndroidMcpServer {
             }
         };
         // Delegate to run_gradle_task with the resolved task name.
-        let params = RunGradleTaskParams { task, variant: None };
+        let params = RunGradleTaskParams {
+            task,
+            variant: None,
+        };
         self.run_gradle_task(Parameters(params)).await
     }
 
     /// Get a parsed crash stack trace from the in-memory logcat buffer.
     /// Requires logcat to be running (call start_logcat first).
-    #[tool(description = "Get a parsed crash stack trace from logcat. Returns exception type, message, stack frames, and caused-by chain. Requires start_logcat to be running.")]
+    #[tool(
+        description = "Get a parsed crash stack trace from logcat. Returns exception type, message, stack frames, and caused-by chain. Requires start_logcat to be running."
+    )]
     async fn get_crash_stack_trace(
         &self,
         Parameters(p): Parameters<GetCrashStackTraceParams>,
@@ -568,25 +676,25 @@ impl AndroidMcpServer {
             .collect();
         drop(logcat);
 
-        match crash_inspector::find_crash(
-            &entries,
-            p.package.as_deref(),
-            p.crash_group_id,
-        ) {
+        match crash_inspector::find_crash(&entries, p.package.as_deref(), p.crash_group_id) {
             None => {
                 let msg = if let Some(pkg) = &p.package {
                     format!("No crashes found for package '{pkg}'.")
                 } else {
                     "No crashes found in the logcat buffer.".to_string()
                 };
-                Ok(CallToolResult::structured(json!({ "found": false, "message": msg })))
+                Ok(CallToolResult::structured(
+                    json!({ "found": false, "message": msg }),
+                ))
             }
             Some(crash) => Ok(CallToolResult::structured(json!(crash))),
         }
     }
 
     /// Restart an Android app: stop it (optionally clearing data), then relaunch and wait for display.
-    #[tool(description = "Restart an Android app: force-stop or pm clear, then relaunch and wait for the activity to display. Returns launch time.")]
+    #[tool(
+        description = "Restart an Android app: force-stop or pm clear, then relaunch and wait for the activity to display. Returns launch time."
+    )]
     async fn restart_app(
         &self,
         Parameters(p): Parameters<RestartAppParams>,
@@ -599,12 +707,15 @@ impl AndroidMcpServer {
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
-                "No device connected. Connect a device or launch an emulator first.",
-            )])),
-        };
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
+                        "No device connected. Connect a device or launch an emulator first.",
+                    )]))
+                }
+            };
 
         let cold = p.cold.unwrap_or(true);
 
@@ -615,7 +726,9 @@ impl AndroidMcpServer {
     }
 
     /// Get process list, thread counts, and RSS memory for all processes of an app.
-    #[tool(description = "Get runtime state for an Android app: running processes, thread counts per process, and RSS memory. Lightweight — no SIGQUIT.")]
+    #[tool(
+        description = "Get runtime state for an Android app: running processes, thread counts per process, and RSS memory. Lightweight — no SIGQUIT."
+    )]
     async fn get_app_runtime_state(
         &self,
         Parameters(p): Parameters<GetAppRuntimeStateParams>,
@@ -630,32 +743,29 @@ impl AndroidMcpServer {
 
         let serial = adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await;
 
-        let state = app_inspector::get_runtime_state(
-            &adb,
-            serial.as_deref(),
-            &p.package,
-        )
-        .await;
+        let state = app_inspector::get_runtime_state(&adb, serial.as_deref(), &p.package).await;
 
         Ok(CallToolResult::structured(json!(state)))
     }
 
     /// Parse the module's build.gradle(.kts) for SDK levels, build types, and product flavors.
-    #[tool(description = "Parse build.gradle(.kts) for SDK levels, applicationId, buildTypes, and productFlavors. No Gradle execution needed.")]
+    #[tool(
+        description = "Parse build.gradle(.kts) for SDK levels, applicationId, buildTypes, and productFlavors. No Gradle execution needed."
+    )]
     async fn get_build_config(
         &self,
         Parameters(p): Parameters<GetBuildConfigParams>,
     ) -> Result<CallToolResult, McpError> {
-        let gradle_root = self.get_gradle_root().await
-            .ok_or_else(|| McpError::invalid_params(
-                "No project open. Open an Android project first.", None,
-            ))?;
+        let gradle_root = self.get_gradle_root().await.ok_or_else(|| {
+            McpError::invalid_params("No project open. Open an Android project first.", None)
+        })?;
 
         let module = p.module.as_deref().unwrap_or("app");
 
         if module.contains('/') || module.contains('\\') || module.contains("..") {
             return Err(McpError::invalid_params(
-                "Module name must be a simple directory name, not a path.", None,
+                "Module name must be a simple directory name, not a path.",
+                None,
             ));
         }
 
@@ -668,7 +778,9 @@ impl AndroidMcpServer {
     // ── Logcat tools ──────────────────────────────────────────────────────────
 
     /// Start streaming logcat from a device (required in headless mode).
-    #[tool(description = "Start streaming logcat from a device. Required in headless mode before get_logcat_entries. In GUI mode, use the app's Start Logcat button instead.")]
+    #[tool(
+        description = "Start streaming logcat from a device. Required in headless mode before get_logcat_entries. In GUI mode, use the app's Start Logcat button instead."
+    )]
     async fn start_logcat(
         &self,
         Parameters(p): Parameters<StartLogcatParams>,
@@ -681,22 +793,28 @@ impl AndroidMcpServer {
         {
             let mut state = self.logcat_state.lock().await;
             if state.streaming {
-                return Ok(CallToolResult::success(vec![Content::text("Logcat is already streaming.")]));
+                return Ok(CallToolResult::success(vec![Content::text(
+                    "Logcat is already streaming.",
+                )]));
             }
             state.streaming = true;
             state.device_serial = serial.clone();
         }
 
         let (settings, _) = settings_manager::load_settings();
-        let adb_bin = crate::services::logcat::find_adb_binary(settings.android.sdk_path.as_deref());
+        let adb_bin =
+            crate::services::logcat::find_adb_binary(settings.android.sdk_path.as_deref());
         let logcat_state = self.logcat_state.clone();
         let app_handle = self.app_handle.clone();
 
         tokio::spawn(async move {
-            crate::services::logcat::start_logcat_stream(adb_bin, serial, logcat_state, app_handle).await;
+            crate::services::logcat::start_logcat_stream(adb_bin, serial, logcat_state, app_handle)
+                .await;
         });
 
-        Ok(CallToolResult::success(vec![Content::text("Logcat streaming started. Use get_logcat_entries to read entries.")]))
+        Ok(CallToolResult::success(vec![Content::text(
+            "Logcat streaming started. Use get_logcat_entries to read entries.",
+        )]))
     }
 
     /// Stop the logcat stream.
@@ -704,18 +822,25 @@ impl AndroidMcpServer {
     async fn stop_logcat(&self) -> Result<CallToolResult, McpError> {
         let mut state = self.logcat_state.lock().await;
         state.streaming = false;
-        Ok(CallToolResult::success(vec![Content::text("Logcat stream stopped.")]))
+        Ok(CallToolResult::success(vec![Content::text(
+            "Logcat stream stopped.",
+        )]))
     }
 
     /// Get recent logcat entries with optional filtering.
-    #[tool(description = "Get recent Android logcat entries. Filter by level, tag, text, package, or show only crashes. Call start_logcat first in headless mode.")]
+    #[tool(
+        description = "Get recent Android logcat entries. Filter by level, tag, text, package, or show only crashes. Call start_logcat first in headless mode."
+    )]
     async fn get_logcat_entries(
         &self,
         Parameters(p): Parameters<GetLogcatParams>,
     ) -> Result<CallToolResult, McpError> {
         let (settings_for_logcat, _) = settings_manager::load_settings();
         let mcp_settings = settings_for_logcat.mcp;
-        let count = p.count.unwrap_or(mcp_settings.logcat_default_count as usize).min(10_000);
+        let count = p
+            .count
+            .unwrap_or(mcp_settings.logcat_default_count as usize)
+            .min(10_000);
         let only_crashes = p.only_crashes.unwrap_or(false);
         let min_level = p.min_level.as_deref().map(logcat::parse_level_str);
         let filter = LogcatFilter::new(min_level, p.tag, p.text, p.package, only_crashes);
@@ -730,18 +855,25 @@ impl AndroidMcpServer {
             } else {
                 "No logcat entries. Call start_logcat first."
             };
-            return Ok(CallToolResult::structured(json!({ "entries": [], "count": 0, "streaming": streaming, "hint": msg })));
+            return Ok(CallToolResult::structured(
+                json!({ "entries": [], "count": 0, "streaming": streaming, "hint": msg }),
+            ));
         }
 
-        let structured: Vec<serde_json::Value> = entries.iter().map(|e| json!({
-            "timestamp": e.timestamp,
-            "level": logcat::level_char(&e.level),
-            "tag": e.tag,
-            "pid": e.pid,
-            "message": e.message,
-            "is_crash": e.is_crash,
-            "package": e.package,
-        })).collect();
+        let structured: Vec<serde_json::Value> = entries
+            .iter()
+            .map(|e| {
+                json!({
+                    "timestamp": e.timestamp,
+                    "level": logcat::level_char(&e.level),
+                    "tag": e.tag,
+                    "pid": e.pid,
+                    "message": e.message,
+                    "is_crash": e.is_crash,
+                    "package": e.package,
+                })
+            })
+            .collect();
 
         Ok(CallToolResult::structured(json!({
             "count": structured.len(),
@@ -751,48 +883,66 @@ impl AndroidMcpServer {
     }
 
     /// Get recent crash logs (FATAL EXCEPTION, ANR, native crashes).
-    #[tool(description = "Get recent crash logs: FATAL EXCEPTION, ANR, and native crashes from logcat.")]
+    #[tool(
+        description = "Get recent crash logs: FATAL EXCEPTION, ANR, and native crashes from logcat."
+    )]
     async fn get_crash_logs(
         &self,
         Parameters(p): Parameters<GetCrashLogsParams>,
     ) -> Result<CallToolResult, McpError> {
         let count = p.count.unwrap_or(20).min(200);
         let logcat = self.logcat_state.lock().await;
-        let entries: Vec<serde_json::Value> = logcat.store.iter()
+        let entries: Vec<serde_json::Value> = logcat
+            .store
+            .iter()
             .rev()
             .filter(|e| e.is_crash)
             .take(count)
-            .map(|e| json!({
-                "timestamp": e.timestamp,
-                "tag": e.tag,
-                "message": e.message,
-                "pid": e.pid,
-                "package": e.package,
-            }))
+            .map(|e| {
+                json!({
+                    "timestamp": e.timestamp,
+                    "tag": e.tag,
+                    "message": e.message,
+                    "pid": e.pid,
+                    "package": e.package,
+                })
+            })
             .collect::<Vec<_>>()
             .into_iter()
             .rev()
             .collect();
 
-        Ok(CallToolResult::structured(json!({ "count": entries.len(), "entries": entries })))
+        Ok(CallToolResult::structured(
+            json!({ "count": entries.len(), "entries": entries }),
+        ))
     }
 
     /// Clear the in-memory logcat buffer.
-    #[tool(description = "Clear the in-memory logcat buffer. New entries will appear after logcat continues streaming.")]
+    #[tool(
+        description = "Clear the in-memory logcat buffer. New entries will appear after logcat continues streaming."
+    )]
     async fn clear_logcat(&self) -> Result<CallToolResult, McpError> {
         let mut state = self.logcat_state.lock().await;
         state.store.clear();
         state.known_packages.clear();
-        Ok(CallToolResult::success(vec![Content::text("Logcat buffer cleared.")]))
+        Ok(CallToolResult::success(vec![Content::text(
+            "Logcat buffer cleared.",
+        )]))
     }
 
     /// Get logcat statistics.
-    #[tool(description = "Get logcat statistics: total entries ingested, counts by level, crash count, and packages seen.")]
+    #[tool(
+        description = "Get logcat statistics: total entries ingested, counts by level, crash count, and packages seen."
+    )]
     async fn get_logcat_stats(&self) -> Result<CallToolResult, McpError> {
         let state = self.logcat_state.lock().await;
         let s = &state.store.stats;
-        let levels = ["verbose", "debug", "info", "warn", "error", "fatal", "unknown"];
-        let by_level: serde_json::Map<String, serde_json::Value> = levels.iter().enumerate()
+        let levels = [
+            "verbose", "debug", "info", "warn", "error", "fatal", "unknown",
+        ];
+        let by_level: serde_json::Map<String, serde_json::Value> = levels
+            .iter()
+            .enumerate()
             .filter(|(i, _)| s.counts_by_level[*i] > 0)
             .map(|(i, name)| (name.to_string(), json!(s.counts_by_level[i])))
             .collect();
@@ -808,7 +958,9 @@ impl AndroidMcpServer {
     // ── Device tools ──────────────────────────────────────────────────────────
 
     /// List connected ADB devices (always queries ADB for fresh results).
-    #[tool(description = "List all connected Android devices and running emulators. Queries ADB directly for fresh results.")]
+    #[tool(
+        description = "List all connected Android devices and running emulators. Queries ADB directly for fresh results."
+    )]
     async fn list_devices(&self) -> Result<CallToolResult, McpError> {
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
@@ -825,18 +977,25 @@ impl AndroidMcpServer {
         }
 
         if devices.is_empty() {
-            return Ok(CallToolResult::structured(json!({ "devices": [], "count": 0, "hint": "No devices connected. Connect a device or launch an emulator with launch_avd." })));
+            return Ok(CallToolResult::structured(
+                json!({ "devices": [], "count": 0, "hint": "No devices connected. Connect a device or launch an emulator with launch_avd." }),
+            ));
         }
 
-        let structured: Vec<serde_json::Value> = devices.iter().map(|d| json!({
-            "serial": d.serial,
-            "model": d.model.as_deref().unwrap_or(&d.name),
-            "name": d.name,
-            "state": format!("{:?}", d.connection_state).to_lowercase(),
-            "api_level": d.api_level,
-            "android_version": d.android_version,
-            "kind": format!("{:?}", d.device_kind).to_lowercase(),
-        })).collect();
+        let structured: Vec<serde_json::Value> = devices
+            .iter()
+            .map(|d| {
+                json!({
+                    "serial": d.serial,
+                    "model": d.model.as_deref().unwrap_or(&d.name),
+                    "name": d.name,
+                    "state": format!("{:?}", d.connection_state).to_lowercase(),
+                    "api_level": d.api_level,
+                    "android_version": d.android_version,
+                    "kind": format!("{:?}", d.device_kind).to_lowercase(),
+                })
+            })
+            .collect();
 
         let any_offline = structured.iter().any(|d| d["state"] == "offline");
         let hint: Option<&str> = if any_offline {
@@ -852,7 +1011,9 @@ impl AndroidMcpServer {
     }
 
     /// Dump UI Automator / accessibility hierarchy for the focused window (native Views + Compose).
-    #[tool(description = "Dump the focused window UI hierarchy (UI Automator accessibility XML) for native Views and Jetpack Compose. Includes capped shell context (dumpsys window/display, wm size/density) and tries uiautomator dump --compressed when supported. Use interactive_only for a compact list of tappable fields.")]
+    #[tool(
+        description = "Dump the focused window UI hierarchy (UI Automator accessibility XML) for native Views and Jetpack Compose. Includes capped shell context (dumpsys window/display, wm size/density) and tries uiautomator dump --compressed when supported. Use interactive_only for a compact list of tappable fields."
+    )]
     async fn get_ui_hierarchy(
         &self,
         Parameters(p): Parameters<GetUiHierarchyParams>,
@@ -864,12 +1025,15 @@ impl AndroidMcpServer {
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
-            )])),
-        };
+            )]))
+                }
+            };
 
         let snapshot = match ui_hierarchy::capture_ui_hierarchy_snapshot(&adb, &serial).await {
             Ok(s) => s,
@@ -911,7 +1075,9 @@ impl AndroidMcpServer {
     }
 
     /// Search the focused window hierarchy for nodes matching text, content-desc, resource-id, class, or package. Returns centers for use with ui_tap. Requires at least one primary filter (not only clickable/editable flags).
-    #[tool(description = "Find UI elements on the focused screen by text, content-desc, resource-id, class, or package. Returns treePath, bounds, centerX/centerY, flags, and screenHash from a fresh uiautomator dump. Use centerX/centerY with ui_tap. At least one of textContains, textEquals, contentDescContains, resourceIdEquals, resourceIdContains, classContains, or packageEquals is required.")]
+    #[tool(
+        description = "Find UI elements on the focused screen by text, content-desc, resource-id, class, or package. Returns treePath, bounds, centerX/centerY, flags, and screenHash from a fresh uiautomator dump. Use centerX/centerY with ui_tap. At least one of textContains, textEquals, contentDescContains, resourceIdEquals, resourceIdContains, classContains, or packageEquals is required."
+    )]
     async fn find_ui_elements(
         &self,
         Parameters(p): Parameters<ui_automation::FindUiElementsParams>,
@@ -927,19 +1093,24 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
-            )])),
-        };
+            )]))
+                }
+            };
 
         let snapshot = match ui_automation::capture_ui_snapshot(&adb, &serial).await {
             Ok(s) => s,
             Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
         };
 
-        let max = p.max_results.unwrap_or(ui_automation::DEFAULT_FIND_RESULTS as u32) as usize;
+        let max = p
+            .max_results
+            .unwrap_or(ui_automation::DEFAULT_FIND_RESULTS as u32) as usize;
         let matches = ui_automation::find_ui_elements(&snapshot, &p, max);
         let matches_json: Vec<serde_json::Value> = matches
             .iter()
@@ -958,7 +1129,9 @@ impl AndroidMcpServer {
     }
 
     /// Resolve the direct parent of a node by layout treePath (same paths as find_ui_elements / Layout tab).
-    #[tool(description = "Given a non-empty layout treePath from find_ui_elements or the Layout viewer, returns the direct parent node (treePath, bounds, centerX/centerY, flags) plus screenHash from a fresh dump. Optional expect_screen_hash refuses if the UI changed. Empty treePath is invalid (root has no parent).")]
+    #[tool(
+        description = "Given a non-empty layout treePath from find_ui_elements or the Layout viewer, returns the direct parent node (treePath, bounds, centerX/centerY, flags) plus screenHash from a fresh dump. Optional expect_screen_hash refuses if the UI changed. Empty treePath is invalid (root has no parent)."
+    )]
     async fn find_ui_parent(
         &self,
         Parameters(p): Parameters<ui_automation::FindUiParentParams>,
@@ -969,20 +1142,19 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
-            )])),
-        };
+            )]))
+                }
+            };
 
         let snapshot = if p.expect_screen_hash.is_some() {
-            match ui_automation::ensure_screen_hash(
-                &adb,
-                &serial,
-                p.expect_screen_hash.as_deref(),
-            )
-            .await
+            match ui_automation::ensure_screen_hash(&adb, &serial, p.expect_screen_hash.as_deref())
+                .await
             {
                 Ok(s) => s,
                 Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -994,13 +1166,11 @@ impl AndroidMcpServer {
             }
         };
 
-        let (normalized_path, parent) = match ui_automation::find_ui_parent_from_snapshot(
-            &snapshot,
-            &p.tree_path,
-        ) {
-            Ok(v) => v,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
-        };
+        let (normalized_path, parent) =
+            match ui_automation::find_ui_parent_from_snapshot(&snapshot, &p.tree_path) {
+                Ok(v) => v,
+                Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            };
 
         let parent_json = match serde_json::to_value(&parent) {
             Ok(v) => v,
@@ -1020,7 +1190,9 @@ impl AndroidMcpServer {
     }
 
     /// Tap device coordinates (usually from find_ui_elements centerX/centerY).
-    #[tool(description = "Tap at device pixel coordinates. Use find_ui_elements for centerX/centerY. Optional expect_screen_hash re-dumps the hierarchy and refuses if the screen changed.")]
+    #[tool(
+        description = "Tap at device pixel coordinates. Use find_ui_elements for centerX/centerY. Optional expect_screen_hash re-dumps the hierarchy and refuses if the screen changed."
+    )]
     async fn ui_tap(
         &self,
         Parameters(p): Parameters<ui_automation::UiTapParams>,
@@ -1031,41 +1203,45 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
-            )])),
-        };
+            )]))
+                }
+            };
 
         if let Err(e) = ui_automation::validate_coordinates(p.x, p.y) {
             return Ok(CallToolResult::error(vec![Content::text(e)]));
         }
 
         if p.expect_screen_hash.is_some() {
-            if let Err(e) = ui_automation::ensure_screen_hash(
-                &adb,
-                &serial,
-                p.expect_screen_hash.as_deref(),
-            )
-            .await
+            if let Err(e) =
+                ui_automation::ensure_screen_hash(&adb, &serial, p.expect_screen_hash.as_deref())
+                    .await
             {
                 return Ok(CallToolResult::error(vec![Content::text(e)]));
             }
         }
 
         match ui_automation::adb_input_tap(&adb, &serial, p.x, p.y).await {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(if msg.is_empty() {
-                format!("tap ({}, {})", p.x, p.y)
-            } else {
-                format!("tap ({}, {}): {msg}", p.x, p.y)
-            })])),
+            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+                if msg.is_empty() {
+                    format!("tap ({}, {})", p.x, p.y)
+                } else {
+                    format!("tap ({}, {}): {msg}", p.x, p.y)
+                },
+            )])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }
 
     /// Type text via adb input text (ASCII-oriented; use tap_x/tap_y to focus a field first).
-    #[tool(description = "Send text with adb shell input text after an optional tap to focus. ASCII printable only; spaces encoded automatically; no emoji. Optional expect_screen_hash verifies hierarchy before acting. For complex text use clipboard workflows outside this tool.")]
+    #[tool(
+        description = "Send text with adb shell input text after an optional tap to focus. ASCII printable only; spaces encoded automatically; no emoji. Optional expect_screen_hash verifies hierarchy before acting. For complex text use clipboard workflows outside this tool."
+    )]
     async fn ui_type_text(
         &self,
         Parameters(p): Parameters<ui_automation::UiTypeTextParams>,
@@ -1074,7 +1250,9 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
         if p.text.is_empty() {
-            return Ok(CallToolResult::error(vec![Content::text("text must not be empty")]));
+            return Ok(CallToolResult::error(vec![Content::text(
+                "text must not be empty",
+            )]));
         }
         if let Err(e) = ui_automation::validate_tap_coordinate_pair(p.tap_x, p.tap_y) {
             return Ok(CallToolResult::error(vec![Content::text(e)]));
@@ -1082,20 +1260,19 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
-            )])),
-        };
+            )]))
+                }
+            };
 
         if let Some(ref expected) = p.expect_screen_hash {
-            if let Err(e) = ui_automation::ensure_screen_hash(
-                &adb,
-                &serial,
-                Some(expected.as_str()),
-            )
-            .await
+            if let Err(e) =
+                ui_automation::ensure_screen_hash(&adb, &serial, Some(expected.as_str())).await
             {
                 return Ok(CallToolResult::error(vec![Content::text(e)]));
             }
@@ -1120,17 +1297,21 @@ impl AndroidMcpServer {
         }
 
         match ui_automation::adb_input_text(&adb, &serial, &p.text).await {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(if msg.is_empty() {
-                "input text sent".to_string()
-            } else {
-                msg
-            })])),
+            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+                if msg.is_empty() {
+                    "input text sent".to_string()
+                } else {
+                    msg
+                },
+            )])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }
 
     /// Clear the focused editable field (Ctrl+A then Delete). Optional tap to focus first.
-    #[tool(description = "Clear the focused editable field using Ctrl+A then Delete. Use tap_x/tap_y to focus a field first. Call before ui_type_text to replace instead of append, or use the clear_before flag on ui_type_text directly.")]
+    #[tool(
+        description = "Clear the focused editable field using Ctrl+A then Delete. Use tap_x/tap_y to focus a field first. Call before ui_type_text to replace instead of append, or use the clear_before flag on ui_type_text directly."
+    )]
     async fn clear_focused_input(
         &self,
         Parameters(p): Parameters<ui_automation::ClearFocusedInputParams>,
@@ -1144,12 +1325,15 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
-            )])),
-        };
+            )]))
+                }
+            };
 
         if let (Some(x), Some(y)) = (p.tap_x, p.tap_y) {
             if let Err(e) = ui_automation::validate_coordinates(x, y) {
@@ -1162,13 +1346,17 @@ impl AndroidMcpServer {
         }
 
         match ui_automation::adb_clear_field(&adb, &serial).await {
-            Ok(()) => Ok(CallToolResult::success(vec![Content::text("field cleared")])),
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text(
+                "field cleared",
+            )])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }
 
     /// Type Unicode text (emoji, non-ASCII) via clipboard paste (API 24+).
-    #[tool(description = "Type Unicode text (including emoji and non-ASCII) into a focused field using clipboard paste (Ctrl+V). Requires API 24+. Use ui_type_text for ASCII-only input. Optional tap_x/tap_y to focus a field first. Optional clear_before to replace existing content.")]
+    #[tool(
+        description = "Type Unicode text (including emoji and non-ASCII) into a focused field using clipboard paste (Ctrl+V). Requires API 24+. Use ui_type_text for ASCII-only input. Optional tap_x/tap_y to focus a field first. Optional clear_before to replace existing content."
+    )]
     async fn ui_type_text_unicode(
         &self,
         Parameters(p): Parameters<ui_automation::UiTypeTextUnicodeParams>,
@@ -1177,7 +1365,9 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
         if p.text.is_empty() {
-            return Ok(CallToolResult::error(vec![Content::text("text must not be empty")]));
+            return Ok(CallToolResult::error(vec![Content::text(
+                "text must not be empty",
+            )]));
         }
         if let Err(e) = ui_automation::validate_tap_coordinate_pair(p.tap_x, p.tap_y) {
             return Ok(CallToolResult::error(vec![Content::text(e)]));
@@ -1185,12 +1375,15 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
-            )])),
-        };
+            )]))
+                }
+            };
 
         if let (Some(x), Some(y)) = (p.tap_x, p.tap_y) {
             if let Err(e) = ui_automation::validate_coordinates(x, y) {
@@ -1211,17 +1404,21 @@ impl AndroidMcpServer {
         }
 
         match ui_automation::adb_type_text_unicode(&adb, &serial, &p.text).await {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(if msg.is_empty() {
-                "unicode text sent via clipboard".to_string()
-            } else {
-                msg
-            })])),
+            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+                if msg.is_empty() {
+                    "unicode text sent via clipboard".to_string()
+                } else {
+                    msg
+                },
+            )])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }
 
     /// Send an allowlisted keyevent (Back, Home, Enter, etc.).
-    #[tool(description = "Send a keyevent by name: Back, Home, Enter, Delete, Tab, Escape, Search, Menu, AppSwitch, DpadUp, DpadDown, DpadLeft, DpadRight, DpadCenter.")]
+    #[tool(
+        description = "Send a keyevent by name: Back, Home, Enter, Delete, Tab, Escape, Search, Menu, AppSwitch, DpadUp, DpadDown, DpadLeft, DpadRight, DpadCenter."
+    )]
     async fn send_ui_key(
         &self,
         Parameters(p): Parameters<ui_automation::SendUiKeyParams>,
@@ -1236,25 +1433,32 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
-            )])),
-        };
+            )]))
+                }
+            };
 
         match ui_automation::adb_keyevent(&adb, &serial, code).await {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(if msg.is_empty() {
-                format!("keyevent {code}")
-            } else {
-                format!("keyevent {code}: {msg}")
-            })])),
+            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+                if msg.is_empty() {
+                    format!("keyevent {code}")
+                } else {
+                    format!("keyevent {code}: {msg}")
+                },
+            )])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }
 
     /// Swipe or long-press (same start/end with duration_ms).
-    #[tool(description = "Swipe from x1,y1 to x2,y2 in device pixels. Optional duration_ms; same coordinates + duration performs a long-press.")]
+    #[tool(
+        description = "Swipe from x1,y1 to x2,y2 in device pixels. Optional duration_ms; same coordinates + duration performs a long-press."
+    )]
     async fn ui_swipe(
         &self,
         Parameters(p): Parameters<ui_automation::UiSwipeParams>,
@@ -1265,35 +1469,34 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
-            )])),
-        };
+            )]))
+                }
+            };
 
-        match ui_automation::adb_input_swipe(
-            &adb,
-            &serial,
-            p.x1,
-            p.y1,
-            p.x2,
-            p.y2,
-            p.duration_ms,
-        )
-        .await
+        match ui_automation::adb_input_swipe(&adb, &serial, p.x1, p.y1, p.x2, p.y2, p.duration_ms)
+            .await
         {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(if msg.is_empty() {
-                "swipe OK".to_string()
-            } else {
-                msg
-            })])),
+            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+                if msg.is_empty() {
+                    "swipe OK".to_string()
+                } else {
+                    msg
+                },
+            )])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }
 
     /// Grant a runtime permission (pm grant).
-    #[tool(description = "Grant an android.permission.* runtime permission to an installed package. Package must be a normal applicationId; permission must start with android.permission.")]
+    #[tool(
+        description = "Grant an android.permission.* runtime permission to an installed package. Package must be a normal applicationId; permission must start with android.permission."
+    )]
     async fn grant_runtime_permission(
         &self,
         Parameters(p): Parameters<ui_automation::GrantRuntimePermissionParams>,
@@ -1308,25 +1511,32 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
-            )])),
-        };
+            )]))
+                }
+            };
 
         match ui_automation::adb_pm_grant(&adb, &serial, &p.package, &p.permission).await {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(if msg.is_empty() {
-                format!("granted {} to {}", p.permission, p.package)
-            } else {
-                msg
-            })])),
+            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+                if msg.is_empty() {
+                    format!("granted {} to {}", p.permission, p.package)
+                } else {
+                    msg
+                },
+            )])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }
 
     /// Poll until a UI element matching filters appears (or timeout elapses).
-    #[tool(description = "Poll the device hierarchy until an element matching the given filters appears, or timeout_ms elapses (default 15s, max 30s). Returns the same shape as find_ui_elements on success. Requires at least one primary filter. Use after ui_tap or navigation to wait for the next screen to load.")]
+    #[tool(
+        description = "Poll the device hierarchy until an element matching the given filters appears, or timeout_ms elapses (default 15s, max 30s). Returns the same shape as find_ui_elements on success. Requires at least one primary filter. Use after ui_tap or navigation to wait for the next screen to load."
+    )]
     async fn wait_for_element(
         &self,
         Parameters(p): Parameters<ui_automation::WaitForElementParams>,
@@ -1337,12 +1547,15 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
-            )])),
-        };
+            )]))
+                }
+            };
 
         match ui_automation::wait_for_element(&adb, &serial, &p).await {
             Ok((snapshot, matches)) => {
@@ -1364,33 +1577,44 @@ impl AndroidMcpServer {
     }
 
     /// Capture a screenshot from a connected device.
-    #[tool(description = "Capture a screenshot from a connected Android device. Returns the image inline.")]
+    #[tool(
+        description = "Capture a screenshot from a connected Android device. Returns the image inline."
+    )]
     async fn screenshot(
         &self,
         Parameters(p): Parameters<DeviceSerialParams>,
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.device_serial)?;
 
-        let adb = { let (s, _) = settings_manager::load_settings(); adb_manager::get_adb_path(&s) };
+        let adb = {
+            let (s, _) = settings_manager::load_settings();
+            adb_manager::get_adb_path(&s)
+        };
         match device_inspector::take_screenshot(&adb, &p.device_serial).await {
-            Ok(bytes) => Ok(CallToolResult::success(vec![
-                Content::image(BASE64.encode(&bytes), "image/png"),
-            ])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(
-                format!("Screenshot failed: {e}")
+            Ok(bytes) => Ok(CallToolResult::success(vec![Content::image(
+                BASE64.encode(&bytes),
+                "image/png",
             )])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+                "Screenshot failed: {e}"
+            ))])),
         }
     }
 
     /// Get device hardware and software properties.
-    #[tool(description = "Get Android device properties: SDK level, Android version, manufacturer, model, screen resolution, and battery.")]
+    #[tool(
+        description = "Get Android device properties: SDK level, Android version, manufacturer, model, screen resolution, and battery."
+    )]
     async fn get_device_info(
         &self,
         Parameters(p): Parameters<DeviceSerialParams>,
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.device_serial)?;
 
-        let adb = { let (s, _) = settings_manager::load_settings(); adb_manager::get_adb_path(&s) };
+        let adb = {
+            let (s, _) = settings_manager::load_settings();
+            adb_manager::get_adb_path(&s)
+        };
         match device_inspector::get_device_info(&adb, &p.device_serial).await {
             Ok(info) => Ok(CallToolResult::structured(json!(info))),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -1398,7 +1622,9 @@ impl AndroidMcpServer {
     }
 
     /// Compare current UI state against a baseline screenHash captured earlier.
-    #[tool(description = "Compare current UI state against a baseline screenHash. Returns changed=false if the screen hash matches (UI is identical), or changed=true with all currently interactive (clickable/editable) nodes when the screen changed. Use after ui_tap, ui_swipe, ui_type_text, etc. to verify the action had an effect before taking the next step.")]
+    #[tool(
+        description = "Compare current UI state against a baseline screenHash. Returns changed=false if the screen hash matches (UI is identical), or changed=true with all currently interactive (clickable/editable) nodes when the screen changed. Use after ui_tap, ui_swipe, ui_type_text, etc. to verify the action had an effect before taking the next step."
+    )]
     async fn compare_ui_state(
         &self,
         Parameters(p): Parameters<ui_automation::CompareUiStateParams>,
@@ -1409,12 +1635,15 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
-        let serial = match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
-            Some(s) => s,
-            None => return Ok(CallToolResult::error(vec![Content::text(
+        let serial =
+            match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
+                Some(s) => s,
+                None => {
+                    return Ok(CallToolResult::error(vec![Content::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
-            )])),
-        };
+            )]))
+                }
+            };
 
         let snapshot = match ui_automation::capture_ui_snapshot(&adb, &serial).await {
             Ok(s) => s,
@@ -1456,7 +1685,9 @@ impl AndroidMcpServer {
     }
 
     /// Get installed app details from a device.
-    #[tool(description = "Get installed app details: version name/code, install path, permissions, and declared activities.")]
+    #[tool(
+        description = "Get installed app details: version name/code, install path, permissions, and declared activities."
+    )]
     async fn dump_app_info(
         &self,
         Parameters(p): Parameters<DevicePackageParams>,
@@ -1464,7 +1695,10 @@ impl AndroidMcpServer {
         validate_device_serial(&p.device_serial)?;
         validate_package_name(&p.package)?;
 
-        let adb = { let (s, _) = settings_manager::load_settings(); adb_manager::get_adb_path(&s) };
+        let adb = {
+            let (s, _) = settings_manager::load_settings();
+            adb_manager::get_adb_path(&s)
+        };
         match device_inspector::dump_app_info(&adb, &p.device_serial, &p.package).await {
             Ok(info) => Ok(CallToolResult::structured(json!(info))),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -1472,7 +1706,9 @@ impl AndroidMcpServer {
     }
 
     /// Get memory usage for an app.
-    #[tool(description = "Get memory usage for an Android app: PSS, heap size, native memory, and graphics memory.")]
+    #[tool(
+        description = "Get memory usage for an Android app: PSS, heap size, native memory, and graphics memory."
+    )]
     async fn get_memory_info(
         &self,
         Parameters(p): Parameters<DevicePackageParams>,
@@ -1480,7 +1716,10 @@ impl AndroidMcpServer {
         validate_device_serial(&p.device_serial)?;
         validate_package_name(&p.package)?;
 
-        let adb = { let (s, _) = settings_manager::load_settings(); adb_manager::get_adb_path(&s) };
+        let adb = {
+            let (s, _) = settings_manager::load_settings();
+            adb_manager::get_adb_path(&s)
+        };
         match device_inspector::get_memory_info(&adb, &p.device_serial, &p.package).await {
             Ok(info) => Ok(CallToolResult::structured(json!(info))),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -1488,7 +1727,9 @@ impl AndroidMcpServer {
     }
 
     /// Install an APK on a connected device.
-    #[tool(description = "Install an APK file on a connected device or emulator. APK must be within the project's build output directory.")]
+    #[tool(
+        description = "Install an APK file on a connected device or emulator. APK must be within the project's build output directory."
+    )]
     async fn install_apk(
         &self,
         Parameters(p): Parameters<InstallApkParams>,
@@ -1503,11 +1744,15 @@ impl AndroidMcpServer {
             .await
             .map_err(|e| McpError::internal_error(format!("APK install failed: {e}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!("APK installed: {result}"))]))
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "APK installed: {result}"
+        ))]))
     }
 
     /// Launch an app on a connected device.
-    #[tool(description = "Launch an Android app on a device. Uses am start to launch the main activity or a specified activity.")]
+    #[tool(
+        description = "Launch an Android app on a device. Uses am start to launch the main activity or a specified activity."
+    )]
     async fn launch_app(
         &self,
         Parameters(p): Parameters<LaunchAppParams>,
@@ -1518,11 +1763,14 @@ impl AndroidMcpServer {
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
-        let result = adb_manager::launch_app(&adb, &p.device_serial, &p.package, p.activity.as_deref())
-            .await
-            .map_err(|e| McpError::internal_error(format!("Launch failed: {e}"), None))?;
+        let result =
+            adb_manager::launch_app(&adb, &p.device_serial, &p.package, p.activity.as_deref())
+                .await
+                .map_err(|e| McpError::internal_error(format!("Launch failed: {e}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!("App launched: {result}"))]))
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "App launched: {result}"
+        ))]))
     }
 
     /// Stop a running app on a device.
@@ -1541,29 +1789,45 @@ impl AndroidMcpServer {
             .await
             .map_err(|e| McpError::internal_error(format!("Stop app failed: {e}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!("App {} stopped.", p.package))]))
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "App {} stopped.",
+            p.package
+        ))]))
     }
 
     /// List available Android Virtual Devices (AVDs).
-    #[tool(description = "List all available Android Virtual Devices (AVDs) configured in the Android SDK.")]
+    #[tool(
+        description = "List all available Android Virtual Devices (AVDs) configured in the Android SDK."
+    )]
     async fn list_avds(&self) -> Result<CallToolResult, McpError> {
         let avds = adb_manager::list_avds();
         if avds.is_empty() {
-            return Ok(CallToolResult::structured(json!({ "avds": [], "count": 0, "hint": "No AVDs found. Create one in the Device Manager panel." })));
+            return Ok(CallToolResult::structured(
+                json!({ "avds": [], "count": 0, "hint": "No AVDs found. Create one in the Device Manager panel." }),
+            ));
         }
-        let structured: Vec<serde_json::Value> = avds.iter().map(|a| json!({
-            "name": a.name,
-            "display_name": a.display_name,
-            "api_level": a.api_level,
-            "abi": a.abi,
-            "target": a.target,
-            "path": a.path,
-        })).collect();
-        Ok(CallToolResult::structured(json!({ "count": avds.len(), "avds": structured })))
+        let structured: Vec<serde_json::Value> = avds
+            .iter()
+            .map(|a| {
+                json!({
+                    "name": a.name,
+                    "display_name": a.display_name,
+                    "api_level": a.api_level,
+                    "abi": a.abi,
+                    "target": a.target,
+                    "path": a.path,
+                })
+            })
+            .collect();
+        Ok(CallToolResult::structured(
+            json!({ "count": avds.len(), "avds": structured }),
+        ))
     }
 
     /// Launch an Android Virtual Device (emulator).
-    #[tool(description = "Launch an Android Virtual Device (emulator). Returns the emulator serial when ready.")]
+    #[tool(
+        description = "Launch an Android Virtual Device (emulator). Returns the emulator serial when ready."
+    )]
     async fn launch_avd(
         &self,
         Parameters(p): Parameters<LaunchAvdParams>,
@@ -1576,7 +1840,9 @@ impl AndroidMcpServer {
             .await
             .map_err(|e| McpError::internal_error(format!("Failed to launch AVD: {e}"), None))?;
 
-        Ok(CallToolResult::structured(json!({ "serial": serial, "avd_name": p.name })))
+        Ok(CallToolResult::structured(
+            json!({ "serial": serial, "avd_name": p.name }),
+        ))
     }
 
     /// Stop a running emulator.
@@ -1594,13 +1860,18 @@ impl AndroidMcpServer {
             .await
             .map_err(|e| McpError::internal_error(format!("Failed to stop emulator: {e}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!("Emulator {} stopped.", p.serial))]))
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Emulator {} stopped.",
+            p.serial
+        ))]))
     }
 
     // ── Project / health tools ────────────────────────────────────────────────
 
     /// Get information about the open Android project.
-    #[tool(description = "Get the currently open Android project name, path, and detected Gradle root.")]
+    #[tool(
+        description = "Get the currently open Android project name, path, and detected Gradle root."
+    )]
     async fn get_project_info(&self) -> Result<CallToolResult, McpError> {
         let fs = self.fs_state.0.lock().await;
         match fs.project_root.as_ref() {
@@ -1609,10 +1880,13 @@ impl AndroidMcpServer {
                 "hint": "No project open. Open an Android project in the companion app, or launch with --project /path/to/project."
             }))),
             Some(root) => {
-                let name = root.file_name()
+                let name = root
+                    .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| root.to_string_lossy().to_string());
-                let gradle = fs.gradle_root.as_ref()
+                let gradle = fs
+                    .gradle_root
+                    .as_ref()
                     .map(|g| g.to_string_lossy().to_string());
                 Ok(CallToolResult::structured(json!({
                     "open": true,
@@ -1625,7 +1899,9 @@ impl AndroidMcpServer {
     }
 
     /// Run system health checks.
-    #[tool(description = "Run system health checks: Java, Android SDK, ADB, emulator, and Gradle wrapper availability.")]
+    #[tool(
+        description = "Run system health checks: Java, Android SDK, ADB, emulator, and Gradle wrapper availability."
+    )]
     async fn run_health_check(&self) -> Result<CallToolResult, McpError> {
         let (settings, _) = settings_manager::load_settings();
         let (project_root, gradle_root) = {
@@ -1645,7 +1921,9 @@ impl AndroidMcpServer {
         } else if !report.project_open {
             json!("No Android project open — pass --project /path/to/project or open one in the companion app first")
         } else {
-            json!("No gradlew found in the selected project — ensure it is an Android Gradle project")
+            json!(
+                "No gradlew found in the selected project — ensure it is an Android Gradle project"
+            )
         };
 
         Ok(CallToolResult::structured(json!({
@@ -1690,7 +1968,9 @@ pub struct FullDeployArgs {
     pub device_serial: String,
     #[schemars(description = "Build variant to use, e.g. debug or release (default: debug)")]
     pub variant: Option<String>,
-    #[schemars(description = "Android package name to launch after install, e.g. com.example.myapp")]
+    #[schemars(
+        description = "Android package name to launch after install, e.g. com.example.myapp"
+    )]
     pub package: Option<String>,
 }
 
@@ -1704,13 +1984,19 @@ pub struct BuildAndFixArgs {
 impl AndroidMcpServer {
     /// Diagnose a crash for the given package: fetch logcat crashes, memory info,
     /// and app details to provide context for root-cause analysis.
-    #[prompt(name = "diagnose-crash", description = "Diagnose a crash or ANR for an Android app: fetch crash logs, memory, and app state.")]
+    #[prompt(
+        name = "diagnose-crash",
+        description = "Diagnose a crash or ANR for an Android app: fetch crash logs, memory, and app state."
+    )]
     async fn diagnose_crash(
         &self,
         Parameters(args): Parameters<DiagnoseCrashArgs>,
         _ctx: RequestContext<RoleServer>,
     ) -> Result<GetPromptResult, McpError> {
-        let device_hint = args.device_serial.as_deref().unwrap_or("the connected device");
+        let device_hint = args
+            .device_serial
+            .as_deref()
+            .unwrap_or("the connected device");
         Ok(GetPromptResult::new(vec![
                 PromptMessage::new_text(
                     PromptMessageRole::User,
@@ -1729,7 +2015,10 @@ impl AndroidMcpServer {
     }
 
     /// Full deploy workflow: build → find APK → install → launch.
-    #[prompt(name = "full-deploy", description = "Full deploy workflow: build the app, install it on a device, and launch it.")]
+    #[prompt(
+        name = "full-deploy",
+        description = "Full deploy workflow: build the app, install it on a device, and launch it."
+    )]
     async fn full_deploy(
         &self,
         Parameters(args): Parameters<FullDeployArgs>,
@@ -1761,7 +2050,10 @@ impl AndroidMcpServer {
     }
 
     /// Build and fix: run a build, get errors, and suggest fixes.
-    #[prompt(name = "build-and-fix", description = "Run a build and help fix any compiler errors.")]
+    #[prompt(
+        name = "build-and-fix",
+        description = "Run a build and help fix any compiler errors."
+    )]
     async fn build_and_fix(
         &self,
         Parameters(args): Parameters<BuildAndFixArgs>,
@@ -1811,20 +2103,25 @@ impl ServerHandler for AndroidMcpServer {
     }
 
     async fn on_initialized(&self, context: rmcp::service::NotificationContext<RoleServer>) {
-        let client_name = context.peer
+        let client_name = context
+            .peer
             .peer_info()
             .map(|i| i.client_info.name.clone())
             .unwrap_or_else(|| "unknown".into());
-        info!("MCP client connected: {} — {} tools, {} prompts available",
+        info!(
+            "MCP client connected: {} — {} tools, {} prompts available",
             client_name,
             self.tool_router.list_all().len(),
             self.prompt_router.list_all().len()
         );
         // Emit lifecycle event to Tauri GUI if running (no-op in headless mode).
-        self.emit_event("mcp:client_connected", serde_json::json!({
-            "clientName": client_name,
-            "connectedAt": chrono::Utc::now().to_rfc3339(),
-        }));
+        self.emit_event(
+            "mcp:client_connected",
+            serde_json::json!({
+                "clientName": client_name,
+                "connectedAt": chrono::Utc::now().to_rfc3339(),
+            }),
+        );
     }
 
     async fn list_resources(
@@ -1840,10 +2137,30 @@ impl ServerHandler for AndroidMcpServer {
 
         if let Some(ref gradle_root) = fs.gradle_root.clone().or(fs.project_root.clone()) {
             let candidates = [
-                ("android://manifest", gradle_root.join("app").join("src").join("main").join("AndroidManifest.xml"), "AndroidManifest.xml"),
-                ("android://app-build-gradle", gradle_root.join("app").join("build.gradle.kts"), "app/build.gradle.kts"),
-                ("android://build-gradle", gradle_root.join("build.gradle.kts"), "build.gradle.kts"),
-                ("android://gradle-settings", gradle_root.join("settings.gradle.kts"), "settings.gradle.kts"),
+                (
+                    "android://manifest",
+                    gradle_root
+                        .join("app")
+                        .join("src")
+                        .join("main")
+                        .join("AndroidManifest.xml"),
+                    "AndroidManifest.xml",
+                ),
+                (
+                    "android://app-build-gradle",
+                    gradle_root.join("app").join("build.gradle.kts"),
+                    "app/build.gradle.kts",
+                ),
+                (
+                    "android://build-gradle",
+                    gradle_root.join("build.gradle.kts"),
+                    "build.gradle.kts",
+                ),
+                (
+                    "android://gradle-settings",
+                    gradle_root.join("settings.gradle.kts"),
+                    "settings.gradle.kts",
+                ),
             ];
             for (uri, path, name) in &candidates {
                 if path.is_file() {
@@ -1872,43 +2189,66 @@ impl ServerHandler for AndroidMcpServer {
         match uri.as_str() {
             "android://project-info" => {
                 let info = self.get_project_info().await?;
-                let text = info.content.first()
+                let text = info
+                    .content
+                    .first()
                     .and_then(|c| c.as_text())
                     .map(|t| t.text.clone())
                     .unwrap_or_else(|| "No project open".into());
-                Ok(ReadResourceResult::new(vec![ResourceContents::text(text, uri.clone())]))
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    text,
+                    uri.clone(),
+                )]))
             }
             "android://health" => {
                 let health = self.run_health_check().await?;
-                let text = health.content.first()
+                let text = health
+                    .content
+                    .first()
                     .and_then(|c| c.as_text())
                     .map(|t| t.text.clone())
                     .unwrap_or_else(|| "Health check unavailable".into());
-                Ok(ReadResourceResult::new(vec![ResourceContents::text(text, uri.clone())]))
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                    text,
+                    uri.clone(),
+                )]))
             }
             other => {
                 let path = match (other, gradle_root.as_ref()) {
-                    ("android://manifest", Some(r)) => Some(r.join("app").join("src").join("main").join("AndroidManifest.xml")),
-                    ("android://app-build-gradle", Some(r)) => Some(r.join("app").join("build.gradle.kts")),
+                    ("android://manifest", Some(r)) => Some(
+                        r.join("app")
+                            .join("src")
+                            .join("main")
+                            .join("AndroidManifest.xml"),
+                    ),
+                    ("android://app-build-gradle", Some(r)) => {
+                        Some(r.join("app").join("build.gradle.kts"))
+                    }
                     ("android://build-gradle", Some(r)) => Some(r.join("build.gradle.kts")),
                     ("android://gradle-settings", Some(r)) => Some(r.join("settings.gradle.kts")),
                     _ => None,
                 };
                 match path {
                     Some(p) if p.is_file() => {
-                        let content = std::fs::read_to_string(&p)
-                            .map_err(|e| McpError::internal_error(format!("Failed to read {}: {e}", p.display()), None))?;
+                        let content = std::fs::read_to_string(&p).map_err(|e| {
+                            McpError::internal_error(
+                                format!("Failed to read {}: {e}", p.display()),
+                                None,
+                            )
+                        })?;
                         let mime = if p.extension().and_then(|e| e.to_str()) == Some("xml") {
                             "text/xml"
                         } else {
                             "text/plain"
                         };
-                        Ok(ReadResourceResult::new(vec![ResourceContents::TextResourceContents {
-                            uri: uri.clone(),
-                            mime_type: Some(mime.into()),
-                            text: content,
-                            meta: None,
-                        }]))
+                        Ok(ReadResourceResult::new(vec![
+                            ResourceContents::TextResourceContents {
+                                uri: uri.clone(),
+                                mime_type: Some(mime.into()),
+                                text: content,
+                                meta: None,
+                            },
+                        ]))
                     }
                     _ => Err(McpError::resource_not_found(
                         format!("Resource not found or project not open: {uri}"),
@@ -1929,26 +2269,35 @@ impl AndroidMcpServer {
     }
 
     async fn validate_apk_path(&self, apk_path: &str) -> Result<(), McpError> {
-        let gradle_root = self.get_gradle_root().await
+        let gradle_root = self
+            .get_gradle_root()
+            .await
             .ok_or_else(|| McpError::invalid_params("No project open", None))?;
         let build_outputs = gradle_root.join("app").join("build").join("outputs");
         let apk_path = PathBuf::from(apk_path);
-        let canonical_apk = apk_path.canonicalize()
-            .map_err(|_| McpError::invalid_params(
-                format!("APK path not found or inaccessible: {}", apk_path.display()), None
-            ))?;
-        let canonical_outputs = build_outputs.canonicalize()
-            .map_err(|_| McpError::invalid_params(
-                "Build outputs directory not found. Run a build first.", None
-            ))?;
+        let canonical_apk = apk_path.canonicalize().map_err(|_| {
+            McpError::invalid_params(
+                format!("APK path not found or inaccessible: {}", apk_path.display()),
+                None,
+            )
+        })?;
+        let canonical_outputs = build_outputs.canonicalize().map_err(|_| {
+            McpError::invalid_params(
+                "Build outputs directory not found. Run a build first.",
+                None,
+            )
+        })?;
         if !canonical_apk.starts_with(&canonical_outputs) {
             return Err(McpError::invalid_params(
                 "APK path must be within the project build outputs directory (app/build/outputs/)",
-                None
+                None,
             ));
         }
         if canonical_apk.extension().and_then(|e| e.to_str()) != Some("apk") {
-            return Err(McpError::invalid_params("Path must point to a .apk file", None));
+            return Err(McpError::invalid_params(
+                "Path must point to a .apk file",
+                None,
+            ));
         }
         Ok(())
     }
@@ -1960,10 +2309,13 @@ fn validate_gradle_task(task: &str) -> Result<(), McpError> {
     if task.is_empty() {
         return Err(McpError::invalid_params("Task name cannot be empty", None));
     }
-    let valid = task.chars().all(|c| c.is_alphanumeric() || matches!(c, ':' | '-' | '_' | '.'));
+    let valid = task
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, ':' | '-' | '_' | '.'));
     if !valid {
         return Err(McpError::invalid_params(
-            format!("Invalid task name '{task}'. Use alphanumeric, ':', '-', '_', '.' only."), None
+            format!("Invalid task name '{task}'. Use alphanumeric, ':', '-', '_', '.' only."),
+            None,
         ));
     }
     Ok(())
@@ -1971,12 +2323,18 @@ fn validate_gradle_task(task: &str) -> Result<(), McpError> {
 
 fn validate_package_name(package: &str) -> Result<(), McpError> {
     if package.is_empty() {
-        return Err(McpError::invalid_params("Package name cannot be empty", None));
+        return Err(McpError::invalid_params(
+            "Package name cannot be empty",
+            None,
+        ));
     }
-    let valid = package.chars().all(|c| c.is_alphanumeric() || matches!(c, '.' | '_'));
+    let valid = package
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_'));
     if !valid || !package.contains('.') {
         return Err(McpError::invalid_params(
-            format!("Invalid package name '{package}'. Expected format: com.example.app"), None
+            format!("Invalid package name '{package}'. Expected format: com.example.app"),
+            None,
         ));
     }
     Ok(())
@@ -1984,17 +2342,22 @@ fn validate_package_name(package: &str) -> Result<(), McpError> {
 
 fn validate_device_serial(serial: &str) -> Result<(), McpError> {
     if serial.is_empty() {
-        return Err(McpError::invalid_params("Device serial cannot be empty", None));
+        return Err(McpError::invalid_params(
+            "Device serial cannot be empty",
+            None,
+        ));
     }
-    let valid = serial.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | ':' | '.' | '_'));
+    let valid = serial
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, '-' | ':' | '.' | '_'));
     if !valid {
         return Err(McpError::invalid_params(
-            format!("Invalid device serial '{serial}'"), None
+            format!("Invalid device serial '{serial}'"),
+            None,
         ));
     }
     Ok(())
 }
-
 
 fn capitalize_first(s: &str) -> String {
     let mut c = s.chars();
@@ -2021,13 +2384,14 @@ impl ServerHandler for LoggingMcpServer {
     }
 
     async fn on_initialized(&self, context: rmcp::service::NotificationContext<RoleServer>) {
-        let client_name = context.peer
+        let client_name = context
+            .peer
             .peer_info()
             .map(|i| i.client_info.name.clone())
             .unwrap_or_else(|| "unknown".into());
-        mcp_activity::log_activity(&McpActivityEntry::lifecycle(
-            format!("Client connected: {client_name}"),
-        ));
+        mcp_activity::log_activity(&McpActivityEntry::lifecycle(format!(
+            "Client connected: {client_name}"
+        )));
         self.0.on_initialized(context).await;
     }
 
@@ -2072,18 +2436,27 @@ impl ServerHandler for LoggingMcpServer {
         let (status, summary) = match &result {
             Ok(r) => {
                 let is_err = r.is_error.unwrap_or(false);
-                let first_text = r.content.first()
-                    .and_then(|c| c.as_text())
-                    .map(|t| {
-                        let s = &t.text;
-                        if s.len() > 120 { format!("{}…", &s[..120]) } else { s.clone() }
-                    });
-                if is_err { ("error", first_text) } else { ("ok", first_text) }
+                let first_text = r.content.first().and_then(|c| c.as_text()).map(|t| {
+                    let s = &t.text;
+                    if s.len() > 120 {
+                        format!("{}…", &s[..120])
+                    } else {
+                        s.clone()
+                    }
+                });
+                if is_err {
+                    ("error", first_text)
+                } else {
+                    ("ok", first_text)
+                }
             }
             Err(e) => ("error", Some(e.message.clone().to_string())),
         };
         mcp_activity::log_activity(&McpActivityEntry::tool_call(
-            name.as_ref(), ms, status, summary,
+            name.as_ref(),
+            ms,
+            status,
+            summary,
         ));
         result
     }
@@ -2133,8 +2506,13 @@ impl ServerHandler for LoggingMcpServer {
 /// twice doesn't start two tasks fighting over stdin/stdout.
 #[tauri::command]
 pub async fn start_mcp_server(app_handle: AppHandle) -> Result<(), String> {
-    if MCP_STDIO_RUNNING.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
-        return Err("MCP server is already running. Only one stdio session is supported at a time.".into());
+    if MCP_STDIO_RUNNING
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err(
+            "MCP server is already running. Only one stdio session is supported at a time.".into(),
+        );
     }
     debug!("Starting MCP server on stdio (GUI mode)");
 
@@ -2190,7 +2568,10 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
             settings.last_active_project.and_then(|p| {
                 let path = PathBuf::from(&p);
                 if path.is_dir() {
-                    info!("MCP headless: using last active project from settings: {}", p);
+                    info!(
+                        "MCP headless: using last active project from settings: {}",
+                        p
+                    );
                     Some(path)
                 } else {
                     None
@@ -2198,7 +2579,9 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
             })
         })
         .or_else(|| std::env::current_dir().ok());
-    let gradle_root = project_root.as_ref().and_then(|root| fs_manager::find_gradle_root(root));
+    let gradle_root = project_root
+        .as_ref()
+        .and_then(|root| fs_manager::find_gradle_root(root));
 
     let fs_state = FsState(Arc::new(tokio::sync::Mutex::new(crate::FsStateInner {
         project_root: project_root.clone(),
@@ -2208,7 +2591,7 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
     let build_state = BuildState::new();
     let device_state = DeviceState::new();
     let logcat_state = Arc::new(tokio::sync::Mutex::new(
-        crate::services::logcat::LogcatStateInner::new()
+        crate::services::logcat::LogcatStateInner::new(),
     ));
     let process_manager = ProcessManager::new();
 
@@ -2218,13 +2601,18 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
     mcp_activity::write_pid_file();
     mcp_activity::log_activity(&McpActivityEntry::lifecycle(format!(
         "Server started (headless) — project: {}",
-        project_root.as_ref()
+        project_root
+            .as_ref()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|| "none".into())
     )));
 
     let server = LoggingMcpServer(AndroidMcpServer::new_headless(
-        build_state, device_state, logcat_state, fs_state, process_manager,
+        build_state,
+        device_state,
+        logcat_state,
+        fs_state,
+        process_manager,
     ));
     let transport = rmcp::transport::stdio();
     match server.serve(transport).await {
@@ -2235,9 +2623,9 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
         }
         Err(e) => {
             tracing::error!("MCP server failed to start: {e}");
-            mcp_activity::log_activity(&McpActivityEntry::lifecycle(
-                format!("Server failed to start: {e}")
-            ));
+            mcp_activity::log_activity(&McpActivityEntry::lifecycle(format!(
+                "Server failed to start: {e}"
+            )));
             mcp_activity::remove_pid_file();
             std::process::exit(1);
         }
@@ -2308,5 +2696,4 @@ mod tests {
         // We just check the type; actual state depends on test order.
         let _ = MCP_STDIO_RUNNING.load(Ordering::SeqCst);
     }
-
 }

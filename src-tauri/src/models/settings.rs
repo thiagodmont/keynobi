@@ -29,7 +29,6 @@ pub struct ProjectEntry {
     pub last_device: Option<String>,
 }
 
-
 /// All app settings persisted to `~/.keynobi/settings.json`.
 /// Every field uses `#[serde(default)]` so the file is forward-compatible —
 /// adding new settings never breaks existing config files.
@@ -226,7 +225,6 @@ pub struct McpSettings {
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
-
 /// Maximum number of entries kept in `AppSettings.recent_projects`.
 /// The oldest non-pinned entry is evicted when this limit is exceeded.
 pub const MAX_RECENT_PROJECTS: usize = 20;
@@ -247,7 +245,6 @@ impl Default for SearchSettings {
     }
 }
 
-
 impl Default for LspSettings {
     fn default() -> Self {
         Self {
@@ -256,7 +253,6 @@ impl Default for LspSettings {
         }
     }
 }
-
 
 impl Default for AdvancedSettings {
     fn default() -> Self {
@@ -376,8 +372,14 @@ mod tests {
     fn build_settings_has_no_variant_or_device_fields() {
         let s = BuildSettings::default();
         let json = serde_json::to_value(&s).unwrap();
-        assert!(json.get("buildVariant").is_none(), "buildVariant must be removed");
-        assert!(json.get("selectedDevice").is_none(), "selectedDevice must be removed");
+        assert!(
+            json.get("buildVariant").is_none(),
+            "buildVariant must be removed"
+        );
+        assert!(
+            json.get("selectedDevice").is_none(),
+            "selectedDevice must be removed"
+        );
     }
 
     #[test]

@@ -45,29 +45,32 @@ pub async fn get_device_info(adb: &PathBuf, serial: &str) -> Result<DeviceInfo, 
             .output()
     };
 
-    let (sdk, release, manufacturer, model, name, fingerprint, build_id, wm_size, battery) =
-        tokio::join!(
-            mk_getprop("ro.build.version.sdk"),
-            mk_getprop("ro.build.version.release"),
-            mk_getprop("ro.product.manufacturer"),
-            mk_getprop("ro.product.model"),
-            mk_getprop("ro.product.name"),
-            mk_getprop("ro.build.fingerprint"),
-            mk_getprop("ro.build.id"),
-            tokio::process::Command::new(adb.clone())
-                .args(["-s", serial, "shell", "wm", "size"])
-                .output(),
-            tokio::process::Command::new(adb.clone())
-                .args(["-s", serial, "shell", "dumpsys", "battery"])
-                .output(),
-        );
+    let (sdk, release, manufacturer, model, name, fingerprint, build_id, wm_size, battery) = tokio::join!(
+        mk_getprop("ro.build.version.sdk"),
+        mk_getprop("ro.build.version.release"),
+        mk_getprop("ro.product.manufacturer"),
+        mk_getprop("ro.product.model"),
+        mk_getprop("ro.product.name"),
+        mk_getprop("ro.build.fingerprint"),
+        mk_getprop("ro.build.id"),
+        tokio::process::Command::new(adb.clone())
+            .args(["-s", serial, "shell", "wm", "size"])
+            .output(),
+        tokio::process::Command::new(adb.clone())
+            .args(["-s", serial, "shell", "dumpsys", "battery"])
+            .output(),
+    );
 
     let prop_val = |res: Result<std::process::Output, _>| -> Option<String> {
         let s = res
             .ok()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
             .unwrap_or_default();
-        if s.is_empty() { None } else { Some(s) }
+        if s.is_empty() {
+            None
+        } else {
+            Some(s)
+        }
     };
 
     let battery_str = battery
@@ -98,7 +101,11 @@ pub async fn get_device_info(adb: &PathBuf, serial: &str) -> Result<DeviceInfo, 
 }
 
 #[allow(clippy::ptr_arg)]
-pub async fn dump_app_info(adb: &PathBuf, serial: &str, package: &str) -> Result<DumpedAppInfo, String> {
+pub async fn dump_app_info(
+    adb: &PathBuf,
+    serial: &str,
+    package: &str,
+) -> Result<DumpedAppInfo, String> {
     let (path_res, dump_res) = tokio::join!(
         tokio::process::Command::new(adb.clone())
             .args(["-s", serial, "shell", "pm", "path", package])
@@ -123,8 +130,15 @@ pub async fn dump_app_info(adb: &PathBuf, serial: &str, package: &str) -> Result
         ));
     }
 
-    let raw = path_out.strip_prefix("package:").unwrap_or(&path_out).trim();
-    let install_path = if raw.is_empty() { None } else { Some(raw.to_string()) };
+    let raw = path_out
+        .strip_prefix("package:")
+        .unwrap_or(&path_out)
+        .trim();
+    let install_path = if raw.is_empty() {
+        None
+    } else {
+        Some(raw.to_string())
+    };
 
     Ok(DumpedAppInfo {
         package: package.to_string(),
@@ -137,7 +151,11 @@ pub async fn dump_app_info(adb: &PathBuf, serial: &str, package: &str) -> Result
     })
 }
 
-pub async fn get_memory_info(adb: &PathBuf, serial: &str, package: &str) -> Result<MemoryInfo, String> {
+pub async fn get_memory_info(
+    adb: &PathBuf,
+    serial: &str,
+    package: &str,
+) -> Result<MemoryInfo, String> {
     let output = tokio::process::Command::new(adb)
         .args(["-s", serial, "shell", "dumpsys", "meminfo", package])
         .output()
@@ -197,7 +215,8 @@ fn extract_dump_value(text: &str, key: &str) -> Option<String> {
 }
 
 fn extract_dump_two_values(text: &str, key: &str) -> (Option<String>, Option<String>) {
-    let after = text.lines()
+    let after = text
+        .lines()
         .find(|l| l.contains(key))
         .and_then(|l| l.split(key).nth(1));
     match after {
@@ -218,7 +237,10 @@ mod tests {
     #[test]
     fn extract_dump_value_finds_version() {
         let dump = "    versionName=1.2.3\n    versionCode=42\n";
-        assert_eq!(extract_dump_value(dump, "versionName="), Some("1.2.3".into()));
+        assert_eq!(
+            extract_dump_value(dump, "versionName="),
+            Some("1.2.3".into())
+        );
         assert_eq!(extract_dump_value(dump, "versionCode="), Some("42".into()));
     }
 

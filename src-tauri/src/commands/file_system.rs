@@ -87,10 +87,14 @@ pub async fn open_project(
     let root = PathBuf::from(&path);
 
     if !root.exists() {
-        return Err(AppError::NotFound(format!("Directory does not exist: {path}")));
+        return Err(AppError::NotFound(format!(
+            "Directory does not exist: {path}"
+        )));
     }
     if !root.is_dir() {
-        return Err(AppError::InvalidInput(format!("Path is not a directory: {path}")));
+        return Err(AppError::InvalidInput(format!(
+            "Path is not a directory: {path}"
+        )));
     }
 
     let canonical_root = root
@@ -138,13 +142,19 @@ pub async fn open_project(
 #[tauri::command]
 pub async fn get_project_root(state: State<'_, FsState>) -> Result<Option<String>, String> {
     let guard = state.0.lock().await;
-    Ok(guard.project_root.as_ref().map(|p| p.to_string_lossy().to_string()))
+    Ok(guard
+        .project_root
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string()))
 }
 
 #[tauri::command]
 pub async fn get_gradle_root(state: State<'_, FsState>) -> Result<Option<String>, String> {
     let guard = state.0.lock().await;
-    Ok(guard.gradle_root.as_ref().map(|p| p.to_string_lossy().to_string()))
+    Ok(guard
+        .gradle_root
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string()))
 }
 
 /// Try to read the `applicationId` from the app-level build.gradle(.kts).
@@ -204,7 +214,8 @@ pub async fn list_projects() -> Result<Vec<ProjectEntry>, String> {
     let mut projects = settings.recent_projects;
     projects.sort_by(|a, b| {
         // Pinned entries come first; within each group sort by last_opened desc.
-        b.pinned.cmp(&a.pinned)
+        b.pinned
+            .cmp(&a.pinned)
             .then_with(|| b.last_opened.cmp(&a.last_opened))
     });
 
@@ -264,9 +275,7 @@ pub async fn get_last_active_project() -> Result<Option<String>, String> {
 /// Read `applicationId`, `versionName`, and `versionCode` from the
 /// app-level `build.gradle(.kts)`.
 #[tauri::command]
-pub async fn get_project_app_info(
-    state: State<'_, FsState>,
-) -> Result<ProjectAppInfo, String> {
+pub async fn get_project_app_info(state: State<'_, FsState>) -> Result<ProjectAppInfo, String> {
     let guard = state.0.lock().await;
     let root = guard
         .gradle_root
@@ -346,8 +355,7 @@ pub async fn save_project_app_info(
             let tmp = path.with_extension("gradle.tmp");
             std::fs::write(&tmp, &updated)
                 .map_err(|e| format!("Failed to write temp file: {e}"))?;
-            std::fs::rename(&tmp, path)
-                .map_err(|e| format!("Failed to save gradle file: {e}"))?;
+            std::fs::rename(&tmp, path).map_err(|e| format!("Failed to save gradle file: {e}"))?;
 
             return Ok(());
         }
@@ -359,13 +367,11 @@ pub async fn save_project_app_info(
 // ── Regex helpers ─────────────────────────────────────────────────────────────
 
 static RE_VERSION_NAME: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"(versionName\s*=?\s*)"[^"]*""#)
-        .expect("RE_VERSION_NAME: invalid regex")
+    regex::Regex::new(r#"(versionName\s*=?\s*)"[^"]*""#).expect("RE_VERSION_NAME: invalid regex")
 });
 
 static RE_VERSION_CODE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"(versionCode\s*=?\s*)\d+")
-        .expect("RE_VERSION_CODE: invalid regex")
+    regex::Regex::new(r"(versionCode\s*=?\s*)\d+").expect("RE_VERSION_CODE: invalid regex")
 });
 
 static RE_EXTRACT_VERSION_NAME: LazyLock<regex::Regex> = LazyLock::new(|| {
@@ -379,8 +385,7 @@ fn extract_version_name(content: &str) -> Option<String> {
 }
 
 static RE_EXTRACT_VERSION_CODE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"versionCode\s*=?\s*(\d+)")
-        .expect("RE_EXTRACT_VERSION_CODE: invalid regex")
+    regex::Regex::new(r"versionCode\s*=?\s*(\d+)").expect("RE_EXTRACT_VERSION_CODE: invalid regex")
 });
 
 fn extract_version_code(content: &str) -> Option<i64> {

@@ -37,7 +37,9 @@ pub const DEFAULT_WAIT_POLL_MS: u32 = 500;
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct FindUiElementsParams {
-    #[schemars(description = "ADB device serial (from list_devices). Uses first online device if omitted.")]
+    #[schemars(
+        description = "ADB device serial (from list_devices). Uses first online device if omitted."
+    )]
     pub device_serial: Option<String>,
     #[schemars(description = "Substring match on node text (case-insensitive).")]
     pub text_contains: Option<String>,
@@ -49,7 +51,9 @@ pub struct FindUiElementsParams {
     pub resource_id_equals: Option<String>,
     #[schemars(description = "Substring match on resource-id (case-insensitive).")]
     pub resource_id_contains: Option<String>,
-    #[schemars(description = "Substring match on full class name (case-insensitive), e.g. Button.")]
+    #[schemars(
+        description = "Substring match on full class name (case-insensitive), e.g. Button."
+    )]
     pub class_contains: Option<String>,
     #[schemars(description = "Exact package name match.")]
     pub package_equals: Option<String>,
@@ -94,7 +98,9 @@ pub struct UiTapParams {
     pub x: i32,
     #[schemars(description = "Y in device pixels (from find_ui_elements centerY).")]
     pub y: i32,
-    #[schemars(description = "If set, capture hierarchy first and refuse to tap unless screenHash matches.")]
+    #[schemars(
+        description = "If set, capture hierarchy first and refuse to tap unless screenHash matches."
+    )]
     pub expect_screen_hash: Option<String>,
 }
 
@@ -111,7 +117,9 @@ pub struct UiTypeTextParams {
     pub tap_x: Option<i32>,
     #[schemars(description = "Optional tap before typing to focus an editable (device pixels).")]
     pub tap_y: Option<i32>,
-    #[schemars(description = "If set, capture hierarchy first and refuse unless screenHash matches (before tap/type).")]
+    #[schemars(
+        description = "If set, capture hierarchy first and refuse unless screenHash matches (before tap/type)."
+    )]
     pub expect_screen_hash: Option<String>,
     #[schemars(
         description = "If true, send Ctrl+A then Delete before typing to clear existing field content (default false)."
@@ -143,7 +151,9 @@ pub struct UiTypeTextUnicodeParams {
     pub tap_x: Option<i32>,
     #[schemars(description = "Optional tap to focus an editable before typing (device pixels).")]
     pub tap_y: Option<i32>,
-    #[schemars(description = "If true, clear the field with Ctrl+A + Delete before typing (default false).")]
+    #[schemars(
+        description = "If true, clear the field with Ctrl+A + Delete before typing (default false)."
+    )]
     pub clear_before: Option<bool>,
 }
 
@@ -220,9 +230,7 @@ pub struct WaitForElementParams {
     pub clickable_only: Option<bool>,
     #[schemars(description = "If true, only nodes with enabled=true.")]
     pub enabled_only: Option<bool>,
-    #[schemars(
-        description = "Total wait timeout in milliseconds (default 15000, max 30000)."
-    )]
+    #[schemars(description = "Total wait timeout in milliseconds (default 15000, max 30000).")]
     pub timeout_ms: Option<u32>,
     #[schemars(description = "Poll interval in milliseconds (default 500, min 200).")]
     pub poll_interval_ms: Option<u32>,
@@ -288,7 +296,10 @@ pub async fn wait_for_element(
 }
 
 /// Capture hierarchy like the Layout tab / `get_ui_hierarchy`.
-pub async fn capture_ui_snapshot(adb: &PathBuf, serial: &str) -> Result<UiHierarchySnapshot, String> {
+pub async fn capture_ui_snapshot(
+    adb: &PathBuf,
+    serial: &str,
+) -> Result<UiHierarchySnapshot, String> {
     ui_hierarchy::capture_ui_hierarchy_snapshot(adb, serial).await
 }
 
@@ -493,14 +504,7 @@ pub fn find_ui_elements(
     let max = max_matches.clamp(1, MAX_FIND_RESULTS);
     let require_bounds = q.require_positive_bounds.unwrap_or(true);
     let mut out = Vec::new();
-    walk_find(
-        &snapshot.root,
-        "",
-        q,
-        require_bounds,
-        max,
-        &mut out,
-    );
+    walk_find(&snapshot.root, "", q, require_bounds, max, &mut out);
     out
 }
 
@@ -561,11 +565,17 @@ pub fn parent_layout_path(path: &str) -> Option<String> {
 #[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CompareUiStateParams {
-    #[schemars(description = "ADB device serial (from list_devices). Uses first online device if omitted.")]
+    #[schemars(
+        description = "ADB device serial (from list_devices). Uses first online device if omitted."
+    )]
     pub device_serial: Option<String>,
-    #[schemars(description = "screenHash from a previous find_ui_elements, dump_ui_hierarchy, or compare_ui_state response.")]
+    #[schemars(
+        description = "screenHash from a previous find_ui_elements, dump_ui_hierarchy, or compare_ui_state response."
+    )]
     pub baseline_screen_hash: String,
-    #[schemars(description = "Max interactive nodes to return when state changed (default 30, max 100).")]
+    #[schemars(
+        description = "Max interactive nodes to return when state changed (default 30, max 100)."
+    )]
     pub max_results: Option<u32>,
 }
 
@@ -634,9 +644,8 @@ pub fn find_ui_parent_from_snapshot(
     })?;
     let parent_path = parent_layout_path(&normalized)
         .expect("non-empty normalized path always has a defined parent path");
-    let parent_node = get_node_at_path(&snapshot.root, &parent_path).ok_or_else(|| {
-        format!("internal: missing parent node at tree_path {parent_path:?}")
-    })?;
+    let parent_node = get_node_at_path(&snapshot.root, &parent_path)
+        .ok_or_else(|| format!("internal: missing parent node at tree_path {parent_path:?}"))?;
     Ok((
         normalized,
         ui_element_match_from_node(parent_node, parent_path),
@@ -655,9 +664,9 @@ pub fn validate_coordinates(x: i32, y: i32) -> Result<(), String> {
 /// Reject a lone `tap_x` or `tap_y` so callers do not skip the tap and act on the wrong focus target.
 pub fn validate_tap_coordinate_pair(tap_x: Option<i32>, tap_y: Option<i32>) -> Result<(), String> {
     match (tap_x, tap_y) {
-        (Some(_), None) | (None, Some(_)) => Err(
-            "tap_x and tap_y must both be set or both omitted".to_string(),
-        ),
+        (Some(_), None) | (None, Some(_)) => {
+            Err("tap_x and tap_y must both be set or both omitted".to_string())
+        }
         _ => Ok(()),
     }
 }
@@ -665,9 +674,7 @@ pub fn validate_tap_coordinate_pair(tap_x: Option<i32>, tap_y: Option<i32>) -> R
 /// Android `adb shell input text` encoding: `%` → `%%`, space → `%s`. ASCII printable only.
 pub fn encode_adb_input_text(text: &str) -> Result<String, String> {
     if text.len() > MAX_INPUT_TEXT_BYTES {
-        return Err(format!(
-            "text too long (max {MAX_INPUT_TEXT_BYTES} bytes)"
-        ));
+        return Err(format!("text too long (max {MAX_INPUT_TEXT_BYTES} bytes)"));
     }
     let mut out = String::with_capacity(text.len() * 2);
     for ch in text.chars() {
@@ -734,20 +741,14 @@ pub fn validate_runtime_permission(permission: &str) -> Result<(), String> {
     if rest.is_empty() {
         return Err("permission suffix empty".to_string());
     }
-    let ok = rest
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '_');
+    let ok = rest.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
     if !ok {
         return Err("permission contains invalid characters".to_string());
     }
     Ok(())
 }
 
-async fn run_adb_shell(
-    adb: &PathBuf,
-    serial: &str,
-    args: &[&str],
-) -> Result<String, String> {
+async fn run_adb_shell(adb: &PathBuf, serial: &str, args: &[&str]) -> Result<String, String> {
     let out = timeout(
         INPUT_CMD_TIMEOUT,
         Command::new(adb)
@@ -784,12 +785,7 @@ pub async fn adb_input_tap(adb: &PathBuf, serial: &str, x: i32, y: i32) -> Resul
     run_adb_shell(
         adb,
         serial,
-        &[
-            "input",
-            "tap",
-            &x.to_string(),
-            &y.to_string(),
-        ],
+        &["input", "tap", &x.to_string(), &y.to_string()],
     )
     .await
 }

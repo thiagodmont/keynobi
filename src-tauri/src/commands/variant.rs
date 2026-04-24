@@ -28,9 +28,7 @@ fn restore_active(list: VariantList) -> VariantList {
 /// This resolves instantly and is used to populate the UI while the
 /// authoritative Gradle query runs in the background.
 #[tauri::command]
-pub async fn get_variants_preview(
-    fs_state: State<'_, FsState>,
-) -> Result<VariantList, String> {
+pub async fn get_variants_preview(fs_state: State<'_, FsState>) -> Result<VariantList, String> {
     let gradle_root = resolve_gradle_root(&fs_state).await?;
 
     let candidates = [
@@ -74,9 +72,7 @@ pub async fn get_variants_preview(
 /// This is the source of truth; it discovers every variant the project
 /// actually has.
 #[tauri::command]
-pub async fn get_variants_from_gradle(
-    fs_state: State<'_, FsState>,
-) -> Result<VariantList, String> {
+pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<VariantList, String> {
     let gradle_root = resolve_gradle_root(&fs_state).await?;
 
     let gradlew = gradle_root.join("gradlew");
@@ -142,11 +138,9 @@ pub async fn get_variants_from_gradle(
         }
     }
 
-    Err(
-        "No build variants found after running 'gradlew tasks'. \
+    Err("No build variants found after running 'gradlew tasks'. \
         Make sure JAVA_HOME is configured in Settings and the project builds correctly."
-            .to_string(),
-    )
+        .to_string())
 }
 
 /// Set the active build variant (no-op settings write — variant is managed by the variant store).

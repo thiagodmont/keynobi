@@ -35,7 +35,9 @@ pub async fn open_in_studio(
     // Filename must not contain path separators — it comes from a stack frame
     // like `(MainActivity.kt:42)` and should always be a bare filename.
     if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
-        return Err(AppError::InvalidInput(format!("Invalid filename: {filename}")));
+        return Err(AppError::InvalidInput(format!(
+            "Invalid filename: {filename}"
+        )));
     }
     if filename.is_empty() {
         return Err(AppError::InvalidInput("filename must not be empty".into()));
@@ -59,12 +61,10 @@ pub async fn open_in_studio(
     let relative = found_path
         .strip_prefix(&project_root)
         .unwrap_or(&found_path);
-    let abs_path = crate::utils::path::validate_within_root(
-        &project_root,
-        relative.to_str().unwrap_or(""),
-    )?
-    .to_string_lossy()
-    .into_owned();
+    let abs_path =
+        crate::utils::path::validate_within_root(&project_root, relative.to_str().unwrap_or(""))?
+            .to_string_lossy()
+            .into_owned();
 
     // ── Invoke studio ──────────────────────────────────────────────────────────
     // Use a login shell so macOS users' custom PATH (set in .zshrc / .zprofile)
@@ -87,10 +87,12 @@ pub async fn open_in_studio(
         .stderr(std::process::Stdio::null())
         .status()
         .await
-        .map_err(|e| AppError::ProcessFailed(format!(
-            "Failed to launch studio: {e}. Make sure `studio` is on your PATH \
+        .map_err(|e| {
+            AppError::ProcessFailed(format!(
+                "Failed to launch studio: {e}. Make sure `studio` is on your PATH \
              (see the Health Panel for setup instructions)."
-        )))?;
+            ))
+        })?;
 
     if !status.success() {
         return Err(AppError::ProcessFailed(format!(

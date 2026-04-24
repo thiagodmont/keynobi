@@ -1,4 +1,7 @@
-use crate::models::device::{AvailableSystemImage, AvdInfo, Device, DeviceConnectionState, DeviceDefinition, DeviceKind, SdkDownloadProgress, SystemImageInfo};
+use crate::models::device::{
+    AvailableSystemImage, AvdInfo, Device, DeviceConnectionState, DeviceDefinition, DeviceKind,
+    SdkDownloadProgress, SystemImageInfo,
+};
 use crate::models::settings::AppSettings;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -60,10 +63,7 @@ pub fn find_aapt2(settings: &AppSettings) -> Option<PathBuf> {
         }
         let dir_name = entry.file_name();
         let ver_str = dir_name.to_string_lossy();
-        let parts: Vec<u32> = ver_str
-            .split('.')
-            .filter_map(|p| p.parse().ok())
-            .collect();
+        let parts: Vec<u32> = ver_str.split('.').filter_map(|p| p.parse().ok()).collect();
         if parts.is_empty() {
             continue;
         }
@@ -109,10 +109,7 @@ pub fn parse_devices_output(output: &str) -> Vec<Device> {
     let mut devices = Vec::new();
     for line in output.lines() {
         let line = line.trim();
-        if line.is_empty()
-            || line.starts_with("List of devices")
-            || line.starts_with("*")
-        {
+        if line.is_empty() || line.starts_with("List of devices") || line.starts_with("*") {
             continue;
         }
         let parts: Vec<&str> = line.splitn(2, char::is_whitespace).collect();
@@ -139,8 +136,7 @@ pub fn parse_devices_output(output: &str) -> Vec<Device> {
         };
 
         // Parse key=value pairs from the rest of the line.
-        let model = extract_kv_pair(rest, "model")
-            .map(|s| s.replace('_', " "));
+        let model = extract_kv_pair(rest, "model").map(|s| s.replace('_', " "));
         let name = model.clone().unwrap_or_else(|| serial.clone());
 
         devices.push(Device {
@@ -166,10 +162,7 @@ fn extract_kv_pair(s: &str, key: &str) -> Option<String> {
 
 /// Run `adb devices -l` and return parsed device list.
 pub async fn list_devices(adb: &Path) -> Vec<Device> {
-    let output = Command::new(adb)
-        .args(["devices", "-l"])
-        .output()
-        .await;
+    let output = Command::new(adb).args(["devices", "-l"]).output().await;
 
     match output {
         Ok(out) => parse_devices_output(&String::from_utf8_lossy(&out.stdout)),
@@ -197,7 +190,13 @@ pub async fn enrich_device_props(adb: &Path, device: &mut Device) {
     }
 
     let ver_out = Command::new(adb)
-        .args(["-s", &serial, "shell", "getprop", "ro.build.version.release"])
+        .args([
+            "-s",
+            &serial,
+            "shell",
+            "getprop",
+            "ro.build.version.release",
+        ])
         .output()
         .await;
     if let Ok(out) = ver_out {
@@ -234,9 +233,15 @@ pub async fn install_apk(adb: &Path, serial: &str, apk_path: &str) -> Result<Str
 async fn try_resolve_launcher(adb: &Path, serial: &str, package: &str) -> Option<String> {
     let out = Command::new(adb)
         .args([
-            "-s", serial, "shell", "cmd", "package",
-            "resolve-activity", "--brief",
-            "-c", "android.intent.category.LAUNCHER",
+            "-s",
+            serial,
+            "shell",
+            "cmd",
+            "package",
+            "resolve-activity",
+            "--brief",
+            "-c",
+            "android.intent.category.LAUNCHER",
             package,
         ])
         .output()
@@ -245,7 +250,10 @@ async fn try_resolve_launcher(adb: &Path, serial: &str, package: &str) -> Option
     let stdout = String::from_utf8_lossy(&out.stdout);
     // Output is two lines: priority integer then the component string.
     // Find the first line that contains '/' — that is the component.
-    stdout.lines().find(|l| l.contains('/')).map(|l| l.trim().to_string())
+    stdout
+        .lines()
+        .find(|l| l.contains('/'))
+        .map(|l| l.trim().to_string())
 }
 
 /// Find the effective installed package name when the caller only knows the
@@ -306,7 +314,15 @@ pub async fn launch_app(
 ) -> Result<String, String> {
     // If caller already knows the activity, use am start directly.
     if let Some(act) = activity {
-        let args = ["-s", serial, "shell", "am", "start", "-n", &format!("{package}/{act}")];
+        let args = [
+            "-s",
+            serial,
+            "shell",
+            "am",
+            "start",
+            "-n",
+            &format!("{package}/{act}"),
+        ];
         let out = Command::new(adb)
             .args(args)
             .output()
@@ -331,7 +347,10 @@ pub async fn launch_app(
         let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
         if !stdout.contains("Error") {
             let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-            return Ok(format!("am start OK ({component}): {}", format!("{stdout}{stderr}").trim()));
+            return Ok(format!(
+                "am start OK ({component}): {}",
+                format!("{stdout}{stderr}").trim()
+            ));
         }
     }
 
@@ -351,7 +370,10 @@ pub async fn launch_app(
             let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
             if !stdout.contains("Error") {
                 let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-                return Ok(format!("am start OK ({component}): {}", format!("{stdout}{stderr}").trim()));
+                return Ok(format!(
+                    "am start OK ({component}): {}",
+                    format!("{stdout}{stderr}").trim()
+                ));
             }
         }
     }
@@ -359,9 +381,14 @@ pub async fn launch_app(
     // Step 3: fall back to monkey with the effective package name.
     let monkey_out = Command::new(adb)
         .args([
-            "-s", serial, "shell", "monkey",
-            "-p", &effective_package,
-            "-c", "android.intent.category.LAUNCHER",
+            "-s",
+            serial,
+            "shell",
+            "monkey",
+            "-p",
+            &effective_package,
+            "-c",
+            "android.intent.category.LAUNCHER",
             "1",
         ])
         .output()
@@ -379,9 +406,15 @@ pub async fn launch_app(
     // Step 4: last resort — fire the MAIN/LAUNCHER intent.
     let out = Command::new(adb)
         .args([
-            "-s", serial, "shell", "am", "start",
-            "-a", "android.intent.action.MAIN",
-            "-c", "android.intent.category.LAUNCHER",
+            "-s",
+            serial,
+            "shell",
+            "am",
+            "start",
+            "-a",
+            "android.intent.action.MAIN",
+            "-c",
+            "android.intent.category.LAUNCHER",
             &effective_package,
         ])
         .output()
@@ -395,7 +428,9 @@ pub async fn launch_app(
     if out.status.success() && !stdout.contains("Error:") {
         Ok(format!("am start (intent) OK: {combined}"))
     } else {
-        Err(format!("processFailed: {monkey_combined} | intent: {combined}"))
+        Err(format!(
+            "processFailed: {monkey_combined} | intent: {combined}"
+        ))
     }
 }
 
@@ -445,7 +480,12 @@ pub fn list_avds() -> Vec<AvdInfo> {
         let ini_content = std::fs::read_to_string(&path).unwrap_or_default();
         let avd_path = parse_ini_value(&ini_content, "path")
             .map(|p| p.to_owned())
-            .unwrap_or_else(|| avd_dir.join(format!("{name}.avd")).to_string_lossy().into_owned());
+            .unwrap_or_else(|| {
+                avd_dir
+                    .join(format!("{name}.avd"))
+                    .to_string_lossy()
+                    .into_owned()
+            });
 
         // Read the config.ini inside the AVD directory.
         let config_path = PathBuf::from(&avd_path).join("config.ini");
@@ -515,7 +555,9 @@ pub async fn launch_emulator(
             return Ok(d.serial.clone());
         }
     }
-    Err(format!("Emulator '{avd_name}' did not come online within 60 seconds"))
+    Err(format!(
+        "Emulator '{avd_name}' did not come online within 60 seconds"
+    ))
 }
 
 /// Kill an emulator via `adb -s <serial> emu kill`.
@@ -539,7 +581,11 @@ pub fn get_avdmanager_path(settings: &AppSettings) -> PathBuf {
         let sdk_root = expand_tilde(sdk);
 
         // Try the canonical "latest" path first.
-        let latest = sdk_root.join("cmdline-tools").join("latest").join("bin").join("avdmanager");
+        let latest = sdk_root
+            .join("cmdline-tools")
+            .join("latest")
+            .join("bin")
+            .join("avdmanager");
         if latest.is_file() {
             return latest;
         }
@@ -581,13 +627,22 @@ pub fn list_system_images(settings: &AppSettings) -> Vec<SystemImageInfo> {
 
     for target_entry in targets.flatten() {
         let target_path = target_entry.path();
-        if !target_path.is_dir() { continue; }
-        let target_name = target_path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_owned();
+        if !target_path.is_dir() {
+            continue;
+        }
+        let target_name = target_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_owned();
         // "android-35" → 35
-        let api_level: u32 = target_name.strip_prefix("android-")
+        let api_level: u32 = target_name
+            .strip_prefix("android-")
             .and_then(|n| n.parse().ok())
             .unwrap_or(0);
-        if api_level == 0 { continue; }
+        if api_level == 0 {
+            continue;
+        }
 
         let variants = match std::fs::read_dir(&target_path) {
             Ok(e) => e,
@@ -595,8 +650,14 @@ pub fn list_system_images(settings: &AppSettings) -> Vec<SystemImageInfo> {
         };
         for variant_entry in variants.flatten() {
             let variant_path = variant_entry.path();
-            if !variant_path.is_dir() { continue; }
-            let variant = variant_path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_owned();
+            if !variant_path.is_dir() {
+                continue;
+            }
+            let variant = variant_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_owned();
 
             let abis = match std::fs::read_dir(&variant_path) {
                 Ok(e) => e,
@@ -604,9 +665,17 @@ pub fn list_system_images(settings: &AppSettings) -> Vec<SystemImageInfo> {
             };
             for abi_entry in abis.flatten() {
                 let abi_path = abi_entry.path();
-                if !abi_path.is_dir() { continue; }
-                let abi = abi_path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_owned();
-                if abi.is_empty() { continue; }
+                if !abi_path.is_dir() {
+                    continue;
+                }
+                let abi = abi_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_owned();
+                if abi.is_empty() {
+                    continue;
+                }
 
                 let sdk_id = format!("system-images;{target_name};{variant};{abi}");
                 let variant_label = match variant.as_str() {
@@ -616,16 +685,24 @@ pub fn list_system_images(settings: &AppSettings) -> Vec<SystemImageInfo> {
                     other => other.replace('_', " "),
                 };
                 let android_ver = api_to_android_version(api_level);
-                let display_name = format!("Android {android_ver} (API {api_level}) · {variant_label} · {abi}");
+                let display_name =
+                    format!("Android {android_ver} (API {api_level}) · {variant_label} · {abi}");
 
-                images.push(SystemImageInfo { sdk_id, api_level, variant: variant.clone(), abi, display_name });
+                images.push(SystemImageInfo {
+                    sdk_id,
+                    api_level,
+                    variant: variant.clone(),
+                    abi,
+                    display_name,
+                });
             }
         }
     }
 
     // Sort: highest API first, then by variant preference, then ABI.
     images.sort_by(|a, b| {
-        b.api_level.cmp(&a.api_level)
+        b.api_level
+            .cmp(&a.api_level)
             .then(variant_sort_key(&a.variant).cmp(&variant_sort_key(&b.variant)))
             .then(a.abi.cmp(&b.abi))
     });
@@ -635,18 +712,28 @@ pub fn list_system_images(settings: &AppSettings) -> Vec<SystemImageInfo> {
 fn variant_sort_key(v: &str) -> u8 {
     match v {
         "google_apis_playstore" => 0,
-        "google_apis"           => 1,
-        "default"               => 2,
-        _                       => 3,
+        "google_apis" => 1,
+        "default" => 2,
+        _ => 3,
     }
 }
 
 fn api_to_android_version(api: u32) -> &'static str {
     match api {
-        36 => "16.0", 35 => "15.0", 34 => "14.0", 33 => "13.0",
-        32 => "12L",  31 => "12.0", 30 => "11.0", 29 => "10.0",
-        28 => "9.0",  27 => "8.1",  26 => "8.0",  25 => "7.1",
-        24 => "7.0",  _  => "?",
+        36 => "16.0",
+        35 => "15.0",
+        34 => "14.0",
+        33 => "13.0",
+        32 => "12L",
+        31 => "12.0",
+        30 => "11.0",
+        29 => "10.0",
+        28 => "9.0",
+        27 => "8.1",
+        26 => "8.0",
+        25 => "7.1",
+        24 => "7.0",
+        _ => "?",
     }
 }
 
@@ -709,8 +796,12 @@ fn parse_device_definitions(output: &str) -> Vec<DeviceDefinition> {
             tag = line.split(':').nth(1).unwrap_or("").trim().to_owned();
         } else if line.starts_with("---") {
             // End of a device block — include only phone/tablet profiles.
-            if !id.is_empty() && !name.is_empty()
-                && !matches!(tag.as_str(), "android-tv" | "android-automotive" | "wear" | "chromeos")
+            if !id.is_empty()
+                && !name.is_empty()
+                && !matches!(
+                    tag.as_str(),
+                    "android-tv" | "android-automotive" | "wear" | "chromeos"
+                )
             {
                 devices.push(DeviceDefinition {
                     id: id.clone(),
@@ -718,14 +809,25 @@ fn parse_device_definitions(output: &str) -> Vec<DeviceDefinition> {
                     manufacturer: manufacturer.clone(),
                 });
             }
-            id.clear(); name.clear(); manufacturer.clear(); tag.clear();
+            id.clear();
+            name.clear();
+            manufacturer.clear();
+            tag.clear();
         }
     }
     // Handle last entry without trailing separator.
-    if !id.is_empty() && !name.is_empty()
-        && !matches!(tag.as_str(), "android-tv" | "android-automotive" | "wear" | "chromeos")
+    if !id.is_empty()
+        && !name.is_empty()
+        && !matches!(
+            tag.as_str(),
+            "android-tv" | "android-automotive" | "wear" | "chromeos"
+        )
     {
-        devices.push(DeviceDefinition { id, name, manufacturer });
+        devices.push(DeviceDefinition {
+            id,
+            name,
+            manufacturer,
+        });
     }
 
     devices
@@ -742,12 +844,7 @@ pub async fn create_avd(
     device_id: Option<&str>,
 ) -> Result<(), String> {
     // Build argument list.
-    let mut args = vec![
-        "create", "avd",
-        "--name", name,
-        "-k", sdk_id,
-        "--force",
-    ];
+    let mut args = vec!["create", "avd", "--name", name, "-k", sdk_id, "--force"];
     if let Some(dev) = device_id {
         args.push("--device");
         args.push(dev);
@@ -769,7 +866,9 @@ pub async fn create_avd(
         let _ = stdin.write_all(b"no\n").await;
     }
 
-    let output = child.wait_with_output().await
+    let output = child
+        .wait_with_output()
+        .await
         .map_err(|e| format!("avdmanager create failed: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -799,13 +898,15 @@ pub async fn delete_avd(avdmanager: &Path, name: &str) -> Result<(), String> {
 }
 
 /// Wipe an emulator's user data by relaunching it with `-wipe-data`.
-pub async fn wipe_avd_data(
-    emulator_bin: &Path,
-    adb: &Path,
-    avd_name: &str,
-) -> Result<(), String> {
+pub async fn wipe_avd_data(emulator_bin: &Path, adb: &Path, avd_name: &str) -> Result<(), String> {
     tokio::process::Command::new(emulator_bin)
-        .args([&format!("@{avd_name}"), "-wipe-data", "-no-boot-anim", "-gpu", "auto"])
+        .args([
+            &format!("@{avd_name}"),
+            "-wipe-data",
+            "-no-boot-anim",
+            "-gpu",
+            "auto",
+        ])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
@@ -817,7 +918,8 @@ pub async fn wipe_avd_data(
         tokio::time::sleep(Duration::from_secs(2)).await;
         let devices = list_devices(adb).await;
         if devices.iter().any(|d| {
-            d.device_kind == DeviceKind::Emulator && d.connection_state == DeviceConnectionState::Online
+            d.device_kind == DeviceKind::Emulator
+                && d.connection_state == DeviceConnectionState::Online
         }) {
             return Ok(());
         }
@@ -831,7 +933,11 @@ pub async fn wipe_avd_data(
 pub fn get_sdkmanager_path(settings: &AppSettings) -> PathBuf {
     if let Some(sdk) = settings.android.sdk_path.as_deref() {
         let sdk_root = expand_tilde(sdk);
-        let latest = sdk_root.join("cmdline-tools").join("latest").join("bin").join("sdkmanager");
+        let latest = sdk_root
+            .join("cmdline-tools")
+            .join("latest")
+            .join("bin")
+            .join("sdkmanager");
         if latest.is_file() {
             return latest;
         }
@@ -907,10 +1013,13 @@ fn parse_sdkmanager_list(
         let target = parts[1]; // "android-35"
         let variant = parts[2].to_owned();
         let abi = parts[3].to_owned();
-        let api_level: u32 = target.strip_prefix("android-")
+        let api_level: u32 = target
+            .strip_prefix("android-")
             .and_then(|n| n.parse().ok())
             .unwrap_or(0);
-        if api_level == 0 { continue; }
+        if api_level == 0 {
+            continue;
+        }
 
         let installed = installed_ids.contains(&sdk_id);
         let variant_label = match variant.as_str() {
@@ -920,14 +1029,23 @@ fn parse_sdkmanager_list(
             other => other,
         };
         let android_ver = api_to_android_version(api_level);
-        let display_name = format!("Android {android_ver} (API {api_level}) · {variant_label} · {abi}");
+        let display_name =
+            format!("Android {android_ver} (API {api_level}) · {variant_label} · {abi}");
 
-        images.push(AvailableSystemImage { sdk_id, api_level, variant, abi, display_name, installed });
+        images.push(AvailableSystemImage {
+            sdk_id,
+            api_level,
+            variant,
+            abi,
+            display_name,
+            installed,
+        });
     }
 
     // Sort: highest API first, then variant preference, then ABI.
     images.sort_by(|a, b| {
-        b.api_level.cmp(&a.api_level)
+        b.api_level
+            .cmp(&a.api_level)
             .then(variant_sort_key(&a.variant).cmp(&variant_sort_key(&b.variant)))
             .then(a.abi.cmp(&b.abi))
     });
@@ -977,7 +1095,9 @@ pub async fn download_system_image(
             let mut lines = BufReader::new(stderr).lines();
             while let Ok(Some(line)) = lines.next_line().await {
                 let trimmed = line.trim().to_owned();
-                if trimmed.is_empty() { continue; }
+                if trimmed.is_empty() {
+                    continue;
+                }
                 let percent = parse_sdkmanager_progress(&trimmed);
                 on_progress(SdkDownloadProgress {
                     percent,
@@ -994,7 +1114,9 @@ pub async fn download_system_image(
         }
     });
 
-    let status = child.wait().await
+    let status = child
+        .wait()
+        .await
         .map_err(|e| format!("sdkmanager wait failed: {e}"))?;
 
     let _ = progress_task.await;
@@ -1002,7 +1124,10 @@ pub async fn download_system_image(
     if status.success() {
         Ok(())
     } else {
-        Err(format!("sdkmanager exited with status {}", status.code().unwrap_or(-1)))
+        Err(format!(
+            "sdkmanager exited with status {}",
+            status.code().unwrap_or(-1)
+        ))
     }
 }
 
@@ -1011,10 +1136,16 @@ fn parse_sdkmanager_progress(line: &str) -> Option<u32> {
     if let Some(pct_start) = line.find('%') {
         let before = &line[..pct_start];
         // Walk backwards to find digits.
-        let digits: String = before.chars().rev().take_while(|c| c.is_ascii_digit()).collect();
+        let digits: String = before
+            .chars()
+            .rev()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
         let digits_rev: String = digits.chars().rev().collect();
         if let Ok(n) = digits_rev.parse::<u32>() {
-            if n <= 100 { return Some(n); }
+            if n <= 100 {
+                return Some(n);
+            }
         }
     }
     None
@@ -1036,7 +1167,11 @@ impl Default for DeviceStateInner {
 
 impl DeviceStateInner {
     pub fn new() -> Self {
-        Self { devices: vec![], selected_serial: None, polling: false }
+        Self {
+            devices: vec![],
+            selected_serial: None,
+            polling: false,
+        }
     }
 }
 
@@ -1062,7 +1197,10 @@ impl Default for DeviceState {
 
 /// Resolve a device serial: use the provided one, or fall back to the first
 /// online device reported by `adb devices`.
-pub async fn resolve_device_serial(adb: &std::path::PathBuf, requested: Option<&str>) -> Option<String> {
+pub async fn resolve_device_serial(
+    adb: &std::path::PathBuf,
+    requested: Option<&str>,
+) -> Option<String> {
     if let Some(s) = requested {
         return Some(s.to_string());
     }
@@ -1116,7 +1254,10 @@ emulator-5554          device product:sdk model:sdk_gphone transport_id:1\n";
     fn parses_unauthorized_device() {
         let output = "List of devices attached\nSOME123    unauthorized\n";
         let devices = parse_devices_output(output);
-        assert_eq!(devices[0].connection_state, DeviceConnectionState::Unauthorized);
+        assert_eq!(
+            devices[0].connection_state,
+            DeviceConnectionState::Unauthorized
+        );
     }
 
     #[test]

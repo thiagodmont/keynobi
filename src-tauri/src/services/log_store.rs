@@ -46,8 +46,7 @@ impl LogStore {
 
     /// Ring buffer capacity (oldest entries are evicted once `len == capacity`).
     pub fn with_capacity(capacity: usize) -> Self {
-        let capacity = capacity
-            .clamp(LOGCAT_RING_MIN_ENTRIES, LOGCAT_RING_ABS_MAX_ENTRIES);
+        let capacity = capacity.clamp(LOGCAT_RING_MIN_ENTRIES, LOGCAT_RING_ABS_MAX_ENTRIES);
         let initial = usize::min(INITIAL_CAPACITY_MAX, capacity).max(256);
         LogStore {
             entries: VecDeque::with_capacity(initial),
@@ -188,14 +187,12 @@ impl LogStore {
     // is guaranteed to be at the *front* of that index deque. O(1) pop instead
     // of O(n) linear scan.
     fn remove_from_indexes(&mut self, id: u64, flags: u32) {
-        if flags & EntryFlags::CRASH != 0
-            && self.crash_ids.front() == Some(&id) {
-                self.crash_ids.pop_front();
-            }
-        if flags & EntryFlags::JSON_BODY != 0
-            && self.json_ids.front() == Some(&id) {
-                self.json_ids.pop_front();
-            }
+        if flags & EntryFlags::CRASH != 0 && self.crash_ids.front() == Some(&id) {
+            self.crash_ids.pop_front();
+        }
+        if flags & EntryFlags::JSON_BODY != 0 && self.json_ids.front() == Some(&id) {
+            self.json_ids.pop_front();
+        }
     }
 }
 
@@ -250,14 +247,21 @@ mod tests {
 
     #[test]
     fn eviction_removes_from_indexes() {
-        let mut store = LogStore { capacity: 2, ..LogStore::with_capacity(2) };
+        let mut store = LogStore {
+            capacity: 2,
+            ..LogStore::with_capacity(2)
+        };
         // entry 1: crash
         store.push(make_entry(1, EntryFlags::CRASH));
         store.push(make_entry(2, 0));
         assert_eq!(store.crash_ids().len(), 1);
         // Push 3rd entry — entry 1 should be evicted, removing from crash_ids
         store.push(make_entry(3, 0));
-        assert_eq!(store.crash_ids().len(), 0, "crash entry should be removed on eviction");
+        assert_eq!(
+            store.crash_ids().len(),
+            0,
+            "crash entry should be removed on eviction"
+        );
     }
 
     #[test]

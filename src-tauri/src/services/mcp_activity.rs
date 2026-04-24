@@ -114,10 +114,7 @@ pub fn rotate_activity_log() {
         Err(_) => return,
     };
 
-    let lines: Vec<&str> = content
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .collect();
+    let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
 
     if lines.len() <= ROTATE_THRESHOLD {
         return;
@@ -228,11 +225,7 @@ impl McpActivityEntry {
         }
     }
 
-    pub fn prompt(
-        name: impl Into<String>,
-        duration_ms: u64,
-        status: impl Into<String>,
-    ) -> Self {
+    pub fn prompt(name: impl Into<String>, duration_ms: u64, status: impl Into<String>) -> Self {
         Self {
             timestamp: chrono::Utc::now().to_rfc3339(),
             kind: "prompt".into(),

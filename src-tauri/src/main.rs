@@ -7,13 +7,16 @@ fn main() {
     // Check for --mcp flag: run as a headless MCP stdio server without a GUI.
     // Usage: keynobi --mcp [--project /path/to/project]
     if args.iter().any(|a| a == "--mcp") {
-        let project_path = args.windows(2)
+        let project_path = args
+            .windows(2)
             .find(|w| w[0] == "--project")
             .map(|w| std::path::PathBuf::from(&w[1]));
 
-        let rt = tokio::runtime::Runtime::new()
-            .expect("failed to create tokio runtime for MCP server");
-        rt.block_on(keynobi_lib::services::mcp_server::run_headless_mcp(project_path));
+        let rt =
+            tokio::runtime::Runtime::new().expect("failed to create tokio runtime for MCP server");
+        rt.block_on(keynobi_lib::services::mcp_server::run_headless_mcp(
+            project_path,
+        ));
         return;
     }
 

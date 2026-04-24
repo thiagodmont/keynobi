@@ -251,7 +251,8 @@ pub async fn seed_pid_map_from_ps(
 /// all Android app packages (e.g. `com.example.myapp`).
 pub fn parse_ps_output(text: &str) -> HashMap<i32, String> {
     let mut map = HashMap::new();
-    for line in text.lines().skip(1) {  // skip header row (PID NAME)
+    for line in text.lines().skip(1) {
+        // skip header row (PID NAME)
         let mut parts = line.split_whitespace();
         if let (Some(pid_str), Some(name)) = (parts.next(), parts.next()) {
             if let Ok(pid) = pid_str.parse::<i32>() {
@@ -321,8 +322,12 @@ pub async fn start_logcat_stream(
                 // Retry if streaming is still requested; otherwise give up.
                 let still_streaming = logcat_state.lock().await.streaming;
                 if still_streaming {
-                    warn!("logcat failed to start, retrying in {}ms…", SPAWN_RETRY_DELAY_MS);
-                    tokio::time::sleep(tokio::time::Duration::from_millis(SPAWN_RETRY_DELAY_MS)).await;
+                    warn!(
+                        "logcat failed to start, retrying in {}ms…",
+                        SPAWN_RETRY_DELAY_MS
+                    );
+                    tokio::time::sleep(tokio::time::Duration::from_millis(SPAWN_RETRY_DELAY_MS))
+                        .await;
                     continue 'reconnect;
                 }
                 break 'reconnect;
@@ -517,7 +522,10 @@ pub async fn start_logcat_stream(
         // Unexpected disconnect — ADB server likely restarted.  Notify the
         // frontend and wait briefly before reconnecting so the new ADB server
         // has time to finish initialising.
-        warn!("logcat stream disconnected unexpectedly (ADB server restart?), reconnecting in {}ms…", RECONNECT_DELAY_MS);
+        warn!(
+            "logcat stream disconnected unexpectedly (ADB server restart?), reconnecting in {}ms…",
+            RECONNECT_DELAY_MS
+        );
         if let Some(ref handle) = app_handle {
             let _ = handle.emit("logcat:reconnecting", ());
         }
@@ -582,8 +590,14 @@ PID NAME
 8888 kworker/0:1
 ";
         let map = parse_ps_output(ps);
-        assert_eq!(map.get(&1234).map(String::as_str), Some("com.example.myapp"));
-        assert_eq!(map.get(&5678).map(String::as_str), Some("com.google.android.gms"));
+        assert_eq!(
+            map.get(&1234).map(String::as_str),
+            Some("com.example.myapp")
+        );
+        assert_eq!(
+            map.get(&5678).map(String::as_str),
+            Some("com.google.android.gms")
+        );
     }
 
     #[test]
@@ -595,9 +609,18 @@ PID NAME
 100 com.android.systemui
 ";
         let map = parse_ps_output(ps);
-        assert!(!map.contains_key(&1), "`init` has no dot and must be excluded");
-        assert!(!map.contains_key(&2), "`kthreadd` has no dot and must be excluded");
-        assert!(map.contains_key(&100), "`com.android.systemui` must be included");
+        assert!(
+            !map.contains_key(&1),
+            "`init` has no dot and must be excluded"
+        );
+        assert!(
+            !map.contains_key(&2),
+            "`kthreadd` has no dot and must be excluded"
+        );
+        assert!(
+            map.contains_key(&100),
+            "`com.android.systemui` must be included"
+        );
     }
 
     #[test]
@@ -632,7 +655,10 @@ PID NAME
 ";
         let map = parse_ps_output(ps);
         assert_eq!(map.get(&100).map(String::as_str), Some("com.example.app"));
-        assert_eq!(map.get(&101).map(String::as_str), Some("com.example.app:service"));
+        assert_eq!(
+            map.get(&101).map(String::as_str),
+            Some("com.example.app:service")
+        );
     }
 
     // ── level_char tests ──────────────────────────────────────────────────────
@@ -640,11 +666,11 @@ PID NAME
     #[test]
     fn level_char_all_variants() {
         assert_eq!(level_char(&LogcatLevel::Verbose), "V");
-        assert_eq!(level_char(&LogcatLevel::Debug),   "D");
-        assert_eq!(level_char(&LogcatLevel::Info),    "I");
-        assert_eq!(level_char(&LogcatLevel::Warn),    "W");
-        assert_eq!(level_char(&LogcatLevel::Error),   "E");
-        assert_eq!(level_char(&LogcatLevel::Fatal),   "F");
+        assert_eq!(level_char(&LogcatLevel::Debug), "D");
+        assert_eq!(level_char(&LogcatLevel::Info), "I");
+        assert_eq!(level_char(&LogcatLevel::Warn), "W");
+        assert_eq!(level_char(&LogcatLevel::Error), "E");
+        assert_eq!(level_char(&LogcatLevel::Fatal), "F");
         assert_eq!(level_char(&LogcatLevel::Unknown), "?");
     }
 
@@ -664,21 +690,21 @@ PID NAME
     #[test]
     fn parse_level_str_full_words() {
         assert_eq!(parse_level_str("verbose"), LogcatLevel::Verbose);
-        assert_eq!(parse_level_str("debug"),   LogcatLevel::Debug);
-        assert_eq!(parse_level_str("info"),    LogcatLevel::Info);
-        assert_eq!(parse_level_str("warn"),    LogcatLevel::Warn);
+        assert_eq!(parse_level_str("debug"), LogcatLevel::Debug);
+        assert_eq!(parse_level_str("info"), LogcatLevel::Info);
+        assert_eq!(parse_level_str("warn"), LogcatLevel::Warn);
         assert_eq!(parse_level_str("warning"), LogcatLevel::Warn);
-        assert_eq!(parse_level_str("error"),   LogcatLevel::Error);
-        assert_eq!(parse_level_str("fatal"),   LogcatLevel::Fatal);
-        assert_eq!(parse_level_str("assert"),  LogcatLevel::Fatal);
+        assert_eq!(parse_level_str("error"), LogcatLevel::Error);
+        assert_eq!(parse_level_str("fatal"), LogcatLevel::Fatal);
+        assert_eq!(parse_level_str("assert"), LogcatLevel::Fatal);
     }
 
     #[test]
     fn parse_level_str_case_insensitive() {
-        assert_eq!(parse_level_str("v"),       LogcatLevel::Verbose);
-        assert_eq!(parse_level_str("Debug"),   LogcatLevel::Debug);
+        assert_eq!(parse_level_str("v"), LogcatLevel::Verbose);
+        assert_eq!(parse_level_str("Debug"), LogcatLevel::Debug);
         assert_eq!(parse_level_str("WARNING"), LogcatLevel::Warn);
-        assert_eq!(parse_level_str("ERROR"),   LogcatLevel::Error);
+        assert_eq!(parse_level_str("ERROR"), LogcatLevel::Error);
     }
 
     #[test]
@@ -892,18 +918,9 @@ PID NAME
             json_body: None,
         };
 
-        assert!(
-            filter.matches(&entry_lower),
-            "lowercase tag should match"
-        );
-        assert!(
-            filter.matches(&entry_mixed),
-            "mixed case tag should match"
-        );
-        assert!(
-            filter.matches(&entry_upper),
-            "uppercase tag should match"
-        );
+        assert!(filter.matches(&entry_lower), "lowercase tag should match");
+        assert!(filter.matches(&entry_mixed), "mixed case tag should match");
+        assert!(filter.matches(&entry_upper), "uppercase tag should match");
     }
 
     /// Verify text filtering searches both message and tag fields.
@@ -962,9 +979,15 @@ PID NAME
             json_body: None,
         };
 
-        assert!(filter.matches(&entry_in_message), "text in message should match");
+        assert!(
+            filter.matches(&entry_in_message),
+            "text in message should match"
+        );
         assert!(filter.matches(&entry_in_tag), "text in tag should match");
-        assert!(!filter.matches(&entry_no_match), "unrelated entry should not match");
+        assert!(
+            !filter.matches(&entry_no_match),
+            "unrelated entry should not match"
+        );
     }
 
     /// Verify that a filter respects the crash-only flag.
@@ -1111,9 +1134,18 @@ PID NAME
     /// Note: needle must be pre-lowercased by the caller (e.g., LogcatFilter::new).
     #[test]
     fn ci_contains_handles_case_insensitive_substrings() {
-        assert!(ci_contains("HelloWorld", "hello"), "lowercase needle in mixed case");
-        assert!(ci_contains("helloworld", "world"), "lowercase needle in lowercase");
-        assert!(ci_contains("HeLLo WoRLd", "lo wo"), "lowercase needle with space");
+        assert!(
+            ci_contains("HelloWorld", "hello"),
+            "lowercase needle in mixed case"
+        );
+        assert!(
+            ci_contains("helloworld", "world"),
+            "lowercase needle in lowercase"
+        );
+        assert!(
+            ci_contains("HeLLo WoRLd", "lo wo"),
+            "lowercase needle with space"
+        );
         assert!(
             !ci_contains("hello", "world"),
             "non-matching substring should return false"

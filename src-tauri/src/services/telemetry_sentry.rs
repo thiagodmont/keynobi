@@ -173,11 +173,12 @@ pub fn scrub_event(mut event: Event<'static>, home: Option<&str>) -> Event<'stat
         }
         .into(),
     );
-    event.tags.insert(
-        "app.arch".into(),
-        std::env::consts::ARCH.to_string(),
-    );
-    event.tags.insert("app.version".into(), env!("CARGO_PKG_VERSION").to_string());
+    event
+        .tags
+        .insert("app.arch".into(), std::env::consts::ARCH.to_string());
+    event
+        .tags
+        .insert("app.version".into(), env!("CARGO_PKG_VERSION").to_string());
 
     event
 }
@@ -189,9 +190,8 @@ pub fn init_if_enabled(settings: &AppSettings) -> Option<sentry::ClientInitGuard
     }
     let dsn = option_env!("SENTRY_DSN")?;
     let home = dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
-    let before_send = Arc::new(move |event: Event<'static>| {
-        Some(scrub_event(event, home.as_deref()))
-    });
+    let before_send =
+        Arc::new(move |event: Event<'static>| Some(scrub_event(event, home.as_deref())));
     let before_breadcrumb = Arc::new(|_breadcrumb: sentry::protocol::Breadcrumb| {
         Option::<sentry::protocol::Breadcrumb>::None
     });
@@ -273,9 +273,7 @@ mod tests {
     #[test]
     fn scrub_event_clears_extra_and_modules_and_sets_tags() {
         let mut event = Event::default();
-        event
-            .extra
-            .insert("k".into(), json!("/Users/secret/path"));
+        event.extra.insert("k".into(), json!("/Users/secret/path"));
         event.modules.insert("m".into(), "/Users/x/lib".into());
         event = scrub_event(event, None);
         assert!(event.extra.is_empty());

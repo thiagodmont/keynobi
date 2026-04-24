@@ -3,7 +3,9 @@
 //! Pure logic — unit-tested with fixtures (no adb).
 
 use crate::models::ui_hierarchy::{UiInteractiveRow, UiNode};
-use crate::services::ui_hierarchy_xml_sanitize::{format_xml_parse_error, preprocess_uiautomator_xml};
+use crate::services::ui_hierarchy_xml_sanitize::{
+    format_xml_parse_error, preprocess_uiautomator_xml,
+};
 use roxmltree::Node;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -79,7 +81,8 @@ pub fn parse_hierarchy_xml(xml: &str) -> ParseOutcome {
     let mut children_out = Vec::new();
     for child in hierarchy.children().filter(|n| n.is_element()) {
         if child.tag_name().name() == "node" {
-            if let Some(node) = parse_node_element(child, 1, &mut counter, &mut truncated, &mut warnings)
+            if let Some(node) =
+                parse_node_element(child, 1, &mut counter, &mut truncated, &mut warnings)
             {
                 children_out.push(node);
             }
@@ -187,12 +190,10 @@ fn parse_node_element(
     let checked = attr_bool(el, "checked", false);
     let selected = attr_bool(el, "selected", false);
     let editable_attr = attr_bool(el, "editable", false);
-    let editable = editable_attr
-        || class.contains("EditText")
-        || class.contains("AutoCompleteTextView");
+    let editable =
+        editable_attr || class.contains("EditText") || class.contains("AutoCompleteTextView");
 
-    let is_compose_heuristic =
-        class.contains("androidx.compose") || class.contains("ComposeView");
+    let is_compose_heuristic = class.contains("androidx.compose") || class.contains("ComposeView");
 
     let mut children = Vec::new();
     for child in el.children().filter(|n| n.is_element()) {
@@ -273,10 +274,7 @@ fn walk_interactive(root: &UiNode, f: &mut impl FnMut(&UiNode)) {
 
 fn is_interactive_row(node: &UiNode) -> bool {
     let has_content = !node.text.is_empty() || !node.content_desc.is_empty();
-    let interactive = node.clickable
-        || node.long_clickable
-        || node.scrollable
-        || node.editable;
+    let interactive = node.clickable || node.long_clickable || node.scrollable || node.editable;
     if !interactive && !has_content {
         return false;
     }
@@ -289,12 +287,7 @@ pub fn compute_screen_hash(root: &UiNode) -> String {
     walk_interactive(root, &mut |node| {
         let key = format!(
             "{}|{}|{}|{}|{}|{}",
-            node.resource_id,
-            node.text,
-            node.content_desc,
-            node.bounds,
-            node.enabled,
-            node.checked
+            node.resource_id, node.text, node.content_desc, node.bounds, node.enabled, node.checked
         );
         parts.insert(key);
     });
@@ -342,7 +335,11 @@ fn walk_rows_limited(
     } else if !node.content_desc.is_empty() {
         truncate_chars(&node.content_desc, 80)
     } else if !node.resource_id.is_empty() {
-        node.resource_id.rsplit('/').next().unwrap_or("").to_string()
+        node.resource_id
+            .rsplit('/')
+            .next()
+            .unwrap_or("")
+            .to_string()
     } else {
         type_name.clone()
     };
@@ -377,7 +374,11 @@ fn walk_rows_limited(
 
 fn parse_bounds(bounds: &str) -> Option<(i32, i32)> {
     // "[0,0][1080,2400]" -> width, height
-    let s: String = bounds.replace("][", ",").chars().filter(|&c| c != '[' && c != ']').collect();
+    let s: String = bounds
+        .replace("][", ",")
+        .chars()
+        .filter(|&c| c != '[' && c != ']')
+        .collect();
     let parts: Vec<i32> = s.split(',').filter_map(|p| p.trim().parse().ok()).collect();
     if parts.len() != 4 {
         return None;
@@ -388,7 +389,11 @@ fn parse_bounds(bounds: &str) -> Option<(i32, i32)> {
 }
 
 pub(crate) fn center_from_bounds(bounds: &str) -> Option<(i32, i32)> {
-    let s: String = bounds.replace("][", ",").chars().filter(|&c| c != '[' && c != ']').collect();
+    let s: String = bounds
+        .replace("][", ",")
+        .chars()
+        .filter(|&c| c != '[' && c != ']')
+        .collect();
     let parts: Vec<i32> = s.split(',').filter_map(|p| p.trim().parse().ok()).collect();
     if parts.len() != 4 {
         return None;
