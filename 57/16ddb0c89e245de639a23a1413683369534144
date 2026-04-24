@@ -1,0 +1,23 @@
+.claude/CLAUDE.md
+  cb9d81d69c9505f2 3-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "5716ddb0c89e245de639a23a1413683369534144",
+  "prompts": {
+    "cb9d81d69c9505f2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d8cb1a86-995c-4618-b049-2b34638cd2a4",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 31,
+      "total_deletions": 0,
+      "accepted_lines": 31,
+      "overriden_lines": 0
+    }
+  }
+}
