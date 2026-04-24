@@ -1,0 +1,23 @@
+playwright.config.ts
+  28ebd1f6046c6c94 3-5,9-11,26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "b611637b418bda87c154ee3783f090e92c3c485c",
+  "prompts": {
+    "28ebd1f6046c6c94": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a25abae-9cb8-4192-874c-56509dceabd1",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 4,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}
