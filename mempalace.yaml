@@ -9,6 +9,7 @@ rooms:
   description: Files from release/
   keywords:
   - release
+  - release
 - name: documentation
   description: Files from docs/
   keywords:
@@ -18,19 +19,42 @@ rooms:
   description: Files from public/
   keywords:
   - public
+  - public
 - name: scripts
   description: Files from scripts/
   keywords:
+  - scripts
   - scripts
 - name: src_tauri
   description: Files from src-tauri/
   keywords:
   - src_tauri
   - src-tauri
+- name: playwright_report
+  description: Files from playwright-report/
+  keywords:
+  - playwright_report
+  - playwright-report
+- name: test_results
+  description: Files from test-results/
+  keywords:
+  - test_results
+  - test-results
+- name: e2e
+  description: Files from e2e/
+  keywords:
+  - e2e
+  - e2e
 - name: src
   description: Files from src/
   keywords:
   - src
+  - src
+- name: planning
+  description: Files from specs/
+  keywords:
+  - planning
+  - specs
 - name: testing
   description: Files from tests/
   keywords:

@@ -1,17 +1,18 @@
-use crate::models::device::{AvailableSystemImage, AvdInfo, Device, DeviceDefinition, SdkDownloadProgress, SystemImageInfo};
+use crate::models::device::{
+    AvailableSystemImage, AvdInfo, Device, DeviceDefinition, SdkDownloadProgress, SystemImageInfo,
+};
 use crate::models::error::AppError;
 use crate::services::adb_manager::{
-    DeviceState, create_avd, delete_avd, download_system_image, enrich_device_props,
-    get_adb_path, get_avdmanager_path, get_emulator_path, get_sdkmanager_path,
-    install_apk, launch_app, launch_emulator, list_avds, list_available_system_images,
-    list_device_definitions, list_devices, list_system_images, stop_app, stop_emulator,
-    wipe_avd_data,
+    create_avd, delete_avd, download_system_image, enrich_device_props, get_adb_path,
+    get_avdmanager_path, get_emulator_path, get_sdkmanager_path, install_apk, launch_app,
+    launch_emulator, list_available_system_images, list_avds, list_device_definitions,
+    list_devices, list_system_images, stop_app, stop_emulator, wipe_avd_data, DeviceState,
 };
 use crate::services::settings_manager;
 use serde::Serialize;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, State};
 use tauri::ipc::Channel;
+use tauri::{AppHandle, Emitter, State};
 
 // ── Event payloads ─────────────────────────────────────────────────────────────
 
@@ -27,12 +28,19 @@ pub struct DeviceListChangedEvent {
 /// Allowed: alphanumeric, colon, dot, hyphen, underscore. Max 64 chars.
 pub(crate) fn validate_device_serial(serial: &str) -> Result<(), AppError> {
     if serial.is_empty() {
-        return Err(AppError::InvalidInput("Device serial must not be empty".to_string()));
+        return Err(AppError::InvalidInput(
+            "Device serial must not be empty".to_string(),
+        ));
     }
     if serial.len() > 64 {
-        return Err(AppError::InvalidInput("Device serial is too long (max 64 characters)".to_string()));
+        return Err(AppError::InvalidInput(
+            "Device serial is too long (max 64 characters)".to_string(),
+        ));
     }
-    if !serial.chars().all(|c| c.is_alphanumeric() || matches!(c, ':' | '.' | '-' | '_')) {
+    if !serial
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, ':' | '.' | '-' | '_'))
+    {
         return Err(AppError::InvalidInput(format!(
             "Invalid device serial '{serial}': only alphanumeric, ':', '.', '-', '_' are allowed"
         )));
@@ -44,17 +52,13 @@ pub(crate) fn validate_device_serial(serial: &str) -> Result<(), AppError> {
 
 /// Return the current list of connected ADB devices (physical + emulators).
 #[tauri::command]
-pub async fn list_adb_devices(
-    device_state: State<'_, DeviceState>,
-) -> Result<Vec<Device>, String> {
+pub async fn list_adb_devices(device_state: State<'_, DeviceState>) -> Result<Vec<Device>, String> {
     Ok(device_state.0.lock().await.devices.clone())
 }
 
 /// Force-refresh the device list from ADB.
 #[tauri::command]
-pub async fn refresh_devices(
-    device_state: State<'_, DeviceState>,
-) -> Result<Vec<Device>, String> {
+pub async fn refresh_devices(device_state: State<'_, DeviceState>) -> Result<Vec<Device>, String> {
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     let mut devices = list_devices(&adb).await;
@@ -87,17 +91,18 @@ pub async fn get_selected_device(
 
 /// Install an APK on the given device.
 #[tauri::command]
-pub async fn install_apk_on_device(
-    serial: String,
-    apk_path: String,
-) -> Result<String, AppError> {
+pub async fn install_apk_on_device(serial: String, apk_path: String) -> Result<String, AppError> {
     validate_device_serial(&serial)?;
     if !std::path::Path::new(&apk_path).exists() {
-        return Err(AppError::NotFound(format!("APK file not found: {apk_path}")));
+        return Err(AppError::NotFound(format!(
+            "APK file not found: {apk_path}"
+        )));
     }
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    install_apk(&adb, &serial, &apk_path).await.map_err(AppError::Io)
+    install_apk(&adb, &serial, &apk_path)
+        .await
+        .map_err(AppError::Io)
 }
 
 /// Launch an app on the given device.
@@ -110,19 +115,20 @@ pub async fn launch_app_on_device(
     validate_device_serial(&serial)?;
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    launch_app(&adb, &serial, &package, activity.as_deref()).await.map_err(AppError::ProcessFailed)
+    launch_app(&adb, &serial, &package, activity.as_deref())
+        .await
+        .map_err(AppError::ProcessFailed)
 }
 
 /// Force-stop an app on the given device.
 #[tauri::command]
-pub async fn stop_app_on_device(
-    serial: String,
-    package: String,
-) -> Result<(), AppError> {
+pub async fn stop_app_on_device(serial: String, package: String) -> Result<(), AppError> {
     validate_device_serial(&serial)?;
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    stop_app(&adb, &serial, &package).await.map_err(AppError::ProcessFailed)
+    stop_app(&adb, &serial, &package)
+        .await
+        .map_err(AppError::ProcessFailed)
 }
 
 /// Return the list of installed AVDs.
@@ -163,7 +169,9 @@ pub async fn stop_avd(serial: String) -> Result<(), AppError> {
     validate_device_serial(&serial)?;
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    stop_emulator(&adb, &serial).await.map_err(AppError::ProcessFailed)
+    stop_emulator(&adb, &serial)
+        .await
+        .map_err(AppError::ProcessFailed)
 }
 
 /// Start background polling for device connections (every 3 seconds).
@@ -225,9 +233,7 @@ pub async fn start_device_polling(
 
 /// Stop the background device polling.
 #[tauri::command]
-pub async fn stop_device_polling(
-    device_state: State<'_, DeviceState>,
-) -> Result<(), String> {
+pub async fn stop_device_polling(device_state: State<'_, DeviceState>) -> Result<(), String> {
     device_state.0.lock().await.polling = false;
     // Note: the background task will continue for one more interval before
     // stopping on the next iteration check. A full cancellation token is

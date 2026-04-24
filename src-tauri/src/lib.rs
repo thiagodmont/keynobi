@@ -1,36 +1,38 @@
-mod commands;
+pub mod commands;
 pub mod models;
 pub mod services;
 pub mod utils;
 
 use commands::build::{
-    cancel_build, clear_build_history, find_apk_path, finalize_build, get_build_errors,
+    cancel_build, clear_build_history, finalize_build, find_apk_path, get_build_errors,
     get_build_history, get_build_log_entries, get_build_status, get_package_name_from_apk,
     run_gradle_task,
 };
-use tauri::{Emitter, Manager};
 use commands::device::{
     create_avd_device, delete_avd_device, download_system_image_cmd, get_selected_device,
-    install_apk_on_device, launch_app_on_device, launch_avd, list_adb_devices, list_avd_devices,
-    list_available_system_images_cmd, list_device_definitions_cmd, list_system_images_cmd,
-    refresh_devices, select_device, start_device_polling, stop_app_on_device, stop_avd,
-    stop_device_polling, wipe_avd_data_cmd,
+    install_apk_on_device, launch_app_on_device, launch_avd, list_adb_devices,
+    list_available_system_images_cmd, list_avd_devices, list_device_definitions_cmd,
+    list_system_images_cmd, refresh_devices, select_device, start_device_polling,
+    stop_app_on_device, stop_avd, stop_device_polling, wipe_avd_data_cmd,
 };
-use commands::ui_hierarchy::dump_ui_hierarchy;
 use commands::file_system::{
     get_application_id, get_gradle_root, get_last_active_project, get_project_app_info,
-    get_project_root, list_projects, open_project, pin_project, remove_project,
-    rename_project, save_project_app_info, update_project_meta,
+    get_project_root, list_projects, open_project, pin_project, remove_project, rename_project,
+    save_project_app_info, update_project_meta,
 };
 use commands::health::run_health_checks;
 use commands::logcat::{
-    clear_logcat, get_logcat_entries, get_logcat_stats, get_logcat_status,
-    list_logcat_packages, new_logcat_state, set_logcat_filter, start_logcat, stop_logcat,
+    clear_logcat, get_logcat_entries, get_logcat_stats, get_logcat_status, list_logcat_packages,
+    new_logcat_state, set_logcat_filter, start_logcat, stop_logcat,
 };
-use commands::mcp::{configure_mcp_in_claude, get_mcp_activity, get_mcp_server_status, get_mcp_setup_status, clear_mcp_activity, start_mcp_server};
+use commands::mcp::{
+    clear_mcp_activity, configure_mcp_in_claude, get_mcp_activity, get_mcp_server_status,
+    get_mcp_setup_status, start_mcp_server,
+};
 use commands::settings::*;
-use commands::telemetry::send_native_sentry_test_event;
 use commands::studio::open_in_studio;
+use commands::telemetry::send_native_sentry_test_event;
+use commands::ui_hierarchy::dump_ui_hierarchy;
 use commands::variant::{get_variants_from_gradle, get_variants_preview, set_active_variant};
 use models::log_entry::LogEntry;
 use models::settings as app_settings_model;
@@ -40,6 +42,7 @@ use services::process_manager::ProcessManager;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
 
 // ── Per-concern state ─────────────────────────────────────────────────────────
@@ -90,10 +93,14 @@ pub const MAX_LOG_ENTRIES: usize = 50_000;
 
 fn cleanup_old_logs(log_dir: &std::path::Path, retention_days: u32) {
     let cutoff = std::time::SystemTime::now()
-        .checked_sub(std::time::Duration::from_secs(u64::from(retention_days) * 86_400))
+        .checked_sub(std::time::Duration::from_secs(
+            u64::from(retention_days) * 86_400,
+        ))
         .unwrap_or(std::time::UNIX_EPOCH);
 
-    let Ok(entries) = std::fs::read_dir(log_dir) else { return };
+    let Ok(entries) = std::fs::read_dir(log_dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         // Only touch files matching app.log.* pattern.
@@ -125,8 +132,8 @@ pub fn run() {
     let file_appender = tracing_appender::rolling::daily(&log_dir, "app.log");
     let (non_blocking_file, file_guard) = tracing_appender::non_blocking(file_appender);
 
-    let env_filter = tracing_subscriber::EnvFilter::try_from_env("KEYNOBI_LOG")
-        .unwrap_or_else(|_| {
+    let env_filter =
+        tracing_subscriber::EnvFilter::try_from_env("KEYNOBI_LOG").unwrap_or_else(|_| {
             if cfg!(debug_assertions) {
                 tracing_subscriber::EnvFilter::new("debug")
             } else {
@@ -183,8 +190,9 @@ pub fn run() {
         .setup(move |app| {
             let (settings, settings_corrupted) = services::settings_manager::load_settings();
 
-            let ring_cap =
-                app_settings_model::clamp_logcat_ring_capacity_usize(settings.logcat.ring_max_entries);
+            let ring_cap = app_settings_model::clamp_logcat_ring_capacity_usize(
+                settings.logcat.ring_max_entries,
+            );
             let logcat_state = app.state::<services::logcat::LogcatState>();
             tauri::async_runtime::block_on(async {
                 let mut st = logcat_state.lock().await;
@@ -266,12 +274,9 @@ pub fn run() {
                     };
 
                     // Never block shutdown longer than 3 seconds.
-                    if tokio::time::timeout(
-                        std::time::Duration::from_secs(3),
-                        cleanup,
-                    )
-                    .await
-                    .is_err()
+                    if tokio::time::timeout(std::time::Duration::from_secs(3), cleanup)
+                        .await
+                        .is_err()
                     {
                         tracing::warn!("Graceful shutdown timed out after 3s — forcing close");
                     }

@@ -64,6 +64,7 @@ telemetry = ["sentry"]
 tempfile = "3"
 # Criterion for micro-benchmarks
 criterion = { version = "0.8", features = ["html_reports"] }
+tauri = { version = "2", features = ["test"] }
 
 [[bench]]
 name = "fs_benchmarks"

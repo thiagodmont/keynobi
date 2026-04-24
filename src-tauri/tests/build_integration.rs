@@ -142,17 +142,26 @@ fn parse_plain_output_line() {
 
 #[test]
 fn parse_build_duration_seconds_only() {
-    assert_eq!(build_runner::parse_build_duration("BUILD SUCCESSFUL in 3s"), 3_000);
+    assert_eq!(
+        build_runner::parse_build_duration("BUILD SUCCESSFUL in 3s"),
+        3_000
+    );
 }
 
 #[test]
 fn parse_build_duration_minutes_and_seconds() {
-    assert_eq!(build_runner::parse_build_duration("BUILD FAILED in 1m 30s"), 90_000);
+    assert_eq!(
+        build_runner::parse_build_duration("BUILD FAILED in 1m 30s"),
+        90_000
+    );
 }
 
 #[test]
 fn parse_build_duration_fractional_seconds() {
-    assert_eq!(build_runner::parse_build_duration("BUILD SUCCESSFUL in 2.5s"), 2_500);
+    assert_eq!(
+        build_runner::parse_build_duration("BUILD SUCCESSFUL in 2.5s"),
+        2_500
+    );
 }
 
 #[test]
@@ -195,7 +204,11 @@ async fn record_build_result_success_updates_state() {
     );
     // History grows by 1, but is bounded by MAX_HISTORY (evicts oldest when full).
     let expected_len = (initial_len + 1).min(keynobi_lib::services::build_runner::MAX_HISTORY);
-    assert_eq!(inner.history.len(), expected_len, "history must contain the new record");
+    assert_eq!(
+        inner.history.len(),
+        expected_len,
+        "history must contain the new record"
+    );
     // The most recent entry must be the one we just recorded.
     let last = inner.history.back().expect("history must not be empty");
     assert_eq!(last.task, "assembleDebug");
@@ -286,7 +299,12 @@ async fn record_build_result_respects_history_limit() {
 #[tokio::test]
 async fn record_build_result_stamps_project_root() {
     let state = BuildState::new();
-    let result = BuildResult { success: true, duration_ms: 1_000, error_count: 0, warning_count: 0 };
+    let result = BuildResult {
+        success: true,
+        duration_ms: 1_000,
+        error_count: 0,
+        warning_count: 0,
+    };
 
     build_runner::record_build_result(
         &state,
@@ -311,7 +329,12 @@ async fn record_build_result_stamps_project_root() {
 #[tokio::test]
 async fn record_build_result_stores_none_project_root_when_not_provided() {
     let state = BuildState::new();
-    let result = BuildResult { success: true, duration_ms: 500, error_count: 0, warning_count: 0 };
+    let result = BuildResult {
+        success: true,
+        duration_ms: 500,
+        error_count: 0,
+        warning_count: 0,
+    };
 
     build_runner::record_build_result(
         &state,
@@ -325,7 +348,10 @@ async fn record_build_result_stores_none_project_root_when_not_provided() {
 
     let inner = state.inner.lock().await;
     let last = inner.history.back().expect("history must not be empty");
-    assert!(last.project_root.is_none(), "project_root should be None when not provided");
+    assert!(
+        last.project_root.is_none(),
+        "project_root should be None when not provided"
+    );
 }
 
 /// Regression: builds from different projects must not mix — the in-memory
@@ -333,23 +359,42 @@ async fn record_build_result_stores_none_project_root_when_not_provided() {
 #[tokio::test]
 async fn history_records_retain_distinct_project_roots() {
     let state = BuildState::new();
-    let make_result = || BuildResult { success: true, duration_ms: 1_000, error_count: 0, warning_count: 0 };
+    let make_result = || BuildResult {
+        success: true,
+        duration_ms: 1_000,
+        error_count: 0,
+        warning_count: 0,
+    };
 
     build_runner::record_build_result(
-        &state, "assembleDebug".into(), "2024-01-01T00:00:00Z".into(),
-        make_result(), vec![], Some("/projects/app-alpha".into()),
-    ).await;
+        &state,
+        "assembleDebug".into(),
+        "2024-01-01T00:00:00Z".into(),
+        make_result(),
+        vec![],
+        Some("/projects/app-alpha".into()),
+    )
+    .await;
 
     build_runner::record_build_result(
-        &state, "assembleRelease".into(), "2024-01-02T00:00:00Z".into(),
-        make_result(), vec![], Some("/projects/app-beta".into()),
-    ).await;
+        &state,
+        "assembleRelease".into(),
+        "2024-01-02T00:00:00Z".into(),
+        make_result(),
+        vec![],
+        Some("/projects/app-beta".into()),
+    )
+    .await;
 
     let inner = state.inner.lock().await;
-    let alpha: Vec<_> = inner.history.iter()
+    let alpha: Vec<_> = inner
+        .history
+        .iter()
         .filter(|r| r.project_root.as_deref() == Some("/projects/app-alpha"))
         .collect();
-    let beta: Vec<_> = inner.history.iter()
+    let beta: Vec<_> = inner
+        .history
+        .iter()
         .filter(|r| r.project_root.as_deref() == Some("/projects/app-beta"))
         .collect();
 
@@ -394,7 +439,10 @@ async fn mock_gradlew_failed_build_exits_nonzero() {
         .expect("mock gradlew should run");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(!output.status.success(), "mock fail task should exit non-zero");
+    assert!(
+        !output.status.success(),
+        "mock fail task should exit non-zero"
+    );
     assert!(
         stdout.contains("BUILD FAILED"),
         "stdout must contain BUILD FAILED, got: {stdout}"
@@ -471,9 +519,12 @@ async fn mock_gradlew_error_output_produces_error_lines() {
     );
 
     // The Kotlin diagnostic line should carry file/line/col metadata.
-    let kotlin_err = error_lines
-        .iter()
-        .find(|e| e.file.as_deref().map(|f| f.contains("Main.kt")).unwrap_or(false));
+    let kotlin_err = error_lines.iter().find(|e| {
+        e.file
+            .as_deref()
+            .map(|f| f.contains("Main.kt"))
+            .unwrap_or(false)
+    });
     assert!(
         kotlin_err.is_some(),
         "must find a Kotlin error line with Main.kt"

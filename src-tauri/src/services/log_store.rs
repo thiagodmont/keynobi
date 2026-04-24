@@ -46,8 +46,7 @@ impl LogStore {
 
     /// Ring buffer capacity (oldest entries are evicted once `len == capacity`).
     pub fn with_capacity(capacity: usize) -> Self {
-        let capacity = capacity
-            .clamp(LOGCAT_RING_MIN_ENTRIES, LOGCAT_RING_ABS_MAX_ENTRIES);
+        let capacity = capacity.clamp(LOGCAT_RING_MIN_ENTRIES, LOGCAT_RING_ABS_MAX_ENTRIES);
         let initial = usize::min(INITIAL_CAPACITY_MAX, capacity).max(256);
         LogStore {
             entries: VecDeque::with_capacity(initial),
@@ -188,14 +187,12 @@ impl LogStore {
     // is guaranteed to be at the *front* of that index deque. O(1) pop instead
     // of O(n) linear scan.
     fn remove_from_indexes(&mut self, id: u64, flags: u32) {
-        if flags & EntryFlags::CRASH != 0
-            && self.crash_ids.front() == Some(&id) {
-                self.crash_ids.pop_front();
-            }
-        if flags & EntryFlags::JSON_BODY != 0
-            && self.json_ids.front() == Some(&id) {
-                self.json_ids.pop_front();
-            }
+        if flags & EntryFlags::CRASH != 0 && self.crash_ids.front() == Some(&id) {
+            self.crash_ids.pop_front();
+        }
+        if flags & EntryFlags::JSON_BODY != 0 && self.json_ids.front() == Some(&id) {
+            self.json_ids.pop_front();
+        }
     }
 }
 
@@ -250,14 +247,21 @@ mod tests {
 
     #[test]
     fn eviction_removes_from_indexes() {
-        let mut store = LogStore { capacity: 2, ..LogStore::with_capacity(2) };
+        let mut store = LogStore {
+            capacity: 2,
+            ..LogStore::with_capacity(2)
+        };
         // entry 1: crash
         store.push(make_entry(1, EntryFlags::CRASH));
         store.push(make_entry(2, 0));
         assert_eq!(store.crash_ids().len(), 1);
         // Push 3rd entry — entry 1 should be evicted, removing from crash_ids
         store.push(make_entry(3, 0));
-        assert_eq!(store.crash_ids().len(), 0, "crash entry should be removed on eviction");
+        assert_eq!(
+            store.crash_ids().len(),
+            0,
+            "crash entry should be removed on eviction"
+        );
     }
 
     #[test]
@@ -291,6 +295,73 @@ mod tests {
         assert_eq!(store.stats.total_ingested, 2);
         assert_eq!(store.stats.crash_count, 1);
         assert_eq!(store.stats.json_count, 1);
+    }
+
+    #[test]
+    fn query_returns_most_recent_matches_in_chronological_order() {
+        let mut store = LogStore::with_capacity(10_000);
+
+        for id in 1..=5 {
+            let mut entry = make_entry(id, 0);
+            entry.level = if id % 2 == 0 {
+                LogcatLevel::Error
+            } else {
+                LogcatLevel::Info
+            };
+            entry.message = format!("message {id}");
+            store.push(entry);
+        }
+
+        let filter = crate::services::logcat::LogcatFilter::new(
+            Some(LogcatLevel::Error),
+            None,
+            None,
+            None,
+            false,
+        );
+
+        let ids: Vec<u64> = store.query(&filter, 1).into_iter().map(|e| e.id).collect();
+        assert_eq!(ids, vec![4]);
+
+        let ids: Vec<u64> = store.query(&filter, 10).into_iter().map(|e| e.id).collect();
+        assert_eq!(ids, vec![2, 4]);
+    }
+
+    #[test]
+    fn query_applies_compound_backend_filter() {
+        let mut store = LogStore::with_capacity(10_000);
+
+        let mut matching = make_entry(1, EntryFlags::CRASH);
+        matching.level = LogcatLevel::Error;
+        matching.tag = "MainActivity".into();
+        matching.message = "Native crash".into();
+        matching.package = Some("com.example.app".into());
+        store.push(matching);
+
+        let mut wrong_package = make_entry(2, EntryFlags::CRASH);
+        wrong_package.level = LogcatLevel::Error;
+        wrong_package.tag = "MainActivity".into();
+        wrong_package.message = "Native crash".into();
+        wrong_package.package = Some("com.other.app".into());
+        store.push(wrong_package);
+
+        let mut wrong_crash_flag = make_entry(3, 0);
+        wrong_crash_flag.level = LogcatLevel::Error;
+        wrong_crash_flag.tag = "MainActivity".into();
+        wrong_crash_flag.message = "Native crash".into();
+        wrong_crash_flag.package = Some("com.example.app".into());
+        store.push(wrong_crash_flag);
+
+        let filter = crate::services::logcat::LogcatFilter::new(
+            Some(LogcatLevel::Error),
+            Some("main".into()),
+            Some("crash".into()),
+            Some("com.example".into()),
+            true,
+        );
+
+        let ids: Vec<u64> = store.query(&filter, 10).into_iter().map(|e| e.id).collect();
+        assert_eq!(ids, vec![1]);
     }
 
     #[test]

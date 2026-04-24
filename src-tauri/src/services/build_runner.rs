@@ -1,7 +1,4 @@
-use crate::models::build::{
-    BuildError, BuildRecord, BuildResult,
-    BuildStatus,
-};
+use crate::models::build::{BuildError, BuildRecord, BuildResult, BuildStatus};
 use crate::services::build_parser;
 use crate::services::process_manager::{self, ProcessId, ProcessManager};
 use crate::services::settings_manager::data_dir;
@@ -317,23 +314,25 @@ fn walk_dir_for_apk(base: &Path, max_depth: u32) -> Vec<PathBuf> {
 /// Only `-unaligned.apk` files are excluded (they are not zip-aligned and
 /// cannot be installed).
 pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf> {
-    let base = gradle_root.join("app").join("build").join("outputs").join("apk");
+    let base = gradle_root
+        .join("app")
+        .join("build")
+        .join("outputs")
+        .join("apk");
     if !base.is_dir() {
         return None;
     }
     let all_files = walk_dir_for_apk(&base, 4);
 
     // Only exclude files that are genuinely not installable.
-    let is_usable = |name: &str| -> bool {
-        !name.ends_with("-unaligned.apk")
-    };
-    let is_signed = |name: &str| -> bool {
-        !name.contains("-unsigned")
-    };
+    let is_usable = |name: &str| -> bool { !name.ends_with("-unaligned.apk") };
+    let is_signed = |name: &str| -> bool { !name.contains("-unsigned") };
 
     let variant_lc = variant_name.to_lowercase();
     let parent_matches = |path: &Path| -> bool {
-        if variant_name.is_empty() { return true; }
+        if variant_name.is_empty() {
+            return true;
+        }
         // Check both the immediate parent dir and the grandparent dir so both
         // `apk/release/app-release.apk` and `apk/flavor/release/app-release.apk` match.
         for ancestor in path.ancestors().skip(1).take(2) {
@@ -353,7 +352,8 @@ pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf
     let apks: Vec<&PathBuf> = all_files
         .iter()
         .filter(|p| {
-            let name = p.file_name()
+            let name = p
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("")
                 .to_lowercase();
@@ -363,7 +363,11 @@ pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf
 
     // Pass 1 — signed + variant dir match.
     for p in &apks {
-        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+        let name = p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_lowercase();
         if is_signed(&name) && parent_matches(p) {
             return Some((*p).clone());
         }
@@ -376,7 +380,11 @@ pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf
     }
     // Pass 3 — signed, any location.
     for p in &apks {
-        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("").to_lowercase();
+        let name = p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_lowercase();
         if is_signed(&name) {
             return Some((*p).clone());
         }
@@ -386,10 +394,7 @@ pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf
 }
 
 /// Cancel the currently running build. Returns `true` if a build was running, `false` otherwise.
-pub async fn cancel_build(
-    build_state: &BuildState,
-    process_manager: &ProcessManager,
-) -> bool {
+pub async fn cancel_build(build_state: &BuildState, process_manager: &ProcessManager) -> bool {
     let id = {
         let from_sync = build_state.active_process_id.lock().unwrap().take();
         if let Some(id) = from_sync {
@@ -528,16 +533,22 @@ pub struct GradleTaskResult {
 /// Each error is formatted as `[severity] location — message` or `[severity] message`
 /// if no location is available. Severity is derived from the error's severity field.
 pub fn format_build_issues(errors: &[crate::models::build::BuildError]) -> Vec<String> {
-    errors.iter().map(|e| {
-        let loc = match (&e.file, e.line) {
-            (Some(f), Some(l)) => format!("{}:{}", f, l),
-            (Some(f), None) => f.clone(),
-            _ => String::new(),
-        };
-        let sev = format!("{:?}", e.severity).to_lowercase();
-        if loc.is_empty() { format!("[{sev}] {}", e.message) }
-        else { format!("[{sev}] {loc} — {}", e.message) }
-    }).collect()
+    errors
+        .iter()
+        .map(|e| {
+            let loc = match (&e.file, e.line) {
+                (Some(f), Some(l)) => format!("{}:{}", f, l),
+                (Some(f), None) => f.clone(),
+                _ => String::new(),
+            };
+            let sev = format!("{:?}", e.severity).to_lowercase();
+            if loc.is_empty() {
+                format!("[{sev}] {}", e.message)
+            } else {
+                format!("[{sev}] {loc} — {}", e.message)
+            }
+        })
+        .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -553,8 +564,8 @@ pub async fn run_task(
 ) -> Result<GradleTaskResult, String> {
     use crate::models::build::{BuildError, BuildErrorSeverity, BuildLineKind, BuildResult};
     use crate::services::process_manager::{self as pm, SpawnOptions};
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+    use std::sync::Arc;
 
     let started_at = chrono::Utc::now().to_rfc3339();
 
@@ -644,12 +655,9 @@ pub async fn run_task(
         bs.current_build = Some(pid);
     }
 
-    let timed_out = tokio::time::timeout(
-        std::time::Duration::from_secs(timeout_sec),
-        done_rx,
-    )
-    .await
-    .is_err();
+    let timed_out = tokio::time::timeout(std::time::Duration::from_secs(timeout_sec), done_rx)
+        .await
+        .is_err();
 
     if timed_out {
         cancel_build(build_state, process_manager).await;
@@ -673,10 +681,28 @@ pub async fn run_task(
         .filter(|e| e.severity == BuildErrorSeverity::Warning)
         .count() as u32;
 
-    let result = BuildResult { success, duration_ms, error_count, warning_count };
-    record_build_result(build_state, task.to_owned(), started_at, result, errors.clone(), None).await;
+    let result = BuildResult {
+        success,
+        duration_ms,
+        error_count,
+        warning_count,
+    };
+    record_build_result(
+        build_state,
+        task.to_owned(),
+        started_at,
+        result,
+        errors.clone(),
+        None,
+    )
+    .await;
 
-    Ok(GradleTaskResult { success, timed_out: false, duration_ms, errors })
+    Ok(GradleTaskResult {
+        success,
+        timed_out: false,
+        duration_ms,
+        errors,
+    })
 }
 
 #[cfg(test)]
@@ -700,18 +726,15 @@ mod tests {
 
     #[test]
     fn parses_kotlin_error_without_file_uri() {
-        let line = parse_build_line(
-            "e: /Users/dev/app/src/Main.kt:5:1: Expecting member declaration",
-        );
+        let line =
+            parse_build_line("e: /Users/dev/app/src/Main.kt:5:1: Expecting member declaration");
         assert_eq!(line.kind, BuildLineKind::Error);
         assert_eq!(line.line, Some(5));
     }
 
     #[test]
     fn parses_kotlin_warning() {
-        let line = parse_build_line(
-            "w: file:///src/Foo.kt:10:3: Parameter 'x' is never used",
-        );
+        let line = parse_build_line("w: file:///src/Foo.kt:10:3: Parameter 'x' is never used");
         assert_eq!(line.kind, BuildLineKind::Warning);
         assert_eq!(line.line, Some(10));
     }
@@ -750,7 +773,8 @@ mod tests {
 
     #[test]
     fn parses_java_compiler_error() {
-        let line = parse_build_line("src/main/java/com/example/Foo.java:23: error: cannot find symbol");
+        let line =
+            parse_build_line("src/main/java/com/example/Foo.java:23: error: cannot find symbol");
         assert_eq!(line.kind, BuildLineKind::Error);
         assert_eq!(line.line, Some(23));
         assert!(line.file.as_deref().unwrap().contains("Foo.java"));
@@ -758,7 +782,9 @@ mod tests {
 
     #[test]
     fn parses_aapt_file_error() {
-        let line = parse_build_line("app/src/main/res/layout/activity_main.xml:10: error: attribute missing");
+        let line = parse_build_line(
+            "app/src/main/res/layout/activity_main.xml:10: error: attribute missing",
+        );
         assert_eq!(line.kind, BuildLineKind::Error);
         assert_eq!(line.line, Some(10));
     }
@@ -796,7 +822,12 @@ mod tests {
     #[test]
     fn finds_signed_apk_in_variant_dir() {
         let tmp = std::env::temp_dir().join("apk_test_signed");
-        let apk_dir = tmp.join("app").join("build").join("outputs").join("apk").join("release");
+        let apk_dir = tmp
+            .join("app")
+            .join("build")
+            .join("outputs")
+            .join("apk")
+            .join("release");
         std::fs::create_dir_all(&apk_dir).unwrap();
         let apk = apk_dir.join("app-release.apk");
         std::fs::write(&apk, b"").unwrap();
@@ -809,7 +840,12 @@ mod tests {
     #[test]
     fn finds_unsigned_apk_when_no_signed_exists() {
         let tmp = std::env::temp_dir().join("apk_test_unsigned");
-        let apk_dir = tmp.join("app").join("build").join("outputs").join("apk").join("release");
+        let apk_dir = tmp
+            .join("app")
+            .join("build")
+            .join("outputs")
+            .join("apk")
+            .join("release");
         std::fs::create_dir_all(&apk_dir).unwrap();
         let apk = apk_dir.join("app-release-unsigned.apk");
         std::fs::write(&apk, b"").unwrap();
@@ -822,7 +858,12 @@ mod tests {
     #[test]
     fn prefers_signed_over_unsigned_in_same_dir() {
         let tmp = std::env::temp_dir().join("apk_test_prefer_signed");
-        let apk_dir = tmp.join("app").join("build").join("outputs").join("apk").join("release");
+        let apk_dir = tmp
+            .join("app")
+            .join("build")
+            .join("outputs")
+            .join("apk")
+            .join("release");
         std::fs::create_dir_all(&apk_dir).unwrap();
         let unsigned = apk_dir.join("app-release-unsigned.apk");
         let signed = apk_dir.join("app-release.apk");
@@ -837,7 +878,12 @@ mod tests {
     #[test]
     fn excludes_unaligned_apk() {
         let tmp = std::env::temp_dir().join("apk_test_unaligned");
-        let apk_dir = tmp.join("app").join("build").join("outputs").join("apk").join("release");
+        let apk_dir = tmp
+            .join("app")
+            .join("build")
+            .join("outputs")
+            .join("apk")
+            .join("release");
         std::fs::create_dir_all(&apk_dir).unwrap();
         // Only file present is unaligned — should NOT be returned.
         let unaligned = apk_dir.join("app-release-unaligned.apk");
@@ -892,7 +938,10 @@ mod tests {
         let state = BuildState::new();
         let pm = ProcessManager::new();
         let was_running = cancel_build(&state, &pm).await;
-        assert!(!was_running, "cancel_build should return false when no build is running");
+        assert!(
+            !was_running,
+            "cancel_build should return false when no build is running"
+        );
     }
 
     #[tokio::test]
@@ -923,7 +972,10 @@ mod tests {
         }
 
         let was_running = cancel_build(&state, &pm).await;
-        assert!(was_running, "cancel_build should return true when a build was running");
+        assert!(
+            was_running,
+            "cancel_build should return true when a build was running"
+        );
     }
 
     #[tokio::test]
@@ -966,12 +1018,20 @@ mod tests {
         cancel_build(&state, &pm).await;
 
         let inner = state.inner.lock().await;
-        assert!(inner.current_build.is_none(), "current_build PID must be cleared after cancel");
+        assert!(
+            inner.current_build.is_none(),
+            "current_build PID must be cleared after cancel"
+        );
     }
 
     // ── format_build_issues tests ─────────────────────────────────────────────
 
-    fn make_error(msg: &str, file: Option<&str>, line: Option<u32>, severity: crate::models::build::BuildErrorSeverity) -> crate::models::build::BuildError {
+    fn make_error(
+        msg: &str,
+        file: Option<&str>,
+        line: Option<u32>,
+        severity: crate::models::build::BuildErrorSeverity,
+    ) -> crate::models::build::BuildError {
         crate::models::build::BuildError {
             message: msg.to_string(),
             file: file.map(str::to_string),
@@ -984,15 +1044,28 @@ mod tests {
     #[test]
     fn format_error_with_file_and_line() {
         use crate::models::build::BuildErrorSeverity;
-        let errors = vec![make_error("Unresolved reference: foo", Some("Main.kt"), Some(42), BuildErrorSeverity::Error)];
+        let errors = vec![make_error(
+            "Unresolved reference: foo",
+            Some("Main.kt"),
+            Some(42),
+            BuildErrorSeverity::Error,
+        )];
         let lines = format_build_issues(&errors);
-        assert_eq!(lines, vec!["[error] Main.kt:42 — Unresolved reference: foo"]);
+        assert_eq!(
+            lines,
+            vec!["[error] Main.kt:42 — Unresolved reference: foo"]
+        );
     }
 
     #[test]
     fn format_error_with_file_only() {
         use crate::models::build::BuildErrorSeverity;
-        let errors = vec![make_error("Syntax error", Some("build.gradle"), None, BuildErrorSeverity::Error)];
+        let errors = vec![make_error(
+            "Syntax error",
+            Some("build.gradle"),
+            None,
+            BuildErrorSeverity::Error,
+        )];
         let lines = format_build_issues(&errors);
         assert_eq!(lines, vec!["[error] build.gradle — Syntax error"]);
     }
@@ -1000,7 +1073,12 @@ mod tests {
     #[test]
     fn format_error_with_message_only() {
         use crate::models::build::BuildErrorSeverity;
-        let errors = vec![make_error("Task :app:compileDebugKotlin FAILED", None, None, BuildErrorSeverity::Error)];
+        let errors = vec![make_error(
+            "Task :app:compileDebugKotlin FAILED",
+            None,
+            None,
+            BuildErrorSeverity::Error,
+        )];
         let lines = format_build_issues(&errors);
         assert_eq!(lines, vec!["[error] Task :app:compileDebugKotlin FAILED"]);
     }
@@ -1008,7 +1086,12 @@ mod tests {
     #[test]
     fn format_warning_severity() {
         use crate::models::build::BuildErrorSeverity;
-        let errors = vec![make_error("Deprecated API", Some("Foo.kt"), Some(10), BuildErrorSeverity::Warning)];
+        let errors = vec![make_error(
+            "Deprecated API",
+            Some("Foo.kt"),
+            Some(10),
+            BuildErrorSeverity::Warning,
+        )];
         let lines = format_build_issues(&errors);
         assert_eq!(lines, vec!["[warning] Foo.kt:10 — Deprecated API"]);
     }
@@ -1043,14 +1126,16 @@ mod tests {
     #[test]
     fn next_id_starts_after_max_history_id() {
         use std::collections::VecDeque;
-        let records: VecDeque<BuildRecord> = (1u32..=5).map(|i| BuildRecord {
-            id: i,
-            task: format!("task_{i}"),
-            status: BuildStatus::Idle,
-            errors: vec![],
-            started_at: "2026-01-01T00:00:00Z".into(),
-            project_root: None,
-        }).collect();
+        let records: VecDeque<BuildRecord> = (1u32..=5)
+            .map(|i| BuildRecord {
+                id: i,
+                task: format!("task_{i}"),
+                status: BuildStatus::Idle,
+                errors: vec![],
+                started_at: "2026-01-01T00:00:00Z".into(),
+                project_root: None,
+            })
+            .collect();
         // This is the formula that BuildStateInner::new() must use.
         let next_id = records.iter().map(|r| r.id).max().unwrap_or(0) + 1;
         assert_eq!(next_id, 6, "next_id must continue from max existing id");
@@ -1083,7 +1168,10 @@ mod tests {
         }
         clear_history(&state).await;
         let bs = state.inner.lock().await;
-        assert!(bs.history.is_empty(), "history must be empty after clear_history");
+        assert!(
+            bs.history.is_empty(),
+            "history must be empty after clear_history"
+        );
     }
 
     #[test]
@@ -1092,14 +1180,16 @@ mod tests {
 
         // We can't easily override data_dir() in tests, but we can test
         // the serialization/deserialization logic directly.
-        let records: Vec<BuildRecord> = (1..=5u32).map(|i| BuildRecord {
-            id: i,
-            task: format!("task_{i}"),
-            status: BuildStatus::Idle,
-            errors: vec![],
-            started_at: "2026-04-06T12:00:00Z".into(),
-            project_root: None,
-        }).collect();
+        let records: Vec<BuildRecord> = (1..=5u32)
+            .map(|i| BuildRecord {
+                id: i,
+                task: format!("task_{i}"),
+                status: BuildStatus::Idle,
+                errors: vec![],
+                started_at: "2026-04-06T12:00:00Z".into(),
+                project_root: None,
+            })
+            .collect();
 
         let json = serde_json::to_string_pretty(&records).unwrap();
         let loaded: Vec<BuildRecord> = serde_json::from_str(&json).unwrap();
@@ -1166,7 +1256,13 @@ mod tests {
 
         rotate_build_logs(dir_path, 365, 1000, &history);
 
-        assert!(dir_path.join("build-42.jsonl").exists(), "id=42 (in history) must survive");
-        assert!(!dir_path.join("build-99.jsonl").exists(), "id=99 (orphan) must be deleted");
+        assert!(
+            dir_path.join("build-42.jsonl").exists(),
+            "id=42 (in history) must survive"
+        );
+        assert!(
+            !dir_path.join("build-99.jsonl").exists(),
+            "id=99 (orphan) must be deleted"
+        );
     }
 }

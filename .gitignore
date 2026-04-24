@@ -3,6 +3,9 @@ target/
 dist/
 .DS_Store
 *.log
+playwright-report/
+test-results/
+tsconfig*.tsbuildinfo
 .superpowers/
 .env
 .env.local

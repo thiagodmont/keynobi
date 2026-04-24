@@ -88,7 +88,12 @@ pub fn find_crash(
 /// Returns (exception_type, message, frames, caused_by)
 fn parse_crash_lines(
     lines: &[&str],
-) -> (Option<String>, Option<String>, Vec<StackFrame>, Vec<CausedBy>) {
+) -> (
+    Option<String>,
+    Option<String>,
+    Vec<StackFrame>,
+    Vec<CausedBy>,
+) {
     let mut exception_type: Option<String> = None;
     let mut message: Option<String> = None;
     let mut frames: Vec<StackFrame> = Vec::new();
@@ -114,8 +119,11 @@ fn parse_crash_lines(
             }
             break;
         }
-        if !line.starts_with("\tat ") && !line.starts_with("at ") && !line.is_empty()
-            && !line.starts_with("Process:") && !line.starts_with("PID:")
+        if !line.starts_with("\tat ")
+            && !line.starts_with("at ")
+            && !line.is_empty()
+            && !line.starts_with("Process:")
+            && !line.starts_with("PID:")
         {
             let (et, msg) = split_exception_line(line);
             if et.contains('.') {
@@ -176,15 +184,28 @@ fn parse_frame(s: &str) -> StackFrame {
         let loc_part = s[paren + 1..].trim_end_matches(')');
 
         let (class, method) = if let Some(dot) = method_part.rfind('.') {
-            (method_part[..dot].to_string(), method_part[dot + 1..].to_string())
+            (
+                method_part[..dot].to_string(),
+                method_part[dot + 1..].to_string(),
+            )
         } else {
             (method_part.to_string(), String::new())
         };
 
         let (file, line) = parse_location(loc_part);
-        StackFrame { class, method, file, line }
+        StackFrame {
+            class,
+            method,
+            file,
+            line,
+        }
     } else {
-        StackFrame { class: s.to_string(), method: String::new(), file: None, line: None }
+        StackFrame {
+            class: s.to_string(),
+            method: String::new(),
+            file: None,
+            line: None,
+        }
     }
 }
 
@@ -204,7 +225,7 @@ fn parse_location(loc: &str) -> (Option<String>, Option<u32>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::logcat::{LogcatLevel, LogcatKind, EntryCategory};
+    use crate::models::logcat::{EntryCategory, LogcatKind, LogcatLevel};
 
     fn make_entry(id: u64, msg: &str, gid: Option<u64>, pkg: Option<&str>) -> ProcessedEntry {
         ProcessedEntry {
@@ -290,7 +311,12 @@ mod tests {
             make_entry(1, "FATAL EXCEPTION: main", Some(1), Some("com.example.app")),
             make_entry(2, "java.lang.NPE: old", Some(1), Some("com.example.app")),
             make_entry(3, "FATAL EXCEPTION: main", Some(2), Some("com.example.app")),
-            make_entry(4, "java.lang.IllegalState: newer", Some(2), Some("com.example.app")),
+            make_entry(
+                4,
+                "java.lang.IllegalState: newer",
+                Some(2),
+                Some("com.example.app"),
+            ),
         ];
         let result = find_crash(&entries, None, None).unwrap();
         assert_eq!(result.crash_group_id, 2);

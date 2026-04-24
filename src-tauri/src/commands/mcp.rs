@@ -66,9 +66,9 @@ pub async fn configure_mcp_in_claude() -> Result<String, String> {
         .map(|p| p.to_string_lossy().to_string())
         .map_err(|e| format!("Could not determine app path: {e}"))?;
 
-    let claude = find_claude_binary()
-        .await
-        .ok_or_else(|| "Claude Code CLI not found. Install Claude Code from https://claude.ai/download".to_string())?;
+    let claude = find_claude_binary().await.ok_or_else(|| {
+        "Claude Code CLI not found. Install Claude Code from https://claude.ai/download".to_string()
+    })?;
 
     // Remove any existing entry first so re-configuring works cleanly.
     let _ = tokio::process::Command::new(&claude)
@@ -81,7 +81,16 @@ pub async fn configure_mcp_in_claude() -> Result<String, String> {
     let output = tokio::time::timeout(
         std::time::Duration::from_secs(15),
         tokio::process::Command::new(&claude)
-            .args(["mcp", "add", "--transport", "stdio", "keynobi", "--", &exe_path, "--mcp"])
+            .args([
+                "mcp",
+                "add",
+                "--transport",
+                "stdio",
+                "keynobi",
+                "--",
+                &exe_path,
+                "--mcp",
+            ])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .output(),
@@ -171,7 +180,8 @@ async fn check_mcp_configured(claude: &str) -> (bool, Option<String>) {
         Ok(Ok(out)) if out.status.success() => {
             let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
             // Extract the command from the output if possible
-            let cmd = stdout.lines()
+            let cmd = stdout
+                .lines()
                 .find(|l| l.contains("--mcp") || l.contains("keynobi") || l.contains("Command:"))
                 .map(|l| l.trim().trim_start_matches("Command:").trim().to_string());
             (true, cmd.or(Some(stdout)))

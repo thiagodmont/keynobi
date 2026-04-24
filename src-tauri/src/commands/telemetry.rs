@@ -29,10 +29,7 @@ pub fn send_native_sentry_test_event() -> Result<(), String> {
         );
     }
 
-    sentry::capture_message(
-        "Keynobi native Sentry test (command palette)",
-        Level::Info,
-    );
+    sentry::capture_message("Keynobi native Sentry test (command palette)", Level::Info);
     Ok(())
 }
 

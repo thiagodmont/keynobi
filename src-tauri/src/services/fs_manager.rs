@@ -62,7 +62,11 @@ mod tests {
     #[test]
     fn finds_gradle_root_with_settings_gradle() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("settings.gradle"), "rootProject.name = \"test\"").unwrap();
+        fs::write(
+            dir.path().join("settings.gradle"),
+            "rootProject.name = \"test\"",
+        )
+        .unwrap();
         let result = find_gradle_root(dir.path());
         assert_eq!(result, Some(dir.path().to_path_buf()));
     }

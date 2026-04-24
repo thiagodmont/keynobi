@@ -2,9 +2,19 @@ use crate::models::settings::AppSettings;
 use std::path::PathBuf;
 
 const KNOWN_SETTINGS_FIELDS: &[&str] = &[
-    "appearance", "search", "android", "lsp", "java",
-    "advanced", "build", "logcat", "mcp", "telemetry", "onboardingCompleted",
-    "recentProjects", "lastActiveProject",
+    "appearance",
+    "search",
+    "android",
+    "lsp",
+    "java",
+    "advanced",
+    "build",
+    "logcat",
+    "mcp",
+    "telemetry",
+    "onboardingCompleted",
+    "recentProjects",
+    "lastActiveProject",
 ];
 
 /// Log a warning for each top-level key in the JSON that isn't a known settings field.
@@ -89,10 +99,8 @@ pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
     let path = settings_file();
     let tmp = path.with_extension("json.tmp");
 
-    std::fs::write(&tmp, &json)
-        .map_err(|e| format!("Failed to write settings: {e}"))?;
-    std::fs::rename(&tmp, &path)
-        .map_err(|e| format!("Failed to save settings: {e}"))?;
+    std::fs::write(&tmp, &json).map_err(|e| format!("Failed to write settings: {e}"))?;
+    std::fs::rename(&tmp, &path).map_err(|e| format!("Failed to save settings: {e}"))?;
 
     Ok(())
 }
@@ -108,10 +116,7 @@ pub fn get_active_variant_for_project_path(
     settings
         .recent_projects
         .iter()
-        .find(|e| {
-            e.path == project_path
-                || e.gradle_root.as_deref() == Some(project_path)
-        })
+        .find(|e| e.path == project_path || e.gradle_root.as_deref() == Some(project_path))
         .and_then(|e| e.last_build_variant.clone())
 }
 
@@ -123,9 +128,11 @@ pub fn set_active_variant_for_project_path(
     variant: &str,
 ) -> Result<(), String> {
     let (mut settings, _) = load_settings_from_path(settings_path);
-    if let Some(entry) = settings.recent_projects.iter_mut().find(|e| {
-        e.path == project_path || e.gradle_root.as_deref() == Some(project_path)
-    }) {
+    if let Some(entry) = settings
+        .recent_projects
+        .iter_mut()
+        .find(|e| e.path == project_path || e.gradle_root.as_deref() == Some(project_path))
+    {
         entry.last_build_variant = Some(variant.to_string());
         let json = serde_json::to_string_pretty(&settings)
             .map_err(|e| format!("Failed to serialize settings: {e}"))?;
@@ -149,8 +156,7 @@ pub fn set_active_variant_for_project(project_path: &str, variant: &str) -> Resu
 pub fn reset_settings() -> Result<AppSettings, String> {
     let path = settings_file();
     if path.exists() {
-        std::fs::remove_file(&path)
-            .map_err(|e| format!("Failed to delete settings file: {e}"))?;
+        std::fs::remove_file(&path).map_err(|e| format!("Failed to delete settings file: {e}"))?;
     }
     Ok(AppSettings::default())
 }
@@ -288,9 +294,8 @@ mod tests {
         let json = serde_json::to_string_pretty(&settings).unwrap();
         std::fs::write(&path, &json).unwrap();
 
-        let loaded: AppSettings = serde_json::from_str(
-            &std::fs::read_to_string(&path).unwrap()
-        ).unwrap();
+        let loaded: AppSettings =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(loaded.appearance.ui_font_size, 14);
         assert_eq!(loaded.search.context_lines, 5);
     }
@@ -301,9 +306,8 @@ mod tests {
         let path = dir.path().join("settings.json");
         std::fs::write(&path, "not valid json!!!").unwrap();
 
-        let result: AppSettings = serde_json::from_str(
-            &std::fs::read_to_string(&path).unwrap()
-        ).unwrap_or_default();
+        let result: AppSettings =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap_or_default();
         assert_eq!(result, AppSettings::default());
     }
 
@@ -314,7 +318,11 @@ mod tests {
         std::fs::write(&path, "{ not valid json !!!").unwrap();
         let (settings, corrupted) = load_settings_from_path(&path);
         assert!(corrupted, "should report corruption");
-        assert_eq!(settings, AppSettings::default(), "should return defaults on corruption");
+        assert_eq!(
+            settings,
+            AppSettings::default(),
+            "should return defaults on corruption"
+        );
     }
 
     #[test]
@@ -384,26 +392,52 @@ mod tests {
         // but the return value must be correct.
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("settings.json");
-        std::fs::write(&path, r#"{"appearance": {"uiFontSize": 14}, "unknownKey": true}"#).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"appearance": {"uiFontSize": 14}, "unknownKey": true}"#,
+        )
+        .unwrap();
         let (settings, corrupted) = load_settings_from_path(&path);
-        assert!(!corrupted, "unknown field must not be treated as corruption");
-        assert_eq!(settings.appearance.ui_font_size, 14, "valid field must be loaded despite unknown key");
+        assert!(
+            !corrupted,
+            "unknown field must not be treated as corruption"
+        );
+        assert_eq!(
+            settings.appearance.ui_font_size, 14,
+            "valid field must be loaded despite unknown key"
+        );
     }
 
     #[test]
     fn all_known_fields_pass_validation() {
-        let known = ["appearance", "search", "android", "lsp", "java",
-                     "advanced", "build", "logcat", "mcp", "telemetry", "onboardingCompleted",
-                     "recentProjects", "lastActiveProject"];
+        let known = [
+            "appearance",
+            "search",
+            "android",
+            "lsp",
+            "java",
+            "advanced",
+            "build",
+            "logcat",
+            "mcp",
+            "telemetry",
+            "onboardingCompleted",
+            "recentProjects",
+            "lastActiveProject",
+        ];
         let settings = AppSettings::default();
         let json = serde_json::to_string(&settings).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         let obj = value.as_object().unwrap();
-        let unknown: Vec<&str> = obj.keys()
+        let unknown: Vec<&str> = obj
+            .keys()
             .filter(|k| !known.contains(&k.as_str()))
             .map(|k| k.as_str())
             .collect();
-        assert!(unknown.is_empty(), "default settings should have no unknown fields, got: {unknown:?}");
+        assert!(
+            unknown.is_empty(),
+            "default settings should have no unknown fields, got: {unknown:?}"
+        );
     }
 
     #[test]
@@ -411,10 +445,17 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("settings.json");
         // Write settings with a typo field + a valid field
-        std::fs::write(&path, r#"{"appearance": {"uiFontSize": 14}, "uiFontSizee": 20}"#).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"appearance": {"uiFontSize": 14}, "uiFontSizee": 20}"#,
+        )
+        .unwrap();
         let (settings, corrupted) = load_settings_from_path(&path);
         assert!(!corrupted, "misspelled field is not corruption");
-        assert_eq!(settings.appearance.ui_font_size, 14, "valid field must be loaded");
+        assert_eq!(
+            settings.appearance.ui_font_size, 14,
+            "valid field must be loaded"
+        );
         // The typo "fontSizee" is silently ignored by serde(default) —
         // our helper only logs a warning, it doesn't change the return value.
     }

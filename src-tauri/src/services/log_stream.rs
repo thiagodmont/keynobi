@@ -16,7 +16,9 @@ pub struct StreamState {
 
 impl StreamState {
     pub fn new() -> Self {
-        StreamState { active_filter: None }
+        StreamState {
+            active_filter: None,
+        }
     }
 
     /// Update the active filter.  Passing `None` disables filtering.

@@ -40,7 +40,13 @@ pub struct BuildLine {
 
 impl BuildLine {
     pub fn output(content: impl Into<String>) -> Self {
-        Self { kind: BuildLineKind::Output, content: content.into(), file: None, line: None, col: None }
+        Self {
+            kind: BuildLineKind::Output,
+            content: content.into(),
+            file: None,
+            line: None,
+            col: None,
+        }
     }
 }
 
@@ -88,10 +94,7 @@ pub enum BuildStatus {
     #[default]
     Idle,
     /// A build is currently executing.
-    Running {
-        task: String,
-        started_at: String,
-    },
+    Running { task: String, started_at: String },
     /// Last build completed successfully.
     Success(BuildResult),
     /// Last build failed.
@@ -99,7 +102,6 @@ pub enum BuildStatus {
     /// Build was cancelled by the user.
     Cancelled,
 }
-
 
 /// A record of a past build kept in the build history ring-buffer.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
