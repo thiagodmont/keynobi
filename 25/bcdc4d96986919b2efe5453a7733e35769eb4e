@@ -1,0 +1,33 @@
+src/test/mock-backend/settings.ts
+  28ebd1f6046c6c94 1-75
+src/test/mock-backend/build.ts
+  28ebd1f6046c6c94 1,3-15,17-67
+src/test/mock-backend/logcat.ts
+  28ebd1f6046c6c94 1-109
+src/test/mock-backend/projects.ts
+  28ebd1f6046c6c94 1-38,40-45,47-58,60-65,67-75
+src/test/mock-backend/devices.ts
+  28ebd1f6046c6c94 1-60
+src/test/mock-backend/index.ts
+  28ebd1f6046c6c94 1-47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "25bcdc4d96986919b2efe5453a7733e35769eb4e",
+  "prompts": {
+    "28ebd1f6046c6c94": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a25abae-9cb8-4192-874c-56509dceabd1",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 403,
+      "total_deletions": 0,
+      "accepted_lines": 427,
+      "overriden_lines": 6
+    }
+  }
+}
