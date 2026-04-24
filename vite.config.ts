@@ -4,6 +4,7 @@ import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
+import { tauriMockPlugin } from "./vite-plugin-tauri-mock";
 /// <reference types="vitest" />
 
 const pkg = JSON.parse(
@@ -24,6 +25,8 @@ const sentryProject = process.env.SENTRY_PROJECT ?? "javascript-solid";
 export default defineConfig(async () => ({
   plugins: [
     solid(),
+    // @ts-expect-error process is a nodejs global
+    ...(process.env.VITE_E2E === "true" ? [tauriMockPlugin()] : []),
     sentryVitePlugin({
       disable: !sentryUploadEnabled,
       org: sentryOrg,
@@ -63,7 +66,8 @@ export default defineConfig(async () => ({
 
   clearScreen: false,
   server: {
-    port: 1420,
+    // @ts-expect-error process is a nodejs global
+    port: process.env.VITE_E2E === "true" ? 1421 : 1420,
     strictPort: true,
     host: host || false,
     hmr: host
