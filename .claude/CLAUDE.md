@@ -1,5 +1,36 @@
 # CLAUDE.md
 
+## Behavioral Guidelines
+
+### 1. Think Before Coding
+
+State assumptions explicitly. If a request is ambiguous between a frontend (SolidJS) change and a backend (Rust/Tauri) change, ask. Surface the trade-off between touching the Tauri command layer vs. keeping logic in the frontend before choosing one. Never silently pick an architecture — especially for anything crossing the Tauri IPC boundary.
+
+### 2. Simplicity First
+
+Minimum code that solves the problem. No speculative generalization, no new abstractions unless the task demands it. Before adding a new Tauri command, ask: can this be done with an existing command + frontend logic? Before adding a new SolidJS signal or store, ask: is a derived value enough? A senior engineer should not say "this is overcomplicated."
+
+### 3. Surgical Changes
+
+Touch only what you must. When editing `lib.rs`, `file_system.rs`, or `mcp_server.rs` (high-churn hotspots), do not reformat unrelated code, rename variables for style, or restructure working logic. Diff noise in hot files creates review risk. Only remove code that YOUR change made obsolete.
+
+### 4. Goal-Driven Execution
+
+Define success criteria before writing code. For UI work: what does the component render in the happy path? For Tauri commands: what does the Rust function return and what does `tauri-api.ts` expose? Verify both sides of the IPC contract before claiming done. Loop until the criteria are met — do not report success on compile alone.
+
+### 5. IPC Contract Discipline
+
+Every Tauri command change has two sides: the Rust handler in `src-tauri` and the TypeScript wrapper in `src/lib/tauri-api.ts`. Always update both in the same change. Never leave a stale TypeScript wrapper calling a renamed or removed command.
+
+### 6. Hotspot Awareness
+
+Before editing any of these files, call `get_risk()` and proceed with extra care:
+- `src-tauri/src/lib.rs`
+- `src/lib/tauri-api.ts`
+- `src-tauri/src/commands/file_system.rs`
+- `src/App.tsx`
+- `src-tauri/src/services/mcp_server.rs`
+
 <!-- Add your custom instructions below. Repowise will never modify anything outside the REPOWISE markers. -->
 <!-- Examples: coding style rules, test commands, workflow preferences, constraints -->
 
