@@ -42,7 +42,16 @@ export const defaultSettings: AppSettings = {
   lastActiveProject: null,
 };
 
-let currentSettings: AppSettings = { ...defaultSettings };
+const settingsOverrides = (
+  globalThis as typeof globalThis & {
+    __keynobi_e2e_settings_overrides?: Partial<AppSettings>;
+  }
+).__keynobi_e2e_settings_overrides;
+
+let currentSettings: AppSettings = {
+  ...defaultSettings,
+  ...(settingsOverrides ?? {}),
+};
 
 export function settingsHandlers(): Record<string, (args: unknown) => unknown> {
   return {

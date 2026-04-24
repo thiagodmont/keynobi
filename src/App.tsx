@@ -28,7 +28,11 @@ import { loadSettings, settingsState } from "@/stores/settings.store";
 import { captureSentryException, initSentryWeb } from "@/lib/telemetry/sentry-web";
 import { tryOpenOnboardingAfterLoad, openOnboardingWizard } from "@/stores/onboarding.store";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
-import { openProjectFolder, refreshProjectsList, restoreLastProject } from "@/services/project.service";
+import {
+  openProjectFolder,
+  refreshProjectsList,
+  restoreLastProject,
+} from "@/services/project.service";
 import { initBuildService, runBuild, runAndDeploy, cancelBuild } from "@/services/build.service";
 import { initDevices } from "@/stores/device.store";
 import { openVariantPicker } from "@/components/build/VariantSelector";
@@ -36,7 +40,12 @@ import { formatError, sendNativeSentryTestEvent } from "@/lib/tauri-api";
 import { projectState } from "@/stores/project.store";
 import { openMcpPanel } from "@/components/mcp/McpPanel";
 
-function formatShortcut(opts: { key: string; metaKey?: boolean; shiftKey?: boolean; altKey?: boolean }): string {
+function formatShortcut(opts: {
+  key: string;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+  altKey?: boolean;
+}): string {
   const parts: string[] = [];
   if (opts.metaKey) parts.push("Cmd");
   if (opts.altKey) parts.push("Opt");
@@ -96,17 +105,33 @@ export function App(): JSX.Element {
     });
 
     // Load project registry into the sidebar store.
-    refreshProjectsList().catch(e => { console.error(e); showToast(`Failed to load projects: ${formatError(e)}`, "error"); });
+    refreshProjectsList().catch((e) => {
+      console.error(e);
+      showToast(`Failed to load projects: ${formatError(e)}`, "error");
+    });
 
     // Restore last-active project, then initialize build/devices.
     const restored = await restoreLastProject().catch(() => false);
     if (!restored) {
-      initBuildService().catch(e => { console.error(e); showToast(`Failed to initialise build service: ${formatError(e)}`, "error"); });
-      initDevices().catch(e => { console.error(e); showToast(`Failed to initialise devices: ${formatError(e)}`, "error"); });
+      initBuildService().catch((e) => {
+        console.error(e);
+        showToast(`Failed to initialise build service: ${formatError(e)}`, "error");
+      });
+      initDevices().catch((e) => {
+        console.error(e);
+        showToast(`Failed to initialise devices: ${formatError(e)}`, "error");
+      });
     }
 
     // ── Settings ─────────────────────────────────────────────────────────────
-    registerKeyAndAction({ id: "general.settings", key: ",", metaKey: true, label: "Open Settings", category: "General", action: () => openSettings() });
+    registerKeyAndAction({
+      id: "general.settings",
+      key: ",",
+      metaKey: true,
+      label: "Open Settings",
+      category: "General",
+      action: () => openSettings(),
+    });
     registerKeyAndAction({
       id: "general.setupWizard",
       key: "w",
@@ -118,15 +143,67 @@ export function App(): JSX.Element {
     });
 
     // ── View ─────────────────────────────────────────────────────────────────
-    registerKeyAndAction({ id: "view.healthCenter", key: "h", metaKey: true, shiftKey: true, label: "Open Health Center", category: "View", action: openHealthPanel });
-    registerKeyAndAction({ id: "view.buildPanel", key: "1", metaKey: true, label: "Open Build Panel", category: "View", action: () => setActiveTab("build") });
-    registerKeyAndAction({ id: "view.logcatPanel", key: "2", metaKey: true, label: "Open Logcat Panel", category: "View", action: () => setActiveTab("logcat") });
-    registerKeyAndAction({ id: "view.layoutPanel", key: "4", metaKey: true, label: "Open Layout Viewer", category: "View", action: () => setActiveTab("layout") });
-    registerKeyAndAction({ id: "view.devicesPanel", key: "3", metaKey: true, label: "Toggle Device Sidebar", category: "View", action: () => toggleDeviceSidebar() });
-    registerKeyAndAction({ id: "view.toggleSidebar", key: "b", metaKey: true, label: "Toggle Project Sidebar", category: "View", action: () => toggleSidebar() });
+    registerKeyAndAction({
+      id: "view.healthCenter",
+      key: "h",
+      metaKey: true,
+      shiftKey: true,
+      label: "Open Health Center",
+      category: "View",
+      action: openHealthPanel,
+    });
+    registerKeyAndAction({
+      id: "view.buildPanel",
+      key: "1",
+      metaKey: true,
+      label: "Open Build Panel",
+      category: "View",
+      action: () => setActiveTab("build"),
+    });
+    registerKeyAndAction({
+      id: "view.logcatPanel",
+      key: "2",
+      metaKey: true,
+      label: "Open Logcat Panel",
+      category: "View",
+      action: () => setActiveTab("logcat"),
+    });
+    registerKeyAndAction({
+      id: "view.layoutPanel",
+      key: "4",
+      metaKey: true,
+      label: "Open Layout Viewer",
+      category: "View",
+      action: () => setActiveTab("layout"),
+    });
+    registerKeyAndAction({
+      id: "view.devicesPanel",
+      key: "3",
+      metaKey: true,
+      label: "Toggle Device Sidebar",
+      category: "View",
+      action: () => toggleDeviceSidebar(),
+    });
+    registerKeyAndAction({
+      id: "view.toggleSidebar",
+      key: "b",
+      metaKey: true,
+      label: "Toggle Project Sidebar",
+      category: "View",
+      action: () => toggleSidebar(),
+    });
 
     // ── File ────────────────────────────────────────────────────────────────
-    registerKeyAndAction({ id: "file.openFolder", key: "o", metaKey: true, label: "Open Folder", category: "File", action: () => { openProjectFolder(); } });
+    registerKeyAndAction({
+      id: "file.openFolder",
+      key: "o",
+      metaKey: true,
+      label: "Open Folder",
+      category: "File",
+      action: () => {
+        openProjectFolder();
+      },
+    });
 
     if (import.meta.env.DEV) {
       registerAction({
@@ -135,7 +212,10 @@ export function App(): JSX.Element {
         category: "Debug",
         action: () => {
           captureSentryException(new Error("Keynobi dev: Solid / WebView Sentry test"));
-          showToast("Test event sent (requires VITE_SENTRY_DSN + Anonymous crash reporting on)", "info");
+          showToast(
+            "Test event sent (requires VITE_SENTRY_DSN + Anonymous crash reporting on)",
+            "info"
+          );
         },
       });
       registerAction({
@@ -154,11 +234,23 @@ export function App(): JSX.Element {
     }
 
     // ── Command Palette ──────────────────────────────────────────────────────
-    registerKeyAndAction({ id: "navigate.commandPalette", key: "p", metaKey: true, shiftKey: true, label: "Command Palette", category: "General", action: () => openPalette("commands") });
+    registerKeyAndAction({
+      id: "navigate.commandPalette",
+      key: "p",
+      metaKey: true,
+      shiftKey: true,
+      label: "Command Palette",
+      category: "General",
+      action: () => openPalette("commands"),
+    });
 
     // ── Build & Run ───────────────────────────────────────────────────────────
     registerKeyAndAction({
-      id: "build.run", key: "r", metaKey: true, label: "Run App", category: "Build" as ActionCategory,
+      id: "build.run",
+      key: "r",
+      metaKey: true,
+      label: "Run App",
+      category: "Build" as ActionCategory,
       action: async () => {
         try {
           await runAndDeploy();
@@ -168,7 +260,12 @@ export function App(): JSX.Element {
       },
     });
     registerKeyAndAction({
-      id: "build.runOnly", key: "r", metaKey: true, shiftKey: true, label: "Build Only (no deploy)", category: "Build" as ActionCategory,
+      id: "build.runOnly",
+      key: "r",
+      metaKey: true,
+      shiftKey: true,
+      label: "Build Only (no deploy)",
+      category: "Build" as ActionCategory,
       action: async () => {
         try {
           await runBuild();
@@ -182,7 +279,10 @@ export function App(): JSX.Element {
       label: "Cancel Build",
       category: "Build" as ActionCategory,
       action: async () => {
-        await cancelBuild().catch(e => { console.error(e); showToast(`Failed to cancel build: ${formatError(e)}`, "error"); });
+        await cancelBuild().catch((e) => {
+          console.error(e);
+          showToast(`Failed to cancel build: ${formatError(e)}`, "error");
+        });
       },
     });
     registerAction({
@@ -193,12 +293,17 @@ export function App(): JSX.Element {
         try {
           await runBuild("clean");
         } catch (e) {
-          showToast(typeof e === "string" ? e : (e as Error).message ?? "Clean failed", "error");
+          showToast(typeof e === "string" ? e : ((e as Error).message ?? "Clean failed"), "error");
         }
       },
     });
     registerKeyAndAction({
-      id: "build.selectVariant", key: "v", metaKey: true, shiftKey: true, label: "Select Build Variant", category: "Build" as ActionCategory,
+      id: "build.selectVariant",
+      key: "v",
+      metaKey: true,
+      shiftKey: true,
+      label: "Select Build Variant",
+      category: "Build" as ActionCategory,
       action: () => openVariantPicker(),
     });
     registerAction({
@@ -242,7 +347,10 @@ export function App(): JSX.Element {
           const s = await getMcpSetupStatus();
           const cmd = `claude mcp add --transport stdio keynobi -- "${s.exePath}" --mcp`;
           await navigator.clipboard.writeText(cmd);
-          showToast("MCP setup command copied — paste it in your terminal to register with Claude Code", "success");
+          showToast(
+            "MCP setup command copied — paste it in your terminal to register with Claude Code",
+            "success"
+          );
         } catch (e) {
           showToast(`Failed to copy MCP command: ${formatError(e)}`, "error");
         }
@@ -288,14 +396,17 @@ export function App(): JSX.Element {
       <AppErrorBoundary>
         {/* Body: left sidebar + main column + right device sidebar */}
         <div style={{ flex: "1", display: "flex", "flex-direction": "row", overflow: "hidden" }}>
-
           {/* Left project sidebar */}
           <ProjectSidebar />
 
           {/* Main column: tab bar + panels */}
-          <div style={{ flex: "1", display: "flex", "flex-direction": "column", overflow: "hidden" }}>
+          <div
+            style={{ flex: "1", display: "flex", "flex-direction": "column", overflow: "hidden" }}
+          >
             {/* Tab bar */}
             <div
+              role="tablist"
+              aria-label="Main panels"
               style={{
                 display: "flex",
                 "align-items": "center",
@@ -312,6 +423,10 @@ export function App(): JSX.Element {
                   const isActive = () => uiState.activeTab === tab.id;
                   return (
                     <button
+                      role="tab"
+                      aria-selected={isActive()}
+                      aria-controls={`panel-${tab.id}`}
+                      data-testid={`main-tab-${tab.id}`}
                       onClick={() => setActiveTab(tab.id)}
                       style={{
                         padding: "0 16px",
@@ -321,7 +436,9 @@ export function App(): JSX.Element {
                         "align-items": "center",
                         color: isActive() ? "var(--text-primary)" : "var(--text-muted)",
                         background: isActive() ? "var(--bg-secondary)" : "none",
-                        "border-bottom": isActive() ? "2px solid var(--accent)" : "2px solid transparent",
+                        "border-bottom": isActive()
+                          ? "2px solid var(--accent)"
+                          : "2px solid transparent",
                         cursor: "pointer",
                         border: "none",
                         "border-top": "none",
@@ -339,16 +456,42 @@ export function App(): JSX.Element {
             </div>
 
             {/* Panel content area */}
-            <div style={{ flex: "1", overflow: "hidden", display: "flex", "flex-direction": "column" }}>
-              <div style={{ display: uiState.activeTab === "logcat" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
+            <div
+              style={{ flex: "1", overflow: "hidden", display: "flex", "flex-direction": "column" }}
+            >
+              <div
+                id="panel-logcat"
+                style={{
+                  display: uiState.activeTab === "logcat" ? "flex" : "none",
+                  flex: "1",
+                  overflow: "hidden",
+                  "flex-direction": "column",
+                }}
+              >
                 <LogcatPanel />
               </div>
-              <div style={{ display: uiState.activeTab === "layout" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
+              <div
+                id="panel-layout"
+                style={{
+                  display: uiState.activeTab === "layout" ? "flex" : "none",
+                  flex: "1",
+                  overflow: "hidden",
+                  "flex-direction": "column",
+                }}
+              >
                 <AppErrorBoundary>
                   <LayoutViewerPanel />
                 </AppErrorBoundary>
               </div>
-              <div style={{ display: uiState.activeTab === "build" ? "flex" : "none", flex: "1", overflow: "hidden", "flex-direction": "column" }}>
+              <div
+                id="panel-build"
+                style={{
+                  display: uiState.activeTab === "build" ? "flex" : "none",
+                  flex: "1",
+                  overflow: "hidden",
+                  "flex-direction": "column",
+                }}
+              >
                 <BuildPanel />
               </div>
             </div>

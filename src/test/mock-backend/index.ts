@@ -33,8 +33,7 @@ const handlers: Map<string, Handler> = new Map(
 export async function handleInvoke(command: string, args: unknown = {}): Promise<unknown> {
   const handler = handlers.get(command);
   if (!handler) {
-    console.warn(`[mock-backend] unhandled command: ${command}`);
-    return undefined;
+    throw new Error(`[mock-backend] unhandled command: ${command}`);
   }
   return handler(args);
 }

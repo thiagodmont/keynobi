@@ -417,8 +417,16 @@ Test files live next to the code they test: `editor.store.test.ts` beside `edito
 ### Frontend Tests (Vitest)
 
 - Mock all Tauri APIs in `src/test/setup.ts` — tests run in jsdom without a real Tauri runtime.
+- Reuse typed model factories from `src/test/factories/*.ts` when tests need IPC-shaped data (`Device`, `BuildRecord`, `ProcessedEntry`, `AppSettings`). Factories should import types from `@/bindings` and accept `Partial<T>` overrides.
 - Use a `resetState()` helper in `beforeEach` to restore stores to defaults.
 - Test behavior, not implementation: assert on exported state and the effects of actions.
+
+### Playwright E2E (web mode)
+
+- Keep E2E tests under `e2e/` and share setup via `e2e/fixtures/app.ts`.
+- In `--mode e2e`, Tauri APIs are intercepted by `vite-plugin-tauri-mock.ts`; tests can call `window.__e2e__.invoke(...)` and `window.__e2e__.triggerEvent(...)` for IPC contract checks.
+- For per-test startup overrides (for example onboarding), set `window.__keynobi_e2e_settings_overrides` in `page.addInitScript(...)` before `page.goto("/")` so mock backend defaults are applied before app boot.
+- Mock backend handlers must fail unknown commands and preserve contract semantics that the UI depends on, including backend-side filtering for simple logcat filters.
 
 ### Design system and UI refactors (verification gate)
 
