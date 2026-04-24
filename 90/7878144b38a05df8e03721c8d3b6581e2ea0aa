@@ -1,0 +1,27 @@
+vite.config.ts
+  28ebd1f6046c6c94 10-11
+vite-plugin-tauri-mock.ts
+  28ebd1f6046c6c94 2,5
+tsconfig.node.json
+  28ebd1f6046c6c94 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "907878144b38a05df8e03721c8d3b6581e2ea0aa",
+  "prompts": {
+    "28ebd1f6046c6c94": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a25abae-9cb8-4192-874c-56509dceabd1",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 1,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    }
+  }
+}
