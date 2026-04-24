@@ -1,0 +1,25 @@
+src/test/mock-backend/events.ts
+  28ebd1f6046c6c94 1-24
+src/test/mock-backend/channel.ts
+  28ebd1f6046c6c94 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "451d453c35ddc7370b8c7e98fa82466ba3f99a38",
+  "prompts": {
+    "28ebd1f6046c6c94": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "7a25abae-9cb8-4192-874c-56509dceabd1",
+        "model": "claude-sonnet-4-6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 31,
+      "total_deletions": 0,
+      "accepted_lines": 31,
+      "overriden_lines": 0
+    }
+  }
+}
