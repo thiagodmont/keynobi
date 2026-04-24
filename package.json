@@ -19,6 +19,9 @@
     "check:bindings": "npm run generate:bindings && git diff --exit-code src/bindings/",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "dev:web": "vite --mode e2e",
     "perf:collect": "node scripts/collect-metrics.mjs",
     "perf:report": "node scripts/collect-metrics.mjs --report",
     "version:sync": "node scripts/sync-version.mjs",
@@ -42,6 +45,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.59.1",
     "@sentry/vite-plugin": "^5.1.1",
     "@solidjs/testing-library": "^0.8.10",
     "@tauri-apps/cli": "^2",
