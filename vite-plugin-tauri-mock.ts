@@ -19,6 +19,7 @@ export function tauriMockPlugin(): Plugin {
         "@tauri-apps/api/core": "\0tauri-mock-core",
         "@tauri-apps/api/event": "\0tauri-mock-event",
         "@tauri-apps/api/window": "\0tauri-mock-window",
+        "@tauri-apps/api/app": "\0tauri-mock-app",
         "@tauri-apps/plugin-dialog": "\0tauri-mock-dialog",
         "@tauri-apps/plugin-fs": "\0tauri-mock-fs",
         "@tauri-apps/plugin-shell": "\0tauri-mock-shell",
@@ -48,8 +49,25 @@ export const getCurrentWindow = () => ({
 });
 `;
       }
-      if (id === "\0tauri-mock-dialog") return `export const open = () => Promise.resolve(null);`;
-      if (id === "\0tauri-mock-fs") return `export default {};`;
+      if (id === "\0tauri-mock-app") {
+        return `export const getVersion = () => Promise.resolve("0.0.0-e2e");`;
+      }
+      if (id === "\0tauri-mock-dialog") {
+        return `
+export const open = () => Promise.resolve(null);
+export const save = () => Promise.resolve(null);
+`;
+      }
+      if (id === "\0tauri-mock-fs") {
+        return `
+export const writeTextFile = () => Promise.resolve();
+export const readTextFile = () => Promise.resolve("");
+export const exists = () => Promise.resolve(false);
+export const mkdir = () => Promise.resolve();
+export const remove = () => Promise.resolve();
+export default {};
+`;
+      }
       if (id === "\0tauri-mock-shell") return `export default {};`;
       return null;
     },
