@@ -294,6 +294,73 @@ mod tests {
     }
 
     #[test]
+    fn query_returns_most_recent_matches_in_chronological_order() {
+        let mut store = LogStore::with_capacity(10_000);
+
+        for id in 1..=5 {
+            let mut entry = make_entry(id, 0);
+            entry.level = if id % 2 == 0 {
+                LogcatLevel::Error
+            } else {
+                LogcatLevel::Info
+            };
+            entry.message = format!("message {id}");
+            store.push(entry);
+        }
+
+        let filter = crate::services::logcat::LogcatFilter::new(
+            Some(LogcatLevel::Error),
+            None,
+            None,
+            None,
+            false,
+        );
+
+        let ids: Vec<u64> = store.query(&filter, 1).into_iter().map(|e| e.id).collect();
+        assert_eq!(ids, vec![4]);
+
+        let ids: Vec<u64> = store.query(&filter, 10).into_iter().map(|e| e.id).collect();
+        assert_eq!(ids, vec![2, 4]);
+    }
+
+    #[test]
+    fn query_applies_compound_backend_filter() {
+        let mut store = LogStore::with_capacity(10_000);
+
+        let mut matching = make_entry(1, EntryFlags::CRASH);
+        matching.level = LogcatLevel::Error;
+        matching.tag = "MainActivity".into();
+        matching.message = "Native crash".into();
+        matching.package = Some("com.example.app".into());
+        store.push(matching);
+
+        let mut wrong_package = make_entry(2, EntryFlags::CRASH);
+        wrong_package.level = LogcatLevel::Error;
+        wrong_package.tag = "MainActivity".into();
+        wrong_package.message = "Native crash".into();
+        wrong_package.package = Some("com.other.app".into());
+        store.push(wrong_package);
+
+        let mut wrong_crash_flag = make_entry(3, 0);
+        wrong_crash_flag.level = LogcatLevel::Error;
+        wrong_crash_flag.tag = "MainActivity".into();
+        wrong_crash_flag.message = "Native crash".into();
+        wrong_crash_flag.package = Some("com.example.app".into());
+        store.push(wrong_crash_flag);
+
+        let filter = crate::services::logcat::LogcatFilter::new(
+            Some(LogcatLevel::Error),
+            Some("main".into()),
+            Some("crash".into()),
+            Some("com.example".into()),
+            true,
+        );
+
+        let ids: Vec<u64> = store.query(&filter, 10).into_iter().map(|e| e.id).collect();
+        assert_eq!(ids, vec![1]);
+    }
+
+    #[test]
     fn clear_resets_everything() {
         let mut store = LogStore::new();
         store.push(make_entry(1, EntryFlags::CRASH | EntryFlags::JSON_BODY));

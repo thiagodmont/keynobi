@@ -540,6 +540,36 @@ pub fn packages_from_known(known: &HashSet<String>) -> HashMap<String, ()> {
 mod tests {
     use super::*;
 
+    fn entry(
+        id: u64,
+        level: LogcatLevel,
+        tag: &str,
+        message: &str,
+        package: Option<&str>,
+        is_crash: bool,
+    ) -> ProcessedEntry {
+        ProcessedEntry {
+            id,
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1001,
+            level,
+            tag: tag.into(),
+            message: message.into(),
+            package: package.map(str::to_owned),
+            kind: crate::models::logcat::LogcatKind::Normal,
+            is_crash,
+            flags: if is_crash {
+                crate::models::logcat::EntryFlags::CRASH
+            } else {
+                0
+            },
+            category: crate::models::logcat::EntryCategory::General,
+            crash_group_id: None,
+            json_body: None,
+        }
+    }
+
     // ── parse_ps_output ───────────────────────────────────────────────────────
 
     #[test]
@@ -656,6 +686,73 @@ PID NAME
         assert_eq!(parse_level_str(""), LogcatLevel::Verbose);
         assert_eq!(parse_level_str("xyz"), LogcatLevel::Verbose);
         assert_eq!(parse_level_str("7"), LogcatLevel::Verbose);
+    }
+
+    #[test]
+    fn filter_from_spec_converts_ipc_fields() {
+        let spec = LogcatFilterSpec {
+            min_level: Some("warn".into()),
+            tag: Some("Main".into()),
+            text: Some("crash".into()),
+            package: Some("com.example".into()),
+            only_crashes: true,
+        };
+        let filter = LogcatFilter::from_spec(&spec);
+
+        assert!(filter.matches(&entry(
+            1,
+            LogcatLevel::Error,
+            "MainActivity",
+            "Native crash",
+            Some("com.example.app"),
+            true,
+        )));
+        assert!(!filter.matches(&entry(
+            2,
+            LogcatLevel::Info,
+            "MainActivity",
+            "Native crash",
+            Some("com.example.app"),
+            true,
+        )));
+        assert!(!filter.matches(&entry(
+            3,
+            LogcatLevel::Error,
+            "MainActivity",
+            "Native crash",
+            Some("com.other.app"),
+            true,
+        )));
+        assert!(!filter.matches(&entry(
+            4,
+            LogcatLevel::Error,
+            "MainActivity",
+            "Native crash",
+            Some("com.example.app"),
+            false,
+        )));
+    }
+
+    #[test]
+    fn filter_package_falls_back_to_tag_when_package_is_unknown() {
+        let filter = LogcatFilter::new(None, None, None, Some("com.example".into()), false);
+
+        assert!(filter.matches(&entry(
+            1,
+            LogcatLevel::Info,
+            "com.example.Startup",
+            "starting",
+            None,
+            false,
+        )));
+        assert!(!filter.matches(&entry(
+            2,
+            LogcatLevel::Info,
+            "ActivityManager",
+            "starting com.example",
+            None,
+            false,
+        )));
     }
 
     // ── Ring buffer stress tests ──────────────────────────────────────────────

@@ -65,10 +65,7 @@ import {
 import { openInStudio } from "@/lib/tauri-api";
 import { healthState } from "@/stores/health.store";
 import { uiState } from "@/stores/ui.store";
-import {
-  clampSelectionIndices,
-  nextSelectableIndex,
-} from "./logcat-selection-nav";
+import { clampSelectionIndices, nextSelectableIndex } from "./logcat-selection-nav";
 import { rowFocusMarked, rowInSelectionRange } from "./logcat-row-selection";
 import { formatLogcatToolbarCount } from "./logcat-toolbar-count";
 import { clampLogcatMaxUiLines, clampLogcatRingMaxEntries } from "@/lib/logcat-ui-lines";
@@ -146,7 +143,10 @@ function clearSuggestions() {
   _tagFreqMap.clear();
   setKnownPackages([]);
   setKnownTags([]);
-  if (_suggestTimer !== null) { clearTimeout(_suggestTimer); _suggestTimer = null; }
+  if (_suggestTimer !== null) {
+    clearTimeout(_suggestTimer);
+    _suggestTimer = null;
+  }
 }
 
 // ── Query → backend FilterSpec conversion ─────────────────────────────────────
@@ -156,8 +156,14 @@ function clearSuggestions() {
  * Only simple (non-regex, non-negated) tokens are converted.
  * Complex tokens (regex, negate, age) remain for frontend-side filtering.
  */
-function tokensToFilterSpec(tokens: QueryToken[]): LogcatFilterSpec {
-  const spec: LogcatFilterSpec = { minLevel: null, tag: null, text: null, package: null, onlyCrashes: false };
+export function tokensToFilterSpec(tokens: QueryToken[]): LogcatFilterSpec {
+  const spec: LogcatFilterSpec = {
+    minLevel: null,
+    tag: null,
+    text: null,
+    package: null,
+    onlyCrashes: false,
+  };
 
   for (const token of tokens) {
     // Skip negated tokens — backend has no negation support
@@ -204,12 +210,18 @@ function tokensToFilterSpec(tokens: QueryToken[]): LogcatFilterSpec {
  * we can still push that to the backend). All precise OR logic is done on the
  * frontend via `matchesFilterGroups`.
  */
-function groupsToFilterSpec(groups: FilterGroup[]): LogcatFilterSpec {
-  if (groups.length === 0) return { minLevel: null, tag: null, text: null, package: null, onlyCrashes: false };
+export function groupsToFilterSpec(groups: FilterGroup[]): LogcatFilterSpec {
+  if (groups.length === 0)
+    return { minLevel: null, tag: null, text: null, package: null, onlyCrashes: false };
   if (groups.length === 1) return tokensToFilterSpec(groups[0]);
 
   const LEVEL_PRIORITY_MAP: Record<string, number> = {
-    verbose: 0, debug: 1, info: 2, warn: 3, error: 4, fatal: 5,
+    verbose: 0,
+    debug: 1,
+    info: 2,
+    warn: 3,
+    error: 4,
+    fatal: 5,
   };
 
   // Collect per-group specs
@@ -218,8 +230,10 @@ function groupsToFilterSpec(groups: FilterGroup[]): LogcatFilterSpec {
   // minLevel: use the minimum across groups (most permissive)
   const levels = specs.map((s) => (s.minLevel ? (LEVEL_PRIORITY_MAP[s.minLevel] ?? 0) : 0));
   const minLevelPriority = Math.min(...levels);
-  const minLevel = minLevelPriority === 0 ? null :
-    Object.entries(LEVEL_PRIORITY_MAP).find(([, v]) => v === minLevelPriority)?.[0] ?? null;
+  const minLevel =
+    minLevelPriority === 0
+      ? null
+      : (Object.entries(LEVEL_PRIORITY_MAP).find(([, v]) => v === minLevelPriority)?.[0] ?? null);
 
   // tag: only push to backend if every group filters the same tag; otherwise omit
   const tags = specs.map((s) => s.tag);
@@ -244,7 +258,7 @@ function groupsToFilterSpec(groups: FilterGroup[]): LogcatFilterSpec {
  * Returns true if any group contains frontend-only tokens (overflow, age,
  * negation, regex, is:stacktrace), or if there are multiple OR groups.
  */
-function hasAnyFrontendOnlyLogic(groups: FilterGroup[]): boolean {
+export function hasAnyFrontendOnlyLogic(groups: FilterGroup[]): boolean {
   if (groups.length > 1) return true;
   return getFrontendOnlyTokens(groups[0] ?? []).length > 0;
 }
@@ -258,10 +272,10 @@ interface LogcatPreset {
 }
 
 const BUILTIN_PRESETS: LogcatPreset[] = [
-  { name: "My App",       query: "package:mine",  builtin: true },
-  { name: "Crashes",      query: "is:crash",      builtin: true },
-  { name: "Errors+",      query: "level:error",   builtin: true },
-  { name: "Last 5 min",   query: "age:5m",        builtin: true },
+  { name: "My App", query: "package:mine", builtin: true },
+  { name: "Crashes", query: "is:crash", builtin: true },
+  { name: "Errors+", query: "level:error", builtin: true },
+  { name: "Last 5 min", query: "age:5m", builtin: true },
   { name: "My App OR Crashes", query: "package:mine | is:crash", builtin: true },
 ];
 
@@ -271,11 +285,11 @@ const ROW_HEIGHT = 20;
 
 const AGE_PILLS = [
   { label: "30s", value: "30s" },
-  { label: "1m",  value: "1m"  },
-  { label: "5m",  value: "5m"  },
+  { label: "1m", value: "1m" },
+  { label: "5m", value: "5m" },
   { label: "15m", value: "15m" },
-  { label: "1h",  value: "1h"  },
-  { label: "All", value: null  },
+  { label: "1h", value: "1h" },
+  { label: "All", value: null },
 ] as const;
 
 function isLogcatTypingTarget(target: unknown): boolean {
@@ -334,7 +348,13 @@ export function LogcatPanel(): JSX.Element {
   const [now, setNow] = createSignal(Date.now());
 
   // Currently active backend filter spec (for sync between filter changes and new entries)
-  const [_activeBackendSpec, setActiveBackendSpec] = createSignal<LogcatFilterSpec>({ minLevel: null, tag: null, text: null, package: null, onlyCrashes: false });
+  const [_activeBackendSpec, setActiveBackendSpec] = createSignal<LogcatFilterSpec>({
+    minLevel: null,
+    tag: null,
+    text: null,
+    package: null,
+    onlyCrashes: false,
+  });
 
   /** Rust `LogStore::len()` from `get_logcat_stats`; null if IPC failed. */
   const [ringBufferTotal, setRingBufferTotal] = createSignal<number | null>(null);
@@ -399,12 +419,16 @@ export function LogcatPanel(): JSX.Element {
     }
     // Slow path: frontend tokens active, rescan the (small) filtered set.
     const indices: number[] = [];
-    filteredEntries().forEach((e, i) => { if (e.isCrash) indices.push(i); });
+    filteredEntries().forEach((e, i) => {
+      if (e.isCrash) indices.push(i);
+    });
     return indices;
   });
 
   const activeAge = createMemo(() => {
-    const t = parsedTokens().find((t) => t.type === "age") as { type: "age"; seconds: number } | undefined;
+    const t = parsedTokens().find((t) => t.type === "age") as
+      | { type: "age"; seconds: number }
+      | undefined;
     if (!t) return null;
     for (const p of AGE_PILLS) {
       if (p.value && parseAge(p.value) === t.seconds) return p.value;
@@ -424,10 +448,14 @@ export function LogcatPanel(): JSX.Element {
     if (!m) return 0;
     const n = parseInt(m[1]);
     switch (m[2].toLowerCase()) {
-      case "s": return n;
-      case "m": return n * 60;
-      case "h": return n * 3600;
-      default: return 0;
+      case "s":
+        return n;
+      case "m":
+        return n * 60;
+      case "h":
+        return n * 3600;
+      default:
+        return 0;
     }
   }
 
@@ -469,13 +497,17 @@ export function LogcatPanel(): JSX.Element {
       });
       setLogcatStore("entries", entries);
       // Rebuild incremental crash index from the new backfill.
-      setCrashIndicesFull(entries.reduce<number[]>((acc, e, i) => {
-        if (e.isCrash) acc.push(i);
-        return acc;
-      }, []));
+      setCrashIndicesFull(
+        entries.reduce<number[]>((acc, e, i) => {
+          if (e.isCrash) acc.push(i);
+          return acc;
+        }, [])
+      );
       ingestForSuggestions(entries);
       flushSuggestions(true);
-    } catch { /* ignore — don't break the UI if IPC fails */ }
+    } catch {
+      /* ignore — don't break the UI if IPC fails */
+    }
     await refreshLogcatRingStats();
   }
 
@@ -604,18 +636,24 @@ export function LogcatPanel(): JSX.Element {
         onlyCrashes: restoredSpec?.onlyCrashes ?? false,
       });
       setLogcatStore("entries", entries);
-      setCrashIndicesFull(entries.reduce<number[]>((acc, e, i) => {
-        if (e.isCrash) acc.push(i);
-        return acc;
-      }, []));
+      setCrashIndicesFull(
+        entries.reduce<number[]>((acc, e, i) => {
+          if (e.isCrash) acc.push(i);
+          return acc;
+        }, [])
+      );
       ingestForSuggestions(entries);
       flushSuggestions(true);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     try {
       const streaming = await getLogcatStatus();
       setLogcatStore("streaming", streaming);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     // eslint-disable-next-line solid/reactivity
     unlistenEntries = await listenLogcatEntries((newEntries) => {
@@ -631,7 +669,9 @@ export function LogcatPanel(): JSX.Element {
       // the offset at which new entries will be appended.
       const baseLen = logcatStore.entries.length;
       const newCrashOffsets: number[] = [];
-      newEntries.forEach((e, i) => { if (e.isCrash) newCrashOffsets.push(baseLen + i); });
+      newEntries.forEach((e, i) => {
+        if (e.isCrash) newCrashOffsets.push(baseLen + i);
+      });
 
       let didEvict = false;
       let dropped = 0;
@@ -648,7 +688,7 @@ export function LogcatPanel(): JSX.Element {
       );
 
       if (didEvict && !followTailForList()) {
-        setScrollCompensate(c => c + dropped * ROW_HEIGHT);
+        setScrollCompensate((c) => c + dropped * ROW_HEIGHT);
       }
 
       if (didEvict) {
@@ -695,7 +735,7 @@ export function LogcatPanel(): JSX.Element {
     // unexpected ADB server restart (e.g. Android Studio opening Logcat).
     // The backend never sets streaming=false in this case, so the UI stays
     // consistent; this listener is purely for future indicator use.
-     
+
     unlistenReconnecting = await listenLogcatReconnecting(() => {
       setLogcatStore("streaming", true);
     });
@@ -727,7 +767,13 @@ export function LogcatPanel(): JSX.Element {
     clearInterval(nowTimer);
     clearTimeout(_queryDebounce);
     // Clear backend filter on unmount so it doesn't persist
-    setLogcatFilter({ minLevel: null, tag: null, text: null, package: null, onlyCrashes: false }).catch(() => {});
+    setLogcatFilter({
+      minLevel: null,
+      tag: null,
+      text: null,
+      package: null,
+      onlyCrashes: false,
+    }).catch(() => {});
   });
 
   // ── Controls ──────────────────────────────────────────────────────────────────
@@ -768,7 +814,7 @@ export function LogcatPanel(): JSX.Element {
     setRestarting(true);
     try {
       await stopLogcat();
-      await clearLogcat();         // emits logcat:cleared → entries cleared + scroll to bottom
+      await clearLogcat(); // emits logcat:cleared → entries cleared + scroll to bottom
       const device = selectedDevice();
       await startLogcat(device?.serial ?? undefined);
       setLogcatStore("streaming", true);
@@ -820,9 +866,7 @@ export function LogcatPanel(): JSX.Element {
       // Plain click (no shift) — toggle detail panel
       const entry = filteredEntries()[idx];
       if (entry) {
-        setSelectedDetailEntry((prev) =>
-          prev?.id === entry.id ? null : entry
-        );
+        setSelectedDetailEntry((prev) => (prev?.id === entry.id ? null : entry));
       }
     }
   }
@@ -839,7 +883,10 @@ export function LogcatPanel(): JSX.Element {
     const range = getSelectionRange();
     if (!range) return;
     const [lo, hi] = range;
-    const text = filteredEntries().slice(lo, hi + 1).map(formatEntry).join("\n");
+    const text = filteredEntries()
+      .slice(lo, hi + 1)
+      .map(formatEntry)
+      .join("\n");
     await navigator.clipboard.writeText(text);
     showToast(`Copied ${hi - lo + 1} rows`, "success");
     setSelectionAnchor(null);
@@ -995,8 +1042,15 @@ export function LogcatPanel(): JSX.Element {
   // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ display: "flex", "flex-direction": "column", flex: "1", overflow: "hidden", background: "var(--bg-primary)" }}>
-
+    <div
+      style={{
+        display: "flex",
+        "flex-direction": "column",
+        flex: "1",
+        overflow: "hidden",
+        background: "var(--bg-primary)",
+      }}
+    >
       {/* ── Toolbar row 1: controls + query ──────────────────────────────── */}
       <div
         style={{
@@ -1044,11 +1098,17 @@ export function LogcatPanel(): JSX.Element {
         </button>
 
         {/* Clear */}
-        <button onClick={handleClear} title="Clear logcat buffer" style={btnStyle("var(--text-muted)")}>
+        <button
+          onClick={handleClear}
+          title="Clear logcat buffer"
+          style={btnStyle("var(--text-muted)")}
+        >
           <Icon name="trash" size={12} />
         </button>
 
-        <div style={{ width: "1px", height: "18px", background: "var(--border)", "flex-shrink": "0" }} />
+        <div
+          style={{ width: "1px", height: "18px", background: "var(--border)", "flex-shrink": "0" }}
+        />
 
         {/* Crash nav */}
         <Show when={crashes() > 0}>
@@ -1064,8 +1124,20 @@ export function LogcatPanel(): JSX.Element {
             >
               ⚡ {crashes()}
             </button>
-            <button onClick={() => jumpToCrash(-1)} title="Previous crash" style={btnStyle("var(--text-muted)")}>↑</button>
-            <button onClick={() => jumpToCrash(1)} title="Next crash" style={btnStyle("var(--text-muted)")}>↓</button>
+            <button
+              onClick={() => jumpToCrash(-1)}
+              title="Previous crash"
+              style={btnStyle("var(--text-muted)")}
+            >
+              ↑
+            </button>
+            <button
+              onClick={() => jumpToCrash(1)}
+              title="Next crash"
+              style={btnStyle("var(--text-muted)")}
+            >
+              ↓
+            </button>
           </div>
         </Show>
 
@@ -1083,7 +1155,11 @@ export function LogcatPanel(): JSX.Element {
         {/* Presets */}
         <div style={{ position: "relative", "flex-shrink": "0" }}>
           <button
-            onClick={() => { setPresetsOpen((v) => !v); setSavingPreset(false); setRenamingId(null); }}
+            onClick={() => {
+              setPresetsOpen((v) => !v);
+              setSavingPreset(false);
+              setRenamingId(null);
+            }}
             title="Filter presets"
             style={btnStyle("var(--text-muted)")}
           >
@@ -1107,7 +1183,15 @@ export function LogcatPanel(): JSX.Element {
             >
               <div style={{ padding: "6px 0" }}>
                 {/* Quick Filters (built-in) */}
-                <div style={{ padding: "2px 10px 4px", "font-size": "10px", color: "var(--text-muted)", "text-transform": "uppercase", "letter-spacing": "0.05em" }}>
+                <div
+                  style={{
+                    padding: "2px 10px 4px",
+                    "font-size": "10px",
+                    color: "var(--text-muted)",
+                    "text-transform": "uppercase",
+                    "letter-spacing": "0.05em",
+                  }}
+                >
                   Quick Filters
                 </div>
                 <For each={BUILTIN_PRESETS}>
@@ -1115,16 +1199,34 @@ export function LogcatPanel(): JSX.Element {
                     <div
                       onClick={() => applyPreset(p.query)}
                       style={{
-                        display: "flex", "align-items": "center",
-                        padding: "5px 10px", cursor: "pointer",
+                        display: "flex",
+                        "align-items": "center",
+                        padding: "5px 10px",
+                        cursor: "pointer",
                         color: "var(--text-primary)",
                         "font-family": "var(--font-mono)",
                       }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.background =
+                          "rgba(255,255,255,0.06)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = "transparent";
+                      }}
                     >
                       <span style={{ flex: "1" }}>{p.name}</span>
-                      <span style={{ color: "var(--text-muted)", "font-size": "10px", "max-width": "130px", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>{p.query}</span>
+                      <span
+                        style={{
+                          color: "var(--text-muted)",
+                          "font-size": "10px",
+                          "max-width": "130px",
+                          overflow: "hidden",
+                          "text-overflow": "ellipsis",
+                          "white-space": "nowrap",
+                        }}
+                      >
+                        {p.query}
+                      </span>
                     </div>
                   )}
                 </For>
@@ -1132,7 +1234,15 @@ export function LogcatPanel(): JSX.Element {
                 {/* Saved Filters */}
                 <div style={{ height: "1px", background: "var(--border)", margin: "4px 0" }} />
                 <div style={{ display: "flex", "align-items": "center", padding: "2px 10px 4px" }}>
-                  <span style={{ "font-size": "10px", color: "var(--text-muted)", "text-transform": "uppercase", "letter-spacing": "0.05em", flex: "1" }}>
+                  <span
+                    style={{
+                      "font-size": "10px",
+                      color: "var(--text-muted)",
+                      "text-transform": "uppercase",
+                      "letter-spacing": "0.05em",
+                      flex: "1",
+                    }}
+                  >
                     Saved
                   </span>
                   <span style={{ "font-size": "10px", color: "var(--text-muted)" }}>
@@ -1141,7 +1251,14 @@ export function LogcatPanel(): JSX.Element {
                 </div>
 
                 <Show when={savedFilters().length === 0}>
-                  <div style={{ padding: "4px 10px 6px", "font-size": "10px", color: "var(--text-muted)", "font-style": "italic" }}>
+                  <div
+                    style={{
+                      padding: "4px 10px 6px",
+                      "font-size": "10px",
+                      color: "var(--text-muted)",
+                      "font-style": "italic",
+                    }}
+                  >
                     No saved filters yet
                   </div>
                 </Show>
@@ -1150,13 +1267,20 @@ export function LogcatPanel(): JSX.Element {
                   {(f) => (
                     <div
                       style={{
-                        display: "flex", "align-items": "center",
-                        padding: "4px 10px", cursor: "pointer",
+                        display: "flex",
+                        "align-items": "center",
+                        padding: "4px 10px",
+                        cursor: "pointer",
                         color: "var(--text-primary)",
                         gap: "4px",
                       }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.background =
+                          "rgba(255,255,255,0.06)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = "transparent";
+                      }}
                     >
                       <Show
                         when={renamingId() === f.id}
@@ -1164,23 +1288,52 @@ export function LogcatPanel(): JSX.Element {
                           <>
                             <span
                               onClick={() => applyPreset(f.query)}
-                              style={{ flex: "1", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}
+                              style={{
+                                flex: "1",
+                                overflow: "hidden",
+                                "text-overflow": "ellipsis",
+                                "white-space": "nowrap",
+                              }}
                               title={f.query}
                             >
                               {f.name}
                             </span>
                             {/* Rename button */}
                             <button
-                              onClick={(e) => { e.stopPropagation(); startRename(f); }}
-                              style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "0 3px", "font-size": "10px" }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                startRename(f);
+                              }}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "var(--text-muted)",
+                                cursor: "pointer",
+                                padding: "0 3px",
+                                "font-size": "10px",
+                              }}
                               title="Rename"
-                            >✎</button>
+                            >
+                              ✎
+                            </button>
                             {/* Delete button */}
                             <button
-                              onClick={(e) => { e.stopPropagation(); deleteSavedFilterItem(f.id); }}
-                              style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", padding: "0 3px", "font-size": "10px" }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteSavedFilterItem(f.id);
+                              }}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "var(--text-muted)",
+                                cursor: "pointer",
+                                padding: "0 3px",
+                                "font-size": "10px",
+                              }}
                               title="Delete"
-                            >✕</button>
+                            >
+                              ✕
+                            </button>
                           </>
                         }
                       >
@@ -1190,20 +1343,45 @@ export function LogcatPanel(): JSX.Element {
                           value={renameDraft()}
                           onInput={(e) => setRenameDraft(e.currentTarget.value)}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") { e.stopPropagation(); commitRename(); }
-                            if (e.key === "Escape") { e.stopPropagation(); cancelRename(); }
+                            if (e.key === "Enter") {
+                              e.stopPropagation();
+                              commitRename();
+                            }
+                            if (e.key === "Escape") {
+                              e.stopPropagation();
+                              cancelRename();
+                            }
                           }}
                           autofocus
                           style={{
-                            flex: "1", background: "var(--bg-primary)",
+                            flex: "1",
+                            background: "var(--bg-primary)",
                             border: "1px solid var(--accent)",
                             color: "var(--text-primary)",
-                            "border-radius": "3px", padding: "2px 5px",
-                            "font-size": "11px", outline: "none",
+                            "border-radius": "3px",
+                            padding: "2px 5px",
+                            "font-size": "11px",
+                            outline: "none",
                           }}
                         />
-                        <button onClick={(e) => { e.stopPropagation(); commitRename(); }} style={btnStyle("var(--accent)")}>✓</button>
-                        <button onClick={(e) => { e.stopPropagation(); cancelRename(); }} style={btnStyle("var(--text-muted)")}>✕</button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            commitRename();
+                          }}
+                          style={btnStyle("var(--accent)")}
+                        >
+                          ✓
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            cancelRename();
+                          }}
+                          style={btnStyle("var(--text-muted)")}
+                        >
+                          ✕
+                        </button>
                       </Show>
                     </div>
                   )}
@@ -1215,13 +1393,22 @@ export function LogcatPanel(): JSX.Element {
                   when={savingPreset()}
                   fallback={
                     <div
-                      onClick={() => { setSavingPreset(true); setPresetNameDraft(""); }}
+                      onClick={() => {
+                        setSavingPreset(true);
+                        setPresetNameDraft("");
+                      }}
                       style={{
-                        padding: "5px 10px", cursor: "pointer",
+                        padding: "5px 10px",
+                        cursor: "pointer",
                         color: isFiltered() ? "var(--accent)" : "var(--text-muted)",
                       }}
-                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)"; }}
-                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.background =
+                          "rgba(255,255,255,0.06)";
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = "transparent";
+                      }}
                     >
                       + Save current filter
                     </div>
@@ -1239,21 +1426,29 @@ export function LogcatPanel(): JSX.Element {
                       }}
                       autofocus
                       style={{
-                        flex: "1", background: "var(--bg-primary)",
+                        flex: "1",
+                        background: "var(--bg-primary)",
                         border: "1px solid var(--border)",
                         color: "var(--text-primary)",
-                        "border-radius": "3px", padding: "3px 6px",
-                        "font-size": "11px", outline: "none",
+                        "border-radius": "3px",
+                        padding: "3px 6px",
+                        "font-size": "11px",
+                        outline: "none",
                       }}
                     />
-                    <button onClick={saveCurrentFilter} style={btnStyle("var(--accent)")}>Save</button>
+                    <button onClick={saveCurrentFilter} style={btnStyle("var(--accent)")}>
+                      Save
+                    </button>
                   </div>
                 </Show>
               </div>
             </div>
             <div
               style={{ position: "fixed", inset: "0", "z-index": "699" }}
-              onClick={() => { setPresetsOpen(false); cancelRename(); }}
+              onClick={() => {
+                setPresetsOpen(false);
+                cancelRename();
+              }}
             />
           </Show>
         </div>
@@ -1275,7 +1470,11 @@ export function LogcatPanel(): JSX.Element {
         </button>
 
         {/* Export */}
-        <button onClick={handleExport} title="Export filtered log to file" style={btnStyle("var(--text-muted)")}>
+        <button
+          onClick={handleExport}
+          title="Export filtered log to file"
+          style={btnStyle("var(--text-muted)")}
+        >
           ↓ Export
         </button>
 
@@ -1284,14 +1483,28 @@ export function LogcatPanel(): JSX.Element {
         {/* Entry count — labeled visible vs buffer (see logcat-toolbar-count.ts) */}
         <span
           title={toolbarCount().title}
-          style={{ "font-size": "11px", color: "var(--text-muted)", "flex-shrink": "0", "cursor": "default" }}
+          style={{
+            "font-size": "11px",
+            color: "var(--text-muted)",
+            "flex-shrink": "0",
+            cursor: "default",
+          }}
         >
           {toolbarCount().text}
         </span>
 
         {/* Streaming dot */}
         <Show when={logcatStore.streaming}>
-          <span style={{ width: "6px", height: "6px", "border-radius": "50%", background: "var(--success)", "flex-shrink": "0", animation: "lsp-dot-pulse 2s ease-in-out infinite" }} />
+          <span
+            style={{
+              width: "6px",
+              height: "6px",
+              "border-radius": "50%",
+              background: "var(--success)",
+              "flex-shrink": "0",
+              animation: "lsp-dot-pulse 2s ease-in-out infinite",
+            }}
+          />
         </Show>
       </div>
 
@@ -1318,12 +1531,20 @@ export function LogcatPanel(): JSX.Element {
 
         {/* Age + Package sub-row — inline right, wraps below on narrow windows */}
         <div style={{ display: "flex", "align-items": "center", gap: "4px", "flex-shrink": "0" }}>
-          <span style={{ "font-size": "10px", color: "var(--text-muted)", "margin-right": "2px", "flex-shrink": "0" }}>Age:</span>
+          <span
+            style={{
+              "font-size": "10px",
+              color: "var(--text-muted)",
+              "margin-right": "2px",
+              "flex-shrink": "0",
+            }}
+          >
+            Age:
+          </span>
           <For each={AGE_PILLS}>
             {(pill) => {
-              const isActive = () => pill.value === null
-                ? !hasAgeFilter()
-                : activeAge() === pill.value;
+              const isActive = () =>
+                pill.value === null ? !hasAgeFilter() : activeAge() === pill.value;
               return (
                 <button
                   onClick={() => handleAgePill(pill.value ?? null)}
@@ -1345,7 +1566,15 @@ export function LogcatPanel(): JSX.Element {
             }}
           </For>
 
-          <div style={{ width: "1px", height: "14px", background: "var(--border)", "flex-shrink": "0", "margin-left": "2px" }} />
+          <div
+            style={{
+              width: "1px",
+              height: "14px",
+              background: "var(--border)",
+              "flex-shrink": "0",
+              "margin-left": "2px",
+            }}
+          />
 
           {/* Package filter dropdown */}
           <PackageDropdown
@@ -1374,9 +1603,14 @@ export function LogcatPanel(): JSX.Element {
       <Show when={logcatStore.entries.length === 0}>
         <div
           style={{
-            flex: "1", display: "flex", "align-items": "center",
-            "justify-content": "center", "flex-direction": "column",
-            gap: "8px", color: "var(--text-muted)", "font-size": "13px",
+            flex: "1",
+            display: "flex",
+            "align-items": "center",
+            "justify-content": "center",
+            "flex-direction": "column",
+            gap: "8px",
+            color: "var(--text-muted)",
+            "font-size": "13px",
           }}
         >
           <Show
@@ -1385,7 +1619,9 @@ export function LogcatPanel(): JSX.Element {
               <>
                 <span style={{ "font-size": "24px", opacity: "0.3" }}>📋</span>
                 <span>No logcat data</span>
-                <span style={{ "font-size": "11px", opacity: "0.6" }}>Connect a device — logcat starts automatically</span>
+                <span style={{ "font-size": "11px", opacity: "0.6" }}>
+                  Connect a device — logcat starts automatically
+                </span>
               </>
             }
           >
@@ -1405,7 +1641,9 @@ export function LogcatPanel(): JSX.Element {
           jumpTo={jumpTarget()}
           onScrolledToBottom={() => setAutoScroll(true)}
           onScrolledUp={() => setAutoScroll(false)}
-          handle={(api) => { virtualListRef = api; }}
+          handle={(api) => {
+            virtualListRef = api;
+          }}
           style={{
             flex: "1",
             "font-family": "var(--font-mono)",
@@ -1435,19 +1673,13 @@ export function LogcatPanel(): JSX.Element {
 
       {/* ── JSON Detail Panel ─────────────────────────────────────────────── */}
       <Show when={selectedJsonEntry() !== null}>
-        <JsonDetailPanel
-          entry={selectedJsonEntry()!}
-          onClose={() => setSelectedJsonEntry(null)}
-        />
+        <JsonDetailPanel entry={selectedJsonEntry()!} onClose={() => setSelectedJsonEntry(null)} />
       </Show>
 
       {/* ── Entry Detail Panel ────────────────────────────────────────────── */}
       <Show when={selectedDetailEntry()}>
         {(entry) => (
-          <LogEntryDetailPanel
-            entry={entry()}
-            onClose={() => setSelectedDetailEntry(null)}
-          />
+          <LogEntryDetailPanel entry={entry()} onClose={() => setSelectedDetailEntry(null)} />
         )}
       </Show>
     </div>
@@ -1503,9 +1735,7 @@ function LogcatVirtualRow(props: {
 function SeparatorRow(props: { entry: LogcatEntry }): JSX.Element {
   const isDied = () => props.entry.kind === "processDied";
   const pkg = () => props.entry.package ?? props.entry.tag;
-  const label = () => isDied()
-    ? `⚠  ${pkg()} PROCESS DIED`
-    : `▶  ${pkg()} PROCESS RESTARTED`;
+  const label = () => (isDied() ? `⚠  ${pkg()} PROCESS DIED` : `▶  ${pkg()} PROCESS RESTARTED`);
 
   return (
     <div
@@ -1523,7 +1753,12 @@ function SeparatorRow(props: { entry: LogcatEntry }): JSX.Element {
         overflow: "hidden",
       }}
     >
-      <span style={{ flex: "1", "border-top": `1px dashed ${isDied() ? "color-mix(in srgb, var(--error) 30%, transparent)" : "color-mix(in srgb, var(--success) 20%, transparent)"}` }} />
+      <span
+        style={{
+          flex: "1",
+          "border-top": `1px dashed ${isDied() ? "color-mix(in srgb, var(--error) 30%, transparent)" : "color-mix(in srgb, var(--success) 20%, transparent)"}`,
+        }}
+      />
       <span
         style={{
           "font-size": "10px",
@@ -1539,7 +1774,12 @@ function SeparatorRow(props: { entry: LogcatEntry }): JSX.Element {
       <span style={{ "font-size": "10px", color: "var(--text-muted)", "flex-shrink": "0" }}>
         {props.entry.timestamp}
       </span>
-      <span style={{ flex: "1", "border-top": `1px dashed ${isDied() ? "color-mix(in srgb, var(--error) 30%, transparent)" : "color-mix(in srgb, var(--success) 20%, transparent)"}` }} />
+      <span
+        style={{
+          flex: "1",
+          "border-top": `1px dashed ${isDied() ? "color-mix(in srgb, var(--error) 30%, transparent)" : "color-mix(in srgb, var(--success) 20%, transparent)"}`,
+        }}
+      />
     </div>
   );
 }
@@ -1632,7 +1872,8 @@ function LogcatRow(props: {
   onClick: (e: MouseEvent) => void;
   onJsonClick: (e: MouseEvent) => void;
 }): JSX.Element {
-  const cfg = () => LEVEL_CONFIG[props.entry.level as keyof typeof LEVEL_CONFIG] ?? LEVEL_CONFIG.unknown;
+  const cfg = () =>
+    LEVEL_CONFIG[props.entry.level as keyof typeof LEVEL_CONFIG] ?? LEVEL_CONFIG.unknown;
   const hasJson = () => (props.entry.flags & ENTRY_FLAGS.JSON_BODY) !== 0;
   const hasAnr = () => (props.entry.flags & ENTRY_FLAGS.ANR) !== 0;
   // Entries in a crash group but not the header get a subtle left border variation
@@ -1683,29 +1924,56 @@ function LogcatRow(props: {
       }}
       onMouseLeave={(e) => {
         if (!props.focusMarked && !props.inSelectionRange && !props.jsonSelected) {
-          (e.currentTarget as HTMLElement).style.background =
-            props.entry.isCrash ? "color-mix(in srgb, var(--error) 12%, transparent)" :
-            hasAnr() ? "color-mix(in srgb, var(--warning) 8%, transparent)" :
-            cfg().bg;
+          (e.currentTarget as HTMLElement).style.background = props.entry.isCrash
+            ? "color-mix(in srgb, var(--error) 12%, transparent)"
+            : hasAnr()
+              ? "color-mix(in srgb, var(--warning) 8%, transparent)"
+              : cfg().bg;
         } else {
           (e.currentTarget as HTMLElement).style.background = defaultRowBackground();
         }
       }}
     >
       {/* Timestamp */}
-      <span style={{ color: "var(--text-disabled, #4b5563)", "white-space": "nowrap", "flex-shrink": "0", "font-size": "10px", opacity: "0.7" }}>
+      <span
+        style={{
+          color: "var(--text-disabled, #4b5563)",
+          "white-space": "nowrap",
+          "flex-shrink": "0",
+          "font-size": "10px",
+          opacity: "0.7",
+        }}
+      >
         {props.entry.timestamp}
       </span>
 
       {/* Level badge */}
-      <span style={{ color: cfg().color, "font-weight": "700", "min-width": "12px", "text-align": "center", "flex-shrink": "0", "font-size": "11px" }}>
+      <span
+        style={{
+          color: cfg().color,
+          "font-weight": "700",
+          "min-width": "12px",
+          "text-align": "center",
+          "flex-shrink": "0",
+          "font-size": "11px",
+        }}
+      >
         {cfg().label}
       </span>
 
       {/* Package chip */}
       <Show when={props.entry.package}>
         <span
-          style={{ "font-size": "9px", color: "var(--accent)", "flex-shrink": "0", "max-width": "90px", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap", opacity: "0.8" }}
+          style={{
+            "font-size": "9px",
+            color: "var(--accent)",
+            "flex-shrink": "0",
+            "max-width": "90px",
+            overflow: "hidden",
+            "text-overflow": "ellipsis",
+            "white-space": "nowrap",
+            opacity: "0.8",
+          }}
           title={props.entry.package ?? ""}
         >
           {props.entry.package}
@@ -1714,7 +1982,16 @@ function LogcatRow(props: {
 
       {/* Tag */}
       <span
-        style={{ color: "var(--text-secondary)", "min-width": "80px", "max-width": "120px", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap", "flex-shrink": "0", "font-size": "10px" }}
+        style={{
+          color: "var(--text-secondary)",
+          "min-width": "80px",
+          "max-width": "120px",
+          overflow: "hidden",
+          "text-overflow": "ellipsis",
+          "white-space": "nowrap",
+          "flex-shrink": "0",
+          "font-size": "10px",
+        }}
         title={props.entry.tag}
       >
         {props.entry.tag}
@@ -1740,12 +2017,23 @@ function LogcatRow(props: {
             border: "1px solid color-mix(in srgb, var(--info) 30%, transparent)",
           }}
         >
-          {"{}"}</span>
+          {"{}"}
+        </span>
       </Show>
 
       {/* ANR badge */}
       <Show when={hasAnr()}>
-        <span style={{ "font-size": "9px", color: "var(--warning)", "flex-shrink": "0", "font-weight": "600", background: "color-mix(in srgb, var(--warning) 10%, transparent)", padding: "0 3px", "border-radius": "2px" }}>
+        <span
+          style={{
+            "font-size": "9px",
+            color: "var(--warning)",
+            "flex-shrink": "0",
+            "font-weight": "600",
+            background: "color-mix(in srgb, var(--warning) 10%, transparent)",
+            padding: "0 3px",
+            "border-radius": "2px",
+          }}
+        >
           ANR
         </span>
       </Show>
@@ -1754,9 +2042,13 @@ function LogcatRow(props: {
       <span
         style={{
           flex: "1",
-          color: props.entry.isCrash ? "var(--error)" :
-                 hasAnr() ? "var(--warning)" :
-                 props.entry.level.toLowerCase() === "info" ? "var(--text-primary)" : cfg().color,
+          color: props.entry.isCrash
+            ? "var(--error)"
+            : hasAnr()
+              ? "var(--warning)"
+              : props.entry.level.toLowerCase() === "info"
+                ? "var(--text-primary)"
+                : cfg().color,
           "white-space": "nowrap",
           overflow: "hidden",
           "text-overflow": "ellipsis",
@@ -1776,10 +2068,7 @@ function LogcatRow(props: {
 
 // ── JsonDetailPanel ───────────────────────────────────────────────────────────
 
-function JsonDetailPanel(props: {
-  entry: LogcatEntry;
-  onClose: () => void;
-}): JSX.Element {
+function JsonDetailPanel(props: { entry: LogcatEntry; onClose: () => void }): JSX.Element {
   const [copied, setCopied] = createSignal(false);
 
   const formattedJson = () => {
@@ -1799,7 +2088,9 @@ function JsonDetailPanel(props: {
       await navigator.clipboard.writeText(json);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   return (
@@ -1814,27 +2105,43 @@ function JsonDetailPanel(props: {
       }}
     >
       {/* Panel header */}
-      <div style={{
-        display: "flex",
-        "align-items": "center",
-        gap: "6px",
-        padding: "3px 10px",
-        background: "var(--bg-tertiary)",
-        "border-bottom": "1px solid var(--border)",
-        "flex-shrink": "0",
-      }}>
-        <span style={{ "font-size": "10px", color: "var(--info)", "font-weight": "600" }}>JSON</span>
-        <span style={{ "font-size": "10px", color: "var(--text-muted)", flex: "1", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
+      <div
+        style={{
+          display: "flex",
+          "align-items": "center",
+          gap: "6px",
+          padding: "3px 10px",
+          background: "var(--bg-tertiary)",
+          "border-bottom": "1px solid var(--border)",
+          "flex-shrink": "0",
+        }}
+      >
+        <span style={{ "font-size": "10px", color: "var(--info)", "font-weight": "600" }}>
+          JSON
+        </span>
+        <span
+          style={{
+            "font-size": "10px",
+            color: "var(--text-muted)",
+            flex: "1",
+            overflow: "hidden",
+            "text-overflow": "ellipsis",
+            "white-space": "nowrap",
+          }}
+        >
           {props.entry.tag}: {props.entry.timestamp}
         </span>
         <button
           onClick={copyJson}
           title="Copy JSON"
           style={{
-            background: "none", border: "1px solid var(--border)",
+            background: "none",
+            border: "1px solid var(--border)",
             color: copied() ? "var(--success)" : "var(--text-muted)",
-            "border-radius": "3px", cursor: "pointer",
-            "font-size": "10px", padding: "1px 6px",
+            "border-radius": "3px",
+            cursor: "pointer",
+            "font-size": "10px",
+            padding: "1px 6px",
           }}
         >
           {copied() ? "Copied!" : "Copy"}
@@ -1843,11 +2150,16 @@ function JsonDetailPanel(props: {
           onClick={() => props.onClose()}
           title="Close JSON viewer"
           style={{
-            background: "none", border: "none",
-            color: "var(--text-muted)", cursor: "pointer",
-            "font-size": "12px", padding: "0 4px",
+            background: "none",
+            border: "none",
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            "font-size": "12px",
+            padding: "0 4px",
           }}
-        >✕</button>
+        >
+          ✕
+        </button>
       </div>
 
       {/* JSON content */}
@@ -1875,10 +2187,16 @@ function JsonDetailPanel(props: {
 
 function btnStyle(color: string): Record<string, string> {
   return {
-    display: "flex", "align-items": "center", gap: "4px",
-    padding: "3px 8px", background: "none",
-    border: "1px solid var(--border)", color,
-    "border-radius": "4px", cursor: "pointer",
-    "font-size": "11px", "white-space": "nowrap",
+    display: "flex",
+    "align-items": "center",
+    gap: "4px",
+    padding: "3px 8px",
+    background: "none",
+    border: "1px solid var(--border)",
+    color,
+    "border-radius": "4px",
+    cursor: "pointer",
+    "font-size": "11px",
+    "white-space": "nowrap",
   };
 }
