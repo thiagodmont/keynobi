@@ -1,15 +1,12 @@
 {
   "people": [],
   "projects": [
-    "Layout",
-    "Patterns",
+    "Android",
     "Claude",
-    "Devices",
-    "Architecture",
+    "Setup",
     "Kotlin",
-    "Status",
-    "Mac",
-    "Testing",
-    "Tauri"
+    "Node",
+    "Tauri",
+    "Code"
   ]
 }
