@@ -27,7 +27,7 @@ export function Button(props: ButtonProps): JSX.Element {
         props.class ?? "",
       ].join(" ")}
       disabled={props.disabled || props.loading}
-      onClick={props.onClick}
+      onClick={(e) => props.onClick?.(e)}
     >
       <Show when={props.loading}>
         <Spinner size="sm" />

@@ -33,7 +33,7 @@ export function Alert(props: AlertProps): JSX.Element {
           type="button"
           class={styles.closeBtn}
           aria-label="Dismiss"
-          onClick={props.onDismiss}
+          onClick={() => props.onDismiss?.()}
         >
           ×
         </button>

@@ -22,7 +22,7 @@
  *   Tab / Enter                — apply selected suggestion
  */
 
-import { type JSX, createSignal, createMemo, For, Show } from "solid-js";
+import { type JSX, createSignal, createMemo, For, Show, untrack } from "solid-js";
 import {
   QUERY_KEYS,
   LEVEL_NAMES,
@@ -453,7 +453,9 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
 
   function handleInlineBlur() {
     queueMicrotask(() => {
-      if (inlineEdit()) commitInlineEdit();
+      untrack(() => {
+        if (inlineEdit()) commitInlineEdit();
+      });
     });
   }
 
