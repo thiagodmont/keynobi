@@ -520,12 +520,24 @@ claude mcp add --transport stdio keynobi -- "/Applications/Keynobi.app/Contents/
 | `list_devices` | Connected ADB devices (JSON) |
 | `get_ui_hierarchy` | Focused window UI tree from UI Automator (full JSON, or `interactive_only` for compact rows) |
 | `find_ui_elements` | Fresh dump + search by text, content-desc, resource-id, class, or package; returns `treePath`, bounds, `centerX`/`centerY`, flags, and `screenHash` (needs at least one primary filter) |
+| `list_clickable_elements` | Fresh dump + all clickable tap targets; returns `treePath`, bounds, centers, flags, and `screenHash` |
 | `find_ui_parent` | Given a non-empty `treePath` from `find_ui_elements` or the Layout tab, returns the **direct parent** node (same match shape: `treePath`, bounds, centers, flags) plus `screenHash`; optional `expect_screen_hash` like `ui_tap` |
 | `ui_tap` | Tap device pixel coordinates (use centers from `find_ui_elements`); optional `expect_screen_hash` to refuse if the UI changed |
-| `ui_type_text` | `adb shell input text` after optional tap to focus; ASCII-oriented (no emoji); optional `expect_screen_hash` |
+| `ui_tap_element` | Tap by `treePath`; fresh-dumps the hierarchy and resolves the current center before tapping |
+| `ui_fill_input` | Focus an editable input by `treePath` or coordinates, clear it by default, then type ASCII text |
+| `ui_type_text` | Low-level `adb shell input text` after optional tap to focus; ASCII-oriented (no emoji); optional `expect_screen_hash` |
+| `hide_soft_keyboard` | Hide the Android soft keyboard; checks visibility first so Back is not sent when the keyboard is already hidden |
 | `ui_swipe` | Swipe or long-press (`duration_ms`, same start/end) in device pixels |
+| `ui_scroll_until_element` | Swipe repeatedly until an element matching text/id/content-desc/class/package appears |
+| `ui_wait_for_idle` | Poll `screenHash` until the focused UI stops changing |
+| `ui_assert_element` | Assert element presence or state (`enabled`, `clickable`, `focused`, `checked`, `selected`, etc.) |
 | `send_ui_key` | Allowlisted keyevent (Back, Home, Enter, Delete, Tab, D-pad, Menu, AppSwitch, …) |
+| `open_deep_link` | Open a URI with Android intent resolution, optionally constrained to an app package |
+| `open_app_settings` | Open Android settings for an app package (`appInfo`, `permissions`, or `notifications`) |
+| `set_device_orientation` | Set portrait/landscape/reverse orientation or return to auto-rotate |
+| `set_network_state` | Best-effort Wi-Fi, mobile data, and airplane-mode toggles with per-command results |
 | `grant_runtime_permission` | `pm grant` for `android.permission.*` on a package |
+| `revoke_runtime_permission` | `pm revoke` for `android.permission.*` on a package |
 | `screenshot` | Capture a screenshot (inline image) |
 | `get_device_info` | SDK level, model, screen, battery |
 | `dump_app_info` | App version, install path, activities |
