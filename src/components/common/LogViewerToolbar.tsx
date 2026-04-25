@@ -48,11 +48,7 @@ function ToolbarButton(props: {
         padding: "0 6px",
         "border-radius": "3px",
         border: "none",
-        background: props.active
-          ? props.activeColor
-            ? `${props.activeColor}22`
-            : "var(--bg-active)"
-          : "transparent",
+        background: activeToolbarButtonBackground(props.active, props.activeColor),
         color: props.active ? (props.activeColor ?? "var(--text-primary)") : "var(--text-muted)",
         cursor: "pointer",
         "font-size": "11px",
@@ -64,6 +60,12 @@ function ToolbarButton(props: {
       {props.children}
     </button>
   );
+}
+
+export function activeToolbarButtonBackground(active?: boolean, activeColor?: string): string {
+  if (!active) return "transparent";
+  if (!activeColor) return "var(--bg-active)";
+  return `color-mix(in srgb, ${activeColor} 14%, transparent)`;
 }
 
 function ToolbarDivider(): JSX.Element {
@@ -112,7 +114,7 @@ export function LogViewerToolbar(props: LogViewerToolbarProps): JSX.Element {
 
       <ToolbarDivider />
 
-      <Show when={props.sources.length > 1}>
+      <Show when={props.sources.length > 1 || props.sourceFilter !== "all"}>
         <select
           value={props.sourceFilter}
           onChange={(e) => props.onSourceFilterChange(e.currentTarget.value)}
