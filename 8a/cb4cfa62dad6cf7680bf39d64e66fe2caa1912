@@ -1,0 +1,50 @@
+src/components/common/LogViewer.tsx
+  703dd4f546f9fc44 3,6-14,37,49,51-53,61,66-68,88-99,113-131,163
+  aceab748e4a1ba77 4,39-40,45-46,58,72-73,78-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "8acb4cfa62dad6cf7680bf39d64e66fe2caa1912",
+  "prompts": {
+    "62ecf3491096bc70": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dbce5-2c61-7f21-992f-a3d9e2ea38fb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "703dd4f546f9fc44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dc653-ec78-7b22-a6ff-01d19410de4e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 53,
+      "overriden_lines": 0
+    },
+    "aceab748e4a1ba77": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "54112cff-46de-4f2a-91e0-e3e14240eebd",
+        "model": "moonshotai/kimi-k2.6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 12,
+      "overriden_lines": 1
+    }
+  }
+}
