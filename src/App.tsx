@@ -8,7 +8,7 @@ import {
 } from "@/stores/ui.store";
 import TitleBar from "@/components/layout/TitleBar";
 import StatusBar from "@/components/layout/StatusBar";
-import { ToastContainer, showToast } from "@/components/ui";
+import { ToastContainer, showDialog, showToast } from "@/components/ui";
 import { DialogHost } from "@/components/ui";
 import { AppErrorBoundary } from "@/components/common/ErrorBoundary";
 import { CommandPalette, openPalette } from "@/components/ui";
@@ -39,6 +39,12 @@ import { openVariantPicker } from "@/components/build/VariantSelector";
 import { formatError, sendNativeSentryTestEvent } from "@/lib/tauri-api";
 import { projectState } from "@/stores/project.store";
 import { openMcpPanel } from "@/components/mcp/McpPanel";
+import {
+  dismissUpdate,
+  openUpdateRelease,
+  refreshAppUpdate,
+  shouldDismissUpdatePrompt,
+} from "@/services/update.service";
 
 function formatShortcut(opts: {
   key: string;
@@ -96,6 +102,33 @@ export function App(): JSX.Element {
     initKeybindings();
     await loadSettings();
     tryOpenOnboardingAfterLoad();
+
+    refreshAppUpdate()
+      .then(async (update) => {
+        if (!update.available || update.dismissed || !update.tagName) return;
+        const result = await showDialog({
+          title: "New Keynobi Version Available",
+          message: `Keynobi ${update.latestVersion} is available. You are running ${update.currentVersion}. Download the latest release from GitHub when you are ready.`,
+          buttons: [
+            { label: "Later", value: "later", style: "secondary" },
+            { label: "Download", value: "download", style: "primary" },
+          ],
+        });
+
+        if (result === "download") {
+          await openUpdateRelease(update).catch((err) => {
+            showToast(`Failed to open release page: ${formatError(err)}`, "error");
+          });
+          return;
+        }
+
+        if (shouldDismissUpdatePrompt(result)) {
+          dismissUpdate(update.tagName);
+        }
+      })
+      .catch((err) => {
+        console.warn("[updates] release check failed", err);
+      });
 
     // Initialize MCP lifecycle event listeners.
     import("@/stores/mcp.store").then(({ initMcpListeners, loadMcpActivity }) => {

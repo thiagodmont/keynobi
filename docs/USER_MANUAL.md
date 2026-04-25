@@ -355,9 +355,14 @@ The status bar at the bottom shows (left to right on the main strip, then indica
 | Health | App health indicator — click to open Health Center |
 | Build status | Current or last build — click to switch to the Build tab |
 | MCP | MCP integration — click to open the MCP activity panel (setup, copy command, activity log) |
+| Update | New Keynobi version indicator — click to open the GitHub release download page |
 | Variant pill | Active build variant (when a project is open) — click to change |
 | App memory | Approximate app memory use (right side) |
 | Log folder size | Log folder size vs configured cap (right side); tooltip shows rotation when applicable |
+
+### Update Notification
+
+On startup, Keynobi checks the latest GitHub release at `thiagodmont/keynobi`. When a newer version is available, a modal offers **Download** or **Later**. **Download** opens the GitHub release page. **Later** dismisses that release's modal permanently, but the status bar still shows the update indicator so you can open the release page later.
 
 ---
 
