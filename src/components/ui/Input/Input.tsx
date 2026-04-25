@@ -30,7 +30,9 @@ export function Input(props: InputProps): JSX.Element {
         isError() ? styles.error : "",
         isDisabled() ? styles.disabled : "",
         props.class,
-      ].filter(Boolean).join(" ")}
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       <Show when={props.prefix}>
         <div class={styles.prefix}>{props.prefix}</div>
@@ -52,7 +54,7 @@ export function Input(props: InputProps): JSX.Element {
         <button
           type="button"
           class={styles.clearBtn}
-          onClick={props.onClear}
+          onClick={() => props.onClear?.()}
           aria-label="Clear"
         >
           ×

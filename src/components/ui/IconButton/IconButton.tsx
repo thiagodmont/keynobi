@@ -26,7 +26,7 @@ export function IconButton(props: IconButtonProps): JSX.Element {
       ]
         .filter(Boolean)
         .join(" ")}
-      onClick={props.onClick}
+      onClick={() => props.onClick()}
     >
       {props.children}
     </button>

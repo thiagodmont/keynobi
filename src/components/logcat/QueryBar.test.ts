@@ -15,13 +15,72 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { parseQueryState, buildQuery } from "./QueryBar";
+import { fireEvent, render } from "@solidjs/testing-library";
+import { QueryBar, parseQueryState, buildQuery } from "./QueryBar";
 import {
   rebuildCommittedAfterRemovingPill,
   quoteMessageTokenForEditDraft,
   setPackageInQuery,
   setAgeInQuery,
 } from "@/lib/logcat-query";
+
+// ── QueryBar keyboard behavior ───────────────────────────────────────────────
+
+describe("QueryBar — Enter keyboard commit", () => {
+  it("commits the typed draft as a pill when no autocomplete suggestion is selected", () => {
+    const changes: string[] = [];
+    const { container } = render(() =>
+      QueryBar({
+        value: "tag:OkHttp",
+        onChange: (q) => changes.push(q),
+        knownTags: [],
+        knownPackages: [],
+      })
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+
+    fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(changes[changes.length - 1]).toBe("tag:OkHttp ");
+  });
+
+  it("balances a multi-word message draft and commits it as one pill", () => {
+    const changes: string[] = [];
+    const { container } = render(() =>
+      QueryBar({
+        value: 'message:"hello world',
+        onChange: (q) => changes.push(q),
+        knownTags: [],
+        knownPackages: [],
+      })
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+
+    fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(changes[changes.length - 1]).toBe('message:"hello world" ');
+  });
+
+  it("keeps Enter accepting the selected autocomplete suggestion", () => {
+    const changes: string[] = [];
+    const { container } = render(() =>
+      QueryBar({
+        value: "tag:Ok",
+        onChange: (q) => changes.push(q),
+        knownTags: ["OkHttp"],
+        knownPackages: [],
+      })
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+
+    fireEvent.focus(input);
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(changes[changes.length - 1]).toBe("tag:OkHttp ");
+  });
+});
 
 // ── parseQueryState — trailing-space convention ───────────────────────────────
 

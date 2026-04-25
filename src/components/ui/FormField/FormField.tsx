@@ -12,13 +12,18 @@ export interface FormFieldProps {
 }
 
 export function FormField(props: FormFieldProps): JSX.Element {
-  const fieldId = props.id ?? createUniqueId();
+  const fallbackId = createUniqueId();
+  const fieldId = () => props.id ?? fallbackId;
   return (
     <div class={[styles.root, props.class].filter(Boolean).join(" ")}>
       <div class={styles.header}>
-        <label for={fieldId} class={styles.label}>{props.label}</label>
+        <label for={fieldId()} class={styles.label}>
+          {props.label}
+        </label>
         <Show when={props.required}>
-          <span class={styles.required} aria-hidden="true">*</span>
+          <span class={styles.required} aria-hidden="true">
+            *
+          </span>
         </Show>
       </div>
       <Show when={props.description}>
@@ -26,7 +31,9 @@ export function FormField(props: FormFieldProps): JSX.Element {
       </Show>
       {props.children}
       <Show when={props.error}>
-        <div class={styles.error} role="alert">{props.error}</div>
+        <div class={styles.error} role="alert">
+          {props.error}
+        </div>
       </Show>
     </div>
   );

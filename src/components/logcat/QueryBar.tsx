@@ -22,7 +22,7 @@
  *   Tab / Enter                — apply selected suggestion
  */
 
-import { type JSX, createSignal, createMemo, For, Show } from "solid-js";
+import { type JSX, createSignal, createMemo, For, Show, untrack } from "solid-js";
 import {
   QUERY_KEYS,
   LEVEL_NAMES,
@@ -39,6 +39,7 @@ import {
   serializeQueryBarCommittedPart,
   insertPillAtGroupPosition,
   applyInlineEditCommit,
+  commitQueryBarDraft,
 } from "@/lib/logcat-query";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -367,6 +368,18 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
       return;
     }
 
+    if (e.key === "Enter" && draft().trim() !== "") {
+      const selectedSuggestion = open() ? suggs[selectedIdx()] : undefined;
+      if (!selectedSuggestion) {
+        e.preventDefault();
+        const next = commitQueryBarDraft(committed(), draft());
+        props.onChange(buildQuery(next, ""));
+        setOpen(false);
+        setSelectedIdx(0);
+        return;
+      }
+    }
+
     if (!open() || suggs.length === 0) {
       if (e.key === "ArrowDown" && suggs.length > 0) {
         e.preventDefault();
@@ -440,7 +453,9 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
 
   function handleInlineBlur() {
     queueMicrotask(() => {
-      if (inlineEdit()) commitInlineEdit();
+      untrack(() => {
+        if (inlineEdit()) commitInlineEdit();
+      });
     });
   }
 

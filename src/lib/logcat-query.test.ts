@@ -29,6 +29,7 @@ import {
   quoteMessageTokenForEditDraft,
   serializeQueryBarCommittedPart,
   splitRawQueryParts,
+  commitQueryBarDraft,
   setMinePackage,
   isStackTraceLine,
   parseStackFrame,
@@ -683,6 +684,35 @@ describe("pasteIntoMessageKeyDraft", () => {
       newDraft: 'message~:"a b"',
       cursor: 14,
     });
+  });
+});
+
+describe("commitQueryBarDraft", () => {
+  it("appends a plain draft token to committed pills", () => {
+    expect(commitQueryBarDraft(["level:error"], "tag:OkHttp")).toEqual([
+      "level:error",
+      "tag:OkHttp",
+    ]);
+  });
+
+  it("commits a message draft with spaces as one token", () => {
+    expect(commitQueryBarDraft([], 'message:"hello world"')).toEqual(["message:hello world"]);
+  });
+
+  it("balances an unclosed message quote before committing", () => {
+    expect(commitQueryBarDraft([], 'message:"hello world')).toEqual(["message:hello world"]);
+  });
+
+  it("splits multi-token draft input with quote-aware parsing", () => {
+    expect(commitQueryBarDraft(["package:mine"], 'level:error message:"socket timeout"')).toEqual([
+      "package:mine",
+      "level:error",
+      "message:socket timeout",
+    ]);
+  });
+
+  it("leaves committed pills unchanged for an empty draft", () => {
+    expect(commitQueryBarDraft(["level:error"], "   ")).toEqual(["level:error"]);
   });
 });
 

@@ -1,12 +1,4 @@
-import {
-  type JSX,
-  For,
-  Show,
-  createEffect,
-  createMemo,
-  createSignal,
-  onCleanup,
-} from "solid-js";
+import { type JSX, For, Show, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
 import type { UiNode } from "@/bindings";
 import { Icon } from "@/components/ui";
 import {
@@ -44,6 +36,7 @@ import {
 import { selectedDevice } from "@/stores/device.store";
 import { LayoutWireframe } from "@/components/ui-hierarchy/LayoutWireframe";
 import { layoutDetailGetNode } from "@/components/ui-hierarchy/layout-detail-get-node";
+import { copyToClipboard } from "@/utils/clipboard";
 
 function displayRoot(): UiNode | null {
   const snap = layoutViewerState.snapshot;
@@ -63,14 +56,6 @@ function displayRoot(): UiNode | null {
     return f;
   }
   return r;
-}
-
-async function copyToClipboard(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    // ignore
-  }
 }
 
 function HierarchyTree(props: {
@@ -290,8 +275,8 @@ function HierarchyTree(props: {
       </div>
       <Show when={hasChildren() && open()}>
         <div role="group">
-        <For each={props.node.children}>
-          {(child, i) => (
+          <For each={props.node.children}>
+            {(child, i) => (
               <HierarchyTree
                 node={child}
                 path={props.path === "" ? String(i()) : `${props.path}.${i()}`}
@@ -303,8 +288,8 @@ function HierarchyTree(props: {
                 isOpen={props.isOpen}
                 toggle={props.toggle}
               />
-          )}
-        </For>
+            )}
+          </For>
         </div>
       </Show>
     </div>
@@ -505,9 +490,7 @@ function NodeDetailPanel(props: {
           type="button"
           style={{
             ...miniBtnStyle,
-            ...(parentPath() === null
-              ? { opacity: 0.45, cursor: "not-allowed" as const }
-              : {}),
+            ...(parentPath() === null ? { opacity: 0.45, cursor: "not-allowed" as const } : {}),
           }}
           disabled={parentPath() === null}
           title={
@@ -530,8 +513,8 @@ function NodeDetailPanel(props: {
         </button>
       </div>
       <p style={{ margin: 0, color: "var(--text-muted)", "font-size": "10px" }}>
-        Scrollable and other flags can be wrong in dumps (e.g. HorizontalScrollView sometimes reports
-        scrollable=false). Treat as hints, not ground truth.
+        Scrollable and other flags can be wrong in dumps (e.g. HorizontalScrollView sometimes
+        reports scrollable=false). Treat as hints, not ground truth.
       </p>
     </div>
   );
@@ -582,7 +565,11 @@ export function LayoutViewerPanel(): JSX.Element {
   const toggle = (path: string, depth: number): void => {
     const g = globalExpand();
     const cur =
-      g === "all" ? true : g === "none" ? false : pathOverrides()[path] ?? depth < expandBasis().depth;
+      g === "all"
+        ? true
+        : g === "none"
+          ? false
+          : (pathOverrides()[path] ?? depth < expandBasis().depth);
     setGlobalExpand("auto");
     setPathOverrides((prev) => ({ ...prev, [path]: !cur }));
   };
@@ -781,7 +768,9 @@ export function LayoutViewerPanel(): JSX.Element {
           <button type="button" style={toolbarBtnStyle} onClick={() => goSearchMatch(-1)}>
             Prev
           </button>
-          <span style={{ "font-size": "11px", color: "var(--text-muted)" }}>{searchMatchLabel()}</span>
+          <span style={{ "font-size": "11px", color: "var(--text-muted)" }}>
+            {searchMatchLabel()}
+          </span>
           <button type="button" style={toolbarBtnStyle} onClick={() => goSearchMatch(1)}>
             Next
           </button>
@@ -794,7 +783,11 @@ export function LayoutViewerPanel(): JSX.Element {
         </button>
         <select
           title="Auto-refresh interval"
-          value={layoutViewerState.autoRefreshIntervalMs === null ? "off" : String(layoutViewerState.autoRefreshIntervalMs)}
+          value={
+            layoutViewerState.autoRefreshIntervalMs === null
+              ? "off"
+              : String(layoutViewerState.autoRefreshIntervalMs)
+          }
           onChange={(e) => {
             const v = e.currentTarget.value;
             setAutoRefreshInterval(v === "off" ? null : Number(v));
@@ -803,7 +796,10 @@ export function LayoutViewerPanel(): JSX.Element {
             padding: "4px 6px",
             "font-size": "12px",
             background: "var(--bg-secondary)",
-            color: layoutViewerState.autoRefreshIntervalMs !== null ? "var(--accent)" : "var(--text-muted)",
+            color:
+              layoutViewerState.autoRefreshIntervalMs !== null
+                ? "var(--accent)"
+                : "var(--text-muted)",
             border: "1px solid var(--border)",
             "border-radius": "4px",
             cursor: "pointer",
@@ -825,15 +821,21 @@ export function LayoutViewerPanel(): JSX.Element {
           "flex-shrink": "0",
         }}
       >
-        <Show when={selectedDevice()} fallback={<span>No device selected — use the Devices sidebar.</span>}>
+        <Show
+          when={selectedDevice()}
+          fallback={<span>No device selected — use the Devices sidebar.</span>}
+        >
           {(d) => (
             <span>
-              Device: <span style={{ color: "var(--text-primary)" }}>{d().name}</span> ({d().serial})
+              Device: <span style={{ color: "var(--text-primary)" }}>{d().name}</span> ({d().serial}
+              )
               <Show when={dominantPkg()}>
                 {(pkgName) => (
                   <span style={{ "margin-left": "10px" }}>
                     Package:{" "}
-                    <span style={{ color: "var(--text-primary)", "font-family": "var(--font-mono)" }}>
+                    <span
+                      style={{ color: "var(--text-primary)", "font-family": "var(--font-mono)" }}
+                    >
                       {pkgName()}
                     </span>{" "}
                     <span style={{ opacity: 0.8 }}>(omitted on rows when unchanged)</span>
@@ -891,14 +893,14 @@ export function LayoutViewerPanel(): JSX.Element {
                     when={layoutViewerState.snapshot}
                     fallback={
                       <p style={{ margin: 0 }}>
-                        Press <strong>Refresh</strong> to capture the focused window hierarchy from the
-                        device (native Views and Jetpack Compose via accessibility).
+                        Press <strong>Refresh</strong> to capture the focused window hierarchy from
+                        the device (native Views and Jetpack Compose via accessibility).
                       </p>
                     }
                   >
                     <p style={{ margin: "0 0 8px 0" }}>
-                      No nodes match the current filter — try turning off filters, clear the search box, or
-                      refresh after navigating on the device.
+                      No nodes match the current filter — try turning off filters, clear the search
+                      box, or refresh after navigating on the device.
                     </p>
                   </Show>
                   <p style={{ margin: "8px 0 0 0", "font-size": "11px" }}>
@@ -938,21 +940,22 @@ export function LayoutViewerPanel(): JSX.Element {
                           "margin-bottom": "8px",
                         }}
                       >
-                        Snapshot was truncated (size or node limits). Check warnings in metadata below.
+                        Snapshot was truncated (size or node limits). Check warnings in metadata
+                        below.
                       </div>
                     </Show>
                     <div role="tree" aria-label="UI hierarchy tree">
-                    <HierarchyTree
-                      node={r}
-                      path=""
-                      depth={0}
-                      dominantPackage={dominantPkg()}
-                      interactiveOnly={layoutViewerState.interactiveOnly}
-                      selectedPath={layoutViewerState.selectedLayoutPath}
-                      onSelectPath={(p) => setLayoutSelectedPath(p)}
-                      isOpen={isOpen}
-                      toggle={toggle}
-                    />
+                      <HierarchyTree
+                        node={r}
+                        path=""
+                        depth={0}
+                        dominantPackage={dominantPkg()}
+                        interactiveOnly={layoutViewerState.interactiveOnly}
+                        selectedPath={layoutViewerState.selectedLayoutPath}
+                        onSelectPath={(p) => setLayoutSelectedPath(p)}
+                        isOpen={isOpen}
+                        toggle={toggle}
+                      />
                     </div>
                     <Show when={(layoutViewerState.snapshot?.warnings.length ?? 0) > 0}>
                       <div
@@ -983,7 +986,9 @@ export function LayoutViewerPanel(): JSX.Element {
                       <div>Interactive nodes: {layoutViewerState.snapshot?.interactiveCount}</div>
                       <Show when={layoutViewerState.snapshot?.foregroundActivity}>
                         {(fa) => (
-                          <div style={{ "margin-top": "4px", "word-break": "break-all" }}>{fa()}</div>
+                          <div style={{ "margin-top": "4px", "word-break": "break-all" }}>
+                            {fa()}
+                          </div>
                         )}
                       </Show>
                     </div>
