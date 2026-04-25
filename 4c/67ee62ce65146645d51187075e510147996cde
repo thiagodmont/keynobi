@@ -1,0 +1,50 @@
+src/utils/debounce.ts
+  703dd4f546f9fc44 1-4,8-9,11-30
+  aceab748e4a1ba77 5-7,10,31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "4c67ee62ce65146645d51187075e510147996cde",
+  "prompts": {
+    "62ecf3491096bc70": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dbce5-2c61-7f21-992f-a3d9e2ea38fb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "703dd4f546f9fc44": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dc653-ec78-7b22-a6ff-01d19410de4e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 79,
+      "total_deletions": 435,
+      "accepted_lines": 77,
+      "overriden_lines": 0
+    },
+    "aceab748e4a1ba77": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "54112cff-46de-4f2a-91e0-e3e14240eebd",
+        "model": "moonshotai/kimi-k2.6"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 43,
+      "total_deletions": 7,
+      "accepted_lines": 17,
+      "overriden_lines": 0
+    }
+  }
+}
