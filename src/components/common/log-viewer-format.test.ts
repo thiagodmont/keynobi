@@ -20,6 +20,10 @@ describe("log viewer formatting", () => {
     expect(formatLogViewerTime(timestamp)).toBe("12:34:56.789");
   });
 
+  it("returns the original timestamp when the date is invalid", () => {
+    expect(formatLogViewerTime("not-a-date")).toBe("not-a-date");
+  });
+
   it("formats copied rows with optional timestamp and source", () => {
     expect(formatLogViewerEntry(makeEntry(), { showTimestamp: false, showSource: true })).toBe(
       "[WARN] [build] compile warning"
