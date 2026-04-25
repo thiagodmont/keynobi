@@ -4,6 +4,7 @@ import { copyToClipboard } from "./clipboard";
 describe("copyToClipboard", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("uses navigator clipboard when available", async () => {
@@ -27,6 +28,18 @@ describe("copyToClipboard", () => {
     await copyToClipboard("fallback");
 
     expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(document.querySelector("textarea")).toBeNull();
+  });
+
+  it("throws when the fallback copy command fails", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"));
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: vi.fn().mockReturnValue(false),
+    });
+
+    await expect(copyToClipboard("fallback")).rejects.toThrow("Failed to copy to clipboard");
     expect(document.querySelector("textarea")).toBeNull();
   });
 });

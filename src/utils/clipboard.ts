@@ -5,8 +5,15 @@ export async function copyToClipboard(text: string): Promise<void> {
     const el = document.createElement("textarea");
     el.value = text;
     document.body.appendChild(el);
-    el.select();
-    document.execCommand("copy");
-    document.body.removeChild(el);
+    try {
+      el.select();
+      if (!document.execCommand("copy")) {
+        throw new Error("Failed to copy to clipboard");
+      }
+    } catch {
+      throw new Error("Failed to copy to clipboard");
+    } finally {
+      document.body.removeChild(el);
+    }
   }
 }
