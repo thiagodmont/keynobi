@@ -31,6 +31,20 @@ pub const MAX_WAIT_TIMEOUT_MS: u32 = 30_000;
 pub const DEFAULT_WAIT_TIMEOUT_MS: u32 = 15_000;
 /// Default poll interval for `wait_for_element`.
 pub const DEFAULT_WAIT_POLL_MS: u32 = 500;
+/// Maximum timeout for waiting until the UI becomes idle.
+pub const MAX_IDLE_TIMEOUT_MS: u32 = 30_000;
+/// Default timeout for waiting until the UI becomes idle.
+pub const DEFAULT_IDLE_TIMEOUT_MS: u32 = 5_000;
+/// Minimum UI idle poll interval.
+pub const MIN_IDLE_POLL_MS: u32 = 200;
+/// Default UI idle poll interval.
+pub const DEFAULT_IDLE_POLL_MS: u32 = 300;
+/// Default number of identical screen hashes required for idle.
+pub const DEFAULT_IDLE_STABLE_POLLS: u32 = 2;
+/// Maximum scroll attempts for `ui_scroll_until_element`.
+pub const MAX_SCROLL_ATTEMPTS: u32 = 25;
+/// Default scroll attempts for `ui_scroll_until_element`.
+pub const DEFAULT_SCROLL_ATTEMPTS: u32 = 8;
 
 // ── Query + match types (MCP tool params use the same shapes via `FindUiElementsParams`) ────────
 
@@ -87,6 +101,9 @@ pub struct UiElementMatch {
     pub scrollable: bool,
     pub focusable: bool,
     pub focused: bool,
+    pub long_clickable: bool,
+    pub checked: bool,
+    pub selected: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -102,6 +119,34 @@ pub struct UiTapParams {
         description = "If set, capture hierarchy first and refuse to tap unless screenHash matches."
     )]
     pub expect_screen_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UiTapElementParams {
+    #[schemars(description = "ADB device serial. Uses first online device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(description = "Layout treePath from find_ui_elements/list_clickable_elements.")]
+    pub tree_path: String,
+    #[schemars(
+        description = "If set, capture hierarchy first and refuse unless screenHash matches before tapping."
+    )]
+    pub expect_screen_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedElementTarget {
+    pub tree_path: String,
+    pub x: i32,
+    pub y: i32,
+    pub class: String,
+    pub text: String,
+    pub content_desc: String,
+    pub resource_id: String,
+    pub enabled: bool,
+    pub clickable: bool,
+    pub editable: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -136,6 +181,283 @@ pub struct ClearFocusedInputParams {
     pub tap_x: Option<i32>,
     #[schemars(description = "Optional tap to focus an editable before clearing (device pixels).")]
     pub tap_y: Option<i32>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UiFillInputParams {
+    #[schemars(description = "ADB device serial. Uses first online device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(description = "Text to type after focusing the input. ASCII printable only.")]
+    pub text: String,
+    #[schemars(
+        description = "Editable treePath from find_ui_elements/list_clickable_elements. Mutually exclusive with x/y."
+    )]
+    pub tree_path: Option<String>,
+    #[schemars(description = "Fallback X coordinate when tree_path is not available.")]
+    pub x: Option<i32>,
+    #[schemars(description = "Fallback Y coordinate when tree_path is not available.")]
+    pub y: Option<i32>,
+    #[schemars(
+        description = "If set, capture hierarchy first and refuse unless screenHash matches before tap/type."
+    )]
+    pub expect_screen_hash: Option<String>,
+    #[schemars(description = "If true, clear focused text before typing. Default true.")]
+    pub clear_before: Option<bool>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ListClickableElementsParams {
+    #[schemars(description = "ADB device serial. Uses first online device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(description = "If true, only return enabled clickable nodes. Default false.")]
+    pub enabled_only: Option<bool>,
+    #[schemars(description = "Max clickable nodes to return (default 100, max 100).")]
+    pub max_results: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct HideSoftKeyboardParams {
+    #[schemars(description = "ADB device serial. Uses first online device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(
+        description = "If true, sends Back even when keyboard visibility cannot be detected. Default false."
+    )]
+    pub force: Option<bool>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedInputTarget {
+    pub tree_path: Option<String>,
+    pub x: i32,
+    pub y: i32,
+    pub class: String,
+    pub resource_id: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HideSoftKeyboardOutcome {
+    pub keyboard_visible: Option<bool>,
+    pub back_sent: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenDeepLinkParams {
+    #[schemars(description = "ADB device serial. Uses first online device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(
+        description = "Deep link URI, e.g. myapp://profile/42 or https://example.com/path."
+    )]
+    pub uri: String,
+    #[schemars(description = "Optional package to constrain intent resolution.")]
+    pub package: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenAppSettingsParams {
+    #[schemars(description = "ADB device serial. Uses first online device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(description = "Android package name.")]
+    pub package: String,
+    #[schemars(description = "Settings panel: appInfo (default), permissions, or notifications.")]
+    pub panel: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetDeviceOrientationParams {
+    #[schemars(description = "ADB device serial. Uses first online device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(
+        description = "Orientation: portrait, landscape, reversePortrait, reverseLandscape, or auto."
+    )]
+    pub orientation: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetNetworkStateParams {
+    #[schemars(description = "ADB device serial. Uses first online device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(description = "Enable or disable Wi-Fi with `svc wifi`.")]
+    pub wifi: Option<bool>,
+    #[schemars(description = "Enable or disable mobile data with `svc data`.")]
+    pub mobile_data: Option<bool>,
+    #[schemars(
+        description = "Enable or disable airplane mode with `cmd connectivity airplane-mode`."
+    )]
+    pub airplane_mode: Option<bool>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OrientationMode {
+    Auto,
+    Fixed(u8),
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdbShellStep {
+    pub label: String,
+    pub args: Vec<String>,
+    pub success: bool,
+    pub output: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdbShellStepSpec {
+    pub label: &'static str,
+    pub args: Vec<&'static str>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UiWaitForIdleParams {
+    #[schemars(description = "ADB device serial. Uses first online device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(description = "Consecutive identical screen hashes required (default 2, min 2).")]
+    pub stable_polls: Option<u32>,
+    #[schemars(description = "Poll interval in milliseconds (default 300, min 200).")]
+    pub poll_interval_ms: Option<u32>,
+    #[schemars(description = "Total timeout in milliseconds (default 5000, max 30000).")]
+    pub timeout_ms: Option<u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WaitForIdleConfig {
+    pub stable_polls: u32,
+    pub poll_interval_ms: u32,
+    pub timeout_ms: u32,
+}
+
+impl WaitForIdleConfig {
+    pub fn from_params(p: &UiWaitForIdleParams) -> Self {
+        Self {
+            stable_polls: p
+                .stable_polls
+                .unwrap_or(DEFAULT_IDLE_STABLE_POLLS)
+                .clamp(2, 10),
+            poll_interval_ms: p
+                .poll_interval_ms
+                .unwrap_or(DEFAULT_IDLE_POLL_MS)
+                .max(MIN_IDLE_POLL_MS),
+            timeout_ms: p
+                .timeout_ms
+                .unwrap_or(DEFAULT_IDLE_TIMEOUT_MS)
+                .min(MAX_IDLE_TIMEOUT_MS),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UiScrollUntilElementParams {
+    #[schemars(description = "ADB device serial. Uses first online device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(description = "Substring match on node text (case-insensitive).")]
+    pub text_contains: Option<String>,
+    #[schemars(description = "Exact text match (case-insensitive).")]
+    pub text_equals: Option<String>,
+    #[schemars(description = "Substring match on content-desc (case-insensitive).")]
+    pub content_desc_contains: Option<String>,
+    #[schemars(description = "Exact resource-id match.")]
+    pub resource_id_equals: Option<String>,
+    #[schemars(description = "Substring match on resource-id (case-insensitive).")]
+    pub resource_id_contains: Option<String>,
+    #[schemars(description = "Substring match on full class name (case-insensitive).")]
+    pub class_contains: Option<String>,
+    #[schemars(description = "Exact package name match.")]
+    pub package_equals: Option<String>,
+    #[schemars(description = "If true, only nodes with clickable=true.")]
+    pub clickable_only: Option<bool>,
+    #[schemars(description = "If true, only nodes with editable=true.")]
+    pub editable_only: Option<bool>,
+    #[schemars(description = "If true, only nodes with enabled=true.")]
+    pub enabled_only: Option<bool>,
+    #[schemars(
+        description = "Max matches to return after the element is found (default 50, max 100)."
+    )]
+    pub max_results: Option<u32>,
+    #[schemars(description = "Maximum swipes before giving up (default 8, max 25).")]
+    pub max_swipes: Option<u32>,
+    #[schemars(description = "Optional explicit swipe start X.")]
+    pub x1: Option<i32>,
+    #[schemars(description = "Optional explicit swipe start Y.")]
+    pub y1: Option<i32>,
+    #[schemars(description = "Optional explicit swipe end X.")]
+    pub x2: Option<i32>,
+    #[schemars(description = "Optional explicit swipe end Y.")]
+    pub y2: Option<i32>,
+    #[schemars(description = "Swipe duration in milliseconds (default 300, max 30000).")]
+    pub duration_ms: Option<u32>,
+    #[schemars(description = "Delay after each swipe before re-dumping (default 500, min 200).")]
+    pub poll_interval_ms: Option<u32>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedSwipe {
+    pub x1: i32,
+    pub y1: i32,
+    pub x2: i32,
+    pub y2: i32,
+    pub duration_ms: u32,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct UiAssertElementParams {
+    #[schemars(description = "ADB device serial. Uses first online device if omitted.")]
+    pub device_serial: Option<String>,
+    #[schemars(description = "Substring match on node text (case-insensitive).")]
+    pub text_contains: Option<String>,
+    #[schemars(description = "Exact text match (case-insensitive).")]
+    pub text_equals: Option<String>,
+    #[schemars(description = "Substring match on content-desc (case-insensitive).")]
+    pub content_desc_contains: Option<String>,
+    #[schemars(description = "Exact resource-id match.")]
+    pub resource_id_equals: Option<String>,
+    #[schemars(description = "Substring match on resource-id (case-insensitive).")]
+    pub resource_id_contains: Option<String>,
+    #[schemars(description = "Substring match on full class name (case-insensitive).")]
+    pub class_contains: Option<String>,
+    #[schemars(description = "Exact package name match.")]
+    pub package_equals: Option<String>,
+    #[schemars(
+        description = "If false, assertion passes only when no matching element exists. Default true."
+    )]
+    pub should_exist: Option<bool>,
+    #[schemars(description = "Expected clickable flag for at least one matching node.")]
+    pub expect_clickable: Option<bool>,
+    #[schemars(description = "Expected editable flag for at least one matching node.")]
+    pub expect_editable: Option<bool>,
+    #[schemars(description = "Expected enabled flag for at least one matching node.")]
+    pub expect_enabled: Option<bool>,
+    #[schemars(description = "Expected focused flag for at least one matching node.")]
+    pub expect_focused: Option<bool>,
+    #[schemars(description = "Expected checked flag for at least one matching node.")]
+    pub expect_checked: Option<bool>,
+    #[schemars(description = "Expected selected flag for at least one matching node.")]
+    pub expect_selected: Option<bool>,
+    #[schemars(description = "Max matches to inspect (default 50, max 100).")]
+    pub max_results: Option<u32>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiAssertElementOutcome {
+    pub passed: bool,
+    pub message: String,
+    pub match_count: usize,
+    pub satisfied_count: usize,
+    pub matches: Vec<UiElementMatch>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -458,6 +780,9 @@ fn push_match(node: &UiNode, tree_path: String, out: &mut Vec<UiElementMatch>) {
         scrollable: node.scrollable,
         focusable: node.focusable,
         focused: node.focused,
+        long_clickable: node.long_clickable,
+        checked: node.checked,
+        selected: node.selected,
     });
 }
 
@@ -506,6 +831,37 @@ pub fn find_ui_elements(
     let mut out = Vec::new();
     walk_find(&snapshot.root, "", q, require_bounds, max, &mut out);
     out
+}
+
+/// Collect clickable nodes without requiring a primary text/id/class/package filter.
+pub fn collect_clickable_nodes(
+    snapshot: &UiHierarchySnapshot,
+    max_matches: usize,
+) -> Vec<UiElementMatch> {
+    let max = max_matches.clamp(1, MAX_FIND_RESULTS);
+    let mut out = Vec::new();
+    walk_clickable(&snapshot.root, "", max, &mut out);
+    out
+}
+
+fn walk_clickable(node: &UiNode, path: &str, max: usize, out: &mut Vec<UiElementMatch>) {
+    if out.len() >= max {
+        return;
+    }
+    if node.clickable && center_from_bounds(&node.bounds).is_some() {
+        push_match(node, path.to_string(), out);
+    }
+    for (i, c) in node.children.iter().enumerate() {
+        if out.len() >= max {
+            break;
+        }
+        let child_path = if path.is_empty() {
+            i.to_string()
+        } else {
+            format!("{path}.{i}")
+        };
+        walk_clickable(c, &child_path, max, out);
+    }
 }
 
 /// Normalizes a layout `tree_path`: trim, drop empty dot segments; each segment must be a non-negative integer index.
@@ -559,6 +915,278 @@ pub fn parent_layout_path(path: &str) -> Option<String> {
     } else {
         Some(parts[..parts.len() - 1].join("."))
     }
+}
+
+pub fn resolve_tap_element_target(
+    snapshot: &UiHierarchySnapshot,
+    p: &UiTapElementParams,
+) -> Result<ResolvedElementTarget, String> {
+    let tree_path = normalize_tree_path(&p.tree_path)?;
+    let node = get_node_at_path(&snapshot.root, &tree_path)
+        .ok_or_else(|| format!("no node at tree_path {tree_path:?} in current hierarchy"))?;
+    if !node.enabled {
+        return Err(format!("node at tree_path {tree_path:?} is disabled"));
+    }
+    let (x, y) = center_from_bounds(&node.bounds).ok_or_else(|| {
+        format!(
+            "node at tree_path {tree_path:?} has invalid bounds {}",
+            node.bounds
+        )
+    })?;
+    validate_coordinates(x, y)?;
+    Ok(ResolvedElementTarget {
+        tree_path,
+        x,
+        y,
+        class: truncate_field(&node.class),
+        text: truncate_field(&node.text),
+        content_desc: truncate_field(&node.content_desc),
+        resource_id: truncate_field(&node.resource_id),
+        enabled: node.enabled,
+        clickable: node.clickable,
+        editable: node.editable,
+    })
+}
+
+/// Resolve the tap target for `ui_fill_input`, requiring either tree_path or x/y.
+pub fn resolve_fill_input_target(
+    snapshot: &UiHierarchySnapshot,
+    p: &UiFillInputParams,
+) -> Result<ResolvedInputTarget, String> {
+    let has_tree_path = p
+        .tree_path
+        .as_ref()
+        .is_some_and(|path| !path.trim().is_empty());
+    let has_any_coord = p.x.is_some() || p.y.is_some();
+
+    if has_tree_path && has_any_coord {
+        return Err("use either tree_path or x/y for ui_fill_input, not both".to_string());
+    }
+    if !has_tree_path && !has_any_coord {
+        return Err("ui_fill_input requires tree_path or both x and y".to_string());
+    }
+
+    if has_tree_path {
+        let raw_path = p.tree_path.as_deref().unwrap_or_default();
+        let tree_path = normalize_tree_path(raw_path)?;
+        let node = get_node_at_path(&snapshot.root, &tree_path)
+            .ok_or_else(|| format!("no node at tree_path {tree_path:?} in current hierarchy"))?;
+        if !node.enabled {
+            return Err(format!("node at tree_path {tree_path:?} is disabled"));
+        }
+        let class_is_input = node.class.to_lowercase().contains("edittext");
+        if !node.editable && !class_is_input {
+            return Err(format!(
+                "node at tree_path {tree_path:?} is not editable; use an EditText/input node"
+            ));
+        }
+        let (x, y) = center_from_bounds(&node.bounds).ok_or_else(|| {
+            format!(
+                "node at tree_path {tree_path:?} has invalid bounds {}",
+                node.bounds
+            )
+        })?;
+        validate_coordinates(x, y)?;
+        return Ok(ResolvedInputTarget {
+            tree_path: Some(tree_path),
+            x,
+            y,
+            class: truncate_field(&node.class),
+            resource_id: truncate_field(&node.resource_id),
+        });
+    }
+
+    validate_tap_coordinate_pair(p.x, p.y)?;
+    let (x, y) = (p.x.unwrap_or_default(), p.y.unwrap_or_default());
+    validate_coordinates(x, y)?;
+    Ok(ResolvedInputTarget {
+        tree_path: None,
+        x,
+        y,
+        class: String::new(),
+        resource_id: String::new(),
+    })
+}
+
+fn parse_bounds_rect(bounds: &str) -> Option<(i32, i32, i32, i32)> {
+    let s = bounds.replace("][", ",").replace(['[', ']'], "");
+    let parts: Vec<i32> = s.split(',').filter_map(|p| p.trim().parse().ok()).collect();
+    if parts.len() != 4 {
+        return None;
+    }
+    if parts[2] <= parts[0] || parts[3] <= parts[1] {
+        return None;
+    }
+    Some((parts[0], parts[1], parts[2], parts[3]))
+}
+
+fn first_positive_bounds_rect(node: &UiNode) -> Option<(i32, i32, i32, i32)> {
+    if let Some(rect) = parse_bounds_rect(&node.bounds) {
+        return Some(rect);
+    }
+    for child in &node.children {
+        if let Some(rect) = first_positive_bounds_rect(child) {
+            return Some(rect);
+        }
+    }
+    None
+}
+
+pub fn resolve_scroll_swipe(
+    snapshot: &UiHierarchySnapshot,
+    p: &UiScrollUntilElementParams,
+) -> Result<ResolvedSwipe, String> {
+    let explicit_count = [p.x1, p.y1, p.x2, p.y2]
+        .iter()
+        .filter(|v| v.is_some())
+        .count();
+    let duration_ms = p.duration_ms.unwrap_or(300).min(30_000);
+    if explicit_count > 0 {
+        if explicit_count != 4 {
+            return Err("x1, y1, x2, and y2 must all be set or all omitted".to_string());
+        }
+        let swipe = ResolvedSwipe {
+            x1: p.x1.unwrap_or_default(),
+            y1: p.y1.unwrap_or_default(),
+            x2: p.x2.unwrap_or_default(),
+            y2: p.y2.unwrap_or_default(),
+            duration_ms,
+        };
+        validate_coordinates(swipe.x1, swipe.y1)?;
+        validate_coordinates(swipe.x2, swipe.y2)?;
+        return Ok(swipe);
+    }
+
+    let (left, top, right, bottom) =
+        first_positive_bounds_rect(&snapshot.root).ok_or_else(|| {
+            format!(
+                "cannot infer scroll coordinates from hierarchy root bounds {}",
+                snapshot.root.bounds
+            )
+        })?;
+    let width = right - left;
+    let height = bottom - top;
+    let x = left + width / 2;
+    Ok(ResolvedSwipe {
+        x1: x,
+        y1: top + (height * 75) / 100,
+        x2: x,
+        y2: top + (height * 35) / 100,
+        duration_ms,
+    })
+}
+
+pub fn find_params_from_scroll_until(p: &UiScrollUntilElementParams) -> FindUiElementsParams {
+    FindUiElementsParams {
+        device_serial: p.device_serial.clone(),
+        text_contains: p.text_contains.clone(),
+        text_equals: p.text_equals.clone(),
+        content_desc_contains: p.content_desc_contains.clone(),
+        resource_id_equals: p.resource_id_equals.clone(),
+        resource_id_contains: p.resource_id_contains.clone(),
+        class_contains: p.class_contains.clone(),
+        package_equals: p.package_equals.clone(),
+        clickable_only: p.clickable_only,
+        editable_only: p.editable_only,
+        enabled_only: p.enabled_only,
+        require_positive_bounds: Some(true),
+        max_results: p.max_results,
+    }
+}
+
+pub fn find_params_from_assert(p: &UiAssertElementParams) -> FindUiElementsParams {
+    FindUiElementsParams {
+        device_serial: p.device_serial.clone(),
+        text_contains: p.text_contains.clone(),
+        text_equals: p.text_equals.clone(),
+        content_desc_contains: p.content_desc_contains.clone(),
+        resource_id_equals: p.resource_id_equals.clone(),
+        resource_id_contains: p.resource_id_contains.clone(),
+        class_contains: p.class_contains.clone(),
+        package_equals: p.package_equals.clone(),
+        clickable_only: None,
+        editable_only: None,
+        enabled_only: None,
+        require_positive_bounds: Some(true),
+        max_results: p.max_results,
+    }
+}
+
+fn match_satisfies_assertion(m: &UiElementMatch, p: &UiAssertElementParams) -> bool {
+    if p.expect_clickable.is_some_and(|want| m.clickable != want) {
+        return false;
+    }
+    if p.expect_editable.is_some_and(|want| m.editable != want) {
+        return false;
+    }
+    if p.expect_enabled.is_some_and(|want| m.enabled != want) {
+        return false;
+    }
+    if p.expect_focused.is_some_and(|want| m.focused != want) {
+        return false;
+    }
+    if p.expect_checked.is_some_and(|want| m.checked != want) {
+        return false;
+    }
+    if p.expect_selected.is_some_and(|want| m.selected != want) {
+        return false;
+    }
+    true
+}
+
+pub fn assert_ui_element_state(
+    snapshot: &UiHierarchySnapshot,
+    p: &UiAssertElementParams,
+    max_matches: usize,
+) -> Result<UiAssertElementOutcome, String> {
+    let q = find_params_from_assert(p);
+    if !find_query_has_primary_filter(&q) {
+        return Err(
+            "ui_assert_element requires at least one primary filter: textContains, textEquals, contentDescContains, resourceIdEquals, resourceIdContains, classContains, or packageEquals."
+                .to_string(),
+        );
+    }
+
+    let matches = find_ui_elements(snapshot, &q, max_matches);
+    let should_exist = p.should_exist.unwrap_or(true);
+    if !should_exist {
+        if matches.is_empty() {
+            return Ok(UiAssertElementOutcome {
+                passed: true,
+                message: "no matching element exists".to_string(),
+                match_count: 0,
+                satisfied_count: 0,
+                matches,
+            });
+        }
+        return Err(format!(
+            "expected no matching element, but found {}",
+            matches.len()
+        ));
+    }
+
+    if matches.is_empty() {
+        return Err("expected matching element, but none was found".to_string());
+    }
+
+    let satisfied_count = matches
+        .iter()
+        .filter(|m| match_satisfies_assertion(m, p))
+        .count();
+    if satisfied_count == 0 {
+        return Err(format!(
+            "no matching element satisfied expected state; {} candidate(s) found",
+            matches.len()
+        ));
+    }
+
+    Ok(UiAssertElementOutcome {
+        passed: true,
+        message: format!("{satisfied_count} matching element(s) satisfied expected state"),
+        match_count: matches.len(),
+        satisfied_count,
+        matches,
+    })
 }
 
 /// Parameters for `compare_ui_state` MCP tool.
@@ -628,6 +1256,9 @@ fn ui_element_match_from_node(node: &UiNode, tree_path: String) -> UiElementMatc
         scrollable: node.scrollable,
         focusable: node.focusable,
         focused: node.focused,
+        long_clickable: node.long_clickable,
+        checked: node.checked,
+        selected: node.selected,
     }
 }
 
@@ -831,6 +1462,295 @@ pub async fn adb_keyevent(adb: &PathBuf, serial: &str, keycode: i32) -> Result<S
     run_adb_shell(adb, serial, &["input", "keyevent", &keycode.to_string()]).await
 }
 
+/// Parse common `dumpsys input_method` visibility signals.
+pub fn parse_soft_keyboard_visible(output: &str) -> Option<bool> {
+    for raw_line in output.lines() {
+        let line = raw_line.trim().replace(' ', "");
+        for key in ["mInputShown=", "inputShown=", "imeWindowVis="] {
+            if let Some(rest) = line.strip_prefix(key) {
+                if rest.starts_with("true") {
+                    return Some(true);
+                }
+                if rest.starts_with("false") {
+                    return Some(false);
+                }
+            }
+        }
+        if line.contains("mInputShown=true") || line.contains("inputShown=true") {
+            return Some(true);
+        }
+        if line.contains("mInputShown=false") || line.contains("inputShown=false") {
+            return Some(false);
+        }
+    }
+    None
+}
+
+pub fn validate_deep_link_uri(uri: &str) -> Result<(), String> {
+    let trimmed = uri.trim();
+    if trimmed.is_empty() {
+        return Err("uri must not be empty".to_string());
+    }
+    if trimmed.len() > 2048 {
+        return Err("uri too long (max 2048 bytes)".to_string());
+    }
+    if trimmed.chars().any(|c| c.is_ascii_control()) {
+        return Err("uri must not contain control characters".to_string());
+    }
+    let Some(colon_idx) = trimmed.find(':') else {
+        return Err("uri must include a scheme, e.g. myapp://path".to_string());
+    };
+    let scheme = &trimmed[..colon_idx];
+    let mut chars = scheme.chars();
+    let Some(first) = chars.next() else {
+        return Err("uri scheme must not be empty".to_string());
+    };
+    if !first.is_ascii_alphabetic() {
+        return Err("uri scheme must start with an ASCII letter".to_string());
+    }
+    if !chars.all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.') {
+        return Err("uri scheme contains invalid characters".to_string());
+    }
+    Ok(())
+}
+
+pub fn build_open_deep_link_args(uri: &str, package: Option<&str>) -> Vec<String> {
+    let mut args = vec![
+        "am".to_string(),
+        "start".to_string(),
+        "-a".to_string(),
+        "android.intent.action.VIEW".to_string(),
+        "-d".to_string(),
+        uri.to_string(),
+    ];
+    if let Some(pkg) = package {
+        args.push("-p".to_string());
+        args.push(pkg.to_string());
+    }
+    args
+}
+
+pub fn build_open_app_settings_args(package: &str, panel: &str) -> Result<Vec<String>, String> {
+    let normalized = panel.trim().to_lowercase().replace(['-', '_'], "");
+    match normalized.as_str() {
+        "" | "appinfo" | "permissions" => Ok(vec![
+            "am".to_string(),
+            "start".to_string(),
+            "-a".to_string(),
+            "android.settings.APPLICATION_DETAILS_SETTINGS".to_string(),
+            "-d".to_string(),
+            format!("package:{package}"),
+        ]),
+        "notification" | "notifications" => Ok(vec![
+            "am".to_string(),
+            "start".to_string(),
+            "-a".to_string(),
+            "android.settings.APP_NOTIFICATION_SETTINGS".to_string(),
+            "--es".to_string(),
+            "android.provider.extra.APP_PACKAGE".to_string(),
+            package.to_string(),
+        ]),
+        _ => Err("panel must be appInfo, permissions, or notifications".to_string()),
+    }
+}
+
+pub fn resolve_orientation_mode(raw: &str) -> Result<OrientationMode, String> {
+    let normalized = raw.trim().to_lowercase().replace(['-', '_'], "");
+    match normalized.as_str() {
+        "auto" => Ok(OrientationMode::Auto),
+        "portrait" => Ok(OrientationMode::Fixed(0)),
+        "landscape" => Ok(OrientationMode::Fixed(1)),
+        "reverseportrait" => Ok(OrientationMode::Fixed(2)),
+        "reverselandscape" => Ok(OrientationMode::Fixed(3)),
+        _ => Err(
+            "orientation must be portrait, landscape, reversePortrait, reverseLandscape, or auto"
+                .to_string(),
+        ),
+    }
+}
+
+pub fn build_network_state_steps(
+    p: &SetNetworkStateParams,
+) -> Result<Vec<AdbShellStepSpec>, String> {
+    if p.wifi.is_none() && p.mobile_data.is_none() && p.airplane_mode.is_none() {
+        return Err(
+            "set_network_state requires at least one of wifi, mobileData, or airplaneMode"
+                .to_string(),
+        );
+    }
+    let mut steps = Vec::new();
+    if let Some(enabled) = p.airplane_mode {
+        let cmd_state = if enabled { "enable" } else { "disable" };
+        let setting_state = if enabled { "1" } else { "0" };
+        steps.push(AdbShellStepSpec {
+            label: "airplaneMode",
+            args: vec!["cmd", "connectivity", "airplane-mode", cmd_state],
+        });
+        steps.push(AdbShellStepSpec {
+            label: "airplaneModeFallbackSetting",
+            args: vec![
+                "settings",
+                "put",
+                "global",
+                "airplane_mode_on",
+                setting_state,
+            ],
+        });
+    }
+    if let Some(enabled) = p.wifi {
+        steps.push(AdbShellStepSpec {
+            label: "wifi",
+            args: vec!["svc", "wifi", if enabled { "enable" } else { "disable" }],
+        });
+    }
+    if let Some(enabled) = p.mobile_data {
+        steps.push(AdbShellStepSpec {
+            label: "mobileData",
+            args: vec!["svc", "data", if enabled { "enable" } else { "disable" }],
+        });
+    }
+    Ok(steps)
+}
+
+async fn run_adb_shell_owned(
+    adb: &PathBuf,
+    serial: &str,
+    args: &[String],
+) -> Result<String, String> {
+    let args_ref: Vec<&str> = args.iter().map(String::as_str).collect();
+    run_adb_shell(adb, serial, &args_ref).await
+}
+
+async fn run_adb_shell_step(
+    adb: &PathBuf,
+    serial: &str,
+    label: &str,
+    args: &[&str],
+) -> AdbShellStep {
+    match run_adb_shell(adb, serial, args).await {
+        Ok(output) => AdbShellStep {
+            label: label.to_string(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            success: true,
+            output,
+        },
+        Err(output) => AdbShellStep {
+            label: label.to_string(),
+            args: args.iter().map(|s| s.to_string()).collect(),
+            success: false,
+            output,
+        },
+    }
+}
+
+pub async fn adb_open_deep_link(
+    adb: &PathBuf,
+    serial: &str,
+    uri: &str,
+    package: Option<&str>,
+) -> Result<String, String> {
+    validate_deep_link_uri(uri)?;
+    let args = build_open_deep_link_args(uri, package);
+    run_adb_shell_owned(adb, serial, &args).await
+}
+
+pub async fn adb_open_app_settings(
+    adb: &PathBuf,
+    serial: &str,
+    package: &str,
+    panel: Option<&str>,
+) -> Result<String, String> {
+    let args = build_open_app_settings_args(package, panel.unwrap_or("appInfo"))?;
+    run_adb_shell_owned(adb, serial, &args).await
+}
+
+pub async fn adb_set_device_orientation(
+    adb: &PathBuf,
+    serial: &str,
+    orientation: &str,
+) -> Result<Vec<AdbShellStep>, String> {
+    let mode = resolve_orientation_mode(orientation)?;
+    let mut steps = Vec::new();
+    match mode {
+        OrientationMode::Auto => {
+            steps.push(
+                run_adb_shell_step(
+                    adb,
+                    serial,
+                    "accelerometerRotation",
+                    &["settings", "put", "system", "accelerometer_rotation", "1"],
+                )
+                .await,
+            );
+        }
+        OrientationMode::Fixed(rotation) => {
+            steps.push(
+                run_adb_shell_step(
+                    adb,
+                    serial,
+                    "accelerometerRotation",
+                    &["settings", "put", "system", "accelerometer_rotation", "0"],
+                )
+                .await,
+            );
+            let rotation = rotation.to_string();
+            steps.push(
+                run_adb_shell_step(
+                    adb,
+                    serial,
+                    "userRotation",
+                    &["settings", "put", "system", "user_rotation", &rotation],
+                )
+                .await,
+            );
+        }
+    }
+    if steps.iter().any(|s| !s.success) {
+        return Err(format!("orientation command failed: {:?}", steps));
+    }
+    Ok(steps)
+}
+
+pub async fn adb_set_network_state(
+    adb: &PathBuf,
+    serial: &str,
+    p: &SetNetworkStateParams,
+) -> Result<Vec<AdbShellStep>, String> {
+    let step_specs = build_network_state_steps(p)?;
+    let mut steps = Vec::with_capacity(step_specs.len());
+    for spec in step_specs {
+        steps.push(run_adb_shell_step(adb, serial, spec.label, &spec.args).await);
+    }
+    Ok(steps)
+}
+
+pub async fn adb_hide_soft_keyboard(
+    adb: &PathBuf,
+    serial: &str,
+    force: bool,
+) -> Result<HideSoftKeyboardOutcome, String> {
+    let visibility_dump = run_adb_shell(adb, serial, &["dumpsys", "input_method"]).await?;
+    let visible = parse_soft_keyboard_visible(&visibility_dump);
+    if visible == Some(true) || (visible.is_none() && force) {
+        adb_keyevent(adb, serial, resolve_ui_key_code("Back")?).await?;
+        return Ok(HideSoftKeyboardOutcome {
+            keyboard_visible: visible,
+            back_sent: true,
+            message: "soft keyboard hide requested with Back".to_string(),
+        });
+    }
+    Ok(HideSoftKeyboardOutcome {
+        keyboard_visible: visible,
+        back_sent: false,
+        message: if visible == Some(false) {
+            "soft keyboard was not visible".to_string()
+        } else {
+            "soft keyboard visibility could not be detected; set force=true to send Back"
+                .to_string()
+        },
+    })
+}
+
 /// Shell pipeline to set the device clipboard: try Clipper broadcast, then `content insert`.
 /// Must not end with a forced success (`|| true`); otherwise paste can succeed while the
 /// clipboard still holds stale text.
@@ -884,6 +1804,16 @@ pub async fn adb_pm_grant(
 ) -> Result<String, String> {
     validate_runtime_permission(permission)?;
     run_adb_shell(adb, serial, &["pm", "grant", package, permission]).await
+}
+
+pub async fn adb_pm_revoke(
+    adb: &PathBuf,
+    serial: &str,
+    package: &str,
+    permission: &str,
+) -> Result<String, String> {
+    validate_runtime_permission(permission)?;
+    run_adb_shell(adb, serial, &["pm", "revoke", package, permission]).await
 }
 
 /// Select all text in the focused field (Ctrl+A) then delete it.
@@ -1002,6 +1932,261 @@ mod tests {
         assert!(!find_query_has_primary_filter(&q));
         let m = find_ui_elements(&snap, &q, 10);
         assert!(m.is_empty());
+    }
+
+    #[test]
+    fn collect_clickable_nodes_returns_click_targets_without_primary_filter() {
+        let snap = sample_snapshot();
+
+        let clickable = collect_clickable_nodes(&snap, 10);
+
+        assert_eq!(clickable.len(), 1);
+        assert_eq!(clickable[0].text, "OK");
+        assert_eq!(clickable[0].resource_id, "com.example.app:id/ok");
+        assert!(clickable[0].clickable);
+    }
+
+    #[test]
+    fn resolve_fill_input_target_requires_exactly_one_target_kind() {
+        let snap = sample_snapshot();
+
+        let missing = UiFillInputParams {
+            text: "hello".to_string(),
+            ..Default::default()
+        };
+        assert!(resolve_fill_input_target(&snap, &missing).is_err());
+
+        let both = UiFillInputParams {
+            text: "hello".to_string(),
+            tree_path: Some("0.1".to_string()),
+            x: Some(10),
+            y: Some(20),
+            ..Default::default()
+        };
+        assert!(resolve_fill_input_target(&snap, &both).is_err());
+    }
+
+    #[test]
+    fn resolve_fill_input_target_uses_editable_tree_path_center() {
+        let xml = r#"<?xml version='1.0'?><hierarchy><node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="p" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[0,0][100,100]"><node index="0" text="" resource-id="p:id/name" class="android.widget.EditText" package="p" content-desc="" checkable="false" checked="false" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[10,20][90,60]"/></node></hierarchy>"#;
+        let out = parse_hierarchy_xml(xml);
+        let snap = UiHierarchySnapshot {
+            captured_at: "t".to_string(),
+            truncated: false,
+            warnings: vec![],
+            root: out.root,
+            screen_hash: "h".to_string(),
+            interactive_count: 0,
+            foreground_activity: None,
+            layout_context: UiLayoutContext::default(),
+            command_log: vec![],
+            screenshot_b64: None,
+        };
+        let params = UiFillInputParams {
+            text: "hello".to_string(),
+            tree_path: Some("0.0".to_string()),
+            ..Default::default()
+        };
+
+        let target = resolve_fill_input_target(&snap, &params).unwrap();
+
+        assert_eq!(target.x, 50);
+        assert_eq!(target.y, 40);
+        assert_eq!(target.tree_path.as_deref(), Some("0.0"));
+    }
+
+    #[test]
+    fn parse_soft_keyboard_visibility_from_dumpsys_input_method() {
+        assert_eq!(
+            parse_soft_keyboard_visible("mInputShown=true\nmCurMethodId=com.example/.Ime"),
+            Some(true)
+        );
+        assert_eq!(
+            parse_soft_keyboard_visible("mInputShown=false\nmCurMethodId=com.example/.Ime"),
+            Some(false)
+        );
+        assert_eq!(
+            parse_soft_keyboard_visible("  inputShown=true\n"),
+            Some(true)
+        );
+        assert_eq!(parse_soft_keyboard_visible("no useful signal"), None);
+    }
+
+    #[test]
+    fn resolve_tap_element_target_uses_tree_path_center() {
+        let snap = sample_snapshot();
+        let params = UiTapElementParams {
+            tree_path: "0.1".to_string(),
+            ..Default::default()
+        };
+
+        let target = resolve_tap_element_target(&snap, &params).unwrap();
+
+        assert_eq!(target.tree_path, "0.1");
+        assert_eq!(target.x, (800 + 1032) / 2);
+        assert_eq!(target.y, (2100 + 2320) / 2);
+        assert_eq!(target.text, "OK");
+    }
+
+    #[test]
+    fn default_scroll_swipe_uses_root_bounds() {
+        let snap = sample_snapshot();
+
+        let swipe = resolve_scroll_swipe(&snap, &UiScrollUntilElementParams::default()).unwrap();
+
+        assert_eq!(swipe.x1, 540);
+        assert_eq!(swipe.x2, 540);
+        assert_eq!(swipe.y1, 1800);
+        assert_eq!(swipe.y2, 840);
+    }
+
+    #[test]
+    fn scroll_until_element_params_convert_to_find_query() {
+        let params = UiScrollUntilElementParams {
+            text_contains: Some("Settings".to_string()),
+            enabled_only: Some(true),
+            ..Default::default()
+        };
+
+        let q = find_params_from_scroll_until(&params);
+
+        assert_eq!(q.text_contains.as_deref(), Some("Settings"));
+        assert_eq!(q.enabled_only, Some(true));
+        assert!(find_query_has_primary_filter(&q));
+    }
+
+    #[test]
+    fn assert_element_passes_when_any_match_satisfies_expected_flags() {
+        let snap = sample_snapshot();
+        let params = UiAssertElementParams {
+            text_equals: Some("OK".to_string()),
+            expect_clickable: Some(true),
+            expect_enabled: Some(true),
+            ..Default::default()
+        };
+
+        let outcome = assert_ui_element_state(&snap, &params, 10).unwrap();
+
+        assert!(outcome.passed);
+        assert_eq!(outcome.match_count, 1);
+    }
+
+    #[test]
+    fn assert_element_fails_when_expected_flags_do_not_match() {
+        let snap = sample_snapshot();
+        let params = UiAssertElementParams {
+            text_equals: Some("OK".to_string()),
+            expect_focused: Some(true),
+            ..Default::default()
+        };
+
+        let err = assert_ui_element_state(&snap, &params, 10).unwrap_err();
+
+        assert!(err.contains("no matching element satisfied expected state"));
+    }
+
+    #[test]
+    fn wait_for_idle_config_clamps_poll_counts_and_timeout() {
+        let params = UiWaitForIdleParams {
+            stable_polls: Some(1),
+            poll_interval_ms: Some(50),
+            timeout_ms: Some(60_000),
+            ..Default::default()
+        };
+
+        let cfg = WaitForIdleConfig::from_params(&params);
+
+        assert_eq!(cfg.stable_polls, 2);
+        assert_eq!(cfg.poll_interval_ms, 200);
+        assert_eq!(cfg.timeout_ms, 30_000);
+    }
+
+    #[test]
+    fn validate_deep_link_uri_accepts_common_schemes_and_rejects_bad_input() {
+        assert!(validate_deep_link_uri("https://example.com/path").is_ok());
+        assert!(validate_deep_link_uri("myapp://profile/42").is_ok());
+        assert!(validate_deep_link_uri("missing-scheme").is_err());
+        assert!(validate_deep_link_uri("myapp://bad\npath").is_err());
+    }
+
+    #[test]
+    fn build_open_deep_link_args_includes_optional_package() {
+        let args = build_open_deep_link_args("myapp://profile/42", Some("com.example.app"));
+
+        assert_eq!(
+            args,
+            vec![
+                "am",
+                "start",
+                "-a",
+                "android.intent.action.VIEW",
+                "-d",
+                "myapp://profile/42",
+                "-p",
+                "com.example.app"
+            ]
+        );
+    }
+
+    #[test]
+    fn build_open_app_settings_args_supports_app_info_and_notifications() {
+        let app_info = build_open_app_settings_args("com.example.app", "appInfo").unwrap();
+        assert_eq!(
+            app_info,
+            vec![
+                "am",
+                "start",
+                "-a",
+                "android.settings.APPLICATION_DETAILS_SETTINGS",
+                "-d",
+                "package:com.example.app"
+            ]
+        );
+
+        let notifications =
+            build_open_app_settings_args("com.example.app", "notifications").unwrap();
+        assert!(notifications.contains(&"android.settings.APP_NOTIFICATION_SETTINGS".to_string()));
+        assert!(notifications.contains(&"android.provider.extra.APP_PACKAGE".to_string()));
+    }
+
+    #[test]
+    fn resolve_orientation_mode_maps_fixed_and_auto_modes() {
+        assert_eq!(
+            resolve_orientation_mode("portrait").unwrap(),
+            OrientationMode::Fixed(0)
+        );
+        assert_eq!(
+            resolve_orientation_mode("landscape").unwrap(),
+            OrientationMode::Fixed(1)
+        );
+        assert_eq!(
+            resolve_orientation_mode("auto").unwrap(),
+            OrientationMode::Auto
+        );
+        assert!(resolve_orientation_mode("sideways").is_err());
+    }
+
+    #[test]
+    fn build_network_state_steps_requires_a_toggle_and_orders_commands() {
+        assert!(build_network_state_steps(&SetNetworkStateParams::default()).is_err());
+
+        let params = SetNetworkStateParams {
+            wifi: Some(false),
+            mobile_data: Some(true),
+            airplane_mode: Some(false),
+            ..Default::default()
+        };
+        let steps = build_network_state_steps(&params).unwrap();
+
+        assert_eq!(steps.len(), 4);
+        assert_eq!(steps[0].label, "airplaneMode");
+        assert_eq!(
+            steps[0].args,
+            vec!["cmd", "connectivity", "airplane-mode", "disable"]
+        );
+        assert_eq!(steps[1].label, "airplaneModeFallbackSetting");
+        assert_eq!(steps[2].args, vec!["svc", "wifi", "disable"]);
+        assert_eq!(steps[3].args, vec!["svc", "data", "enable"]);
     }
 
     #[test]
