@@ -12,6 +12,7 @@ import { openMcpPanel } from "@/components/mcp/McpPanel";
 import { Icon } from "@/components/ui";
 import { appMemoryBytes, logFolderBytes, rotationTriggered } from "@/stores/monitor.store";
 import { settingsState } from "@/stores/settings.store";
+import { AppUpdateStatusIndicator } from "@/components/update/AppUpdateStatusIndicator";
 
 async function startDrag(e: MouseEvent) {
   if (e.button !== 0) return;
@@ -453,6 +454,9 @@ export function StatusBar(): JSX.Element {
 
         {/* MCP server indicator */}
         <McpStatusIndicator />
+
+        {/* App update indicator */}
+        <AppUpdateStatusIndicator />
 
         {/* Variant selector */}
         <Show when={projectState.projectName}>
