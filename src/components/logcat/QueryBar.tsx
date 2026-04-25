@@ -39,6 +39,7 @@ import {
   serializeQueryBarCommittedPart,
   insertPillAtGroupPosition,
   applyInlineEditCommit,
+  commitQueryBarDraft,
 } from "@/lib/logcat-query";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -365,6 +366,18 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
         props.onChange("");
       }
       return;
+    }
+
+    if (e.key === "Enter" && draft().trim() !== "") {
+      const selectedSuggestion = open() ? suggs[selectedIdx()] : undefined;
+      if (!selectedSuggestion) {
+        e.preventDefault();
+        const next = commitQueryBarDraft(committed(), draft());
+        props.onChange(buildQuery(next, ""));
+        setOpen(false);
+        setSelectedIdx(0);
+        return;
+      }
     }
 
     if (!open() || suggs.length === 0) {

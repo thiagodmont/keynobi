@@ -197,6 +197,7 @@ Shows all error-or-above logs from `MyApp` **or** any crash entry from any proce
 
 **Building compound filters:**
 - Click **+ AND** to append `&&` to the active group (makes the AND relationship explicit).
+- Press **Enter** after typing a condition to commit it as a filter pill. If an autocomplete suggestion is highlighted, Enter accepts that suggestion first.
 - Click **+ OR** to start a new OR group with ` | `.
 - You can mix both: `tag:App && level:warn | is:crash | package:mine && age:5m`.
 - The query bar shows an **N OR** badge when multiple OR groups are active.

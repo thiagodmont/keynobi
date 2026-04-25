@@ -691,6 +691,23 @@ export function pasteIntoMessageKeyDraft(
   return { newDraft, cursor: prefix.length + wrapped.length };
 }
 
+/**
+ * Commit the current QueryBar draft into the committed pill array.
+ *
+ * Enter uses this when it is not accepting an autocomplete suggestion. Message
+ * drafts are quote-balanced first so `message:"hello world` becomes one pill
+ * instead of remaining an unterminated draft.
+ */
+export function commitQueryBarDraft(committed: string[], draft: string): string[] {
+  const balanced = balanceMessageDraftQuotes(draft.trim());
+  if (!balanced) return committed;
+
+  const pieces = splitRawQueryParts(balanced);
+  if (pieces.length === 0) return committed;
+
+  return [...committed, ...pieces];
+}
+
 function normalizeGroupParenTokens(group: string[]): string[] {
   if (group.length === 0) return group;
   const result = [...group];
