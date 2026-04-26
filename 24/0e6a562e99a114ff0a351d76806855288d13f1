@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "240e6a562e99a114ff0a351d76806855288d13f1",
+  "prompts": {
+    "62ecf3491096bc70": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dbce5-2c61-7f21-992f-a3d9e2ea38fb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
