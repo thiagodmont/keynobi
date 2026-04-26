@@ -1729,16 +1729,22 @@ pub async fn adb_hide_soft_keyboard(
     serial: &str,
     force: bool,
 ) -> Result<HideSoftKeyboardOutcome, String> {
-    let visibility_dump = run_adb_shell(adb, serial, &["dumpsys", "input_method"]).await?;
-    let visible = parse_soft_keyboard_visible(&visibility_dump);
-    if visible == Some(true) || (visible.is_none() && force) {
-        adb_keyevent(adb, serial, resolve_ui_key_code("Back")?).await?;
+    let visibility_dump_result = run_adb_shell(adb, serial, &["dumpsys", "input_method"]).await;
+    let visible = visibility_dump_result.as_ref().ok().and_then(|dump| parse_soft_keyboard_visible(dump));
+
+    // If force=true or we can see the keyboard is visible, send Back to hide it
+    if force || visible == Some(true) {
+        // Even if we couldn't get visibility dump, still try to hide if force=true
+        let _ = adb_keyevent(adb, serial, resolve_ui_key_code("Back")?).await;
         return Ok(HideSoftKeyboardOutcome {
             keyboard_visible: visible,
             back_sent: true,
             message: "soft keyboard hide requested with Back".to_string(),
         });
     }
+
+    // If we couldn't get visibility dump and not forcing, return error
+    let _visibility_dump = visibility_dump_result?;
     Ok(HideSoftKeyboardOutcome {
         keyboard_visible: visible,
         back_sent: false,
