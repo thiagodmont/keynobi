@@ -1160,10 +1160,18 @@ impl AndroidMcpServer {
         let max = p
             .max_results
             .unwrap_or(ui_automation::MAX_FIND_RESULTS as u32) as usize;
-        let mut matches = ui_automation::collect_clickable_nodes(&snapshot, max);
+        let mut matches = if p.enabled_only.unwrap_or(false) {
+            // When filtering for enabled elements, collect more candidates first
+            // to avoid truncating potentially valid enabled elements that appear later
+            ui_automation::collect_clickable_nodes(&snapshot, ui_automation::MAX_FIND_RESULTS)
+        } else {
+            ui_automation::collect_clickable_nodes(&snapshot, max)
+        };
         if p.enabled_only.unwrap_or(false) {
             matches.retain(|m| m.enabled);
         }
+        // Apply final limit after filtering
+        matches.truncate(max);
         let matches_json: Vec<serde_json::Value> = matches
             .iter()
             .filter_map(|m| serde_json::to_value(m).ok())
