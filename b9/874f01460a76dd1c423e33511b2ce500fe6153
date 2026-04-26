@@ -1,0 +1,36 @@
+src-tauri/src/services/ui_automation.rs
+  7e24b946b950df9e 1738,1741-1746
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "b9874f01460a76dd1c423e33511b2ce500fe6153",
+  "prompts": {
+    "62ecf3491096bc70": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dbce5-2c61-7f21-992f-a3d9e2ea38fb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "7e24b946b950df9e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d00b7d5-02e7-49ed-95bc-0a291921411b",
+        "model": "nvidia/nemotron-3-super-120b-a12b:free"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 3,
+      "accepted_lines": 7,
+      "overriden_lines": 0
+    }
+  }
+}
