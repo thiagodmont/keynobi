@@ -111,7 +111,15 @@ This project has a Repowise MCP server configured. **ALWAYS use these tools befo
 
 ### Codebase Conventions
 **Architectural Decisions:**
-- **Auto-apply package:mine filter in LogcatPanel after successful deploy**: Using a timestamp in the existing build store follows the same pattern as deployPhase — service laye.- **Auto-reconnect logcat stream on unexpected ADB server restart**: ADB uses a server-client model: only one ADB server runs at a time, and Android Studio ships its own.- **Batch-flush build log lines every 50ms instead of immediate per-line updates**: Batching coalesces many rapid store writes into a single reactive update, reducing render pressure. .- **Build history side panel — left-strip layout (Android Studio style)**: Side-panel layout mirrors Android Studio's build output experience which Android developers are alre.- **Cumulative scrollCompensate accumulator for VirtualList eviction compensation**: A reset-to-zero approach (passing the delta directly) would fail when the same eviction size repeats.- **LogEntryDetailPanel renders outside VirtualList (sibling in flex column)**: Rendering inside the VirtualList would require measuring DOM heights to recalculate totalHeight and .- **Re-sync package:mine filter when applicationId resolves after startup race**: projectState.applicationId is already a reactive SolidJS store value updated by setApplicationId() i.- **Reset PipelineContext fully on logcat clear (not preserve pre-seeded PIDs)**: Clear is meant to be a fresh start, matching Android Studio semantics where clear resets everything.**Commands:**
+- **Auto-apply package:mine filter in LogcatPanel after successful deploy**: Using a timestamp in the existing build store follows the same pattern as deployPhase — service layer.
+- **Auto-reconnect logcat stream on unexpected ADB server restart**: ADB uses a server-client model: only one ADB server runs at a time, and Android Studio ships its own.
+- **Batch-flush build log lines every 50ms instead of immediate per-line updates**: Batching coalesces many rapid store writes into a single reactive update, reducing render pressure.
+- **Build history side panel — left-strip layout (Android Studio style)**: Side-panel layout mirrors Android Studio's build output experience which Android developers are already familiar with.
+- **Cumulative scrollCompensate accumulator for VirtualList eviction compensation**: A reset-to-zero approach (passing the delta directly) would fail when the same eviction size repeats.
+- **LogEntryDetailPanel renders outside VirtualList (sibling in flex column)**: Rendering inside the VirtualList would require measuring DOM heights to recalculate totalHeight and break virtualization.
+- **Re-sync package:mine filter when applicationId resolves after startup race**: projectState.applicationId is already a reactive SolidJS store value updated by setApplicationId() in the Tauri layer.
+- **Reset PipelineContext fully on logcat clear (not preserve pre-seeded PIDs)**: Clear is meant to be a fresh start, matching Android Studio semantics where clear resets everything.
+**Commands:**
 - Build: `npm run build`
 - Test: `npm run test`
 - Lint: `npm run lint`
