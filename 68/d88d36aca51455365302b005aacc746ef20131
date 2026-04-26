@@ -1,0 +1,40 @@
+.claude/CLAUDE.md
+  7e24b946b950df9e 114-122
+src-tauri/src/services/mcp_server.rs
+  7e24b946b950df9e 1163-1169,1173-1174
+src-tauri/src/services/ui_automation.rs
+  7e24b946b950df9e 1732-1738,1745-1747
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "68d88d36aca51455365302b005aacc746ef20131",
+  "prompts": {
+    "62ecf3491096bc70": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dbce5-2c61-7f21-992f-a3d9e2ea38fb",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "7e24b946b950df9e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2d00b7d5-02e7-49ed-95bc-0a291921411b",
+        "model": "nvidia/nemotron-3-super-120b-a12b:free"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 30,
+      "total_deletions": 8,
+      "accepted_lines": 28,
+      "overriden_lines": 0
+    }
+  }
+}
