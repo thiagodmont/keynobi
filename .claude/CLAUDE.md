@@ -42,21 +42,28 @@ Before editing any of these files, call `get_risk()` and proceed with extra care
 > They deliver richer context — documentation, ownership, history, decisions —
 > in a single call. Raw `read_file` calls are a last resort only.
 
-Last indexed: 2026-04-07. Confidence: 100%.
+Last indexed: 2026-04-25. Confidence: 100%.
 ### Architecture
-The repo project is a high-performance monorepo designed to bridge web-based frontend technologies with native system capabilities. By leveraging a hybrid architecture, it combines a modern **SolidJS** frontend with a **Tauri**-powered Rust backend. This setup allows the application to provide a seamless desktop experience while maintaining the developer ergonomics of a web-based stack. The repository is structured to support complex system-level operations, such as file system management, via secure Rust commands.
+repo is a high-performance monorepo project leveraging a modern hybrid architecture. It combines a **SolidJS** frontend for a reactive, efficient user interface with a **Tauri** backend written in **Rust** to provide native system capabilities. The project is designed for scalability and maintainability, utilizing a component-driven UI library and a robust testing infrastructure. With over 50,000 lines of code and a clean dependency graph (zero circular dependencies), the repository is structured to support complex application logic while maintaining high development velocity.
 ### Key Modules
 | Module | Purpose | Owner |
 |--------|---------|-------|
 | `src` | The src module serves as the primary frontend codebase for the application, buil | — |
-| `src-tauri` | The src-tauri module serves as the Rust-based backend for the application, lever | — |
-| `root` | The root module serves as the configuration and build-tooling foundation for the | — |
-| `scripts` | The scripts module serves as the automation and utility hub for the project's ma | — |
+| `src-tauri` | The src-tauri module serves as the core Rust backend for the application, provid | — |
+| `root` | The root module serves as the foundational configuration layer for the project | — |
+| `scripts` | The scripts module serves as the automation and utility hub for the project's re | — |
+| `e2e` | The e2e module serves as the end-to-end testing suite for the application | — |
 ### Entry Points
 - `src/App.tsx`
+- `e2e/fixtures/app.ts`
 - `src-tauri/src/lib.rs`
 - `src-tauri/src/main.rs`
-- `src/index.tsx`
+- `src/components/ui/Alert/index.ts`
+- `src/components/ui/Badge/index.ts`
+- `src/components/ui/Button/index.ts`
+- `src/components/ui/Checkbox/index.ts`
+- `src/components/ui/CommandPalette/index.ts`
+- `src/components/ui/CopyableText/index.ts`
 ### Tech Stack
 **Languages:** Node.js, TypeScript
 
@@ -64,11 +71,11 @@ The repo project is a high-performance monorepo designed to bridge web-based fro
 **Infra:** Vite### Hotspots (High Churn)
 | File | Churn | 90d Commits | Owner |
 |------|-------|-------------|-------|
-| `src-tauri/src/lib.rs` | 99.4th %ile | 22 | Thiago M. Dolabella |
-| `src/lib/tauri-api.ts` | 98.8th %ile | 16 | Thiago M. Dolabella |
-| `src-tauri/src/commands/file_system.rs` | 98.2th %ile | 14 | Thiago M. Dolabella |
-| `src/App.tsx` | 97.6th %ile | 13 | Thiago M. Dolabella |
-| `src-tauri/src/services/mcp_server.rs` | 97.0th %ile | 13 | Thiago M. Dolabella |
+| `src-tauri/src/lib.rs` | 99.7th %ile | 31 | Thiago M. Dolabella |
+| `src/App.tsx` | 99.4th %ile | 26 | Thiago M. Dolabella |
+| `src/lib/tauri-api.ts` | 99.1th %ile | 25 | Thiago M. Dolabella |
+| `src/components/logcat/LogcatPanel.tsx` | 98.8th %ile | 25 | Thiago M. Dolabella |
+| `src-tauri/src/services/mcp_server.rs` | 98.6th %ile | 23 | Thiago M. Dolabella |
 
 ### Repowise MCP Tools
 
@@ -103,6 +110,15 @@ This project has a Repowise MCP server configured. **ALWAYS use these tools befo
 | `get_architecture_diagram(scope=...)` | For visual structure or documentation |
 
 ### Codebase Conventions
+**Architectural Decisions:**
+- **Auto-apply package:mine filter in LogcatPanel after successful deploy**: Using a timestamp in the existing build store follows the same pattern as deployPhase — service layer.
+- **Auto-reconnect logcat stream on unexpected ADB server restart**: ADB uses a server-client model: only one ADB server runs at a time, and Android Studio ships its own.
+- **Batch-flush build log lines every 50ms instead of immediate per-line updates**: Batching coalesces many rapid store writes into a single reactive update, reducing render pressure.
+- **Build history side panel — left-strip layout (Android Studio style)**: Side-panel layout mirrors Android Studio's build output experience which Android developers are already familiar with.
+- **Cumulative scrollCompensate accumulator for VirtualList eviction compensation**: A reset-to-zero approach (passing the delta directly) would fail when the same eviction size repeats.
+- **LogEntryDetailPanel renders outside VirtualList (sibling in flex column)**: Rendering inside the VirtualList would require measuring DOM heights to recalculate totalHeight and break virtualization.
+- **Re-sync package:mine filter when applicationId resolves after startup race**: projectState.applicationId is already a reactive SolidJS store value updated by setApplicationId() in the Tauri layer.
+- **Reset PipelineContext fully on logcat clear (not preserve pre-seeded PIDs)**: Clear is meant to be a fresh start, matching Android Studio semantics where clear resets everything.
 **Commands:**
 - Build: `npm run build`
 - Test: `npm run test`
