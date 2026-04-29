@@ -13,6 +13,7 @@ src-tauri/gen/
 .worktrees/
 
 docs/superpowers
+perf-metrics
 
 # repowise
 .repowise
