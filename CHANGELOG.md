@@ -7,6 +7,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.19] — 2026-04-29
+
+### Added
+- implement update notification system and status indicator (#29)
+
+---
+
 ## [0.1.18] — 2026-04-24
 
 ### Added
