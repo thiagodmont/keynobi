@@ -16,7 +16,6 @@
     "jsxImportSource": "solid-js",
 
     /* Path aliases */
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     },
