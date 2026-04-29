@@ -1,10 +1,11 @@
 use crate::models::logcat::{LogcatFilterSpec, LogcatLevel, ProcessedEntry};
-use crate::services::log_pipeline::{parse_logcat_line, LogPipeline, PipelineContext};
+use crate::services::log_pipeline::{parse_logcat_line, LogPipeline, PipelineContext, RawLogLine};
 use crate::services::log_store::LogStore;
 use crate::services::log_stream::StreamState;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, warn};
@@ -204,6 +205,12 @@ pub fn find_adb_binary(sdk_path: Option<&str>) -> PathBuf {
 /// JSON payload so the JS thread is never blocked deserializing a huge message.
 pub const MAX_BATCH_SIZE: usize = 500;
 
+/// Maximum raw lines waiting between the reader and processing tasks.
+///
+/// This keeps a bursty logcat stream from growing memory without bound if the
+/// processing task or frontend event emission temporarily falls behind.
+pub const RAW_LOG_LINE_CHANNEL_CAPACITY: usize = 10_000;
+
 /// How long to wait before reconnecting after an unexpected ADB disconnect.
 /// Short in tests so the reconnect loop runs fast without sleeping 1.5 s.
 #[cfg(not(test))]
@@ -265,6 +272,44 @@ pub fn parse_ps_output(text: &str) -> HashMap<i32, String> {
     map
 }
 
+fn store_and_filter_processed_entries(
+    state: &mut LogcatStateInner,
+    ctx: &mut PipelineContext,
+    processed: Vec<ProcessedEntry>,
+) -> Vec<ProcessedEntry> {
+    if !ctx.new_packages.is_empty() {
+        for pkg in ctx.new_packages.drain(..) {
+            state.known_packages.insert(pkg);
+        }
+        state.store.stats.packages_seen = state.known_packages.len();
+    }
+
+    let filter = state.stream_state.clone_filter();
+    let mut to_emit: Vec<ProcessedEntry> = Vec::with_capacity(processed.len().min(MAX_BATCH_SIZE));
+
+    for entry in processed {
+        let passes = filter.as_ref().is_none_or(|f| f.matches(&entry));
+        if passes {
+            to_emit.push(entry.clone());
+        }
+        state.store.push(entry);
+    }
+
+    to_emit
+}
+
+fn emit_entry_batches(app_handle: Option<&tauri::AppHandle>, entries: &[ProcessedEntry]) {
+    let Some(handle) = app_handle else {
+        return;
+    };
+
+    for chunk in entries.chunks(MAX_BATCH_SIZE) {
+        if let Err(e) = handle.emit("logcat:entries", chunk) {
+            warn!("Failed to emit logcat batch: {}", e);
+        }
+    }
+}
+
 /// Spawn an `adb logcat` process, parse lines through the processing pipeline,
 /// store them in the LogStore, and stream filtered batches to the frontend.
 ///
@@ -295,8 +340,6 @@ pub async fn start_logcat_stream(
     logcat_state: LogcatState,
     app_handle: Option<tauri::AppHandle>,
 ) {
-    use tauri::Emitter;
-
     'reconnect: loop {
         // Check whether a graceful stop was requested before (re)connecting.
         {
@@ -343,7 +386,7 @@ pub async fn start_logcat_stream(
         };
 
         // Channel: reader → pipeline+batcher
-        let (tx, mut rx) = mpsc::unbounded_channel::<crate::services::log_pipeline::RawLogLine>();
+        let (tx, mut rx) = mpsc::channel::<RawLogLine>(RAW_LOG_LINE_CHANNEL_CAPACITY);
 
         // ── Reader task ──────────────────────────────────────────────────────────
         // Parses raw lines only — zero state access, zero mutex.
@@ -354,7 +397,10 @@ pub async fn start_logcat_stream(
                 match reader.next_line().await {
                     Ok(Some(line)) => {
                         if let Some(raw) = parse_logcat_line(&line) {
-                            let _ = tx.send(raw);
+                            if tx.send(raw).await.is_err() {
+                                debug!("logcat pipeline receiver closed");
+                                break;
+                            }
                         }
                     }
                     Ok(None) => {
@@ -430,40 +476,12 @@ pub async fn start_logcat_stream(
                     // instead of 100 %.
                     let to_emit = {
                         let mut state = logcat_state.lock().await;
-
-                        // Sync newly discovered packages into state (drain buffer).
-                        if !ctx.new_packages.is_empty() {
-                            for pkg in ctx.new_packages.drain(..) {
-                                state.known_packages.insert(pkg);
-                            }
-                            state.store.stats.packages_seen = state.known_packages.len();
-                        }
-
-                        let filter = state.stream_state.clone_filter();
-                        let mut to_emit: Vec<ProcessedEntry> =
-                            Vec::with_capacity(processed.len().min(MAX_BATCH_SIZE));
-
-                        for entry in processed {
-                            // Clone only if this entry will be emitted.
-                            let passes = filter.as_ref().is_none_or(|f| f.matches(&entry));
-                            if passes {
-                                to_emit.push(entry.clone());
-                            }
-                            state.store.push(entry); // move into store — zero clone
-                        }
-
-                        to_emit
+                        store_and_filter_processed_entries(&mut state, &mut ctx, processed)
                         // Lock dropped here.
                     };
 
                     // Emit the filtered entries in chunks of MAX_BATCH_SIZE.
-                    for chunk in to_emit.chunks(MAX_BATCH_SIZE) {
-                        if let Some(ref handle) = app_handle {
-                            if let Err(e) = handle.emit("logcat:entries", chunk) {
-                                warn!("Failed to emit logcat batch: {}", e);
-                            }
-                        }
-                    }
+                    emit_entry_batches(app_handle.as_ref(), &to_emit);
                 }
 
                 // Exit once the channel is closed (reader task finished).
@@ -474,30 +492,9 @@ pub async fn start_logcat_stream(
                     if !remaining.is_empty() {
                         let to_emit = {
                             let mut state = logcat_state.lock().await;
-                            if !ctx.new_packages.is_empty() {
-                                for pkg in ctx.new_packages.drain(..) {
-                                    state.known_packages.insert(pkg);
-                                }
-                                state.store.stats.packages_seen = state.known_packages.len();
-                            }
-                            let filter = state.stream_state.clone_filter();
-                            let mut to_emit = Vec::with_capacity(remaining.len());
-                            for entry in remaining {
-                                let passes = filter.as_ref().is_none_or(|f| f.matches(&entry));
-                                if passes {
-                                    to_emit.push(entry.clone());
-                                }
-                                state.store.push(entry);
-                            }
-                            to_emit
+                            store_and_filter_processed_entries(&mut state, &mut ctx, remaining)
                         };
-                        for chunk in to_emit.chunks(MAX_BATCH_SIZE) {
-                            if let Some(ref handle) = app_handle {
-                                if let Err(e) = handle.emit("logcat:entries", chunk) {
-                                    warn!("Failed to emit final logcat batch: {}", e);
-                                }
-                            }
-                        }
+                        emit_entry_batches(app_handle.as_ref(), &to_emit);
                     }
                     break;
                 }
@@ -779,6 +776,54 @@ PID NAME
             None,
             false,
         )));
+    }
+
+    #[test]
+    fn store_and_filter_processed_entries_stores_all_and_emits_matches() {
+        let mut state = LogcatStateInner::new();
+        state.stream_state.set_filter(Some(LogcatFilter::new(
+            Some(LogcatLevel::Error),
+            None,
+            None,
+            None,
+            false,
+        )));
+
+        let mut ctx = PipelineContext::new();
+        ctx.new_packages.push("com.example.app".into());
+
+        let emitted = store_and_filter_processed_entries(
+            &mut state,
+            &mut ctx,
+            vec![
+                entry(
+                    1,
+                    LogcatLevel::Info,
+                    "MainActivity",
+                    "startup",
+                    Some("com.example.app"),
+                    false,
+                ),
+                entry(
+                    2,
+                    LogcatLevel::Error,
+                    "MainActivity",
+                    "crash",
+                    Some("com.example.app"),
+                    false,
+                ),
+            ],
+        );
+
+        assert_eq!(state.store.len(), 2, "all entries should be stored");
+        assert_eq!(emitted.len(), 1, "only matching entries should be emitted");
+        assert_eq!(emitted[0].id, 2);
+        assert!(
+            ctx.new_packages.is_empty(),
+            "new packages should be drained"
+        );
+        assert!(state.known_packages.contains("com.example.app"));
+        assert_eq!(state.store.stats.packages_seen, 1);
     }
 
     // ── Ring buffer stress tests ──────────────────────────────────────────────
