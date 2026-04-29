@@ -1,0 +1,21 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "d563b7c65264fc58e0c6c75f98a6e3125e820a63",
+  "prompts": {
+    "f5ffadcfadb0369c": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "2174eaa7-2be1-4016-8e28-5e1c8d7dbae4",
+        "model": "composer-2"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 0,
+      "accepted_lines": 93,
+      "overriden_lines": 0
+    }
+  }
+}
