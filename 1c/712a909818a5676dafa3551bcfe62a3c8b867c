@@ -1,0 +1,25 @@
+src/components/logcat/LogEntryDetailPanel.tsx
+  37498964543e31e3 116
+src/components/logcat/LogEntryDetailPanel.test.tsx
+  37498964543e31e3 142-164
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "1c712a909818a5676dafa3551bcfe62a3c8b867c",
+  "prompts": {
+    "37498964543e31e3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dda3b-4331-78e0-9a6d-e898ed099f6f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 24,
+      "total_deletions": 1,
+      "accepted_lines": 24,
+      "overriden_lines": 0
+    }
+  }
+}
