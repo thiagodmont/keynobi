@@ -102,16 +102,41 @@ describe("LogEntryDetailPanel", () => {
 
   it("uses selected message text instead of the full message", () => {
     const onAddFilter = vi.fn();
-    vi.spyOn(window, "getSelection").mockReturnValue({
-      toString: () => "line 42",
-    } as ReturnType<typeof window.getSelection>);
     render(() => (
       <LogEntryDetailPanel entry={ENTRY} onClose={() => {}} onAddFilter={onAddFilter} />
     ));
+    const message = screen.getByText("NullPointerException at line 42");
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "line 42",
+      anchorNode: message.firstChild,
+      focusNode: message.firstChild,
+    } as unknown as ReturnType<typeof window.getSelection>);
+
+    fireEvent.click(message);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add as OR" }));
+
+    expect(onAddFilter).toHaveBeenCalledWith({ token: 'message:"line 42"', mode: "or" });
+  });
+
+  it("ignores selected text outside the message field", () => {
+    const onAddFilter = vi.fn();
+    const outside = document.createTextNode("outside selection");
+    document.body.appendChild(outside);
+    render(() => (
+      <LogEntryDetailPanel entry={ENTRY} onClose={() => {}} onAddFilter={onAddFilter} />
+    ));
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "outside selection",
+      anchorNode: outside,
+      focusNode: outside,
+    } as unknown as ReturnType<typeof window.getSelection>);
 
     fireEvent.click(screen.getByText("NullPointerException at line 42"));
     fireEvent.click(screen.getByRole("menuitem", { name: "Add as OR" }));
 
-    expect(onAddFilter).toHaveBeenCalledWith({ token: 'message:"line 42"', mode: "or" });
+    expect(onAddFilter).toHaveBeenCalledWith({
+      token: 'message:"NullPointerException at line 42"',
+      mode: "or",
+    });
   });
 });

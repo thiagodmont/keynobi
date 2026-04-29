@@ -106,13 +106,18 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
     setFilterMenu({ token, ...menuPositionFor(target) });
   }
 
-  function selectedMessageText(): string | null {
-    const selected = window.getSelection?.()?.toString().trim();
-    return selected || null;
+  function selectedMessageText(target: HTMLElement): string | null {
+    const selection = window.getSelection?.();
+    const selected = selection?.toString().trim();
+    if (!selection || !selected) return null;
+
+    const anchorInside = selection.anchorNode ? target.contains(selection.anchorNode) : false;
+    const focusInside = selection.focusNode ? target.contains(selection.focusNode) : false;
+    return anchorInside || focusInside ? selected : null;
   }
 
   function openMessageFilterMenu(target: HTMLElement): void {
-    openFilterMenu("message", selectedMessageText() ?? props.entry.message, target);
+    openFilterMenu("message", selectedMessageText(target) ?? props.entry.message, target);
   }
 
   function addFilter(mode: LogEntryDetailFilterMode): void {
