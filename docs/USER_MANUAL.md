@@ -146,6 +146,7 @@ Press **Enter** to commit a typed condition as a filter pill. Use **+ AND** and 
 - JSON messages show a `{}` badge; open it to view formatted JSON.
 - Arrow keys move the selected row when focus is not in the query bar.
 - Selecting a row pauses follow-tail until you jump back to the end.
+- In **Entry Detail**, click a tag, package, level, PID, TID, time, or message value to add it to the query bar as an **AND** or **OR** filter. Select part of the message before clicking to filter by only that selected text.
 
 Logcat keeps a bounded ring buffer. Configure the ring size and max visible lines under **Settings -> Logcat**.
 

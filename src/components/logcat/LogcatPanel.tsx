@@ -36,6 +36,8 @@ import {
   setPackageInQuery,
   getPackageFromQuery,
   setMinePackage,
+  appendLogEntryDetailFilterToken,
+  type LogEntryDetailFilterMode,
   type FilterGroup,
 } from "@/lib/logcat-query";
 import { projectState } from "@/stores/project.store";
@@ -210,6 +212,10 @@ export function LogcatPanel(): JSX.Element {
   function handlePackageSelect(pkg: string | null) {
     const q = setPackageInQuery(query(), pkg);
     updateQuery(q.trimEnd() ? q.trimEnd() + " " : "");
+  }
+
+  function handleDetailFilter(filter: { token: string; mode: LogEntryDetailFilterMode }) {
+    updateQuery(appendLogEntryDetailFilterToken(query(), filter.token, filter.mode));
   }
 
   async function refreshLogcatRingStats(): Promise<void> {
@@ -816,7 +822,11 @@ export function LogcatPanel(): JSX.Element {
       {/* ── Entry Detail Panel ────────────────────────────────────────────── */}
       <Show when={selectedDetailEntry()}>
         {(entry) => (
-          <LogEntryDetailPanel entry={entry()} onClose={() => setSelectedDetailEntry(null)} />
+          <LogEntryDetailPanel
+            entry={entry()}
+            onClose={() => setSelectedDetailEntry(null)}
+            onAddFilter={handleDetailFilter}
+          />
         )}
       </Show>
     </div>

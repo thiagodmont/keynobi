@@ -27,13 +27,14 @@
 - **Mutex discipline**: Lock Rust state, clone what you need, drop the lock, then do I/O. Never hold a Mutex across an `await`.
 - **Bounded collections**: Every in-memory collection that grows must have an explicit cap (see `BEST_PRACTICES.md`).
 - **No `unwrap()` in production Rust**: Use `?` or `.map_err(...)`. `expect()` is allowed only for programmer-error invariants.
+- **Do not commit**: The superpower spec and plan files.
 
 ## Testing Instructions
 
 ### Frontend
+This command should be run after the development is completed to guarantee that the development is working properly. 
 ```bash
 npm run test              # run all frontend tests once
-npm run test:watch        # watch mode during development
 npm run test:ui           # Vitest browser UI
 npm run lint              # Check lint rules
 npm run typescript:check  # Check typescript 
