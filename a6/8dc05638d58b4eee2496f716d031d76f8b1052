@@ -1,0 +1,39 @@
+src/lib/logcat-query.test.ts
+  37498964543e31e3 34-35,118-143,489-502,795-802,2071-2106
+src/components/logcat/LogcatPanel.tsx
+  37498964543e31e3 39-40,217-220,825-829
+docs/USER_MANUAL.md
+  37498964543e31e3 149
+AGENTS.md
+  37498964543e31e3 30
+src/components/logcat/LogEntryDetailPanel.module.css
+  37498964543e31e3 92-119,135-167
+src/components/logcat/LogEntryDetailPanel.test.tsx
+  37498964543e31e3 1,68-115
+src/components/logcat/LogEntryDetailPanel.tsx
+  37498964543e31e3 1,4-8,20,23-26,35-37,39-40,52-55,57-76,82,84-123,132-137,140-143,146-153,174-175,181-183,189-191,200-202,208-210,214-216,223-234,239-266
+src/lib/logcat-query.ts
+  37498964543e31e3 34-36,54-56,176-185,221-228,302-317,527-538,614-706,734,788-790,1109-1112,1126,1133,1161-1167,1268-1271,1285-1288,1293-1296
+src/components/logcat/LogcatPanel.click-filter.test.tsx
+  37498964543e31e3 1-8,10-169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.5",
+  "base_commit_sha": "a68dc05638d58b4eee2496f716d031d76f8b1052",
+  "prompts": {
+    "37498964543e31e3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dda3b-4331-78e0-9a6d-e898ed099f6f",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 756,
+      "total_deletions": 22,
+      "accepted_lines": 723,
+      "overriden_lines": 1
+    }
+  }
+}
