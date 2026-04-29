@@ -50,7 +50,6 @@ export function createLogcatSuggestionIndex(
     },
     packages() {
       return Array.from(packageSeenAt.entries())
-        .sort((a, b) => a[1] - b[1])
         .map(([pkg]) => pkg)
         .sort();
     },

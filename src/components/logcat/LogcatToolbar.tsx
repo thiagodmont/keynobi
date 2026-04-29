@@ -112,13 +112,17 @@ export function LogcatToolbar(props: {
         </div>
       </Show>
 
-      <Show when={props.selectedCount > 1}>
+      <Show when={props.selectedCount > 0}>
         <button
           onClick={() => props.onCopySelectedRows()}
-          title={`Copy ${props.selectedCount} selected rows`}
+          title={
+            props.selectedCount === 1
+              ? "Copy selected row"
+              : `Copy ${props.selectedCount} selected rows`
+          }
           style={btnStyle("var(--accent)")}
         >
-          ⎘ {props.selectedCount} rows
+          ⎘ {props.selectedCount === 1 ? "1 row" : `${props.selectedCount} rows`}
         </button>
       </Show>
 

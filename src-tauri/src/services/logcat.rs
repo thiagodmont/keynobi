@@ -7,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Emitter;
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, warn};
 
@@ -315,7 +316,7 @@ fn emit_entry_batches(app_handle: Option<&tauri::AppHandle>, entries: &[Processe
 ///
 /// Architecture (two tasks):
 ///
-///   ┌─────────────────────┐     mpsc::unbounded     ┌───────────────────────────┐
+///   ┌─────────────────────┐      bounded mpsc       ┌───────────────────────────┐
 ///   │  reader task        │ ──── RawLogLine ────────► │  pipeline + batcher task  │
 ///   │  (parse lines only) │                          │  (enrich → store → emit)  │
 ///   └─────────────────────┘                          └───────────────────────────┘
@@ -397,9 +398,17 @@ pub async fn start_logcat_stream(
                 match reader.next_line().await {
                     Ok(Some(line)) => {
                         if let Some(raw) = parse_logcat_line(&line) {
-                            if tx.send(raw).await.is_err() {
-                                debug!("logcat pipeline receiver closed");
-                                break;
+                            match tx.try_send(raw) {
+                                Ok(()) => {}
+                                Err(TrySendError::Full(_)) => {
+                                    debug!(
+                                        "dropping logcat line because processing channel is full"
+                                    );
+                                }
+                                Err(TrySendError::Closed(_)) => {
+                                    debug!("logcat pipeline receiver closed");
+                                    break;
+                                }
                             }
                         }
                     }

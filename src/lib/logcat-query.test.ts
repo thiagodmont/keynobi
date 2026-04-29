@@ -1810,6 +1810,14 @@ describe("getQueryBarSuggestions", () => {
     ]);
   });
 
+  it("suggests mine and matching known packages for the pkg alias", () => {
+    const suggestions = getQueryBarSuggestions("pkg:m", [], ["com.example.main"]);
+    expect(suggestions).toEqual([
+      { display: "mine", insert: "mine" },
+      { display: "com.example.main", insert: "com.example.main" },
+    ]);
+  });
+
   it("caps suggestions to the requested maximum", () => {
     const tags = Array.from({ length: 20 }, (_, i) => `Tag${i}`);
     const suggestions = getQueryBarSuggestions("tag:tag", tags, [], 5);

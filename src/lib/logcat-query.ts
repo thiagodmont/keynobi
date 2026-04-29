@@ -81,6 +81,7 @@ export function getQueryBarSuggestions(
           .slice(0, maxSuggestions)
           .map((tag) => ({ display: tag, insert: tag }));
       case "package":
+      case "pkg":
         return ["mine", ...knownPackages]
           .filter((packageName) => packageName.toLowerCase().includes(partial))
           .slice(0, maxSuggestions)
