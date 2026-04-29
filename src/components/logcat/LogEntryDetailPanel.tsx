@@ -113,7 +113,7 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
 
     const anchorInside = selection.anchorNode ? target.contains(selection.anchorNode) : false;
     const focusInside = selection.focusNode ? target.contains(selection.focusNode) : false;
-    return anchorInside || focusInside ? selected : null;
+    return anchorInside && focusInside ? selected : null;
   }
 
   function openMessageFilterMenu(target: HTMLElement): void {
