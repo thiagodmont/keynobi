@@ -31,6 +31,9 @@ export type QueryToken =
   | { type: "tag"; value: string; negate: boolean; regex: boolean }
   | { type: "message"; value: string; negate: boolean; regex: boolean }
   | { type: "package"; value: string; negate: boolean }
+  | { type: "pid"; value: number; negate: boolean }
+  | { type: "tid"; value: number; negate: boolean }
+  | { type: "time"; value: string; negate: boolean }
   | { type: "age"; seconds: number }
   | { type: "is"; value: string }
   | { type: "freetext"; value: string; negate: boolean };
@@ -48,6 +51,9 @@ export const QUERY_KEYS = [
   "message~:",
   "-message:",
   "package:",
+  "pid:",
+  "tid:",
+  "time:",
   "age:",
   "is:",
 ];
@@ -167,7 +173,16 @@ export function splitRawQueryParts(raw: string): string[] {
   const parts: string[] = [];
   let current = "";
   let inQuote = false;
-  for (const ch of raw) {
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inQuote && ch === "\\" && i + 1 < raw.length) {
+      const next = raw[i + 1];
+      if (next === '"' || next === "\\") {
+        current += next;
+        i++;
+        continue;
+      }
+    }
     if (ch === '"') {
       inQuote = !inQuote;
       continue;
@@ -203,6 +218,14 @@ export function parseQueryBarState(value: string): { committed: string[]; draft:
 
   for (let i = 0; i < value.length; i++) {
     const ch = value[i];
+    if (inQuote && ch === "\\" && i + 1 < value.length) {
+      const next = value[i + 1];
+      if (next === '"' || next === "\\") {
+        current += next;
+        i++;
+        continue;
+      }
+    }
     if (ch === '"') {
       inQuote = !inQuote;
       continue;
@@ -275,6 +298,23 @@ export function parseQuery(raw: string): QueryToken[] {
         case "package":
         case "pkg":
           tokens.push({ type: "package", value, negate });
+          break;
+        case "pid":
+          if (/^\d+$/.test(value)) {
+            tokens.push({ type: "pid", value: Number(value), negate });
+          } else {
+            tokens.push({ type: "freetext", value: p, negate });
+          }
+          break;
+        case "tid":
+          if (/^\d+$/.test(value)) {
+            tokens.push({ type: "tid", value: Number(value), negate });
+          } else {
+            tokens.push({ type: "freetext", value: p, negate });
+          }
+          break;
+        case "time":
+          tokens.push({ type: "time", value, negate });
           break;
         case "age": {
           const secs = parseAge(value);
@@ -484,6 +524,18 @@ function matchToken(entry: LogcatEntry, token: QueryToken, now: number): boolean
       const matches = haystack.includes(resolvedValue.toLowerCase());
       return token.negate ? !matches : matches;
     }
+    case "pid": {
+      const matches = entry.pid === token.value;
+      return token.negate ? !matches : matches;
+    }
+    case "tid": {
+      const matches = entry.tid === token.value;
+      return token.negate ? !matches : matches;
+    }
+    case "time": {
+      const matches = entry.timestamp === token.value;
+      return token.negate ? !matches : matches;
+    }
     case "age": {
       const entryTime = parseLogcatTimestamp(entry.timestamp);
       if (entryTime === 0) return true; // unparseable → keep
@@ -559,6 +611,101 @@ export function setPackageInQuery(query: string, pkg: string | null): string {
   return withoutPkg ? `${withoutPkg} package:${pkg}` : `package:${pkg}`;
 }
 
+export type LogEntryDetailFilterField =
+  | "tag"
+  | "package"
+  | "level"
+  | "pid"
+  | "tid"
+  | "time"
+  | "message";
+
+export type LogEntryDetailFilterMode = "and" | "or";
+
+function normalizeDetailString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeDetailNumber(value: unknown): number | null {
+  const n =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^\d+$/.test(value.trim())
+        ? Number(value.trim())
+        : NaN;
+  if (!Number.isInteger(n) || n < 0) return null;
+  return n;
+}
+
+function quoteLogcatFilterValue(value: string): string {
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function formatLogcatFilterValue(value: string, forceQuote = false): string {
+  return forceQuote || /[\s"|]/.test(value) ? quoteLogcatFilterValue(value) : value;
+}
+
+export function buildLogEntryDetailFilterToken(
+  field: LogEntryDetailFilterField,
+  value: unknown
+): string | null {
+  switch (field) {
+    case "tag": {
+      const text = normalizeDetailString(value);
+      return text ? `tag:${formatLogcatFilterValue(text)}` : null;
+    }
+    case "package": {
+      const text = normalizeDetailString(value);
+      return text ? `package:${formatLogcatFilterValue(text)}` : null;
+    }
+    case "level": {
+      const text = normalizeDetailString(value);
+      return text ? `level:${text.toLowerCase()}` : null;
+    }
+    case "pid": {
+      const n = normalizeDetailNumber(value);
+      return n === null ? null : `pid:${n}`;
+    }
+    case "tid": {
+      const n = normalizeDetailNumber(value);
+      return n === null ? null : `tid:${n}`;
+    }
+    case "time": {
+      const text = normalizeDetailString(value);
+      return text ? `time:${formatLogcatFilterValue(text, true)}` : null;
+    }
+    case "message": {
+      const text = normalizeDetailString(value);
+      return text ? `message:${formatLogcatFilterValue(text, true)}` : null;
+    }
+    default:
+      return null;
+  }
+}
+
+export function appendLogEntryDetailFilterToken(
+  query: string,
+  token: string,
+  mode: LogEntryDetailFilterMode
+): string {
+  const cleanToken = token.trim();
+  if (!cleanToken) return query;
+
+  const trimmed = query.trimEnd();
+  if (!trimmed) return `${cleanToken} `;
+
+  if (mode === "or") {
+    return trimmed.endsWith("|") ? `${trimmed} ${cleanToken} ` : `${trimmed} | ${cleanToken} `;
+  }
+
+  if (trimmed.endsWith("|") || trimmed.endsWith("&&") || trimmed.endsWith("&")) {
+    return `${trimmed} ${cleanToken} `;
+  }
+  return `${trimmed} && ${cleanToken} `;
+}
+
 /**
  * Extract the value of the first `package:` token from a raw query string.
  * Returns null when no package token is present.
@@ -584,6 +731,7 @@ export function getPackageFromQuery(query: string): string | null {
  *   • negated (-X)   — backend has no negation support
  *   • tag~: / msg~:  — backend does substring only, not regex
  *   • is:stacktrace  — backend does not have a stacktrace filter
+ *   • pid/tid/time   — backend filter spec has no exact metadata slots
  *
  * Overflow tokens (second+ occurrence of a backend-handled type):
  *   • 2nd+ level:    — only the first minLevel is sent
@@ -636,6 +784,10 @@ export function getFrontendOnlyTokens(tokens: QueryToken[]): QueryToken[] {
           packageConsumed = true;
           return false;
         }
+        return true;
+      case "pid":
+      case "tid":
+      case "time":
         return true;
       case "is":
         // is:crash → onlyCrashes flag (boolean, no overflow); handled above for stacktrace
@@ -954,6 +1106,10 @@ export function applyInlineEditCommit(
 
 const MESSAGE_TOKEN_FOR_EDIT = /^(-?)((?:message~)|(?:message)|(?:msg)):(.+)$/s;
 
+function escapeQuotedQueryValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 /**
  * Serialize one committed query-bar segment for the raw query string.
  * Values that contain spaces (would split across tokens) are wrapped in `"`.
@@ -967,14 +1123,14 @@ export function serializeQueryBarCommittedPart(part: string): string {
   const body = neg ? part.slice(1) : part;
   const c = body.indexOf(":");
   if (c < 0) {
-    const inner = (neg ? body : part).replace(/"/g, "");
+    const inner = escapeQuotedQueryValue(neg ? body : part);
     return neg ? `-"${inner}"` : `"${inner}"`;
   }
   if (c <= 0 || c >= body.length - 1) return part;
 
   const keyColon = body.slice(0, c + 1);
   const value = body.slice(c + 1);
-  const inner = value.replace(/"/g, "");
+  const inner = escapeQuotedQueryValue(value);
   return `${neg ? "-" : ""}${keyColon}"${inner}"`;
 }
 
@@ -1002,7 +1158,13 @@ function splitOnOrSeparator(raw: string): string[] {
   const segments: string[] = [];
   let current = "";
   let inQuote = false;
-  for (const ch of raw) {
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inQuote && ch === "\\" && i + 1 < raw.length) {
+      current += ch + raw[i + 1];
+      i++;
+      continue;
+    }
     if (ch === '"') {
       inQuote = !inQuote;
       current += ch;
@@ -1103,6 +1265,10 @@ function lastOuterPipeIndex(text: string): number {
   let lastPipe = -1;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
+    if (inQuote && ch === "\\" && i + 1 < text.length) {
+      i++;
+      continue;
+    }
     if (ch === '"') inQuote = !inQuote;
     else if (ch === "|" && !inQuote) lastPipe = i;
   }
@@ -1116,10 +1282,18 @@ function lastOuterPipeIndex(text: string): number {
 function nextOuterPipeIndex(query: string, fromIdx: number): number {
   let inQuote = false;
   for (let i = 0; i < fromIdx; i++) {
+    if (inQuote && query[i] === "\\" && i + 1 < query.length) {
+      i++;
+      continue;
+    }
     if (query[i] === '"') inQuote = !inQuote;
   }
   for (let i = fromIdx; i < query.length; i++) {
     const ch = query[i];
+    if (inQuote && ch === "\\" && i + 1 < query.length) {
+      i++;
+      continue;
+    }
     if (ch === '"') inQuote = !inQuote;
     else if (ch === "|" && !inQuote) return i;
   }

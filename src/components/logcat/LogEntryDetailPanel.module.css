@@ -89,6 +89,34 @@
   white-space: nowrap;
 }
 
+.cellValueButton {
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  cursor: context-menu;
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  margin: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cellValueButton:hover,
+.cellValueButton:focus-visible,
+.messageValue[role="button"]:hover,
+.messageValue[role="button"]:focus-visible {
+  color: var(--accent);
+  outline: none;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
 .messageArea {
   flex: 1;
   overflow: auto;
@@ -103,4 +131,38 @@
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+.messageValue[role="button"] {
+  cursor: context-menu;
+}
+
+.filterMenu {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 35%);
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 4px;
+  position: fixed;
+  z-index: 1000;
+}
+
+.filterMenuItem {
+  background: transparent;
+  border: 0;
+  border-radius: 3px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 9px;
+  text-align: left;
+}
+
+.filterMenuItem:hover,
+.filterMenuItem:focus-visible {
+  background: var(--bg-hover);
+  outline: none;
 }

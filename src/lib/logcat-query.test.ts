@@ -31,6 +31,8 @@ import {
   splitRawQueryParts,
   commitQueryBarDraft,
   getQueryBarSuggestions,
+  buildLogEntryDetailFilterToken,
+  appendLogEntryDetailFilterToken,
   setMinePackage,
   isStackTraceLine,
   parseStackFrame,
@@ -110,6 +112,32 @@ describe("parseQuery — level tokens", () => {
   it("parses warn shorthand", () => {
     const tokens = parseQuery("warn");
     expect(tokens[0]).toMatchObject({ type: "level", value: "warn" });
+  });
+});
+
+describe("parseQuery — Entry Detail tokens", () => {
+  it("parses pid, tid, and quoted time tokens", () => {
+    expect(parseQuery('pid:1234 tid:5678 time:"01-23 12:34:56.789"')).toEqual([
+      { type: "pid", value: 1234, negate: false },
+      { type: "tid", value: 5678, negate: false },
+      { type: "time", value: "01-23 12:34:56.789", negate: false },
+    ]);
+  });
+
+  it("parses escaped quotes inside quoted values", () => {
+    const tokens = parseQuery('message:"hello \\"quoted\\" value"');
+    expect(tokens[0]).toMatchObject({
+      type: "message",
+      value: 'hello "quoted" value',
+      negate: false,
+    });
+  });
+
+  it("ignores invalid numeric pid and tid filters", () => {
+    expect(parseQuery("pid:abc tid:-1")).toEqual([
+      { type: "freetext", value: "pid:abc", negate: false },
+      { type: "freetext", value: "tid:-1", negate: false },
+    ]);
   });
 });
 
@@ -458,6 +486,23 @@ describe("matchesQuery — all tokens must match (AND logic)", () => {
   });
 });
 
+describe("matchesQuery — Entry Detail tokens", () => {
+  it("matches exact pid, tid, and timestamp values", () => {
+    const tokens = parseQuery('pid:1234 tid:5678 time:"01-23 12:34:56.789"');
+    expect(matchesQuery(makeEntry(), tokens, NOW)).toBe(true);
+    expect(matchesQuery(makeEntry({ pid: 9999 }), tokens, NOW)).toBe(false);
+    expect(matchesQuery(makeEntry({ tid: 9999 }), tokens, NOW)).toBe(false);
+    expect(matchesQuery(makeEntry({ timestamp: "01-23 12:34:56.000" }), tokens, NOW)).toBe(false);
+  });
+
+  it("supports negated pid, tid, and time filters", () => {
+    expect(matchesQuery(makeEntry({ pid: 4321 }), parseQuery("-pid:1234"), NOW)).toBe(true);
+    expect(matchesQuery(makeEntry({ pid: 1234 }), parseQuery("-pid:1234"), NOW)).toBe(false);
+    expect(matchesQuery(makeEntry({ tid: 8765 }), parseQuery("-tid:5678"), NOW)).toBe(true);
+    expect(matchesQuery(makeEntry(), parseQuery('-time:"01-23 00:00:00.000"'), NOW)).toBe(true);
+  });
+});
+
 // ── parseLogcatTimestamp ──────────────────────────────────────────────────────
 
 describe("parseLogcatTimestamp", () => {
@@ -745,6 +790,14 @@ describe("committedEndsWithOrSeparator", () => {
 describe("serializeQueryBarCommittedPart", () => {
   it("quotes message value with spaces", () => {
     expect(serializeQueryBarCommittedPart("message:hello world")).toBe('message:"hello world"');
+  });
+
+  it("escapes literal quotes when rebuilding quoted message filters", () => {
+    const state = parseQueryBarState('message:"hello \\"quoted\\" value" ');
+    expect(state.committed).toEqual(['message:hello "quoted" value']);
+    expect(state.committed.map(serializeQueryBarCommittedPart).join(" ")).toBe(
+      'message:"hello \\"quoted\\" value"'
+    );
   });
 
   it("passes through structural tokens", () => {
@@ -2012,6 +2065,45 @@ describe("addAndConnector — idempotent: does not accumulate duplicate &&", () 
 describe("addOrGroup — idempotent: does not accumulate duplicate |", () => {
   it("returns unchanged string when it already ends with |", () => {
     expect(addOrGroup("level:error |")).toBe("level:error |");
+  });
+});
+
+describe("Entry Detail filter token helpers", () => {
+  it("builds tokens for all Entry Detail fields", () => {
+    expect(buildLogEntryDetailFilterToken("tag", "MainActivity")).toBe("tag:MainActivity");
+    expect(buildLogEntryDetailFilterToken("package", "com.example.app")).toBe(
+      "package:com.example.app"
+    );
+    expect(buildLogEntryDetailFilterToken("level", "ERROR")).toBe("level:error");
+    expect(buildLogEntryDetailFilterToken("pid", 1234)).toBe("pid:1234");
+    expect(buildLogEntryDetailFilterToken("tid", 5678)).toBe("tid:5678");
+    expect(buildLogEntryDetailFilterToken("time", "01-23 12:34:56.789")).toBe(
+      'time:"01-23 12:34:56.789"'
+    );
+    expect(buildLogEntryDetailFilterToken("message", 'hello "world" | timeout')).toBe(
+      'message:"hello \\"world\\" | timeout"'
+    );
+  });
+
+  it("returns null for empty or invalid values", () => {
+    expect(buildLogEntryDetailFilterToken("package", null)).toBeNull();
+    expect(buildLogEntryDetailFilterToken("tag", "   ")).toBeNull();
+    expect(buildLogEntryDetailFilterToken("pid", "abc")).toBeNull();
+  });
+
+  it("appends tokens with AND or OR semantics and commits the pill", () => {
+    expect(appendLogEntryDetailFilterToken("", "tag:MainActivity", "and")).toBe(
+      "tag:MainActivity "
+    );
+    expect(appendLogEntryDetailFilterToken("level:error ", "tag:MainActivity", "and")).toBe(
+      "level:error && tag:MainActivity "
+    );
+    expect(appendLogEntryDetailFilterToken("level:error ", "tag:MainActivity", "or")).toBe(
+      "level:error | tag:MainActivity "
+    );
+    expect(appendLogEntryDetailFilterToken("level:error | ", "tag:MainActivity", "or")).toBe(
+      "level:error | tag:MainActivity "
+    );
   });
 });
 

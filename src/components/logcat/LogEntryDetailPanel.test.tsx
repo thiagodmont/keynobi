@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@solidjs/testing-library";
 import { LogEntryDetailPanel } from "./LogEntryDetailPanel";
 import type { LogcatEntry } from "@/lib/tauri-api";
@@ -39,11 +39,14 @@ describe("LogEntryDetailPanel", () => {
   it("calls onClose when close button is clicked", () => {
     let closed = false;
     render(() => (
-      <LogEntryDetailPanel entry={ENTRY} onClose={() => { closed = true; }} />
+      <LogEntryDetailPanel
+        entry={ENTRY}
+        onClose={() => {
+          closed = true;
+        }}
+      />
     ));
-    const closeBtn = screen.getAllByRole("button").find(
-      (b) => b.getAttribute("title") === "Close"
-    );
+    const closeBtn = screen.getAllByRole("button").find((b) => b.getAttribute("title") === "Close");
     expect(closeBtn).not.toBeUndefined();
     closeBtn!.click();
     expect(closed).toBe(true);
@@ -52,9 +55,63 @@ describe("LogEntryDetailPanel", () => {
   it("calls onClose when Escape is pressed", () => {
     let closed = false;
     render(() => (
-      <LogEntryDetailPanel entry={ENTRY} onClose={() => { closed = true; }} />
+      <LogEntryDetailPanel
+        entry={ENTRY}
+        onClose={() => {
+          closed = true;
+        }}
+      />
     ));
     fireEvent.keyDown(document, { key: "Escape" });
     expect(closed).toBe(true);
+  });
+
+  it("opens a floating filter menu when a metadata value is clicked", () => {
+    render(() => <LogEntryDetailPanel entry={ENTRY} onClose={() => {}} onAddFilter={() => {}} />);
+
+    fireEvent.click(screen.getByText("MainActivity"));
+
+    expect(screen.getByRole("menu")).not.toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Add as AND" })).not.toBeNull();
+    expect(screen.getByRole("menuitem", { name: "Add as OR" })).not.toBeNull();
+  });
+
+  it("emits the clicked metadata token with the selected mode", () => {
+    const onAddFilter = vi.fn();
+    render(() => (
+      <LogEntryDetailPanel entry={ENTRY} onClose={() => {}} onAddFilter={onAddFilter} />
+    ));
+
+    fireEvent.click(screen.getByText("MainActivity"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add as AND" }));
+
+    expect(onAddFilter).toHaveBeenCalledWith({ token: "tag:MainActivity", mode: "and" });
+  });
+
+  it("emits OR filters for package values", () => {
+    const onAddFilter = vi.fn();
+    render(() => (
+      <LogEntryDetailPanel entry={ENTRY} onClose={() => {}} onAddFilter={onAddFilter} />
+    ));
+
+    fireEvent.click(screen.getByText("com.example.app"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add as OR" }));
+
+    expect(onAddFilter).toHaveBeenCalledWith({ token: "package:com.example.app", mode: "or" });
+  });
+
+  it("uses selected message text instead of the full message", () => {
+    const onAddFilter = vi.fn();
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "line 42",
+    } as ReturnType<typeof window.getSelection>);
+    render(() => (
+      <LogEntryDetailPanel entry={ENTRY} onClose={() => {}} onAddFilter={onAddFilter} />
+    ));
+
+    fireEvent.click(screen.getByText("NullPointerException at line 42"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Add as OR" }));
+
+    expect(onAddFilter).toHaveBeenCalledWith({ token: 'message:"line 42"', mode: "or" });
   });
 });

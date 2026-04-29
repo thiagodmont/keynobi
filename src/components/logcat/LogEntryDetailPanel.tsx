@@ -1,6 +1,11 @@
-import { onCleanup, onMount } from "solid-js";
+import { Show, createSignal, onCleanup, onMount } from "solid-js";
 import { showToast } from "@/components/ui";
 import type { LogcatEntry } from "@/lib/tauri-api";
+import {
+  buildLogEntryDetailFilterToken,
+  type LogEntryDetailFilterField,
+  type LogEntryDetailFilterMode,
+} from "@/lib/logcat-query";
 import { getLevelConfig } from "./logcat-levels";
 import styles from "./LogEntryDetailPanel.module.css";
 
@@ -12,6 +17,13 @@ function formatEntry(e: LogcatEntry): string {
 interface LogEntryDetailPanelProps {
   entry: LogcatEntry;
   onClose: () => void;
+  onAddFilter?: (filter: { token: string; mode: LogEntryDetailFilterMode }) => void;
+}
+
+interface FilterMenuState {
+  token: string;
+  x: number;
+  y: number;
 }
 
 function MetaCell(props: {
@@ -20,7 +32,12 @@ function MetaCell(props: {
   valueStyle?: Record<string, string>;
   borderRight?: boolean;
   borderLeft?: boolean;
+  filterField?: LogEntryDetailFilterField;
+  filterValue?: unknown;
+  onFilterClick?: (field: LogEntryDetailFilterField, value: unknown, target: HTMLElement) => void;
 }) {
+  const canFilter = () => props.filterField && props.value !== "—" && props.onFilterClick;
+
   return (
     <div
       class={[
@@ -32,15 +49,78 @@ function MetaCell(props: {
         .join(" ")}
     >
       <div class={styles.cellLabel}>{props.label}</div>
-      <div class={styles.cellValue} style={props.valueStyle}>
-        {props.value}
-      </div>
+      <Show
+        when={canFilter()}
+        fallback={
+          <div class={styles.cellValue} style={props.valueStyle}>
+            {props.value}
+          </div>
+        }
+      >
+        <button
+          type="button"
+          class={styles.cellValueButton}
+          style={props.valueStyle}
+          title={`Filter by ${props.label}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onFilterClick?.(
+              props.filterField!,
+              props.filterValue ?? props.value,
+              e.currentTarget
+            );
+          }}
+        >
+          {props.value}
+        </button>
+      </Show>
     </div>
   );
 }
 
 export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
+  let menuRef: HTMLDivElement | undefined;
   const cfg = () => getLevelConfig(props.entry.level);
+  const [filterMenu, setFilterMenu] = createSignal<FilterMenuState | null>(null);
+
+  function menuPositionFor(target: HTMLElement): { x: number; y: number } {
+    const rect = target.getBoundingClientRect();
+    const menuWidth = 150;
+    const menuHeight = 72;
+    const maxX = Math.max(8, window.innerWidth - menuWidth - 8);
+    const maxY = Math.max(8, window.innerHeight - menuHeight - 8);
+    return {
+      x: Math.min(Math.max(8, rect.left), maxX),
+      y: Math.min(Math.max(8, rect.bottom + 4), maxY),
+    };
+  }
+
+  function openFilterMenu(
+    field: LogEntryDetailFilterField,
+    value: unknown,
+    target: HTMLElement
+  ): void {
+    if (!props.onAddFilter) return;
+    const token = buildLogEntryDetailFilterToken(field, value);
+    if (!token) return;
+    setFilterMenu({ token, ...menuPositionFor(target) });
+  }
+
+  function selectedMessageText(): string | null {
+    const selected = window.getSelection?.()?.toString().trim();
+    return selected || null;
+  }
+
+  function openMessageFilterMenu(target: HTMLElement): void {
+    openFilterMenu("message", selectedMessageText() ?? props.entry.message, target);
+  }
+
+  function addFilter(mode: LogEntryDetailFilterMode): void {
+    const menu = filterMenu();
+    if (!menu) return;
+    props.onAddFilter?.({ token: menu.token, mode });
+    setFilterMenu(null);
+  }
 
   function copyEntry() {
     navigator.clipboard.writeText(formatEntry(props.entry)).then(() => {
@@ -49,11 +129,28 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
   }
 
   function handleKeyDown(e: KeyboardEvent) {
-    if (e.key === "Escape") props.onClose();
+    if (e.key !== "Escape") return;
+    if (filterMenu()) {
+      setFilterMenu(null);
+      return;
+    }
+    props.onClose();
   }
 
-  onMount(() => document.addEventListener("keydown", handleKeyDown));
-  onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
+  function handleDocumentMouseDown(e: MouseEvent) {
+    if (!filterMenu()) return;
+    if (menuRef?.contains(e.target as globalThis.Node)) return;
+    setFilterMenu(null);
+  }
+
+  onMount(() => {
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleDocumentMouseDown);
+  });
+  onCleanup(() => {
+    document.removeEventListener("keydown", handleKeyDown);
+    document.removeEventListener("mousedown", handleDocumentMouseDown);
+  });
 
   return (
     <div class={styles.panel}>
@@ -70,24 +167,103 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
       </div>
 
       <div class={styles.grid}>
-        <MetaCell label="Tag" value={props.entry.tag} borderRight />
-        <MetaCell label="Package" value={props.entry.package ?? "—"} borderRight />
+        <MetaCell
+          label="Tag"
+          value={props.entry.tag}
+          borderRight
+          filterField="tag"
+          onFilterClick={openFilterMenu}
+        />
+        <MetaCell
+          label="Package"
+          value={props.entry.package ?? "—"}
+          borderRight
+          filterField="package"
+          filterValue={props.entry.package}
+          onFilterClick={openFilterMenu}
+        />
         <MetaCell
           label="Level"
           value={props.entry.level.toUpperCase()}
           valueStyle={{ color: cfg().color }}
+          filterField="level"
+          filterValue={props.entry.level}
+          onFilterClick={openFilterMenu}
         />
       </div>
 
       <div class={styles.grid}>
-        <MetaCell label="PID" value={String(props.entry.pid ?? "—")} borderRight />
-        <MetaCell label="TID" value={String(props.entry.tid ?? "—")} borderRight />
-        <MetaCell label="Time" value={props.entry.timestamp} />
+        <MetaCell
+          label="PID"
+          value={String(props.entry.pid ?? "—")}
+          borderRight
+          filterField="pid"
+          filterValue={props.entry.pid}
+          onFilterClick={openFilterMenu}
+        />
+        <MetaCell
+          label="TID"
+          value={String(props.entry.tid ?? "—")}
+          borderRight
+          filterField="tid"
+          filterValue={props.entry.tid}
+          onFilterClick={openFilterMenu}
+        />
+        <MetaCell
+          label="Time"
+          value={props.entry.timestamp}
+          filterField="time"
+          onFilterClick={openFilterMenu}
+        />
       </div>
 
       <div class={styles.messageArea}>
-        <pre class={styles.messageValue}>{props.entry.message}</pre>
+        <pre
+          class={styles.messageValue}
+          role={props.onAddFilter ? "button" : undefined}
+          tabIndex={props.onAddFilter ? 0 : undefined}
+          title={props.onAddFilter ? "Filter by message" : undefined}
+          onClick={(e) => {
+            e.stopPropagation();
+            openMessageFilterMenu(e.currentTarget);
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault();
+            openMessageFilterMenu(e.currentTarget);
+          }}
+        >
+          {props.entry.message}
+        </pre>
       </div>
+
+      <Show when={filterMenu()}>
+        {(menu) => (
+          <div
+            ref={menuRef}
+            class={styles.filterMenu}
+            role="menu"
+            style={{ left: `${menu().x}px`, top: `${menu().y}px` }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              class={styles.filterMenuItem}
+              onClick={() => addFilter("and")}
+            >
+              Add as AND
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              class={styles.filterMenuItem}
+              onClick={() => addFilter("or")}
+            >
+              Add as OR
+            </button>
+          </div>
+        )}
+      </Show>
     </div>
   );
 }
