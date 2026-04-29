@@ -7,7 +7,7 @@ Thank you for helping improve Keynobi. This guide is the entry point; deeper rul
 1. [AGENTS.md](AGENTS.md) — stack, IPC checklist, testing commands, how to add a feature end-to-end.
 2. [docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md) — security, performance, bounded collections, AI-first design.
 3. [docs/CODE_PATTERN.md](docs/CODE_PATTERN.md) — naming, stores, Tauri patterns, path canonicalization, testing gate.
-4. [docs/DOMAIN_PATTERN.md](docs/DOMAIN_PATTERN.md) — build, logcat, device, MCP domain conventions.
+4. [docs/DOMAIN_PATTERNS.md](docs/DOMAIN_PATTERNS.md) — build, logcat, device, MCP domain conventions.
 5. [docs/USER_MANUAL.md](docs/USER_MANUAL.md) — what users see; update this when behavior or shortcuts change.
 
 **Security:** Do not open public issues for vulnerabilities. See [SECURITY.md](SECURITY.md).
@@ -67,7 +67,7 @@ Large UI surfaces (for example `src/components/logcat/LogcatPanel.tsx`) are hard
 
 ## Session completion (maintainers & regular contributors)
 
-When you establish a new pattern or ship user-visible behavior, align with [AGENTS.md](AGENTS.md) § Session Completion: update `docs/CODE_PATTERN.md`, `docs/DOMAIN_PATTERN.md`, or `docs/BEST_PRACTICES.md` when patterns change, and `docs/USER_MANUAL.md` when users need new docs.
+When you establish a new pattern or ship user-visible behavior, align with [AGENTS.md](AGENTS.md) § Session Completion: update `docs/CODE_PATTERN.md`, `docs/DOMAIN_PATTERNS.md`, or `docs/BEST_PRACTICES.md` when patterns change, and `docs/USER_MANUAL.md` when users need new docs.
 
 ## Questions
 
