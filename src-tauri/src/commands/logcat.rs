@@ -71,7 +71,7 @@ pub async fn get_logcat_entries(
     logcat_state: State<'_, LogcatState>,
 ) -> Result<Vec<ProcessedEntry>, String> {
     let filter = LogcatFilter::new(
-        min_level.as_deref().map(parse_level),
+        min_level.as_deref().map(logcat::parse_level_str),
         tag,
         text,
         package,
@@ -140,21 +140,6 @@ pub async fn get_logcat_stats(logcat_state: State<'_, LogcatState>) -> Result<Lo
     let cap = state.store.capacity().max(1) as f32;
     stats.buffer_usage_pct = (len as f32 / cap) * 100.0;
     Ok(stats)
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn parse_level(s: &str) -> crate::models::logcat::LogcatLevel {
-    use crate::models::logcat::LogcatLevel;
-    match s.to_uppercase().as_str() {
-        "V" | "VERBOSE" => LogcatLevel::Verbose,
-        "D" | "DEBUG" => LogcatLevel::Debug,
-        "I" | "INFO" => LogcatLevel::Info,
-        "W" | "WARN" | "WARNING" => LogcatLevel::Warn,
-        "E" | "ERROR" => LogcatLevel::Error,
-        "F" | "FATAL" | "A" | "ASSERT" => LogcatLevel::Fatal,
-        _ => LogcatLevel::Verbose,
-    }
 }
 
 pub fn new_logcat_state() -> LogcatState {

@@ -55,6 +55,68 @@ export const QUERY_KEYS = [
 export const AGE_SUGGESTIONS = ["30s", "1m", "5m", "15m", "1h", "6h", "1d"];
 export const IS_SUGGESTIONS = ["crash", "stacktrace"];
 
+export interface QueryBarSuggestion {
+  display: string;
+  insert: string;
+}
+
+export function getQueryBarSuggestions(
+  draft: string,
+  knownTags: readonly string[],
+  knownPackages: readonly string[],
+  maxSuggestions = 10
+): QueryBarSuggestion[] {
+  const ctx = getActiveTokenContext(draft);
+
+  if (ctx.key) {
+    const partial = ctx.partial.toLowerCase();
+    switch (ctx.key.toLowerCase()) {
+      case "level":
+        return LEVEL_NAMES.filter((level) => level.startsWith(partial))
+          .slice(0, maxSuggestions)
+          .map((level) => ({ display: level, insert: level }));
+      case "tag":
+        return knownTags
+          .filter((tag) => tag.toLowerCase().includes(partial))
+          .slice(0, maxSuggestions)
+          .map((tag) => ({ display: tag, insert: tag }));
+      case "package":
+      case "pkg":
+        return ["mine", ...knownPackages]
+          .filter((packageName) => packageName.toLowerCase().includes(partial))
+          .slice(0, maxSuggestions)
+          .map((packageName) => ({ display: packageName, insert: packageName }));
+      case "is":
+        return IS_SUGGESTIONS.filter((suggestion) => suggestion.startsWith(partial))
+          .slice(0, maxSuggestions)
+          .map((suggestion) => ({ display: suggestion, insert: suggestion }));
+      case "age":
+        return AGE_SUGGESTIONS.filter((age) => age.startsWith(partial))
+          .slice(0, maxSuggestions)
+          .map((age) => ({ display: age, insert: age }));
+      default:
+        return [];
+    }
+  }
+
+  const partial = ctx.partial.toLowerCase();
+  if (!partial) {
+    return QUERY_KEYS.slice(0, maxSuggestions).map((key) => ({ display: key, insert: key }));
+  }
+
+  const keySuggestions = QUERY_KEYS.filter((key) => key.toLowerCase().startsWith(partial)).map(
+    (key) => ({ display: key, insert: key })
+  );
+  const levelSuggestions = LEVEL_NAMES.filter((level) => level.startsWith(partial)).map(
+    (level) => ({
+      display: `${level} (level shorthand)`,
+      insert: level,
+    })
+  );
+
+  return [...keySuggestions, ...levelSuggestions].slice(0, maxSuggestions);
+}
+
 const LEVEL_PRIORITY: Record<string, number> = {
   verbose: 0,
   v: 0,

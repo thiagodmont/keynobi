@@ -1,6 +1,10 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { parseFilterGroups, parseQuery, setMinePackage } from "@/lib/logcat-query";
-import { groupsToFilterSpec, hasAnyFrontendOnlyLogic, tokensToFilterSpec } from "./LogcatPanel";
+import {
+  groupsToFilterSpec,
+  hasAnyFrontendOnlyLogic,
+  tokensToFilterSpec,
+} from "@/lib/logcat-filter-spec";
 
 describe("LogcatPanel backend filter spec conversion", () => {
   beforeEach(() => {

@@ -30,6 +30,7 @@ import {
   serializeQueryBarCommittedPart,
   splitRawQueryParts,
   commitQueryBarDraft,
+  getQueryBarSuggestions,
   setMinePackage,
   isStackTraceLine,
   parseStackFrame,
@@ -1784,6 +1785,48 @@ describe("getActiveTokenContext — negated freetext partial is de-negated", () 
     expect(ctx.key).toBeNull();
     expect(ctx.partial).toBe("ta");
     expect(ctx.offset).toBe(12);
+  });
+});
+
+// ── getQueryBarSuggestions ───────────────────────────────────────────────────
+
+describe("getQueryBarSuggestions", () => {
+  it("suggests query keys for an empty draft", () => {
+    const suggestions = getQueryBarSuggestions("", [], []);
+    expect(suggestions.map((s) => s.insert)).toContain("level:");
+    expect(suggestions.map((s) => s.insert)).toContain("tag:");
+  });
+
+  it("suggests matching known tags for a tag key", () => {
+    const suggestions = getQueryBarSuggestions("tag:ok", ["OkHttp", "Retrofit"], []);
+    expect(suggestions).toEqual([{ display: "OkHttp", insert: "OkHttp" }]);
+  });
+
+  it("suggests mine and matching known packages for a package key", () => {
+    const suggestions = getQueryBarSuggestions("package:m", [], ["com.example.main"]);
+    expect(suggestions).toEqual([
+      { display: "mine", insert: "mine" },
+      { display: "com.example.main", insert: "com.example.main" },
+    ]);
+  });
+
+  it("suggests mine and matching known packages for the pkg alias", () => {
+    const suggestions = getQueryBarSuggestions("pkg:m", [], ["com.example.main"]);
+    expect(suggestions).toEqual([
+      { display: "mine", insert: "mine" },
+      { display: "com.example.main", insert: "com.example.main" },
+    ]);
+  });
+
+  it("caps suggestions to the requested maximum", () => {
+    const tags = Array.from({ length: 20 }, (_, i) => `Tag${i}`);
+    const suggestions = getQueryBarSuggestions("tag:tag", tags, [], 5);
+    expect(suggestions).toHaveLength(5);
+  });
+
+  it("preserves level shorthand suggestions for freetext partials", () => {
+    const suggestions = getQueryBarSuggestions("err", [], []);
+    expect(suggestions).toContainEqual({ display: "error (level shorthand)", insert: "error" });
   });
 });
 

@@ -167,7 +167,7 @@ impl LogPipeline {
     /// Callers provide the target buffer so it can be pre-allocated or reused.
     pub fn run_batch_into(
         &self,
-        rx: &mut tokio::sync::mpsc::UnboundedReceiver<RawLogLine>,
+        rx: &mut tokio::sync::mpsc::Receiver<RawLogLine>,
         ctx: &mut PipelineContext,
         out: &mut Vec<ProcessedEntry>,
     ) {
