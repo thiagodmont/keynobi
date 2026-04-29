@@ -8,14 +8,14 @@
  * `onSelect(null)` to clear the filter.
  */
 
-import {
-  type JSX,
-  createSignal,
-  createMemo,
-  For,
-  Show,
-} from "solid-js";
+import { type JSX, createSignal, createMemo, For, Show } from "solid-js";
 import { getMinePackage } from "@/lib/logcat-query";
+import {
+  logcatDropdownOverlayStyle,
+  logcatDropdownPanelStyle,
+  logcatDropdownRootStyle,
+  logcatDropdownSeparatorStyle,
+} from "./logcat-dropdown-styles";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -45,9 +45,7 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
 
   const filteredPackages = createMemo(() => {
     const q = search().toLowerCase();
-    return q
-      ? props.packages.filter((p) => p.toLowerCase().includes(q))
-      : props.packages;
+    return q ? props.packages.filter((p) => p.toLowerCase().includes(q)) : props.packages;
   });
 
   // Truncate for display in the button (keep last two segments of package name).
@@ -92,7 +90,7 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ position: "relative", "flex-shrink": "0" }}>
+    <div style={logcatDropdownRootStyle()}>
       {/* Trigger button */}
       <button
         onClick={handleToggle}
@@ -124,19 +122,11 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
       {/* Dropdown panel */}
       <Show when={open()}>
         <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            left: "0",
-            "min-width": "220px",
-            "max-width": "320px",
-            background: "var(--bg-secondary)",
-            border: "1px solid var(--border)",
-            "border-radius": "4px",
-            "box-shadow": "0 6px 20px rgba(0,0,0,0.45)",
-            "z-index": "700",
-            "font-size": "11px",
-          }}
+          style={logcatDropdownPanelStyle({
+            align: "left",
+            minWidth: "220px",
+            maxWidth: "320px",
+          })}
         >
           {/* Search input */}
           <div style={{ padding: "6px 8px 4px", "border-bottom": "1px solid var(--border)" }}>
@@ -197,7 +187,7 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
 
             {/* Separator */}
             <Show when={!search() && props.packages.length > 0}>
-              <div style={{ height: "1px", background: "var(--border)", margin: "4px 0" }} />
+              <div style={logcatDropdownSeparatorStyle()} />
             </Show>
 
             {/* Actual package list */}
@@ -229,10 +219,7 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
         </div>
 
         {/* Click-outside overlay */}
-        <div
-          style={{ position: "fixed", inset: "0", "z-index": "699" }}
-          onClick={() => setOpen(false)}
-        />
+        <div style={logcatDropdownOverlayStyle()} onClick={() => setOpen(false)} />
       </Show>
     </div>
   );
@@ -259,7 +246,8 @@ function PackageRow(props: {
         color: props.active ? "var(--accent)" : "var(--text-primary)",
       }}
       onMouseEnter={(e) => {
-        if (!props.active) (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
+        if (!props.active)
+          (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
       }}
       onMouseLeave={(e) => {
         if (!props.active) (e.currentTarget as HTMLElement).style.background = "transparent";
@@ -285,7 +273,14 @@ function PackageRow(props: {
       </span>
 
       <Show when={props.sublabel}>
-        <span style={{ "font-size": "9px", color: "var(--text-muted)", "flex-shrink": "0", "font-family": "var(--font-mono)" }}>
+        <span
+          style={{
+            "font-size": "9px",
+            color: "var(--text-muted)",
+            "flex-shrink": "0",
+            "font-family": "var(--font-mono)",
+          }}
+        >
           {props.sublabel}
         </span>
       </Show>

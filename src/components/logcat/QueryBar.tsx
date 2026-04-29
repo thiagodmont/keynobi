@@ -24,11 +24,8 @@
 
 import { type JSX, createSignal, createMemo, For, Show, untrack } from "solid-js";
 import {
-  QUERY_KEYS,
-  LEVEL_NAMES,
-  AGE_SUGGESTIONS,
-  IS_SUGGESTIONS,
   getActiveTokenContext,
+  getQueryBarSuggestions,
   parseQueryBarState,
   balanceMessageDraftQuotes,
   buildQueryBarPillGroups,
@@ -41,6 +38,25 @@ import {
   applyInlineEditCommit,
   commitQueryBarDraft,
 } from "@/lib/logcat-query";
+import {
+  QueryBarAndBadge,
+  QueryBarConnectorButton,
+  QueryBarInlineEditInput,
+  QueryBarOrBadge,
+  QueryBarPill,
+  QueryBarSuggestions,
+} from "./QueryBarParts";
+import {
+  queryBarClearButtonStyle,
+  queryBarConnectorGroupStyle,
+  queryBarContainerStyle,
+  queryBarDraftInputStyle,
+  queryBarGroupBoxStyle,
+  queryBarInputRowStyle,
+  queryBarOrphanInlineEditStyle,
+  queryBarRootStyle,
+  searchIconStyle,
+} from "./querybar-styles";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -50,59 +66,6 @@ export interface QueryBarProps {
   knownTags: string[];
   knownPackages: string[];
   placeholder?: string;
-}
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const MAX_SUGGESTIONS = 10;
-
-// ── Token styling ─────────────────────────────────────────────────────────────
-
-interface TokenStyle {
-  color: string;
-  bg: string;
-  border: string;
-}
-
-function getTokenStyle(tokenText: string): TokenStyle {
-  const t = tokenText.startsWith("-") ? tokenText.slice(1) : tokenText;
-  if (t.startsWith("level:"))
-    return {
-      color: "var(--warning)",
-      bg: "color-mix(in srgb, var(--warning) 13%, transparent)",
-      border: "color-mix(in srgb, var(--warning) 35%, transparent)",
-    };
-  if (t.startsWith("tag:") || t.startsWith("tag~:"))
-    return {
-      color: "var(--info)",
-      bg: "color-mix(in srgb, var(--info) 13%, transparent)",
-      border: "color-mix(in srgb, var(--info) 35%, transparent)",
-    };
-  if (t.startsWith("message:") || t.startsWith("message~:") || t.startsWith("msg:"))
-    return {
-      color: "var(--success)",
-      bg: "color-mix(in srgb, var(--success) 11%, transparent)",
-      border: "color-mix(in srgb, var(--success) 35%, transparent)",
-    };
-  if (t.startsWith("package:") || t.startsWith("pkg:"))
-    return {
-      color: "var(--accent)",
-      bg: "color-mix(in srgb, var(--accent) 13%, transparent)",
-      border: "color-mix(in srgb, var(--accent) 40%, transparent)",
-    };
-  if (t.startsWith("age:"))
-    return {
-      color: "var(--accent)",
-      bg: "color-mix(in srgb, var(--accent) 13%, transparent)",
-      border: "color-mix(in srgb, var(--accent) 35%, transparent)",
-    };
-  if (t.startsWith("is:"))
-    return {
-      color: "var(--error)",
-      bg: "color-mix(in srgb, var(--error) 13%, transparent)",
-      border: "color-mix(in srgb, var(--error) 35%, transparent)",
-    };
-  return { color: "var(--text-secondary)", bg: "rgba(255,255,255,0.07)", border: "var(--border)" };
 }
 
 // ── Query parsing helpers (local to this component) ───────────────────────────
@@ -160,22 +123,6 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
     return pillGroups().reduce((n, gr) => n + gr.length, 0);
   }
 
-  function inlineSlotStyle(): Record<string, string> {
-    return {
-      flex: "1",
-      "min-width": "120px",
-      "max-width": "420px",
-      background: "var(--bg-primary)",
-      border: "1px solid var(--accent)",
-      color: "var(--text-primary)",
-      "font-size": "11px",
-      "font-family": "var(--font-mono)",
-      "border-radius": "10px",
-      padding: "1px 6px",
-      outline: "none",
-    };
-  }
-
   /** True when the draft lives in a new OR group (last committed part is `|`). */
   const draftInNewGroup = createMemo(() => committedEndsWithOrSeparator(committed()));
 
@@ -195,54 +142,9 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
 
   // ── Suggestions (based on the draft being typed) ──────────────────────────
 
-  const suggestions = createMemo(() => {
-    const ctx = getActiveTokenContext(draft());
-
-    if (ctx.key) {
-      const partial = ctx.partial.toLowerCase();
-      switch (ctx.key.toLowerCase()) {
-        case "level":
-          return LEVEL_NAMES.filter((l) => l.startsWith(partial)).map((l) => ({
-            display: l,
-            insert: l,
-          }));
-        case "tag":
-          return props.knownTags
-            .filter((t) => t.toLowerCase().includes(partial))
-            .slice(0, MAX_SUGGESTIONS)
-            .map((t) => ({ display: t, insert: t }));
-        case "package":
-          return ["mine", ...props.knownPackages]
-            .filter((p) => p.toLowerCase().includes(partial))
-            .slice(0, MAX_SUGGESTIONS)
-            .map((p) => ({ display: p, insert: p }));
-        case "is":
-          return IS_SUGGESTIONS.filter((s) => s.startsWith(partial)).map((s) => ({
-            display: s,
-            insert: s,
-          }));
-        case "age":
-          return AGE_SUGGESTIONS.filter((a) => a.startsWith(partial)).map((a) => ({
-            display: a,
-            insert: a,
-          }));
-        default:
-          return [];
-      }
-    }
-
-    const partial = ctx.partial.toLowerCase();
-    if (!partial) return QUERY_KEYS.map((k) => ({ display: k, insert: k }));
-
-    const keySuggestions = QUERY_KEYS.filter((k) => k.toLowerCase().startsWith(partial)).map(
-      (k) => ({ display: k, insert: k })
-    );
-    const levelSuggestions = LEVEL_NAMES.filter((l) => l.startsWith(partial)).map((l) => ({
-      display: `${l} (level shorthand)`,
-      insert: l,
-    }));
-    return [...keySuggestions, ...levelSuggestions].slice(0, MAX_SUGGESTIONS);
-  });
+  const suggestions = createMemo(() =>
+    getQueryBarSuggestions(draft(), props.knownTags, props.knownPackages)
+  );
 
   const hasSuggestions = () => open() && suggestions().length > 0;
 
@@ -524,7 +426,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div ref={containerRef} style={{ position: "relative", flex: "1", "min-width": "280px" }}>
+    <div ref={containerRef} style={queryBarRootStyle()}>
       {/* ── Pill + draft input container ─────────────────────────────────── */}
       {/*                                                                      */}
       {/* Single flex-wrap container. Everything is an inline flex item:       */}
@@ -534,35 +436,9 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
       {/* unit — preventing the buttons from separating from the input.        */}
       {/* ⌕ and ✕ are inline (no absolute positioning) so they follow         */}
       {/* the natural flex height as pills wrap to multiple rows.              */}
-      <div
-        onClick={() => draftRef?.focus()}
-        style={{
-          display: "flex",
-          "flex-wrap": "wrap",
-          "align-items": "center",
-          gap: "3px",
-          "min-height": "26px",
-          padding: "3px 6px",
-          background: "var(--bg-primary)",
-          border: `1px solid ${isActive() ? "var(--accent)" : "var(--border)"}`,
-          "border-radius": "4px",
-          cursor: "text",
-          transition: "border-color 0.1s",
-        }}
-      >
+      <div onClick={() => draftRef?.focus()} style={queryBarContainerStyle(isActive())}>
         {/* Search icon — inline flex item, always at start of first row */}
-        <span
-          style={{
-            "flex-shrink": "0",
-            color: "var(--text-muted)",
-            "font-size": "11px",
-            "pointer-events": "none",
-            opacity: "0.6",
-            "line-height": "1",
-          }}
-        >
-          ⌕
-        </span>
+        <span style={searchIconStyle()}>⌕</span>
 
         {/* ── Pill groups ─────────────────────────────────────────────── */}
         <For each={pillGroups()}>
@@ -571,153 +447,56 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
               <>
                 {/* OR badge between groups */}
                 <Show when={gi() > 0}>
-                  <span
-                    style={{
-                      "font-size": "9px",
-                      "font-weight": "700",
-                      "letter-spacing": "0.05em",
-                      color: "var(--accent)",
-                      background: "rgba(var(--accent-rgb,59,130,246),0.13)",
-                      border: "1px solid rgba(var(--accent-rgb,59,130,246),0.35)",
-                      "border-radius": "10px",
-                      padding: "1px 5px",
-                      "flex-shrink": "0",
-                      "user-select": "none",
-                    }}
-                  >
-                    OR
-                  </span>
+                  <QueryBarOrBadge />
                 </Show>
 
                 {/* Group container: visible box only when 2+ groups exist */}
-                <div style={multiGroup() ? groupBoxStyle() : { display: "contents" }}>
+                <div style={multiGroup() ? queryBarGroupBoxStyle() : { display: "contents" }}>
                   {/* Tokens in this group */}
                   <For each={group}>
-                    {(token, ti) => {
-                      const s = getTokenStyle(token);
-                      const negated = token.startsWith("-");
-                      return (
-                        <>
-                          <Show
-                            when={
-                              inlineEdit()?.groupIdx === gi() && inlineEdit()?.tokenIdx === ti()
-                            }
-                          >
-                            <input
-                              ref={inlineEditRef}
-                              type="text"
-                              spellcheck={false}
-                              value={inlineEdit()?.text ?? ""}
-                              onInput={handleInlineInput}
-                              onKeyDown={handleInlineKeyDown}
-                              onBlur={handleInlineBlur}
-                              onClick={(e) => e.stopPropagation()}
-                              onMouseDown={(e) => e.stopPropagation()}
-                              placeholder="Edit filter…"
-                              style={{ ...inlineSlotStyle(), flex: "0 1 auto" }}
-                            />
-                          </Show>
-                          {/* AND badge between pills in the same group */}
-                          <Show when={ti() > 0}>
-                            <span
-                              style={{
-                                "font-size": "9px",
-                                "font-weight": "600",
-                                "letter-spacing": "0.04em",
-                                color: "var(--text-muted)",
-                                border: "1px dashed var(--border)",
-                                "border-radius": "10px",
-                                padding: "1px 5px",
-                                "flex-shrink": "0",
-                                "user-select": "none",
-                              }}
-                            >
-                              AND
-                            </span>
-                          </Show>
-
-                          {/* Token pill — stop click bubbling so the container does not
-                              focus the draft on the same gesture (would skip focusing
-                              the inline editor and leave the pill removed). */}
-                          <span
-                            onClick={(e) => e.stopPropagation()}
-                            style={{
-                              display: "inline-flex",
-                              "align-items": "center",
-                              gap: "2px",
-                              "font-size": "10px",
-                              "font-family": "var(--font-mono)",
-                              color: s.color,
-                              background: s.bg,
-                              border: `1px solid ${s.border}`,
-                              "border-radius": "10px",
-                              padding: "1px 4px 1px 6px",
-                              "flex-shrink": "0",
-                              "white-space": "nowrap",
-                              opacity: negated ? "0.65" : "1",
+                    {(token, ti) => (
+                      <>
+                        <Show
+                          when={inlineEdit()?.groupIdx === gi() && inlineEdit()?.tokenIdx === ti()}
+                        >
+                          <QueryBarInlineEditInput
+                            inputRef={(el) => {
+                              inlineEditRef = el;
                             }}
-                          >
-                            <span
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                editToken(gi(), ti(), token);
-                              }}
-                              title="Edit filter"
-                              style={{ cursor: "text", "user-select": "none" }}
-                            >
-                              {token}
-                            </span>
-                            <button
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                removeToken(gi(), ti());
-                              }}
-                              title="Remove filter"
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color: s.color,
-                                cursor: "pointer",
-                                padding: "0 1px",
-                                "font-size": "9px",
-                                "line-height": "1",
-                                opacity: "0.55",
-                                display: "flex",
-                                "align-items": "center",
-                              }}
-                              onMouseEnter={(e) => {
-                                (e.currentTarget as HTMLElement).style.opacity = "1";
-                              }}
-                              onMouseLeave={(e) => {
-                                (e.currentTarget as HTMLElement).style.opacity = "0.55";
-                              }}
-                            >
-                              ✕
-                            </button>
-                          </span>
-                        </>
-                      );
-                    }}
+                            value={inlineEdit()?.text ?? ""}
+                            onInput={handleInlineInput}
+                            onKeyDown={handleInlineKeyDown}
+                            onBlur={handleInlineBlur}
+                            style={{ flex: "0 1 auto" }}
+                          />
+                        </Show>
+                        {/* AND badge between pills in the same group */}
+                        <Show when={ti() > 0}>
+                          <QueryBarAndBadge />
+                        </Show>
+
+                        <QueryBarPill
+                          token={token}
+                          onEdit={() => editToken(gi(), ti(), token)}
+                          onRemove={() => removeToken(gi(), ti())}
+                        />
+                      </>
+                    )}
                   </For>
                   <Show
                     when={
                       inlineEdit()?.groupIdx === gi() && inlineEdit()?.tokenIdx === group.length
                     }
                   >
-                    <input
-                      ref={inlineEditRef}
-                      type="text"
-                      spellcheck={false}
+                    <QueryBarInlineEditInput
+                      inputRef={(el) => {
+                        inlineEditRef = el;
+                      }}
                       value={inlineEdit()?.text ?? ""}
                       onInput={handleInlineInput}
                       onKeyDown={handleInlineKeyDown}
                       onBlur={handleInlineBlur}
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      placeholder="Edit filter…"
-                      style={{ ...inlineSlotStyle(), flex: "0 1 auto" }}
+                      style={{ flex: "0 1 auto" }}
                     />
                   </Show>
                 </div>
@@ -727,76 +506,37 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
         </For>
 
         <Show when={inlineEditOrphanAfterOrBranch()}>
-          <span
-            onClick={(e) => e.stopPropagation()}
-            style={{ display: "inline-flex", "align-items": "center", gap: "3px" }}
-          >
-            <span
-              style={{
-                "font-size": "9px",
-                "font-weight": "700",
-                "letter-spacing": "0.05em",
-                color: "var(--accent)",
-                background: "rgba(var(--accent-rgb,59,130,246),0.13)",
-                border: "1px solid rgba(var(--accent-rgb,59,130,246),0.35)",
-                "border-radius": "10px",
-                padding: "1px 5px",
-                "flex-shrink": "0",
-                "user-select": "none",
+          <span onClick={(e) => e.stopPropagation()} style={queryBarOrphanInlineEditStyle()}>
+            <QueryBarOrBadge />
+            <QueryBarInlineEditInput
+              inputRef={(el) => {
+                inlineEditRef = el;
               }}
-            >
-              OR
-            </span>
-            <input
-              ref={inlineEditRef}
-              type="text"
-              spellcheck={false}
               value={inlineEdit()?.text ?? ""}
               onInput={handleInlineInput}
               onKeyDown={handleInlineKeyDown}
               onBlur={handleInlineBlur}
-              onClick={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              placeholder="Edit filter…"
-              style={{ ...inlineSlotStyle(), "flex-shrink": "1" }}
+              style={{ "flex-shrink": "1" }}
             />
           </span>
         </Show>
 
         <Show when={!!inlineEdit() && totalPillCount() === 0}>
-          <input
-            ref={inlineEditRef}
-            type="text"
-            spellcheck={false}
+          <QueryBarInlineEditInput
+            inputRef={(el) => {
+              inlineEditRef = el;
+            }}
             value={inlineEdit()?.text ?? ""}
             onInput={handleInlineInput}
             onKeyDown={handleInlineKeyDown}
             onBlur={handleInlineBlur}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            placeholder="Edit filter…"
-            style={{ ...inlineSlotStyle(), "flex-shrink": "1" }}
+            style={{ "flex-shrink": "1" }}
           />
         </Show>
 
         {/* OR badge before the draft when it starts a new group */}
         <Show when={draftInNewGroup() && hasAnyPills()}>
-          <span
-            style={{
-              "font-size": "9px",
-              "font-weight": "700",
-              "letter-spacing": "0.05em",
-              color: "var(--accent)",
-              background: "rgba(var(--accent-rgb,59,130,246),0.13)",
-              border: "1px solid rgba(var(--accent-rgb,59,130,246),0.35)",
-              "border-radius": "10px",
-              padding: "1px 5px",
-              "flex-shrink": "0",
-              "user-select": "none",
-            }}
-          >
-            OR
-          </span>
+          <QueryBarOrBadge />
         </Show>
 
         {/* ── Input row — draft + connector buttons + clear ──────────────── */}
@@ -805,15 +545,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
         {/* input and buttons always stay together on the same line.           */}
         {/* min-width forces this group to wrap as a unit when pills fill      */}
         {/* the available horizontal space.                                    */}
-        <div
-          style={{
-            flex: "1",
-            display: "flex",
-            "align-items": "center",
-            gap: "3px",
-            "min-width": "180px",
-          }}
-        >
+        <div style={queryBarInputRowStyle()}>
           {/* Draft input */}
           <input
             ref={draftRef}
@@ -831,58 +563,26 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                 ? "Add condition…"
                 : (props.placeholder ?? "Filter… (level:error, tag:App, is:crash…)")
             }
-            style={{
-              flex: "1",
-              "min-width": "0", // allow shrinking below content size in flex
-              background: "transparent",
-              border: "none",
-              color: "var(--text-primary)",
-              "font-size": "11px",
-              "font-family": "var(--font-mono)",
-              outline: "none",
-              padding: "1px 0",
-            }}
+            style={queryBarDraftInputStyle()}
           />
 
           {/* + AND / + OR connector buttons */}
           <Show when={isActive()}>
-            <div style={{ display: "flex", gap: "3px", "flex-shrink": "0" }}>
-              <button
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  handleAddAndConnector();
-                }}
+            <div style={queryBarConnectorGroupStyle()}>
+              <QueryBarConnectorButton
                 title="Add AND condition — both conditions must match"
-                style={connectorBtnStyle()}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "var(--success)";
-                  (e.currentTarget as HTMLElement).style.borderColor = "var(--success)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
-                  (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
-                }}
+                hoverColor="var(--success)"
+                onMouseDown={handleAddAndConnector}
               >
                 + AND
-              </button>
-              <button
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  handleAddOrGroup();
-                }}
+              </QueryBarConnectorButton>
+              <QueryBarConnectorButton
                 title="Add OR group — entries matching either group will be shown"
-                style={connectorBtnStyle()}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "var(--accent)";
-                  (e.currentTarget as HTMLElement).style.borderColor = "var(--accent)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
-                  (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
-                }}
+                hoverColor="var(--accent)"
+                onMouseDown={handleAddOrGroup}
               >
                 + OR
-              </button>
+              </QueryBarConnectorButton>
             </div>
           </Show>
 
@@ -896,19 +596,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                 draftRef?.focus();
               }}
               title="Clear all filters (Esc)"
-              style={{
-                "flex-shrink": "0",
-                background: "none",
-                border: "none",
-                color: "var(--text-muted)",
-                cursor: "pointer",
-                "font-size": "11px",
-                padding: "0 2px",
-                "line-height": "1",
-                display: "flex",
-                "align-items": "center",
-                opacity: "0.6",
-              }}
+              style={queryBarClearButtonStyle()}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLElement).style.opacity = "1";
               }}
@@ -924,95 +612,15 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
 
       {/* ── Autocomplete dropdown ───────────────────────────────────────── */}
       <Show when={hasSuggestions()}>
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 3px)",
-            left: "0",
-            "min-width": "220px",
-            "max-width": "360px",
-            "max-height": "260px",
-            "overflow-y": "auto",
-            background: "var(--bg-secondary)",
-            border: "1px solid var(--border)",
-            "border-radius": "4px",
-            "box-shadow": "0 6px 20px rgba(0,0,0,0.45)",
-            "z-index": "600",
-          }}
-        >
-          <For each={suggestions()}>
-            {(s, i) => {
-              const isSelected = () => i() === selectedIdx();
-              return (
-                <div
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    applySelection(s.insert);
-                  }}
-                  onMouseEnter={() => setSelectedIdx(i())}
-                  style={{
-                    padding: "5px 10px",
-                    "font-size": "11px",
-                    "font-family": "var(--font-mono)",
-                    color: isSelected() ? "#fff" : "var(--text-primary)",
-                    background: isSelected() ? "var(--accent)" : "transparent",
-                    cursor: "pointer",
-                    "white-space": "nowrap",
-                    overflow: "hidden",
-                    "text-overflow": "ellipsis",
-                  }}
-                >
-                  {s.display}
-                </div>
-              );
-            }}
-          </For>
-          <div
-            style={{
-              padding: "4px 10px",
-              "font-size": "10px",
-              color: "var(--text-disabled, #4b5563)",
-              "border-top": "1px solid var(--border)",
-              "user-select": "none",
-            }}
-          >
-            ↑↓ navigate · Tab/Enter select · Esc close · && = AND · | = OR group
-          </div>
-        </div>
+        <QueryBarSuggestions
+          suggestions={suggestions()}
+          selectedIdx={selectedIdx()}
+          onSelect={applySelection}
+          onHover={setSelectedIdx}
+        />
       </Show>
     </div>
   );
-}
-
-// ── Style helper ──────────────────────────────────────────────────────────────
-
-function connectorBtnStyle(): Record<string, string> {
-  return {
-    background: "none",
-    border: "1px solid var(--border)",
-    color: "var(--text-muted)",
-    "border-radius": "4px",
-    cursor: "pointer",
-    "font-size": "10px",
-    "font-family": "var(--font-mono)",
-    padding: "2px 6px",
-    "white-space": "nowrap",
-    transition: "color 0.1s, border-color 0.1s",
-  };
-}
-
-function groupBoxStyle(): Record<string, string> {
-  return {
-    display: "inline-flex",
-    "align-items": "center",
-    gap: "3px",
-    padding: "3px 6px",
-    border: "1px solid rgba(255,255,255,0.10)",
-    "border-radius": "8px",
-    background: "rgba(255,255,255,0.04)",
-    "flex-shrink": "0",
-    "max-width": "100%",
-  };
 }
 
 export default QueryBar;
