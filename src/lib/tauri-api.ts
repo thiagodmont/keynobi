@@ -63,10 +63,7 @@ export async function getProjectAppInfo(): Promise<ProjectAppInfo> {
 }
 
 /** Write versionName and versionCode back to the app-level build.gradle(.kts). */
-export async function saveProjectAppInfo(
-  versionName: string,
-  versionCode: bigint
-): Promise<void> {
+export async function saveProjectAppInfo(versionName: string, versionCode: bigint): Promise<void> {
   return invoke<void>("save_project_app_info", { versionName, versionCode });
 }
 
@@ -154,12 +151,7 @@ export function formatError(err: unknown): string {
 
 // ── Build system ──────────────────────────────────────────────────────────────
 
-import type {
-  BuildLine,
-  BuildError,
-  BuildStatus,
-  BuildRecord,
-} from "@/bindings";
+import type { BuildLine, BuildError, BuildStatus, BuildRecord } from "@/bindings";
 import { Channel } from "@tauri-apps/api/core";
 
 export type { BuildLine, BuildError, BuildStatus, BuildRecord };
@@ -316,18 +308,13 @@ export async function getSelectedDevice(): Promise<string | null> {
 }
 
 /** UI Automator / accessibility hierarchy for the focused window (`deviceSerial` null = selected device). */
-export async function dumpUiHierarchy(
-  deviceSerial?: string | null
-): Promise<UiHierarchySnapshot> {
+export async function dumpUiHierarchy(deviceSerial?: string | null): Promise<UiHierarchySnapshot> {
   return invoke<UiHierarchySnapshot>("dump_ui_hierarchy", {
     deviceSerial: deviceSerial ?? null,
   });
 }
 
-export async function installApkOnDevice(
-  serial: string,
-  apkPath: string
-): Promise<string> {
+export async function installApkOnDevice(serial: string, apkPath: string): Promise<string> {
   return invoke<string>("install_apk_on_device", { serial, apkPath });
 }
 
@@ -367,12 +354,8 @@ export async function stopDevicePolling(): Promise<void> {
   return invoke<void>("stop_device_polling");
 }
 
-export function listenDeviceListChanged(
-  cb: (devices: Device[]) => void
-): Promise<UnlistenFn> {
-  return listen<{ devices: Device[] }>("device:list_changed", (event) =>
-    cb(event.payload.devices)
-  );
+export function listenDeviceListChanged(cb: (devices: Device[]) => void): Promise<UnlistenFn> {
+  return listen<{ devices: Device[] }>("device:list_changed", (event) => cb(event.payload.devices));
 }
 
 export async function listSystemImages(): Promise<SystemImageInfo[]> {
@@ -476,9 +459,7 @@ export async function getLogcatStats(): Promise<LogStats> {
   return invoke<LogStats>("get_logcat_stats");
 }
 
-export function listenLogcatEntries(
-  cb: (entries: ProcessedEntry[]) => void
-): Promise<UnlistenFn> {
+export function listenLogcatEntries(cb: (entries: ProcessedEntry[]) => void): Promise<UnlistenFn> {
   return listen<ProcessedEntry[]>("logcat:entries", (e) => cb(e.payload));
 }
 
@@ -498,8 +479,13 @@ export function listenLogcatReconnecting(cb: () => void): Promise<UnlistenFn> {
 
 // ── MCP Server ─────────────────────────────────────────────────────────────────
 
-import type { McpSetupStatus, McpActivityEntry, McpServerStatus } from "@/bindings";
-export type { McpSetupStatus, McpActivityEntry, McpServerStatus };
+import type {
+  McpSetupStatus,
+  McpClientSetupStatus,
+  McpActivityEntry,
+  McpServerStatus,
+} from "@/bindings";
+export type { McpSetupStatus, McpClientSetupStatus, McpActivityEntry, McpServerStatus };
 
 /** Start the MCP server on stdio. For use in MCP mode only. */
 export async function startMcpServer(): Promise<void> {
@@ -507,19 +493,11 @@ export async function startMcpServer(): Promise<void> {
 }
 
 /**
- * Query the real binary path, Claude CLI presence, and MCP registration status.
- * Used to show the correct setup command and button state in the Health panel.
+ * Query the real binary path and read-only MCP registration status for supported clients.
+ * Used to show setup commands and setup state in the Health panel.
  */
 export async function getMcpSetupStatus(): Promise<McpSetupStatus> {
   return invoke<McpSetupStatus>("get_mcp_setup_status");
-}
-
-/**
- * Run `claude mcp add keynobi --command "<real_path> --mcp"`.
- * Returns a success message or throws with an error description.
- */
-export async function configureMcpInClaude(): Promise<string> {
-  return invoke<string>("configure_mcp_in_claude");
 }
 
 /** Return the last `limit` activity log entries (default 200). */
@@ -538,9 +516,7 @@ export async function clearMcpActivity(): Promise<void> {
 }
 
 /** Listen for MCP server startup failures (auto-start mode). */
-export function listenMcpStartupFailed(
-  cb: (errorMessage: string) => void
-): Promise<UnlistenFn> {
+export function listenMcpStartupFailed(cb: (errorMessage: string) => void): Promise<UnlistenFn> {
   return listen<string>("mcp:startup-failed", (event) => cb(event.payload));
 }
 
@@ -557,7 +533,7 @@ export function listenMcpStartupFailed(
 export async function openInStudio(
   classPath: string,
   filename: string,
-  line: number,
+  line: number
 ): Promise<string> {
   return invoke<string>("open_in_studio", { classPath, filename, line });
 }

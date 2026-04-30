@@ -209,7 +209,7 @@ pub struct TelemetrySettings {
 pub struct McpSettings {
     /// Automatically start the MCP stdio server when the app launches.
     ///
-    /// When enabled, Claude Code can connect immediately after the app opens
+    /// When enabled, configured MCP clients can connect immediately after the app opens
     /// without needing to trigger "Start MCP Server" from the command palette.
     pub auto_start: bool,
     /// Maximum seconds to wait for a Gradle build via the `run_gradle_task`

@@ -11,7 +11,7 @@ basic UI automation.
 |-------------|------|
 | `src-tauri/src/main.rs` | Starts headless MCP mode when the app is launched with `--mcp [--project /path]`. |
 | `services/mcp_server.rs` | Owns the MCP server, tool definitions, prompts, resources, validation, and GUI/headless startup. |
-| `commands/mcp.rs` | Exposes Tauri commands for setup status, Claude Code registration, activity reads, PID status, and activity clearing. |
+| `commands/mcp.rs` | Exposes Tauri commands for setup status, client registration detection, activity reads, PID status, and activity clearing. |
 | `services/mcp_activity.rs` | Writes bounded JSONL activity entries and tracks the headless MCP PID. |
 | `src/stores/mcp.store.ts` | Frontend state for MCP lifecycle, connected client, server PID, and recent activity. |
 

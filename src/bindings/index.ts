@@ -54,6 +54,7 @@ export type { ProjectEntry } from "./ProjectEntry";
 export type { ProjectAppInfo } from "./ProjectAppInfo";
 
 // MCP
+export type { McpClientSetupStatus } from "./McpClientSetupStatus";
 export type { McpSetupStatus } from "./McpSetupStatus";
 export type { McpActivityEntry } from "./McpActivityEntry";
 export type { McpServerStatus } from "./McpServerStatus";

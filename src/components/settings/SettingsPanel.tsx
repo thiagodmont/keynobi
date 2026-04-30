@@ -1,11 +1,7 @@
 import { type JSX, Show, For, createSignal, createResource } from "solid-js";
 import { getVersion } from "@tauri-apps/api/app";
 import { settingsState, updateSetting, resetSettings } from "@/stores/settings.store";
-import {
-  SettingRow,
-  SettingToggle,
-  SettingNumberInput,
-} from "@/components/settings/SettingRow";
+import { SettingRow, SettingToggle, SettingNumberInput } from "@/components/settings/SettingRow";
 import {
   clampLogcatMaxUiLines,
   clampLogcatRingMaxEntries,
@@ -431,11 +427,11 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
         </SettingRow>
       </Show>
 
-      <SectionHeader title="Claude Code (MCP)" />
+      <SectionHeader title="MCP" />
       <Show when={props.matchesSearch("MCP Auto-start", "Start MCP server when the app launches")}>
         <SettingRow
           label="Auto-start MCP Server"
-          description="Automatically start the MCP stdio server when the app opens. Lets Claude Code connect without a manual trigger."
+          description="Automatically start the MCP stdio server when the app opens. Lets configured AI clients connect without a manual trigger."
         >
           <SettingToggle
             checked={settingsState.mcp.autoStart}

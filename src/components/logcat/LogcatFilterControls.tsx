@@ -26,37 +26,66 @@ export function LogcatFilterControls(props: {
   onAgeSelect: (value: LogcatAgePillValue) => void;
   onPackageSelect: (pkg: string | null) => void;
   onClear: () => void;
+  renderSavedFilterMenu: () => JSX.Element;
 }): JSX.Element {
   return (
     <div
       style={{
         display: "flex",
-        "flex-wrap": "wrap",
-        "align-items": "flex-start",
+        "flex-direction": "column",
         gap: "6px",
-        padding: "5px 10px",
+        padding: "6px 10px",
         background: "var(--bg-secondary)",
         "border-bottom": "1px solid var(--border)",
         "flex-shrink": "0",
       }}
     >
-      <QueryBar
-        value={props.query}
-        onChange={props.onQueryChange}
-        knownTags={props.knownTags}
-        knownPackages={props.knownPackages}
-      />
+      <div
+        data-testid="logcat-filter-query-row"
+        style={{
+          display: "flex",
+          width: "100%",
+          "min-width": "0",
+        }}
+      >
+        <QueryBar
+          value={props.query}
+          onChange={props.onQueryChange}
+          knownTags={props.knownTags}
+          knownPackages={props.knownPackages}
+        />
+      </div>
 
-      <div style={{ display: "flex", "align-items": "center", gap: "4px", "flex-shrink": "0" }}>
+      <div
+        data-testid="logcat-filter-quick-row"
+        style={{
+          display: "flex",
+          "align-items": "center",
+          gap: "5px",
+          "flex-wrap": "wrap",
+          "min-width": "0",
+        }}
+      >
+        {props.renderSavedFilterMenu()}
+
+        <div
+          style={{
+            width: "1px",
+            height: "14px",
+            background: "var(--border)",
+            "flex-shrink": "0",
+            "margin-right": "2px",
+          }}
+        />
+
         <span
           style={{
             "font-size": "10px",
             color: "var(--text-muted)",
-            "margin-right": "2px",
             "flex-shrink": "0",
           }}
         >
-          Age:
+          Age
         </span>
         <For each={LOGCAT_AGE_PILLS}>
           {(pill) => {

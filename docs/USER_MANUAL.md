@@ -1,6 +1,6 @@
 # Keynobi User Guide
 
-Keynobi is a macOS companion app for Android development. It sits next to Android Studio and gives you one place for Gradle builds, logcat, devices, app health, UI hierarchy inspection, and Claude Code MCP workflows.
+Keynobi is a macOS companion app for Android development. It sits next to Android Studio and gives you one place for Gradle builds, logcat, devices, app health, UI hierarchy inspection, and AI client MCP workflows.
 
 Use this guide as a quick reference. Most commands are also available from the Command Palette with `Cmd+Shift+P`.
 
@@ -16,7 +16,7 @@ Use this guide as a quick reference. Most commands are also available from the C
 6. [Layout Viewer](#layout-viewer)
 7. [Devices](#devices)
 8. [Settings and Health](#settings-and-health)
-9. [Claude Code MCP](#claude-code-mcp)
+9. [AI Client MCP](#ai-client-mcp)
 10. [Keyboard Shortcuts](#keyboard-shortcuts)
 11. [Troubleshooting](#troubleshooting)
 
@@ -219,15 +219,15 @@ Health checks include:
 - Gradle wrapper
 - Disk space
 - App data directory
-- MCP setup command
+- MCP setup commands
 
 ---
 
-## Claude Code MCP
+## AI Client MCP
 
-Keynobi includes an MCP server so Claude Code can use real app state instead of guessing.
+Keynobi includes an MCP server so Claude Code, Codex, and other MCP clients can use real app state instead of guessing.
 
-Claude can:
+AI clients can:
 
 - Run Gradle tasks and read structured build errors.
 - Read logcat and crash logs.
@@ -238,18 +238,25 @@ Claude can:
 
 ### Recommended setup
 
-Use the command copied from **Health Center** or **Copy MCP Setup Command** in the Command Palette. It includes the correct local app path.
+Use the command copied from **Health Center** or **Copy MCP Setup Commands** in the Command Palette. It includes the correct local app path.
 
-Typical command:
+Claude Code:
 
 ```bash
 claude mcp add --transport stdio keynobi -- "/Applications/Keynobi.app/Contents/MacOS/keynobi" --mcp
+```
+
+Codex:
+
+```bash
+codex mcp add keynobi -- "/Applications/Keynobi.app/Contents/MacOS/keynobi" --mcp
 ```
 
 To bind MCP to a specific Android project:
 
 ```bash
 claude mcp add --transport stdio keynobi -- "/Applications/Keynobi.app/Contents/MacOS/keynobi" --mcp --project /path/to/MyAndroidProject
+codex mcp add keynobi -- "/Applications/Keynobi.app/Contents/MacOS/keynobi" --mcp --project /path/to/MyAndroidProject
 ```
 
 Exact tools, prompts, and resources are discoverable from the MCP client. In Keynobi, the MCP Activity panel shows setup status and recent tool activity.
@@ -283,7 +290,7 @@ Useful Command Palette actions:
 - Cancel Build
 - Clean Project
 - Manage Virtual Devices
-- Copy MCP Setup Command
+- Copy MCP Setup Commands
 
 ---
 
@@ -315,6 +322,6 @@ Useful Command Palette actions:
 
 ### MCP cannot connect
 
-- Copy the setup command from Health Center again.
+- Copy the setup command for your AI client from Health Center again.
 - Confirm the app path in the command exists.
 - If using `--project`, confirm the folder exists and contains the Android project.

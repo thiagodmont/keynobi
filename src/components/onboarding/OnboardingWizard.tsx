@@ -25,7 +25,9 @@ const STATUS_DOT: Record<CheckStatus, string> = {
 
 function StepDots(props: { current: number; total: number }): JSX.Element {
   return (
-    <div style={{ display: "flex", gap: "6px", "justify-content": "center", "margin-bottom": "8px" }}>
+    <div
+      style={{ display: "flex", gap: "6px", "justify-content": "center", "margin-bottom": "8px" }}
+    >
       <For each={Array.from({ length: props.total }, (_, i) => i)}>
         {(i) => (
           <span
@@ -151,7 +153,14 @@ export function OnboardingWizard(): JSX.Element {
               "flex-shrink": "0",
             }}
           >
-            <div style={{ display: "flex", "align-items": "center", gap: "10px", "margin-bottom": "8px" }}>
+            <div
+              style={{
+                display: "flex",
+                "align-items": "center",
+                gap: "10px",
+                "margin-bottom": "8px",
+              }}
+            >
               <div
                 style={{
                   width: "40px",
@@ -166,7 +175,13 @@ export function OnboardingWizard(): JSX.Element {
                 <Icon name="terminal" size={22} color="#fff" />
               </div>
               <div style={{ flex: "1" }}>
-                <div style={{ "font-size": "15px", "font-weight": "600", color: "var(--text-primary)" }}>
+                <div
+                  style={{
+                    "font-size": "15px",
+                    "font-weight": "600",
+                    color: "var(--text-primary)",
+                  }}
+                >
                   Setup
                 </div>
                 <div style={{ "font-size": "11px", color: "var(--text-muted)" }}>
@@ -197,14 +212,28 @@ export function OnboardingWizard(): JSX.Element {
                 <h2 style={{ margin: "0", "font-size": "17px", color: "var(--text-primary)" }}>
                   Welcome to Keynobi
                 </h2>
-                <p style={{ margin: "0", "font-size": "13px", color: "var(--text-muted)", "line-height": "1.5" }}>
-                  Build logs, logcat, and device management for your Android projects. This short setup finds your Android
-                  SDK and JDK (for Gradle and tooling), lets you choose privacy options, and optional workflow
-                  defaults.
+                <p
+                  style={{
+                    margin: "0",
+                    "font-size": "13px",
+                    color: "var(--text-muted)",
+                    "line-height": "1.5",
+                  }}
+                >
+                  Build logs, logcat, and device management for your Android projects. This short
+                  setup finds your Android SDK and JDK (for Gradle and tooling), lets you choose
+                  privacy options, and optional workflow defaults.
                 </p>
-                <p style={{ margin: "0", "font-size": "12px", color: "var(--text-muted)", "line-height": "1.5" }}>
-                  Language features for Kotlin use your JDK and project once you open a Gradle project (no separate
-                  download step here).
+                <p
+                  style={{
+                    margin: "0",
+                    "font-size": "12px",
+                    color: "var(--text-muted)",
+                    "line-height": "1.5",
+                  }}
+                >
+                  Language features for Kotlin use your JDK and project once you open a Gradle
+                  project (no separate download step here).
                 </p>
               </div>
             </Show>
@@ -212,17 +241,31 @@ export function OnboardingWizard(): JSX.Element {
             <Show when={step() === 1}>
               <div style={{ display: "flex", "flex-direction": "column", gap: "16px" }}>
                 <p style={{ margin: "0", "font-size": "12px", color: "var(--text-muted)" }}>
-                  Auto-detect uses your shell profile and common install locations (important if you launch from the
-                  Dock).
+                  Auto-detect uses your shell profile and common install locations (important if you
+                  launch from the Dock).
                 </p>
                 <div>
-                  <div style={{ "font-size": "12px", "font-weight": "600", color: "var(--text-primary)", margin: "0 0 8px" }}>
+                  <div
+                    style={{
+                      "font-size": "12px",
+                      "font-weight": "600",
+                      color: "var(--text-primary)",
+                      margin: "0 0 8px",
+                    }}
+                  >
                     Android SDK
                   </div>
                   <AndroidSdkStatus />
                 </div>
                 <div>
-                  <div style={{ "font-size": "12px", "font-weight": "600", color: "var(--text-primary)", margin: "0 0 8px" }}>
+                  <div
+                    style={{
+                      "font-size": "12px",
+                      "font-weight": "600",
+                      color: "var(--text-primary)",
+                      margin: "0 0 8px",
+                    }}
+                  >
                     Java JDK (JAVA_HOME)
                   </div>
                   <JavaStatus />
@@ -232,9 +275,17 @@ export function OnboardingWizard(): JSX.Element {
 
             <Show when={step() === 2}>
               <div style={{ display: "flex", "flex-direction": "column", gap: "14px" }}>
-                <p style={{ margin: "0", "font-size": "13px", color: "var(--text-primary)", "line-height": "1.5" }}>
-                  Optional anonymous crash reports help fix bugs. Only app-side diagnostics are sent — not your project
-                  paths, source, or logs. You can change this anytime in Settings.
+                <p
+                  style={{
+                    margin: "0",
+                    "font-size": "13px",
+                    color: "var(--text-primary)",
+                    "line-height": "1.5",
+                  }}
+                >
+                  Optional anonymous crash reports help fix bugs. Only app-side diagnostics are sent
+                  — not your project paths, source, or logs. You can change this anytime in
+                  Settings.
                 </p>
                 <div style={{ display: "flex", "flex-direction": "column", gap: "8px" }}>
                   <button
@@ -243,11 +294,12 @@ export function OnboardingWizard(): JSX.Element {
                     style={{
                       padding: "10px 14px",
                       "border-radius": "8px",
-                      border:
-                        settingsState.telemetry.enabled
-                          ? "2px solid var(--accent)"
-                          : "1px solid var(--border)",
-                      background: settingsState.telemetry.enabled ? "var(--accent-bg)" : "var(--bg-primary)",
+                      border: settingsState.telemetry.enabled
+                        ? "2px solid var(--accent)"
+                        : "1px solid var(--border)",
+                      background: settingsState.telemetry.enabled
+                        ? "var(--accent-bg)"
+                        : "var(--bg-primary)",
                       color: "var(--text-primary)",
                       cursor: "pointer",
                       "text-align": "left",
@@ -255,7 +307,13 @@ export function OnboardingWizard(): JSX.Element {
                     }}
                   >
                     <strong>Enable crash reporting</strong>
-                    <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-top": "4px" }}>
+                    <div
+                      style={{
+                        "font-size": "11px",
+                        color: "var(--text-muted)",
+                        "margin-top": "4px",
+                      }}
+                    >
                       Sends anonymous crash reports to improve stability.
                     </div>
                   </button>
@@ -265,11 +323,12 @@ export function OnboardingWizard(): JSX.Element {
                     style={{
                       padding: "10px 14px",
                       "border-radius": "8px",
-                      border:
-                        !settingsState.telemetry.enabled
-                          ? "2px solid var(--accent)"
-                          : "1px solid var(--border)",
-                      background: !settingsState.telemetry.enabled ? "var(--accent-bg)" : "var(--bg-primary)",
+                      border: !settingsState.telemetry.enabled
+                        ? "2px solid var(--accent)"
+                        : "1px solid var(--border)",
+                      background: !settingsState.telemetry.enabled
+                        ? "var(--accent-bg)"
+                        : "var(--bg-primary)",
                       color: "var(--text-primary)",
                       cursor: "pointer",
                       "text-align": "left",
@@ -277,7 +336,13 @@ export function OnboardingWizard(): JSX.Element {
                     }}
                   >
                     <strong>Do not send crash reports</strong>
-                    <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-top": "4px" }}>
+                    <div
+                      style={{
+                        "font-size": "11px",
+                        color: "var(--text-muted)",
+                        "margin-top": "4px",
+                      }}
+                    >
                       Default — no crash data is sent.
                     </div>
                   </button>
@@ -292,7 +357,7 @@ export function OnboardingWizard(): JSX.Element {
                 </p>
                 <SettingRow
                   label="Start MCP server when the app opens"
-                  description="For Claude Code integration via Model Context Protocol. Uses a background process."
+                  description="For AI client integration via Model Context Protocol. Uses a background process."
                 >
                   <SettingToggle
                     checked={settingsState.mcp.autoStart}
@@ -340,8 +405,16 @@ export function OnboardingWizard(): JSX.Element {
                         }}
                       />
                       <div style={{ flex: "1", "min-width": "0" }}>
-                        <div style={{ color: "var(--text-primary)", "font-weight": "500" }}>{c.name}</div>
-                        <div style={{ color: "var(--text-muted)", "font-size": "11px", "margin-top": "2px" }}>
+                        <div style={{ color: "var(--text-primary)", "font-weight": "500" }}>
+                          {c.name}
+                        </div>
+                        <div
+                          style={{
+                            color: "var(--text-muted)",
+                            "font-size": "11px",
+                            "margin-top": "2px",
+                          }}
+                        >
                           {c.detail}
                         </div>
                       </div>
