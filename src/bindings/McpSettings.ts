@@ -3,27 +3,26 @@
 /**
  * Settings for the MCP (Model Context Protocol) server integration.
  */
-export type McpSettings = {
-  /**
-   * Automatically start the MCP stdio server when the app launches.
-   *
-   * When enabled, configured MCP clients can connect immediately after the app opens
-   * without needing to trigger "Start MCP Server" from the command palette.
-   */
-  autoStart: boolean;
-  /**
-   * Maximum seconds to wait for a Gradle build via the `run_gradle_task`
-   * MCP tool before cancelling. Increase for very large projects.
-   */
-  buildTimeoutSec: number;
-  /**
-   * Default number of logcat entries returned by `get_logcat_entries`
-   * when the caller does not specify a `count` argument.
-   */
-  logcatDefaultCount: number;
-  /**
-   * Default number of raw build log lines returned by `get_build_log`
-   * when the caller does not specify a `lines` argument.
-   */
-  buildLogDefaultLines: number;
-};
+export type McpSettings = { 
+/**
+ * Automatically start the MCP stdio server when the app launches.
+ *
+ * When enabled, configured MCP clients can connect immediately after the app opens
+ * without needing to trigger "Start MCP Server" from the command palette.
+ */
+autoStart: boolean, 
+/**
+ * Maximum seconds to wait for a Gradle build via the `run_gradle_task`
+ * MCP tool before cancelling. Increase for very large projects.
+ */
+buildTimeoutSec: number, 
+/**
+ * Default number of logcat entries returned by `get_logcat_entries`
+ * when the caller does not specify a `count` argument.
+ */
+logcatDefaultCount: number, 
+/**
+ * Default number of raw build log lines returned by `get_build_log`
+ * when the caller does not specify a `lines` argument.
+ */
+buildLogDefaultLines: number, };

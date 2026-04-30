@@ -3,21 +3,20 @@
 /**
  * Status of the MCP integration with one AI client.
  */
-export type McpClientSetupStatus = {
-  /**
-   * Whether the client CLI was found (via PATH, common install paths, or login shell).
-   */
-  clientFound: boolean;
-  /**
-   * Whether `keynobi` is already registered in this MCP client.
-   */
-  isConfigured: boolean;
-  /**
-   * The command that is currently registered (if any).
-   */
-  configuredCommand: string | null;
-  /**
-   * Full setup command the user can copy into a terminal.
-   */
-  setupCommand: string;
-};
+export type McpClientSetupStatus = { 
+/**
+ * Whether the client CLI was found (via PATH, common install paths, or login shell).
+ */
+clientFound: boolean, 
+/**
+ * Whether `keynobi` is already registered in this MCP client.
+ */
+isConfigured: boolean, 
+/**
+ * The command that is currently registered (if any).
+ */
+configuredCommand: string | null, 
+/**
+ * Full setup command the user can copy into a terminal.
+ */
+setupCommand: string, };

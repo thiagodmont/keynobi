@@ -4,21 +4,20 @@ import type { McpClientSetupStatus } from "./McpClientSetupStatus";
 /**
  * Status of the MCP integration with supported AI clients.
  */
-export type McpSetupStatus = {
-  /**
-   * The real absolute path to this application's binary.
-   */
-  exePath: string;
-  /**
-   * The binary path with `--mcp` flag.
-   */
-  setupCommand: string;
-  /**
-   * Claude Code setup and configuration status.
-   */
-  claude: McpClientSetupStatus;
-  /**
-   * Codex setup and configuration status.
-   */
-  codex: McpClientSetupStatus;
-};
+export type McpSetupStatus = { 
+/**
+ * The real absolute path to this application's binary.
+ */
+exePath: string, 
+/**
+ * The binary path with `--mcp` flag.
+ */
+setupCommand: string, 
+/**
+ * Claude Code setup and configuration status.
+ */
+claude: McpClientSetupStatus, 
+/**
+ * Codex setup and configuration status.
+ */
+codex: McpClientSetupStatus, };
