@@ -33,21 +33,31 @@ function formatTime(iso: string): string {
 
 function kindLabel(kind: string): string {
   switch (kind) {
-    case "tool_call":    return "Tool";
-    case "resource_read": return "Resource";
-    case "prompt":       return "Prompt";
-    case "lifecycle":    return "System";
-    default:             return kind;
+    case "tool_call":
+      return "Tool";
+    case "resource_read":
+      return "Resource";
+    case "prompt":
+      return "Prompt";
+    case "lifecycle":
+      return "System";
+    default:
+      return kind;
   }
 }
 
 function kindColor(kind: string): string {
   switch (kind) {
-    case "tool_call":     return "var(--info)";
-    case "resource_read": return "var(--accent)";
-    case "prompt":        return "var(--success)";
-    case "lifecycle":     return "rgba(255,255,255,0.4)";
-    default:              return "rgba(255,255,255,0.4)";
+    case "tool_call":
+      return "var(--info)";
+    case "resource_read":
+      return "var(--accent)";
+    case "prompt":
+      return "var(--success)";
+    case "lifecycle":
+      return "rgba(255,255,255,0.4)";
+    default:
+      return "rgba(255,255,255,0.4)";
   }
 }
 
@@ -76,7 +86,14 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
         }}
       >
         {/* Time */}
-        <span style={{ color: "rgba(255,255,255,0.35)", "font-size": "10px", "font-family": "var(--font-mono)", "white-space": "nowrap" }}>
+        <span
+          style={{
+            color: "rgba(255,255,255,0.35)",
+            "font-size": "10px",
+            "font-family": "var(--font-mono)",
+            "white-space": "nowrap",
+          }}
+        >
           {formatTime(props.entry.timestamp)}
         </span>
 
@@ -111,7 +128,13 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
         {/* Duration + status */}
         <div style={{ display: "flex", "align-items": "center", gap: "6px", "flex-shrink": "0" }}>
           <Show when={props.entry.durationMs !== null && props.entry.durationMs !== undefined}>
-            <span style={{ color: "rgba(255,255,255,0.3)", "font-size": "10px", "font-family": "var(--font-mono)" }}>
+            <span
+              style={{
+                color: "rgba(255,255,255,0.3)",
+                "font-size": "10px",
+                "font-family": "var(--font-mono)",
+              }}
+            >
               {String(props.entry.durationMs)}ms
             </span>
           </Show>
@@ -132,7 +155,9 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
         <div
           style={{
             padding: "4px 12px 8px 144px",
-            color: isError() ? "color-mix(in srgb, var(--error) 75%, var(--text-primary))" : "rgba(255,255,255,0.55)",
+            color: isError()
+              ? "color-mix(in srgb, var(--error) 75%, var(--text-primary))"
+              : "rgba(255,255,255,0.55)",
             "font-size": "11px",
             "font-family": "var(--font-mono)",
             "white-space": "pre-wrap",
@@ -153,9 +178,7 @@ export function McpPanel(): JSX.Element {
   const [setupCmd, setSetupCmd] = createSignal<string | null>(null);
   const [copied, setCopied] = createSignal(false);
 
-  const reversedLog = createMemo(() =>
-    [...mcpState.activityLog].reverse()
-  );
+  const reversedLog = createMemo(() => [...mcpState.activityLog].reverse());
 
   onMount(async () => {
     await loadMcpActivity();
@@ -163,7 +186,9 @@ export function McpPanel(): JSX.Element {
 
     try {
       const s = await getMcpSetupStatus();
-      setSetupCmd(`claude mcp add --transport stdio keynobi -- "${s.exePath}" --mcp`);
+      setSetupCmd(
+        [`Claude Code: ${s.claude.setupCommand}`, `Codex: ${s.codex.setupCommand}`].join("\n")
+      );
     } catch {
       // non-fatal
     }
@@ -237,7 +262,9 @@ export function McpPanel(): JSX.Element {
           }}
         >
           <div style={{ display: "flex", "align-items": "center", gap: "10px" }}>
-            <span style={{ "font-size": "14px", "font-weight": "600", color: "var(--text-primary)" }}>
+            <span
+              style={{ "font-size": "14px", "font-weight": "600", color: "var(--text-primary)" }}
+            >
               MCP Server
             </span>
 
@@ -274,8 +301,8 @@ export function McpPanel(): JSX.Element {
                     ? `Running (PID ${mcpState.serverPid})`
                     : "Running"
                   : mcpState.clientName
-                  ? `Connected: ${mcpState.clientName}`
-                  : "No server detected"}
+                    ? `Connected: ${mcpState.clientName}`
+                    : "No server detected"}
               </span>
             </div>
           </div>
@@ -306,8 +333,10 @@ export function McpPanel(): JSX.Element {
             background: "rgba(0,0,0,0.15)",
           }}
         >
-          <div style={{ "font-size": "11px", color: "rgba(255,255,255,0.4)", "margin-bottom": "5px" }}>
-            Register with Claude Code
+          <div
+            style={{ "font-size": "11px", color: "rgba(255,255,255,0.4)", "margin-bottom": "5px" }}
+          >
+            Register with an AI client
           </div>
           <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
             <code
@@ -321,8 +350,8 @@ export function McpPanel(): JSX.Element {
                 padding: "5px 8px",
                 color: "var(--text-primary)",
                 overflow: "hidden",
-                "text-overflow": "ellipsis",
-                "white-space": "nowrap",
+                "white-space": "pre-wrap",
+                "word-break": "break-word",
               }}
             >
               {setupCmd() ?? "Loading…"}
@@ -349,8 +378,7 @@ export function McpPanel(): JSX.Element {
           </div>
           <div style={{ "font-size": "10px", color: "rgba(255,255,255,0.3)", "margin-top": "4px" }}>
             The MCP uses the project currently open in the companion app. Append{" "}
-            <code style={{ "font-family": "var(--font-mono)" }}>--project /path</code>
-            {" "}to override.
+            <code style={{ "font-family": "var(--font-mono)" }}>--project /path</code> to override.
           </div>
         </div>
 
@@ -443,7 +471,14 @@ export function McpPanel(): JSX.Element {
           >
             <For each={["Time", "Kind", "Name", "Status"]}>
               {(h) => (
-                <span style={{ "font-size": "10px", color: "rgba(255,255,255,0.3)", "text-transform": "uppercase", "letter-spacing": "0.05em" }}>
+                <span
+                  style={{
+                    "font-size": "10px",
+                    color: "rgba(255,255,255,0.3)",
+                    "text-transform": "uppercase",
+                    "letter-spacing": "0.05em",
+                  }}
+                >
                   {h}
                 </span>
               )}
@@ -471,13 +506,11 @@ export function McpPanel(): JSX.Element {
                     "font-size": "12px",
                   }}
                 >
-                  No activity yet — connect Claude Code to start logging.
+                  No activity yet — connect an AI client to start logging.
                 </div>
               }
             >
-              <For each={reversedLog()}>
-                {(entry) => <ActivityRow entry={entry} />}
-              </For>
+              <For each={reversedLog()}>{(entry) => <ActivityRow entry={entry} />}</For>
             </Show>
           </div>
         </div>

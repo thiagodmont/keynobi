@@ -723,9 +723,6 @@ export function LogcatPanel(): JSX.Element {
         onCopySelectedRows={copySelectedRows}
         onScrollToEnd={handleScrollToEnd}
         onExport={handleExport}
-        renderSavedFilterMenu={() => (
-          <SavedFilterMenu query={query()} isFiltered={isFiltered()} onApplyQuery={updateQuery} />
-        )}
       />
 
       <LogcatFilterControls
@@ -740,6 +737,9 @@ export function LogcatPanel(): JSX.Element {
         onAgeSelect={handleAgePill}
         onPackageSelect={handlePackageSelect}
         onClear={() => updateQuery("")}
+        renderSavedFilterMenu={() => (
+          <SavedFilterMenu query={query()} isFiltered={isFiltered()} onApplyQuery={updateQuery} />
+        )}
       />
 
       {/* ── Empty state ───────────────────────────────────────────────────── */}

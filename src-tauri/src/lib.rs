@@ -26,8 +26,8 @@ use commands::logcat::{
     new_logcat_state, set_logcat_filter, start_logcat, stop_logcat,
 };
 use commands::mcp::{
-    clear_mcp_activity, configure_mcp_in_claude, get_mcp_activity, get_mcp_server_status,
-    get_mcp_setup_status, start_mcp_server,
+    clear_mcp_activity, get_mcp_activity, get_mcp_server_status, get_mcp_setup_status,
+    start_mcp_server,
 };
 use commands::settings::*;
 use commands::studio::open_in_studio;
@@ -362,7 +362,6 @@ pub fn run() {
             // MCP Server
             start_mcp_server,
             get_mcp_setup_status,
-            configure_mcp_in_claude,
             get_mcp_activity,
             get_mcp_server_status,
             clear_mcp_activity,

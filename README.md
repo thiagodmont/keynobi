@@ -3,7 +3,7 @@
 [![CI](https://github.com/thiagodmont/keynobi/actions/workflows/ci.yml/badge.svg)](https://github.com/thiagodmont/keynobi/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A focused **Android development companion** for macOS. It sits **next to** Android Studio so you get readable Gradle output, live logcat, devices/AVDs, and health checks in one native window. With a **MCP** that lets tools like Claude Code run builds, read logs, pull errors, and inspect devices without clicking through the UI.
+A focused **Android development companion** for macOS. It sits **next to** Android Studio so you get readable Gradle output, live logcat, devices/AVDs, and health checks in one native window. With a **MCP** that lets tools like Claude Code and Codex run builds, read logs, pull errors, and inspect devices without clicking through the UI.
 
 **Platform:** macOS only (v0.x beta) · **Projects:** Kotlin + Gradle
 
@@ -49,7 +49,7 @@ Keynobi is a **single place** to watch builds, tail logcat with filters, manage 
 | `Cmd+Shift+H` | Health Center |
 | `Cmd+Shift+M` | MCP activity panel |
 
-Use the command palette for **Cancel Build**, **Clean Project**, **Copy MCP Setup Command**, and other actions without default shortcuts.
+Use the command palette for **Cancel Build**, **Clean Project**, **Copy MCP Setup Commands**, and other actions without default shortcuts.
 
 ---
 
@@ -63,7 +63,7 @@ Use the command palette for **Cancel Build**, **Clean Project**, **Copy MCP Setu
 | **Devices & AVDs** | Connected devices, emulator lifecycle (create / wipe / delete) |
 | **Health** | Java, Android SDK, ADB, Gradle, disk checks with actionable hints |
 | **Shell** | Command palette (`Cmd+Shift+P`) backed by a single action registry |
-| **MCP** | Claude Code / `keynobi` transport (`--mcp`) for agent-driven workflows |
+| **MCP** | Claude Code and Codex / `keynobi` transport (`--mcp`) for agent-driven workflows |
 
 ---
 
@@ -162,4 +162,3 @@ npm run generate:bindings   # after Rust model / TS export changes
 ## Contributing
 
 We welcome issues and pull requests. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations, and [SECURITY.md](SECURITY.md) for reporting vulnerabilities. [AGENTS.md](AGENTS.md) is the maintainer-oriented checklist (also useful for advanced contributions).
-

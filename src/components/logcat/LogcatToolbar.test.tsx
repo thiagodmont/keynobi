@@ -22,7 +22,6 @@ function renderToolbar(overrides: Partial<Parameters<typeof LogcatToolbar>[0]> =
     onCopySelectedRows: vi.fn(),
     onScrollToEnd: vi.fn(),
     onExport: vi.fn(),
-    renderSavedFilterMenu: () => <div data-testid="saved-filter-menu" />,
     ...overrides,
   };
 
@@ -48,5 +47,11 @@ describe("LogcatToolbar", () => {
     renderToolbar({ selectedCount: 0 });
 
     expect(screen.queryByTitle("Copy selected row")).toBeNull();
+  });
+
+  it("does not render saved filters in the main toolbar", () => {
+    renderToolbar();
+
+    expect(screen.queryByTestId("saved-filter-menu")).toBeNull();
   });
 });

@@ -372,20 +372,23 @@ export function App(): JSX.Element {
 
     registerAction({
       id: "mcp.start",
-      label: "Copy MCP Setup Command",
+      label: "Copy MCP Setup Commands",
       category: "General",
       action: async () => {
         try {
           const { getMcpSetupStatus } = await import("@/lib/tauri-api");
           const s = await getMcpSetupStatus();
-          const cmd = `claude mcp add --transport stdio keynobi -- "${s.exePath}" --mcp`;
-          await navigator.clipboard.writeText(cmd);
+          const commands = [
+            `Claude Code: ${s.claude.setupCommand}`,
+            `Codex: ${s.codex.setupCommand}`,
+          ].join("\n");
+          await navigator.clipboard.writeText(commands);
           showToast(
-            "MCP setup command copied — paste it in your terminal to register with Claude Code",
+            "MCP setup commands copied — paste the one for your AI client in a terminal",
             "success"
           );
         } catch (e) {
-          showToast(`Failed to copy MCP command: ${formatError(e)}`, "error");
+          showToast(`Failed to copy MCP commands: ${formatError(e)}`, "error");
         }
       },
     });

@@ -19,11 +19,19 @@ const handlers: Map<string, Handler> = new Map(
     get_mcp_setup_status: () => ({
       exePath: "/mock/keynobi",
       setupCommand: "/mock/keynobi --mcp",
-      claudeFound: false,
-      isConfigured: false,
-      configuredCommand: null,
+      claude: {
+        clientFound: false,
+        isConfigured: false,
+        configuredCommand: null,
+        setupCommand: 'claude mcp add --transport stdio keynobi -- "/mock/keynobi" --mcp',
+      },
+      codex: {
+        clientFound: false,
+        isConfigured: false,
+        configuredCommand: null,
+        setupCommand: 'codex mcp add keynobi -- "/mock/keynobi" --mcp',
+      },
     }),
-    configure_mcp_in_claude: () => "Configured",
     get_mcp_activity: () => [],
     get_mcp_server_status: () => ({ alive: false, pid: null }),
     clear_mcp_activity: () => undefined,

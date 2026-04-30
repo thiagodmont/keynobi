@@ -21,7 +21,6 @@ export function LogcatToolbar(props: {
   onCopySelectedRows: () => void;
   onScrollToEnd: () => void;
   onExport: () => void;
-  renderSavedFilterMenu: () => JSX.Element;
 }): JSX.Element {
   return (
     <div
@@ -125,8 +124,6 @@ export function LogcatToolbar(props: {
           ⎘ {props.selectedCount === 1 ? "1 row" : `${props.selectedCount} rows`}
         </button>
       </Show>
-
-      {props.renderSavedFilterMenu()}
 
       <button
         onClick={() => props.onScrollToEnd()}

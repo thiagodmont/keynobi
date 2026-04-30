@@ -103,7 +103,7 @@ export function SavedFilterMenu(props: {
       <Show when={open()}>
         <div
           style={logcatDropdownPanelStyle({
-            align: "right",
+            align: "left",
             minWidth: "260px",
             maxWidth: "340px",
           })}
