@@ -95,9 +95,9 @@ pub async fn get_mcp_setup_status() -> Result<McpSetupStatus, String> {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 fn build_mcp_setup_commands(exe_path: &str) -> McpSetupCommands {
-    let quoted_exe = double_quote_arg(exe_path);
+    let quoted_exe = single_quote_arg(exe_path);
     McpSetupCommands {
-        server_command: format!("{exe_path} --mcp"),
+        server_command: format!("{quoted_exe} --mcp"),
         claude_setup_command: format!(
             "claude mcp add --transport stdio keynobi -- {quoted_exe} --mcp"
         ),
@@ -105,8 +105,8 @@ fn build_mcp_setup_commands(exe_path: &str) -> McpSetupCommands {
     }
 }
 
-fn double_quote_arg(value: &str) -> String {
-    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+fn single_quote_arg(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\"'\"'"))
 }
 
 fn shell_quote_arg(value: &str) -> String {
@@ -117,7 +117,7 @@ fn shell_quote_arg(value: &str) -> String {
         return value.to_string();
     }
 
-    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+    single_quote_arg(value)
 }
 
 /// Find an MCP client binary, trying PATH, common install paths, then the login shell.
@@ -272,15 +272,49 @@ mod tests {
 
         assert_eq!(
             commands.server_command,
-            "/Applications/Keynobi.app/Contents/MacOS/keynobi --mcp"
+            "'/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp"
         );
         assert_eq!(
             commands.claude_setup_command,
-            "claude mcp add --transport stdio keynobi -- \"/Applications/Keynobi.app/Contents/MacOS/keynobi\" --mcp"
+            "claude mcp add --transport stdio keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp"
         );
         assert_eq!(
             commands.codex_setup_command,
-            "codex mcp add keynobi -- \"/Applications/Keynobi.app/Contents/MacOS/keynobi\" --mcp"
+            "codex mcp add keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp"
+        );
+    }
+
+    #[test]
+    fn setup_commands_shell_quote_expansion_characters() {
+        let commands = build_mcp_setup_commands("/tmp/Key $HOME `touch bad` 'App'/keynobi");
+
+        assert_eq!(
+            commands.server_command,
+            "'/tmp/Key $HOME `touch bad` '\"'\"'App'\"'\"'/keynobi' --mcp"
+        );
+        assert_eq!(
+            commands.claude_setup_command,
+            "claude mcp add --transport stdio keynobi -- '/tmp/Key $HOME `touch bad` '\"'\"'App'\"'\"'/keynobi' --mcp"
+        );
+        assert_eq!(
+            commands.codex_setup_command,
+            "codex mcp add keynobi -- '/tmp/Key $HOME `touch bad` '\"'\"'App'\"'\"'/keynobi' --mcp"
+        );
+    }
+
+    #[test]
+    fn configured_command_shell_quotes_expansion_characters() {
+        let stdout = r#"{
+            "command": "/tmp/Key $HOME `touch bad` 'App'/keynobi",
+            "args": ["--mcp", "--project", "/tmp/project $(bad)"]
+        }"#;
+
+        assert_eq!(
+            extract_configured_command(stdout),
+            Some(
+                "'/tmp/Key $HOME `touch bad` '\"'\"'App'\"'\"'/keynobi' --mcp --project '/tmp/project $(bad)'"
+                    .to_string()
+            )
         );
     }
 
