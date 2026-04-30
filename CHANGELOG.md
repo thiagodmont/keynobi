@@ -7,6 +7,14 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.21] — 2026-04-30
+
+### Added
+- mcp and refactors (#44)
+- logcat click filter (#43)
+
+---
+
 ## [0.1.19] — 2026-04-29
 
 ### Added
