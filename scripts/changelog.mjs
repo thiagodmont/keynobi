@@ -40,21 +40,36 @@ export function getCommitsSinceTag(fromRef) {
  */
 export function parseCommits(lines) {
   // Matches: <hash> <type>[!][(scope)][!]: <description>
-  const RE = /^([a-f0-9]+)\s+([a-z]+)(!)?(?:\(([^)]+)\))?(!)?:\s+(.+)$/;
+  const RE = /^([a-f0-9]+)\s+([a-z]+)(!)?(?:\(([^)]+)\))?(!)?:\s+(.+)$/i;
+  // Matches GitHub squash titles commonly produced from branch/PR names:
+  // <hash> <type>/<description>
+  const SLASH_RE = /^([a-f0-9]+)\s+([a-z]+)\/(.+)$/i;
   return lines.map((line) => {
     const m = line.match(RE);
-    if (!m) {
-      const hash = line.split(" ")[0] ?? "";
-      const description = line.slice(hash.length + 1).trim();
-      return { hash, type: "unknown", scope: null, breaking: false, description };
+    if (m) {
+      return {
+        hash: m[1],
+        type: m[2].toLowerCase(),
+        scope: m[4] ?? null,
+        breaking: !!(m[3] || m[5]),
+        description: m[6],
+      };
     }
-    return {
-      hash: m[1],
-      type: m[2],
-      scope: m[4] ?? null,
-      breaking: !!(m[3] || m[5]),
-      description: m[6],
-    };
+
+    const slash = line.match(SLASH_RE);
+    if (slash) {
+      return {
+        hash: slash[1],
+        type: slash[2].toLowerCase(),
+        scope: null,
+        breaking: false,
+        description: slash[3].trim(),
+      };
+    }
+
+    const hash = line.split(" ")[0] ?? "";
+    const description = line.slice(hash.length + 1).trim();
+    return { hash, type: "unknown", scope: null, breaking: false, description };
   });
 }
 

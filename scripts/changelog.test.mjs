@@ -47,6 +47,20 @@ describe("parseCommits", () => {
     ]);
   });
 
+  it("parses slash-separated squash commit titles", () => {
+    const result = parseCommits(["abc1234 feat/mcp and refactors (#44)"]);
+    expect(result).toEqual([
+      { hash: "abc1234", type: "feat", scope: null, breaking: false, description: "mcp and refactors (#44)" },
+    ]);
+  });
+
+  it("normalizes capitalized slash-separated squash commit types", () => {
+    const result = parseCommits(["abc1234 Feat/logcat click filter (#43)"]);
+    expect(result).toEqual([
+      { hash: "abc1234", type: "feat", scope: null, breaking: false, description: "logcat click filter (#43)" },
+    ]);
+  });
+
   it("handles multiple lines", () => {
     const result = parseCommits([
       "aaa0001 feat: first",
