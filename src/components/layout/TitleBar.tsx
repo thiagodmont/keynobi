@@ -20,6 +20,7 @@ async function startDrag(e: MouseEvent) {
 export function TitleBar(): JSX.Element {
   const [alwaysOnTop, setAlwaysOnTop] = createSignal(false);
   const [alwaysOnTopBusy, setAlwaysOnTopBusy] = createSignal(false);
+  let userChangedAlwaysOnTop = false;
   const buildActive = () => uiState.activeTab === "build";
   const runInFlight = () => isBuilding() || isDeploying();
   const runDisabled = () => !projectState.projectRoot && !runInFlight();
@@ -27,7 +28,9 @@ export function TitleBar(): JSX.Element {
   onMount(() => {
     getCurrentWindow()
       .isAlwaysOnTop()
-      .then(setAlwaysOnTop)
+      .then((current) => {
+        if (!userChangedAlwaysOnTop) setAlwaysOnTop(current);
+      })
       .catch(() => {
         // Web/test mode may not expose the full window surface.
       });
@@ -58,6 +61,7 @@ export function TitleBar(): JSX.Element {
   async function handleAlwaysOnTopToggle() {
     if (alwaysOnTopBusy()) return;
     const next = !alwaysOnTop();
+    userChangedAlwaysOnTop = true;
     setAlwaysOnTopBusy(true);
     try {
       await getCurrentWindow().setAlwaysOnTop(next);

@@ -33,4 +33,28 @@ describe("TitleBar", () => {
     await waitFor(() => expect(appWindow.setAlwaysOnTop).toHaveBeenCalledWith(true));
     expect(button.getAttribute("aria-pressed")).toBe("true");
   });
+
+  it("does not let a stale initial state read overwrite a user toggle", async () => {
+    let resolveInitialState: (value: boolean) => void = () => {};
+    appWindow.isAlwaysOnTop.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        resolveInitialState = resolve;
+      })
+    );
+
+    render(() => <TitleBar />);
+
+    const button = screen.getByRole("button", { name: /on top/i });
+    fireEvent.click(button);
+
+    await waitFor(() => expect(appWindow.setAlwaysOnTop).toHaveBeenCalledWith(true));
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+
+    resolveInitialState(false);
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+  });
 });
