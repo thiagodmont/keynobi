@@ -61,6 +61,7 @@ Sidebars and status:
 - **Projects sidebar** on the left: saved Android projects.
 - **Devices sidebar** on the right: physical devices and emulators.
 - **Status bar** at the bottom: settings, project, health, build status, MCP, updates, variant, memory, and log folder size.
+- **Title bar pin**: toggle **Keep window on top** to keep Keynobi above other applications until you turn it off or close the window.
 
 ---
 

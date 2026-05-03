@@ -41,6 +41,8 @@ export function tauriMockPlugin(): Plugin {
 export const getCurrentWindow = () => ({
   startDragging: () => Promise.resolve(),
   setTitle: () => Promise.resolve(),
+  isAlwaysOnTop: () => Promise.resolve(false),
+  setAlwaysOnTop: () => Promise.resolve(),
   isMaximized: () => Promise.resolve(false),
   maximize: () => Promise.resolve(),
   unmaximize: () => Promise.resolve(),

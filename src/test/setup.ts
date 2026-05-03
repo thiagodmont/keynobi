@@ -21,6 +21,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 vi.mock("@tauri-apps/api/window", () => ({
   getCurrentWindow: vi.fn(() => ({
     startDragging: vi.fn().mockResolvedValue(undefined),
+    isAlwaysOnTop: vi.fn().mockResolvedValue(false),
+    setAlwaysOnTop: vi.fn().mockResolvedValue(undefined),
     setTitle: vi.fn().mockResolvedValue(undefined),
   })),
 }));
