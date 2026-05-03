@@ -61,10 +61,10 @@ export function TitleBar(): JSX.Element {
   async function handleAlwaysOnTopToggle() {
     if (alwaysOnTopBusy()) return;
     const next = !alwaysOnTop();
-    userChangedAlwaysOnTop = true;
     setAlwaysOnTopBusy(true);
     try {
       await getCurrentWindow().setAlwaysOnTop(next);
+      userChangedAlwaysOnTop = true;
       setAlwaysOnTop(next);
     } catch (e) {
       showToast(`Failed to update window pinning: ${formatError(e)}`, "error");

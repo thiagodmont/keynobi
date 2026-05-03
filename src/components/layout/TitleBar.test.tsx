@@ -57,4 +57,26 @@ describe("TitleBar", () => {
 
     expect(button.getAttribute("aria-pressed")).toBe("true");
   });
+
+  it("applies a delayed initial state read after a failed user toggle", async () => {
+    let resolveInitialState: (value: boolean) => void = () => {};
+    appWindow.isAlwaysOnTop.mockReturnValueOnce(
+      new Promise<boolean>((resolve) => {
+        resolveInitialState = resolve;
+      })
+    );
+    appWindow.setAlwaysOnTop.mockRejectedValueOnce(new Error("pin failed"));
+
+    render(() => <TitleBar />);
+
+    const button = screen.getByRole("button", { name: /on top/i });
+    fireEvent.click(button);
+
+    await waitFor(() => expect(appWindow.setAlwaysOnTop).toHaveBeenCalledWith(true));
+    expect(button.getAttribute("aria-pressed")).toBe(null);
+
+    resolveInitialState(true);
+
+    await waitFor(() => expect(button.getAttribute("aria-pressed")).toBe("true"));
+  });
 });
