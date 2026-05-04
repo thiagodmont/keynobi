@@ -1,7 +1,7 @@
 import { type JSX, Show, createSignal, onMount } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { projectState } from "@/stores/project.store";
-import { uiState } from "@/stores/ui.store";
+import { toggleLogMode, uiState } from "@/stores/ui.store";
 import { isBuilding, isDeploying } from "@/stores/build.store";
 import { runAndDeploy, cancelBuild } from "@/services/build.service";
 import { formatError } from "@/lib/tauri-api";
@@ -58,6 +58,10 @@ export function TitleBar(): JSX.Element {
     return "Run App — build, install & launch (Cmd+R)";
   };
 
+  const logModeActive = () => uiState.logMode.active;
+
+  const logModeButtonTitle = () => (logModeActive() ? "Exit Log Mode" : "Enter Log Mode");
+
   async function handleAlwaysOnTopToggle() {
     if (alwaysOnTopBusy()) return;
     const next = !alwaysOnTop();
@@ -110,6 +114,38 @@ export function TitleBar(): JSX.Element {
           {projectState.projectName ? `Keynobi — ${projectState.projectName}` : "Keynobi"}
         </span>
       </div>
+      <button
+        type="button"
+        onClick={() => toggleLogMode()}
+        onMouseDown={(e) => e.stopPropagation()}
+        aria-pressed={logModeActive() ? "true" : undefined}
+        title={logModeButtonTitle()}
+        style={{
+          "flex-shrink": "0",
+          padding: "0 10px",
+          height: "28px",
+          "font-size": "12px",
+          display: "flex",
+          "align-items": "center",
+          gap: "6px",
+          color: logModeActive() ? "var(--text-primary)" : "var(--text-muted)",
+          background: logModeActive() ? "var(--bg-secondary)" : "transparent",
+          "border-bottom": logModeActive() ? "2px solid var(--accent)" : "2px solid transparent",
+          "box-sizing": "border-box",
+          cursor: "pointer",
+          border: "none",
+          "border-radius": "4px",
+          "font-weight": logModeActive() ? "500" : "normal",
+          transition: "color 0.1s, background 0.1s",
+        }}
+      >
+        <Icon
+          name="terminal"
+          size={13}
+          color={logModeActive() ? "var(--accent)" : "currentColor"}
+        />
+        Log Mode
+      </button>
       <button
         type="button"
         onClick={() => void handleAlwaysOnTopToggle()}

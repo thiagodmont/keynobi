@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { resetUIStateForTests, uiState } from "@/stores/ui.store";
 import { TitleBar } from "./TitleBar";
 
 describe("TitleBar", () => {
@@ -12,6 +13,7 @@ describe("TitleBar", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetUIStateForTests();
     appWindow.isAlwaysOnTop.mockResolvedValue(false);
     appWindow.setAlwaysOnTop.mockResolvedValue(undefined);
     vi.mocked(getCurrentWindow).mockReturnValue(
@@ -78,5 +80,32 @@ describe("TitleBar", () => {
     resolveInitialState(true);
 
     await waitFor(() => expect(button.getAttribute("aria-pressed")).toBe("true"));
+  });
+
+  it("toggles Log Mode from the title bar", () => {
+    render(() => <TitleBar />);
+
+    const button = screen.getByRole("button", { name: /log mode/i });
+    expect(uiState.logMode.active).toBe(false);
+    expect(button.getAttribute("title")).toBe("Enter Log Mode");
+
+    fireEvent.click(button);
+
+    expect(uiState.logMode.active).toBe(true);
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.getAttribute("title")).toBe("Exit Log Mode");
+  });
+
+  it("exits Log Mode when the active Log Mode button is clicked again", () => {
+    render(() => <TitleBar />);
+
+    const button = screen.getByRole("button", { name: /log mode/i });
+    fireEvent.click(button);
+    expect(uiState.logMode.active).toBe(true);
+
+    fireEvent.click(button);
+
+    expect(uiState.logMode.active).toBe(false);
+    expect(button.getAttribute("aria-pressed")).toBe(null);
   });
 });
