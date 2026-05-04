@@ -61,7 +61,7 @@ Sidebars and status:
 - **Projects sidebar** on the left: saved Android projects.
 - **Devices sidebar** on the right: physical devices and emulators.
 - **Status bar** at the bottom: settings, project, health, build status, MCP, updates, variant, memory, and log folder size.
-- **Title bar pin**: toggle **Keep window on top** to keep Keynobi above other applications until you turn it off or close the window.
+- **Title bar controls**: toggle **Log Mode** to focus the window on Logcat, or **Keep window on top** to keep Keynobi above other applications until you turn it off or close the window.
 
 ---
 
@@ -110,6 +110,8 @@ The active device and active variant are used automatically. Click the variant p
 ## Logcat
 
 The Logcat tab streams logs from the selected Android device.
+
+Use **Log Mode** from the title bar when logs are the main task. It hides the project sidebar, device sidebar, and main tab strip while keeping the Logcat toolbar, filters, query bar, and bottom status bar visible. Turning Log Mode off restores the tab and sidebar layout you had before entering it.
 
 ### Controls
 

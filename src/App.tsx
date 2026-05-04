@@ -1,9 +1,10 @@
-import { type JSX, For, onMount, onCleanup, createEffect } from "solid-js";
+import { type JSX, For, onMount, onCleanup, createEffect, Show } from "solid-js";
 import {
   uiState,
   setActiveTab,
   toggleSidebar,
   toggleDeviceSidebar,
+  toggleLogMode,
   type MainTab,
 } from "@/stores/ui.store";
 import TitleBar from "@/components/layout/TitleBar";
@@ -225,6 +226,12 @@ export function App(): JSX.Element {
       category: "View",
       action: () => toggleSidebar(),
     });
+    registerAction({
+      id: "view.toggleLogMode",
+      label: "Toggle Log Mode",
+      category: "View",
+      action: () => toggleLogMode(),
+    });
 
     // ── File ────────────────────────────────────────────────────────────────
     registerKeyAndAction({
@@ -416,6 +423,8 @@ export function App(): JSX.Element {
     { id: "build", label: "Build" },
   ];
 
+  const logModeActive = () => uiState.logMode.active;
+
   return (
     <div
       style={{
@@ -433,63 +442,67 @@ export function App(): JSX.Element {
         {/* Body: left sidebar + main column + right device sidebar */}
         <div style={{ flex: "1", display: "flex", "flex-direction": "row", overflow: "hidden" }}>
           {/* Left project sidebar */}
-          <ProjectSidebar />
+          <Show when={!logModeActive()}>
+            <ProjectSidebar />
+          </Show>
 
           {/* Main column: tab bar + panels */}
           <div
             style={{ flex: "1", display: "flex", "flex-direction": "column", overflow: "hidden" }}
           >
             {/* Tab bar */}
-            <div
-              role="tablist"
-              aria-label="Main panels"
-              style={{
-                display: "flex",
-                "align-items": "center",
-                height: "36px",
-                background: "var(--bg-tertiary)",
-                "border-bottom": "1px solid var(--border)",
-                "padding-left": "12px",
-                "flex-shrink": "0",
-                gap: "2px",
-              }}
-            >
-              <For each={tabs}>
-                {(tab) => {
-                  const isActive = () => uiState.activeTab === tab.id;
-                  return (
-                    <button
-                      role="tab"
-                      aria-selected={isActive()}
-                      aria-controls={`panel-${tab.id}`}
-                      data-testid={`main-tab-${tab.id}`}
-                      onClick={() => setActiveTab(tab.id)}
-                      style={{
-                        padding: "0 16px",
-                        height: "36px",
-                        "font-size": "12px",
-                        display: "flex",
-                        "align-items": "center",
-                        color: isActive() ? "var(--text-primary)" : "var(--text-muted)",
-                        background: isActive() ? "var(--bg-secondary)" : "none",
-                        "border-bottom": isActive()
-                          ? "2px solid var(--accent)"
-                          : "2px solid transparent",
-                        cursor: "pointer",
-                        border: "none",
-                        "border-top": "none",
-                        "border-left": "none",
-                        "border-right": "none",
-                        "font-weight": isActive() ? "500" : "normal",
-                        transition: "color 0.1s",
-                      }}
-                    >
-                      {tab.label}
-                    </button>
-                  );
+            <Show when={!logModeActive()}>
+              <div
+                role="tablist"
+                aria-label="Main panels"
+                style={{
+                  display: "flex",
+                  "align-items": "center",
+                  height: "36px",
+                  background: "var(--bg-tertiary)",
+                  "border-bottom": "1px solid var(--border)",
+                  "padding-left": "12px",
+                  "flex-shrink": "0",
+                  gap: "2px",
                 }}
-              </For>
-            </div>
+              >
+                <For each={tabs}>
+                  {(tab) => {
+                    const isActive = () => uiState.activeTab === tab.id;
+                    return (
+                      <button
+                        role="tab"
+                        aria-selected={isActive()}
+                        aria-controls={`panel-${tab.id}`}
+                        data-testid={`main-tab-${tab.id}`}
+                        onClick={() => setActiveTab(tab.id)}
+                        style={{
+                          padding: "0 16px",
+                          height: "36px",
+                          "font-size": "12px",
+                          display: "flex",
+                          "align-items": "center",
+                          color: isActive() ? "var(--text-primary)" : "var(--text-muted)",
+                          background: isActive() ? "var(--bg-secondary)" : "none",
+                          "border-bottom": isActive()
+                            ? "2px solid var(--accent)"
+                            : "2px solid transparent",
+                          cursor: "pointer",
+                          border: "none",
+                          "border-top": "none",
+                          "border-left": "none",
+                          "border-right": "none",
+                          "font-weight": isActive() ? "500" : "normal",
+                          transition: "color 0.1s",
+                        }}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  }}
+                </For>
+              </div>
+            </Show>
 
             {/* Panel content area */}
             <div
@@ -534,7 +547,9 @@ export function App(): JSX.Element {
           </div>
 
           {/* Right device sidebar */}
-          <DeviceSidebar />
+          <Show when={!logModeActive()}>
+            <DeviceSidebar />
+          </Show>
         </div>
       </AppErrorBoundary>
 
