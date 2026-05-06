@@ -1,0 +1,77 @@
+src/components/common/LogViewer.tsx
+  6e8f7ad9d8c2e8f3 2,47,102-110,136,171-173
+docs/USER_MANUAL.md
+  6e8f7ad9d8c2e8f3 151,154,210-211
+e2e/ipc/settings-commands.spec.ts
+  6e8f7ad9d8c2e8f3 10,17
+src/components/logcat/SavedFilterMenu.test.tsx
+  6e8f7ad9d8c2e8f3 25-35
+src/components/ui/VirtualList/VirtualList.tsx
+  6e8f7ad9d8c2e8f3 62-63,114,204,222
+src/test/factories/settings.ts
+  6e8f7ad9d8c2e8f3 31
+src/components/logcat/SavedFilterMenu.tsx
+  6e8f7ad9d8c2e8f3 1,90-109,374
+src/components/settings/SettingsPanel.test.tsx
+  6e8f7ad9d8c2e8f3 1-32
+src/components/ui/VirtualList/VirtualList.test.tsx
+  6e8f7ad9d8c2e8f3 3,22,28-29,31-55,61-62,64,67
+src/components/settings/SettingRow.tsx
+  6e8f7ad9d8c2e8f3 23-29,33-39,74-78
+src/App.log-mode.test.tsx
+  6e8f7ad9d8c2e8f3 86
+src/components/logcat/LogcatRows.test.tsx
+  6e8f7ad9d8c2e8f3 1-45
+src/components/logcat/LogcatRows.tsx
+  6e8f7ad9d8c2e8f3 10,21,30,32,37,69-70,221-223
+src/components/logcat/PackageDropdown.test.tsx
+  6e8f7ad9d8c2e8f3 1-22
+src/App.tsx
+  6e8f7ad9d8c2e8f3 28,102-103
+src/components/settings/SettingsPanel.tsx
+  6e8f7ad9d8c2e8f3 265,267-268,377-393
+src/test/mock-backend/settings.ts
+  6e8f7ad9d8c2e8f3 30
+src/components/logcat/LogcatPanel.tsx
+  6e8f7ad9d8c2e8f3 28,67,106-108,178-185,350,414,563-569,576,795,797,807-808,810,817,823
+src/components/common/LogViewer.component.test.tsx
+  6e8f7ad9d8c2e8f3 1-53
+src/bindings/LogcatSettings.ts
+  6e8f7ad9d8c2e8f3 22-26
+src/styles/theme.css
+  6e8f7ad9d8c2e8f3 59-63
+src-tauri/src/models/settings.rs
+  6e8f7ad9d8c2e8f3 147-150,160-161,179-181,202-204,304,423,433,438,445,450,457,462
+src/test/mock-backend/logcat.ts
+  6e8f7ad9d8c2e8f3 59,132,161,164,171-176,178,184
+e2e/smoke/logcat-regressions.spec.ts
+  6e8f7ad9d8c2e8f3 1-153
+src/components/logcat/PackageDropdown.tsx
+  6e8f7ad9d8c2e8f3 11,90-108,241
+src/components/logcat/LogcatPanel.click-filter.test.tsx
+  6e8f7ad9d8c2e8f3 169-202
+src/stores/settings.store.ts
+  6e8f7ad9d8c2e8f3 41,126-129,143-161
+src/stores/settings.store.test.ts
+  6e8f7ad9d8c2e8f3 4,44-47,78-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.4",
+  "base_commit_sha": "fe1938df9999f6891ae72da826be1e3ab0b5ef09",
+  "prompts": {
+    "6e8f7ad9d8c2e8f3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019dfe71-d422-7a13-bfa3-632bcd2e1998",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella",
+      "messages": [],
+      "total_additions": 3058,
+      "total_deletions": 138,
+      "accepted_lines": 3040,
+      "overriden_lines": 0
+    }
+  }
+}
