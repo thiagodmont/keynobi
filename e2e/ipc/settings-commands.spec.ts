@@ -7,14 +7,14 @@ test.describe("settings IPC commands", () => {
         onboardingCompleted: boolean;
         appearance: { uiFontSize: number };
         build: { autoInstallOnBuild: boolean };
-        logcat: { autoStart: boolean };
+        logcat: { autoStart: boolean; outputFontSize: number };
       }>;
     });
     expect(settings).toMatchObject({
       onboardingCompleted: expect.any(Boolean),
       appearance: { uiFontSize: expect.any(Number) },
       build: { autoInstallOnBuild: expect.any(Boolean) },
-      logcat: { autoStart: expect.any(Boolean) },
+      logcat: { autoStart: expect.any(Boolean), outputFontSize: expect.any(Number) },
     });
   });
 

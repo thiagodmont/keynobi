@@ -83,6 +83,7 @@ vi.mock("@/lib/keybindings", () => ({
 }));
 
 vi.mock("@/stores/settings.store", () => ({
+  applyAppearanceSettings: vi.fn(),
   loadSettings: vi.fn().mockResolvedValue(undefined),
   settingsState: { telemetry: { enabled: false } },
 }));

@@ -56,6 +56,7 @@ export const sampleEntries: ProcessedEntry[] = [
     jsonBody: null,
   },
 ];
+let storedEntries: ProcessedEntry[] = [...sampleEntries];
 
 type LogcatEntriesArgs = {
   minLevel?: string | null;
@@ -128,7 +129,7 @@ export function logcatHandlers(): Record<string, (args: unknown) => unknown> {
   return {
     start_logcat: () => {
       logcatRunning = true;
-      triggerEvent("logcat:entries", filterEntries(sampleEntries, activeFilter));
+      triggerEvent("logcat:entries", filterEntries(storedEntries, activeFilter));
       streamInterval = setInterval(() => {
         const entry = {
           id: nextId++,
@@ -157,23 +158,30 @@ export function logcatHandlers(): Record<string, (args: unknown) => unknown> {
       }
     },
     clear_logcat: () => {
+      storedEntries = [];
       triggerEvent("logcat:cleared", undefined);
     },
-    get_logcat_entries: (args: unknown) => filterEntries(sampleEntries, argsToFilter(args)),
+    get_logcat_entries: (args: unknown) => filterEntries(storedEntries, argsToFilter(args)),
     get_logcat_status: () => logcatRunning,
     list_logcat_packages: () => ["com.example.mockapp"],
     set_logcat_filter: (args: unknown) => {
       const { filterSpec } = args as { filterSpec?: LogcatFilterSpec };
       activeFilter = filterSpec ?? emptyFilter();
     },
+    __e2e_append_logcat_entries: (args: unknown) => {
+      const { entries } = args as { entries?: ProcessedEntry[] };
+      const nextEntries = entries ?? [];
+      storedEntries = [...storedEntries, ...nextEntries];
+      triggerEvent("logcat:entries", filterEntries(nextEntries, activeFilter));
+    },
     get_logcat_stats: (): LogStats => ({
-      totalIngested: BigInt(3),
+      totalIngested: BigInt(storedEntries.length),
       countsByLevel: [BigInt(0), BigInt(1), BigInt(1), BigInt(0), BigInt(1), BigInt(0), BigInt(0)],
       crashCount: BigInt(0),
       jsonCount: BigInt(0),
       packagesSeen: 1,
       bufferUsagePct: 0.006,
-      bufferEntryCount: BigInt(3),
+      bufferEntryCount: BigInt(storedEntries.length),
     }),
   };
 }

@@ -1,5 +1,4 @@
 import { createStore } from "solid-js/store";
-import { createEffect } from "solid-js";
 import {
   getSettings,
   saveSettings as saveSettingsIpc,
@@ -39,6 +38,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   logcat: {
     autoStart: true,
     autoScrollToEnd: true,
+    outputFontSize: 11,
     maxUiLines: 20_000,
     ringMaxEntries: 50_000,
   },
@@ -123,6 +123,10 @@ export function getDefaults(): AppSettings {
   return DEFAULT_SETTINGS;
 }
 
+export function logcatRowHeightForFontSize(fontSize: number): number {
+  return Math.max(20, fontSize + 9);
+}
+
 // Listen for settings corruption detected by the Rust backend on startup.
 // Guard with typeof window to avoid running in test environments.
 if (typeof window !== "undefined") {
@@ -136,9 +140,23 @@ if (typeof window !== "undefined") {
   });
 }
 
-// Apply CSS variable effects when appearance settings change
-if (typeof document !== "undefined") {
-  createEffect(() => {
-    document.documentElement.style.setProperty("--font-size-ui", `${settingsState.appearance.uiFontSize}px`);
-  });
+export function applyAppearanceSettings(): void {
+  if (typeof document === "undefined") return;
+  const uiFontSize = settingsState.appearance.uiFontSize;
+  const logcatFontSize = settingsState.logcat.outputFontSize;
+  document.documentElement.style.setProperty("--font-size-ui", `${uiFontSize}px`);
+  document.documentElement.style.setProperty(
+    "--font-size-ui-xs",
+    `${Math.max(8, uiFontSize - 2)}px`
+  );
+  document.documentElement.style.setProperty(
+    "--font-size-ui-sm",
+    `${Math.max(9, uiFontSize - 1)}px`
+  );
+  document.documentElement.style.setProperty("--font-size-ui-lg", `${uiFontSize + 2}px`);
+  document.documentElement.style.setProperty("--font-size-logcat-output", `${logcatFontSize}px`);
+  document.documentElement.style.setProperty(
+    "--logcat-row-height",
+    `${logcatRowHeightForFontSize(logcatFontSize)}px`
+  );
 }

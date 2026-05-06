@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render } from "@solidjs/testing-library";
+import { createSignal } from "solid-js";
 import { VirtualList } from "./VirtualList";
 
 describe("VirtualList", () => {
@@ -18,40 +19,51 @@ describe("VirtualList", () => {
   it("renders visible items", () => {
     const items = Array.from({ length: 10 }, (_, i) => `item-${i}`);
     const { container } = render(() => (
-      <VirtualList
-        items={items}
-        rowHeight={30}
-        renderRow={(item) => <div>{item}</div>}
-      />
+      <VirtualList items={items} rowHeight={30} renderRow={(item) => <div>{item}</div>} />
     ));
     // At least some items rendered (jsdom has no real scroll height, so all items may render)
     expect(container.textContent).toContain("item-0");
   });
 
-  it("calls onScrolledToBottom when scrolling near the end", () => {
-    const onScrolledToBottom = vi.fn();
+  it("does not re-enable auto-scroll when manually scrolling back to the bottom", () => {
+    const onScrolledUp = vi.fn();
     const items = Array.from({ length: 5 }, (_, i) => `item-${i}`);
-    const { container } = render(() => (
-      <VirtualList
-        items={items}
-        rowHeight={30}
-        renderRow={(item) => <div>{item}</div>}
-        onScrolledToBottom={onScrolledToBottom}
-      />
-    ));
-    // wasAtBottom starts as true, so we need to scroll away first, then back to trigger callback
-    const scroller = container.firstElementChild as HTMLElement;
+
+    function Harness() {
+      const [autoScroll, setAutoScroll] = createSignal(true);
+      return (
+        <>
+          <span data-testid="auto-scroll-state">{autoScroll() ? "on" : "off"}</span>
+          <VirtualList
+            items={items}
+            rowHeight={30}
+            renderRow={(item) => <div>{item}</div>}
+            autoScroll={autoScroll()}
+            onScrolledUp={() => {
+              onScrolledUp();
+              setAutoScroll(false);
+            }}
+            class="virtual-list-test"
+          />
+        </>
+      );
+    }
+
+    const { container } = render(() => <Harness />);
+    // wasAtBottom starts as true, so scrolling away disables follow-tail.
+    const state = container.querySelector('[data-testid="auto-scroll-state"]') as HTMLElement;
+    const scroller = container.querySelector(".virtual-list-test") as HTMLElement;
     Object.defineProperty(scroller, "clientHeight", { value: 200, writable: true });
     Object.defineProperty(scroller, "scrollHeight", { value: 1200, writable: true });
 
-    // First: scroll away from bottom (distFromBottom > threshold)
     Object.defineProperty(scroller, "scrollTop", { value: 0, writable: true });
     scroller.dispatchEvent(new Event("scroll"));
-    expect(onScrolledToBottom).toHaveBeenCalledTimes(0);
+    expect(onScrolledUp).toHaveBeenCalledOnce();
+    expect(state.textContent).toBe("off");
 
-    // Then: scroll to bottom (distFromBottom < threshold) to trigger callback
+    // Returning to the bottom manually should not re-enable follow-tail.
     Object.defineProperty(scroller, "scrollTop", { value: 1000, writable: true });
     scroller.dispatchEvent(new Event("scroll"));
-    expect(onScrolledToBottom).toHaveBeenCalledOnce();
+    expect(state.textContent).toBe("off");
   });
 });

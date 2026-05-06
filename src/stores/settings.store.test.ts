@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import * as tauriApi from "@/lib/tauri-api";
 import {
+  applyAppearanceSettings,
   settingsState,
   updateSetting,
   loadSettings,
@@ -40,6 +41,10 @@ describe("settings.store", () => {
     expect(d.build.autoScrollBuildLog).toBe(true);
   });
 
+  it("has a separate default font size for Logcat output", () => {
+    expect(getDefaults().logcat.outputFontSize).toBe(11);
+  });
+
   it("updateSetting changes appearance settings", () => {
     updateSetting("appearance", "uiFontSize", 14);
     expect(settingsState.appearance.uiFontSize).toBe(14);
@@ -68,6 +73,28 @@ describe("settings.store", () => {
     updateSetting("android", "sdkPath", "/custom/sdk");
     expect(settingsState.android.sdkPath).toBe("/custom/sdk");
     updateSetting("android", "sdkPath", null);
+  });
+
+  it("updateSetting changes Logcat output font size", () => {
+    updateSetting("logcat", "outputFontSize", 13);
+    expect(settingsState.logcat.outputFontSize).toBe(13);
+    updateSetting("logcat", "outputFontSize", 11);
+  });
+
+  it("applies UI and Logcat font size CSS variables", () => {
+    updateSetting("appearance", "uiFontSize", 15);
+    updateSetting("logcat", "outputFontSize", 13);
+
+    applyAppearanceSettings();
+
+    expect(document.documentElement.style.getPropertyValue("--font-size-ui")).toBe("15px");
+    expect(document.documentElement.style.getPropertyValue("--font-size-logcat-output")).toBe(
+      "13px"
+    );
+
+    updateSetting("appearance", "uiFontSize", 12);
+    updateSetting("logcat", "outputFontSize", 11);
+    applyAppearanceSettings();
   });
 
   it("getDefaults returns the same constant reference", () => {

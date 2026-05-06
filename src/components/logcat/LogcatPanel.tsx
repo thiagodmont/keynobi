@@ -25,7 +25,7 @@ import {
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { save } from "@tauri-apps/plugin-dialog";
 import { selectedDevice } from "@/stores/device.store";
-import { settingsState } from "@/stores/settings.store";
+import { logcatRowHeightForFontSize, settingsState } from "@/stores/settings.store";
 import { showToast } from "@/components/ui";
 import { VirtualList, type VirtualListHandle, isPaletteOpen } from "@/components/ui";
 import {
@@ -64,7 +64,7 @@ import {
 } from "@/stores/logcat.store";
 import { createLatestOnlyGuard } from "@/services/logcat.service";
 import { JsonDetailPanel } from "./LogcatJsonDetailPanel";
-import { LogcatVirtualRow, ROW_HEIGHT, SeparatorRow } from "./LogcatRows";
+import { LogcatVirtualRow, SeparatorRow } from "./LogcatRows";
 import { SavedFilterMenu } from "./SavedFilterMenu";
 import {
   LogcatFilterControls,
@@ -103,6 +103,9 @@ export function LogcatPanel(): JSX.Element {
 
   const [autoScroll, setAutoScroll] = createSignal(settingsState.logcat.autoScrollToEnd !== false);
   const [scrollCompensate, setScrollCompensate] = createSignal(0);
+  const rowHeight = createMemo(() =>
+    logcatRowHeightForFontSize(settingsState.logcat.outputFontSize)
+  );
   let virtualListRef: VirtualListHandle | undefined;
   const [paused, setPaused] = createSignal(false);
   const [restarting, setRestarting] = createSignal(false);
@@ -171,6 +174,14 @@ export function LogcatPanel(): JSX.Element {
     undefined,
     { equals: false }
   );
+
+  const filteredEntryIndexById = createMemo(() => {
+    const indexById = new Map<LogcatEntry["id"], number>();
+    filteredEntries().forEach((entry, index) => {
+      indexById.set(entry.id, index);
+    });
+    return indexById;
+  });
 
   // ── Incremental crash indices ─────────────────────────────────────────────────
   //
@@ -336,7 +347,7 @@ export function LogcatPanel(): JSX.Element {
         if (excess > 0) {
           replaceLogcatEntries(cap === 0 ? [] : logcatState.entries.slice(-cap));
           if (!followTailForList()) {
-            setScrollCompensate((c) => c + excess * ROW_HEIGHT);
+            setScrollCompensate((c) => c + excess * rowHeight());
           }
         }
       } else if (cap > prevLogcatMaxUi) {
@@ -400,7 +411,7 @@ export function LogcatPanel(): JSX.Element {
       if (paused()) return;
       const dropped = appendLogcatEntries(newEntries, maxUiLinesCap());
       if (dropped > 0 && !followTailForList()) {
-        setScrollCompensate((c) => c + dropped * ROW_HEIGHT);
+        setScrollCompensate((c) => c + dropped * rowHeight());
       }
 
       suggestions.ingest(newEntries);
@@ -549,17 +560,20 @@ export function LogcatPanel(): JSX.Element {
     return `${e.timestamp}  ${e.level.toUpperCase()}  ${pkg}${e.tag}: ${e.message}`;
   }
 
-  function handleRowClick(idx: number, e: MouseEvent) {
+  function currentEntryIndex(entry: LogcatEntry): number {
+    return filteredEntryIndexById().get(entry.id) ?? -1;
+  }
+
+  function handleRowClick(entry: LogcatEntry, e: MouseEvent) {
+    const idx = currentEntryIndex(entry);
+    if (idx < 0) return;
     if (e.shiftKey && selectionAnchor() !== null) {
       setSelectionEnd(idx);
     } else {
       setSelectionAnchor(idx);
       setSelectionEnd(null);
       // Plain click (no shift) — toggle detail panel
-      const entry = filteredEntries()[idx];
-      if (entry) {
-        setSelectedDetailEntry((prev) => (prev?.id === entry.id ? null : entry));
-      }
+      setSelectedDetailEntry((prev) => (prev?.id === entry.id ? null : entry));
     }
   }
 
@@ -778,11 +792,11 @@ export function LogcatPanel(): JSX.Element {
       <Show when={logcatState.entries.length > 0}>
         <VirtualList
           items={filteredEntries()}
-          rowHeight={ROW_HEIGHT}
+          rowHeight={rowHeight()}
           autoScroll={followTailForList()}
+          data-testid="logcat-virtual-list"
           scrollCompensate={scrollCompensate()}
           jumpTo={jumpTarget()}
-          onScrolledToBottom={() => setAutoScroll(true)}
           onScrolledUp={() => setAutoScroll(false)}
           handle={(api) => {
             virtualListRef = api;
@@ -790,23 +804,23 @@ export function LogcatPanel(): JSX.Element {
           style={{
             flex: "1",
             "font-family": "var(--font-mono)",
-            "font-size": "11px",
-            "line-height": `${ROW_HEIGHT}px`,
+            "font-size": "var(--font-size-logcat-output)",
+            "line-height": "var(--logcat-row-height)",
           }}
-          renderRow={(entry, idx) => {
+          renderRow={(entry) => {
             if (entry.kind === "processDied" || entry.kind === "processStarted") {
               return <SeparatorRow entry={entry} />;
             }
             return (
               <LogcatVirtualRow
                 entry={entry}
-                index={idx}
+                getIndex={() => currentEntryIndex(entry)}
                 getSelectionRange={getSelectionRange}
                 getAnchor={() => selectionAnchor()}
                 getEnd={() => selectionEnd()}
                 getDetailEntry={() => selectedDetailEntry()}
                 getJsonEntry={() => selectedJsonEntry()}
-                onRowClick={(e) => handleRowClick(idx, e)}
+                onRowClick={(e) => handleRowClick(entry, e)}
                 onJsonClick={(e) => handleJsonBadgeClick(e, entry)}
               />
             );

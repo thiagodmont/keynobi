@@ -144,6 +144,10 @@ fn default_logcat_ring_max_entries() -> u32 {
     50_000
 }
 
+fn default_logcat_output_font_size() -> u32 {
+    11
+}
+
 /// Minimum logcat ring size and minimum `max_ui_lines`.
 pub const LOGCAT_RING_MIN: u32 = 1_000;
 /// Hard ceiling for logcat ring size (memory bound; `LogStore` clamps to this).
@@ -153,6 +157,8 @@ pub const LOGCAT_RING_DEFAULT: u32 = 50_000;
 
 /// Minimum `LogcatSettings.max_ui_lines` (same numeric floor as the ring minimum).
 pub const LOGCAT_MAX_UI_LINES_MIN: u32 = LOGCAT_RING_MIN;
+pub const LOGCAT_OUTPUT_FONT_SIZE_MIN: u32 = 9;
+pub const LOGCAT_OUTPUT_FONT_SIZE_MAX: u32 = 16;
 
 /// Logcat settings.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
@@ -170,6 +176,9 @@ pub struct LogcatSettings {
     /// Maximum entries in the in-memory logcat ring before oldest lines are dropped.
     #[serde(default = "default_logcat_ring_max_entries")]
     pub ring_max_entries: u32,
+    /// Font size in pixels for Logcat output rows.
+    #[serde(default = "default_logcat_output_font_size")]
+    pub output_font_size: u32,
 }
 
 /// Clamp a user-provided ring size to the allowed range.
@@ -190,6 +199,9 @@ pub fn normalize_logcat_section(logcat: &mut LogcatSettings) {
     logcat.max_ui_lines = logcat
         .max_ui_lines
         .clamp(LOGCAT_MAX_UI_LINES_MIN, logcat.ring_max_entries);
+    logcat.output_font_size = logcat
+        .output_font_size
+        .clamp(LOGCAT_OUTPUT_FONT_SIZE_MIN, LOGCAT_OUTPUT_FONT_SIZE_MAX);
 }
 
 /// Telemetry / crash-reporting settings.
@@ -289,6 +301,7 @@ impl Default for LogcatSettings {
             auto_scroll_to_end: true,
             max_ui_lines: default_logcat_max_ui_lines(),
             ring_max_entries: default_logcat_ring_max_entries(),
+            output_font_size: default_logcat_output_font_size(),
         }
     }
 }
@@ -407,6 +420,7 @@ mod tests {
         assert!(parsed.logcat.auto_scroll_to_end);
         assert_eq!(parsed.logcat.max_ui_lines, 20_000);
         assert_eq!(parsed.logcat.ring_max_entries, 50_000);
+        assert_eq!(parsed.logcat.output_font_size, 11);
     }
 
     #[test]
@@ -416,29 +430,35 @@ mod tests {
             auto_scroll_to_end: true,
             ring_max_entries: 900,
             max_ui_lines: 99_000,
+            output_font_size: 99,
         };
         normalize_logcat_section(&mut l);
         assert_eq!(l.ring_max_entries, LOGCAT_RING_MIN);
         assert_eq!(l.max_ui_lines, LOGCAT_RING_MIN);
+        assert_eq!(l.output_font_size, LOGCAT_OUTPUT_FONT_SIZE_MAX);
 
         let mut l2 = LogcatSettings {
             auto_start: true,
             auto_scroll_to_end: true,
             ring_max_entries: 10_000,
             max_ui_lines: 50_000,
+            output_font_size: 3,
         };
         normalize_logcat_section(&mut l2);
         assert_eq!(l2.ring_max_entries, 10_000);
         assert_eq!(l2.max_ui_lines, 10_000);
+        assert_eq!(l2.output_font_size, LOGCAT_OUTPUT_FONT_SIZE_MIN);
 
         let mut l3 = LogcatSettings {
             auto_start: true,
             auto_scroll_to_end: true,
             ring_max_entries: 200_000,
             max_ui_lines: 20_000,
+            output_font_size: 13,
         };
         normalize_logcat_section(&mut l3);
         assert_eq!(l3.ring_max_entries, LOGCAT_RING_ABS_MAX);
         assert_eq!(l3.max_ui_lines, 20_000);
+        assert_eq!(l3.output_font_size, 13);
     }
 }

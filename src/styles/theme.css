@@ -56,6 +56,11 @@
 
   /* Sizes */
   --font-size-ui: 12px;
+  --font-size-ui-xs: 10px;
+  --font-size-ui-sm: 11px;
+  --font-size-ui-lg: 14px;
+  --font-size-logcat-output: 11px;
+  --logcat-row-height: 20px;
   --titlebar-height: 38px;
   --statusbar-height: 24px;
   --sidebar-icon-width: 48px;

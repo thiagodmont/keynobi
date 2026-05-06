@@ -8,7 +8,7 @@
  * `onSelect(null)` to clear the filter.
  */
 
-import { type JSX, createSignal, createMemo, For, Show } from "solid-js";
+import { type JSX, createSignal, createMemo, For, Show, onCleanup, onMount } from "solid-js";
 import { getMinePackage } from "@/lib/logcat-query";
 import {
   logcatDropdownOverlayStyle,
@@ -86,6 +86,25 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
     setOpen(false);
     setSearch("");
   }
+
+  function closeDropdown() {
+    setOpen(false);
+    setSearch("");
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === "hidden") closeDropdown();
+  }
+
+  onMount(() => {
+    window.addEventListener("blur", closeDropdown);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+  });
+
+  onCleanup(() => {
+    window.removeEventListener("blur", closeDropdown);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  });
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -219,7 +238,7 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
         </div>
 
         {/* Click-outside overlay */}
-        <div style={logcatDropdownOverlayStyle()} onClick={() => setOpen(false)} />
+        <div style={logcatDropdownOverlayStyle()} onClick={closeDropdown} />
       </Show>
     </div>
   );

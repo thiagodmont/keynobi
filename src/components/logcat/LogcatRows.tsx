@@ -7,7 +7,7 @@ import { isProjectFrame, parseStackFrame } from "@/lib/logcat-query";
 import { LEVEL_CONFIG } from "./logcat-levels";
 import { rowFocusMarked, rowInSelectionRange } from "./logcat-row-selection";
 
-export const ROW_HEIGHT = 20;
+export const LOGCAT_ROW_HEIGHT_CSS = "var(--logcat-row-height)";
 
 const ENTRY_FLAGS = {
   CRASH: 1 << 0,
@@ -18,7 +18,7 @@ const ENTRY_FLAGS = {
 
 export function LogcatVirtualRow(props: {
   entry: LogcatEntry;
-  index: number;
+  getIndex: () => number;
   getSelectionRange: () => [number, number] | null;
   getAnchor: () => number | null;
   getEnd: () => number | null;
@@ -27,13 +27,14 @@ export function LogcatVirtualRow(props: {
   onRowClick: (e: MouseEvent) => void;
   onJsonClick: (e: MouseEvent) => void;
 }): JSX.Element {
+  const index = createMemo(() => props.getIndex());
   const inSelectionRange = createMemo(() =>
-    rowInSelectionRange(props.index, props.getSelectionRange())
+    rowInSelectionRange(index(), props.getSelectionRange())
   );
 
   const focusMarked = createMemo(() =>
     rowFocusMarked(
-      props.index,
+      index(),
       props.getAnchor(),
       props.getEnd(),
       props.getDetailEntry(),
@@ -65,8 +66,8 @@ export function SeparatorRow(props: { entry: LogcatEntry }): JSX.Element {
       style={{
         display: "flex",
         "align-items": "center",
-        height: `${ROW_HEIGHT}px`,
-        "min-height": `${ROW_HEIGHT}px`,
+        height: LOGCAT_ROW_HEIGHT_CSS,
+        "min-height": LOGCAT_ROW_HEIGHT_CSS,
         padding: "0 8px",
         background: isDied()
           ? "color-mix(in srgb, var(--error) 10%, transparent)"
@@ -217,8 +218,9 @@ function LogcatRow(props: {
         "align-items": "center",
         gap: "6px",
         padding: "0 10px",
-        height: `${ROW_HEIGHT}px`,
-        "min-height": `${ROW_HEIGHT}px`,
+        height: LOGCAT_ROW_HEIGHT_CSS,
+        "min-height": LOGCAT_ROW_HEIGHT_CSS,
+        "font-size": "var(--font-size-logcat-output)",
         background: defaultRowBackground(),
         "border-left": props.focusMarked
           ? "4px solid var(--accent)"

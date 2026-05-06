@@ -1,5 +1,5 @@
 import { type JSX, Show, createMemo, createSignal, onCleanup } from "solid-js";
-import { VirtualList } from "@/components/ui";
+import { VirtualList, type VirtualListHandle } from "@/components/ui";
 import { copyToClipboard } from "@/utils/clipboard";
 import { debounce } from "@/utils/debounce";
 import { formatBuildLogToolbarCount } from "./log-viewer-toolbar-count";
@@ -44,6 +44,7 @@ export function LogViewer(props: LogViewerProps): JSX.Element {
 
   const updateDebouncedSearch = debounce((q: string) => setDebouncedSearch(q), 150);
   let copyTimeout: ReturnType<typeof setTimeout> | undefined;
+  let virtualListRef: VirtualListHandle | undefined;
 
   // Derive unique sorted sources from the current entries.
   const uniqueSources = createMemo(() => uniqueLogViewerSources(props.entries));
@@ -98,6 +99,15 @@ export function LogViewer(props: LogViewerProps): JSX.Element {
     setDebouncedSearch("");
   }
 
+  function handleToggleAutoScroll(): void {
+    if (autoScroll()) {
+      setAutoScroll(false);
+      return;
+    }
+    setAutoScroll(true);
+    virtualListRef?.scrollToBottom();
+  }
+
   return (
     <div
       style={{
@@ -123,7 +133,7 @@ export function LogViewer(props: LogViewerProps): JSX.Element {
         showTimestamps={showTimestamps()}
         onToggleTimestamps={() => setShowTimestamps((v) => !v)}
         autoScroll={autoScroll()}
-        onToggleAutoScroll={() => setAutoScroll((v) => !v)}
+        onToggleAutoScroll={handleToggleAutoScroll}
         copiedAll={copiedAll()}
         onCopyAll={handleCopyAll}
         canClear={props.onClear !== undefined}
@@ -158,7 +168,9 @@ export function LogViewer(props: LogViewerProps): JSX.Element {
             rowHeight={20}
             autoScroll={autoScroll()}
             onScrolledUp={() => setAutoScroll(false)}
-            onScrolledToBottom={() => setAutoScroll(true)}
+            handle={(api) => {
+              virtualListRef = api;
+            }}
             renderRow={(entry, index) => (
               <LogViewerRow
                 entry={entry}

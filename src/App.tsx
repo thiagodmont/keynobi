@@ -25,7 +25,7 @@ import { DeviceSidebar } from "@/components/device/DeviceSidebar";
 import { DevicePickerDialog } from "@/components/device/DevicePickerDialog";
 import { registerKeybinding, initKeybindings } from "@/lib/keybindings";
 import { registerAction, type ActionCategory } from "@/lib/action-registry";
-import { loadSettings, settingsState } from "@/stores/settings.store";
+import { applyAppearanceSettings, loadSettings, settingsState } from "@/stores/settings.store";
 import { captureSentryException, initSentryWeb } from "@/lib/telemetry/sentry-web";
 import { tryOpenOnboardingAfterLoad, openOnboardingWizard } from "@/stores/onboarding.store";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
@@ -97,6 +97,10 @@ export function App(): JSX.Element {
     // Access to create reactive dependency on telemetry setting.
     void settingsState.telemetry.enabled;
     initSentryWeb();
+  });
+
+  createEffect(() => {
+    applyAppearanceSettings();
   });
 
   onMount(async () => {

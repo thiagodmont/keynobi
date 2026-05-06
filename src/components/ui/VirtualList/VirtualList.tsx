@@ -16,7 +16,6 @@
  *     rowHeight={20}
  *     renderRow={(item, index) => <MyRow entry={item} />}
  *     autoScroll={autoScroll()}
- *     onScrolledToBottom={() => setAutoScroll(true)}
  *     onScrolledUp={() => setAutoScroll(false)}
  *   />
  */
@@ -49,8 +48,6 @@ export interface VirtualListProps<T> {
    * user is already at the bottom (or auto-scroll has never been overridden).
    */
   autoScroll?: boolean;
-  /** Called when the user scrolls to within `bottomThreshold` px of the end. */
-  onScrolledToBottom?: () => void;
   /** Called when the user scrolls up away from the bottom. */
   onScrolledUp?: () => void;
   /** How many extra rows to render above and below the viewport. Default 30. */
@@ -62,6 +59,8 @@ export interface VirtualListProps<T> {
   bottomThreshold?: number;
   /** CSS class applied to the outer scrolling container. */
   class?: string;
+  /** Stable test selector for integration and e2e tests. */
+  "data-testid"?: string;
   /** Inline styles applied to the outer scrolling container. */
   style?: JSX.CSSProperties;
   /**
@@ -112,6 +111,7 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
     // Expose imperative scroll APIs to the parent.
     props.handle?.({
       scrollToBottom: () => {
+        wasAtBottom = true;
         outerRef.scrollTop = outerRef.scrollHeight;
       },
       scrollToIndex: (index: number) => {
@@ -201,13 +201,11 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
     const st = outerRef.scrollTop;
     setScrollTop(st);
 
-    const distFromBottom =
-      outerRef.scrollHeight - st - outerRef.clientHeight;
+    const distFromBottom = outerRef.scrollHeight - st - outerRef.clientHeight;
     const atBottom = distFromBottom < THRESHOLD();
 
     if (atBottom && !wasAtBottom) {
       wasAtBottom = true;
-      props.onScrolledToBottom?.();
     } else if (!atBottom && wasAtBottom) {
       wasAtBottom = false;
       props.onScrolledUp?.();
@@ -221,6 +219,7 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
       ref={outerRef}
       onScroll={handleScroll}
       class={props.class}
+      data-testid={props["data-testid"]}
       style={{
         "overflow-y": "auto",
         "overflow-x": "hidden",

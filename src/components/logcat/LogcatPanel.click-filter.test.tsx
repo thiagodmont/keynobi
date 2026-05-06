@@ -166,4 +166,38 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
     await waitFor(() => expect(screen.getAllByTitle(ROW_TITLE)).toHaveLength(1));
     expect(screen.getAllByText('hello "quoted" value').length).toBeGreaterThan(0);
   });
+
+  it("opens detail for the clicked row after filtering changes visible indices", async () => {
+    const alphaEntry = {
+      ...BASE_ENTRY,
+      id: 10n,
+      tag: "AlphaTag",
+      message: "Alpha unfiltered message",
+    } satisfies ProcessedEntry;
+    const betaEntry = {
+      ...BASE_ENTRY,
+      id: 11n,
+      tag: "BetaTag",
+      message: "Beta target message",
+    } satisfies ProcessedEntry;
+    const gammaEntry = {
+      ...BASE_ENTRY,
+      id: 12n,
+      tag: "GammaTag",
+      message: "Gamma target message",
+    } satisfies ProcessedEntry;
+    installLogcatPanelMocks([alphaEntry, betaEntry, gammaEntry]);
+    render(() => <LogcatPanel />);
+
+    await waitFor(() => expect(screen.getAllByTitle(ROW_TITLE)).toHaveLength(3));
+
+    const input = screen.getByRole("textbox");
+    fireEvent.input(input, { target: { value: "message:target" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(screen.getAllByTitle(ROW_TITLE)).toHaveLength(2));
+    fireEvent.click(screen.getByText("Beta target message"));
+
+    expect(screen.getByTitle("Filter by message").textContent).toBe("Beta target message");
+  });
 });
