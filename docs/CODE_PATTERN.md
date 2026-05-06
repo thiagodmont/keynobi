@@ -133,6 +133,7 @@ Components should delegate side effects to services or store actions. Components
 ### SolidJS Reactivity
 
 - Use `createMemo` for derived values used in render paths or multiple places.
+- Do not create `createMemo` or `createEffect` at module scope in singleton stores. Export plain accessor functions for store-derived values, or create effects inside a component/root so Solid can own and dispose the computation.
 - Call signals/memos in JSX: `{label()}`, not `{label}`.
 - Register `onCleanup` for timers, subscriptions, and listeners.
 - Guard async flows where stale responses can arrive out of order.

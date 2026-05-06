@@ -1,4 +1,4 @@
-import { For, Show, createSignal, type JSX } from "solid-js";
+import { For, Show, createSignal, onCleanup, onMount, type JSX } from "solid-js";
 import { showToast } from "@/components/ui";
 import {
   addSavedFilter,
@@ -86,6 +86,26 @@ export function SavedFilterMenu(props: {
     setRenamingId(null);
     setRenameDraft("");
   }
+
+  function closeMenu() {
+    setOpen(false);
+    setSavingPreset(false);
+    cancelRename();
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === "hidden") closeMenu();
+  }
+
+  onMount(() => {
+    window.addEventListener("blur", closeMenu);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+  });
+
+  onCleanup(() => {
+    window.removeEventListener("blur", closeMenu);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  });
 
   return (
     <div style={logcatDropdownRootStyle()}>
@@ -351,13 +371,7 @@ export function SavedFilterMenu(props: {
             </Show>
           </div>
         </div>
-        <div
-          style={logcatDropdownOverlayStyle()}
-          onClick={() => {
-            setOpen(false);
-            cancelRename();
-          }}
-        />
+        <div style={logcatDropdownOverlayStyle()} onClick={closeMenu} />
       </Show>
     </div>
   );

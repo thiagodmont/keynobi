@@ -3,6 +3,11 @@ import { defineConfig, devices } from "@playwright/test";
 // @ts-expect-error process is a nodejs global
 const isCI = !!process.env.CI;
 
+// Playwright forces colored output for its reporters. In environments that also
+// set NO_COLOR, Node prints noisy FORCE_COLOR/NO_COLOR conflict warnings.
+// @ts-expect-error process is a nodejs global
+delete process.env.NO_COLOR;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,

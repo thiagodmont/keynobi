@@ -28,6 +28,7 @@ export function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings 
     logcat: {
       autoStart: false,
       autoScrollToEnd: true,
+      outputFontSize: 11,
       maxUiLines: 5000,
       ringMaxEntries: 50000,
     },

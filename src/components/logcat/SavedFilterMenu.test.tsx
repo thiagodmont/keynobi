@@ -22,4 +22,15 @@ describe("SavedFilterMenu", () => {
     expect(panel?.getAttribute("style")).toContain("left: 0");
     expect(panel?.getAttribute("style")).not.toContain("right: 0");
   });
+
+  it("closes when the window loses focus", () => {
+    renderSavedFilterMenu();
+
+    fireEvent.click(screen.getByTitle("Filter presets"));
+    expect(screen.getByText("Quick Filters")).not.toBeNull();
+
+    window.dispatchEvent(new Event("blur"));
+
+    expect(screen.queryByText("Quick Filters")).toBeNull();
+  });
 });

@@ -262,10 +262,10 @@ function UserSettings(props: { matchesSearch: (l: string, d?: string) => boolean
   return (
     <>
       <SectionHeader title="Appearance" />
-      <Show when={props.matchesSearch("UI Font Size", "Font size for UI elements")}>
+      <Show when={props.matchesSearch("System Font Size", "Font size for UI elements")}>
         <SettingRow
-          label="UI Font Size"
-          description="Font size for panels, sidebar, and status bar"
+          label="System Font Size"
+          description="Base font size for app controls, panels, sidebar, and status bar"
         >
           <SettingNumberInput
             value={settingsState.appearance.uiFontSize}
@@ -371,6 +371,26 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
           <SettingToggle
             checked={settingsState.logcat.autoScrollToEnd}
             onChange={(v) => updateSetting("logcat", "autoScrollToEnd", v)}
+          />
+        </SettingRow>
+      </Show>
+      <Show
+        when={props.matchesSearch(
+          "Logcat Output Font Size",
+          "Font size for logcat output rows messages timestamps tags"
+        )}
+      >
+        <SettingRow
+          label="Logcat Output Font Size"
+          description="Font size for Logcat output rows. Filters and toolbar controls keep the system font size."
+        >
+          <SettingNumberInput
+            value={settingsState.logcat.outputFontSize}
+            min={9}
+            max={16}
+            onChange={(v) =>
+              updateSetting("logcat", "outputFontSize", Math.min(16, Math.max(9, v)))
+            }
           />
         </SettingRow>
       </Show>

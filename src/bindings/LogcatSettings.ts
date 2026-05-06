@@ -19,4 +19,8 @@ maxUiLines: number,
 /**
  * Maximum entries in the in-memory logcat ring before oldest lines are dropped.
  */
-ringMaxEntries: number, };
+ringMaxEntries: number, 
+/**
+ * Font size in pixels for Logcat output rows.
+ */
+outputFontSize: number, };

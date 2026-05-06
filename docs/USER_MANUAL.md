@@ -148,10 +148,10 @@ Press **Enter** to commit a typed condition as a filter pill. Use **+ AND** and 
 - ANRs get an ANR badge.
 - JSON messages show a `{}` badge; open it to view formatted JSON.
 - Arrow keys move the selected row when focus is not in the query bar.
-- Selecting a row pauses follow-tail until you jump back to the end.
+- Scrolling away from the end or selecting a row pauses follow-tail until you use **Jump to end**.
 - In **Entry Detail**, click a tag, package, level, PID, TID, time, or message value to add it to the query bar as an **AND** or **OR** filter. Select part of the message before clicking to filter by only that selected text.
 
-Logcat keeps a bounded ring buffer. Configure the ring size and max visible lines under **Settings -> Logcat**.
+Logcat keeps a bounded ring buffer. Configure the ring size, max visible lines, and Logcat output font size under **Settings -> Logcat**.
 
 ---
 
@@ -207,7 +207,8 @@ Important settings:
 - **Android SDK Path**: required for ADB, emulator support, and health checks.
 - **Java Home**: required for Gradle builds.
 - **Logcat auto-start** and **follow-tail** behavior.
-- **Logcat ring buffer size** and visible line cap.
+- **System font size** for app controls and panels.
+- **Logcat ring buffer size**, visible line cap, and output font size.
 - **Build log follow-tail** behavior.
 - **Anonymous crash reporting**.
 

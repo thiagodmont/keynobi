@@ -20,11 +20,23 @@ export function SettingRow(props: SettingRowProps): JSX.Element {
       }}
     >
       <div style={{ flex: "1", "min-width": "0" }}>
-        <div style={{ "font-size": "13px", color: "var(--text-primary)", "font-weight": "500" }}>
+        <div
+          style={{
+            "font-size": "var(--font-size-ui)",
+            color: "var(--text-primary)",
+            "font-weight": "500",
+          }}
+        >
           {props.label}
         </div>
         <Show when={props.description}>
-          <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-top": "2px" }}>
+          <div
+            style={{
+              "font-size": "var(--font-size-ui-sm)",
+              color: "var(--text-muted)",
+              "margin-top": "2px",
+            }}
+          >
             {props.description}
           </div>
         </Show>
@@ -59,7 +71,11 @@ export function SettingNumberInput(props: {
         value={props.value}
         onInput={(v) => {
           const n = parseInt(v, 10);
-          if (!isNaN(n)) props.onChange(n);
+          if (!isNaN(n)) {
+            const min = props.min ?? Number.NEGATIVE_INFINITY;
+            const max = props.max ?? Number.POSITIVE_INFINITY;
+            props.onChange(Math.min(max, Math.max(min, n)));
+          }
         }}
       />
     </div>

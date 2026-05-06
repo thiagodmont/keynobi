@@ -1,5 +1,4 @@
 import { createStore } from "solid-js/store";
-import { createMemo } from "solid-js";
 import type { BuildVariant, VariantList } from "@/bindings";
 import { getVariantsPreview, getVariantsFromGradle, setActiveVariant } from "@/lib/tauri-api";
 import { projectState } from "@/stores/project.store";
@@ -56,11 +55,13 @@ export { variantState };
 
 // ── Derived ───────────────────────────────────────────────────────────────────
 
-export const activeVariantObj = createMemo(() =>
-  variantState.variants.find((v) => v.name === variantState.activeVariant) ?? null
-);
+export function activeVariantObj(): BuildVariant | null {
+  return variantState.variants.find((v) => v.name === variantState.activeVariant) ?? null;
+}
 
-export const hasVariants = createMemo(() => variantState.variants.length > 0);
+export function hasVariants(): boolean {
+  return variantState.variants.length > 0;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -75,10 +76,7 @@ function resolveActive(list: VariantList, currentActive: string | null): string 
     return currentActive;
   }
   // Android Studio–aligned default from Gradle (`isDefault`, `.idea`, heuristics).
-  if (
-    list.defaultVariant &&
-    list.variants.some((v) => v.name === list.defaultVariant)
-  ) {
+  if (list.defaultVariant && list.variants.some((v) => v.name === list.defaultVariant)) {
     return list.defaultVariant;
   }
   // Fall back to the first variant.
@@ -119,7 +117,13 @@ export function loadVariants(opts?: { force?: boolean }): Promise<void> {
 }
 
 async function runLoadVariants(): Promise<void> {
-  setVariantState({ loading: true, gradleLoading: true, error: null, gradleError: null, fromGradle: false });
+  setVariantState({
+    loading: true,
+    gradleLoading: true,
+    error: null,
+    gradleError: null,
+    fromGradle: false,
+  });
 
   // ── Phase 1: instant preview from static parse ─────────────────────────────
   try {
@@ -151,7 +155,7 @@ async function runLoadVariants(): Promise<void> {
           active: null,
           defaultVariant: cached.defaultVariant,
         },
-        variantState.activeVariant,
+        variantState.activeVariant
       ),
       fromGradle: true,
       gradleLoading: false,
@@ -178,7 +182,7 @@ async function runLoadVariants(): Promise<void> {
       error: null,
     });
   } catch (e) {
-    const msg = typeof e === "string" ? e : (e as Error).message ?? String(e);
+    const msg = typeof e === "string" ? e : ((e as Error).message ?? String(e));
     setVariantState({
       gradleLoading: false,
       gradleError: msg,
