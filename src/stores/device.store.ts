@@ -1,5 +1,4 @@
 import { createStore } from "solid-js/store";
-import { createMemo } from "solid-js";
 import type { Device, AvdInfo, SystemImageInfo, DeviceDefinition } from "@/bindings";
 import {
   refreshDevices,
@@ -40,21 +39,23 @@ export { deviceState };
 
 // ── Derived ───────────────────────────────────────────────────────────────────
 
-export const selectedDevice = createMemo(
-  () => deviceState.devices.find((d) => d.serial === deviceState.selectedSerial) ?? null
-);
+export function selectedDevice(): Device | null {
+  return deviceState.devices.find((d) => d.serial === deviceState.selectedSerial) ?? null;
+}
 
-export const onlineDevices = createMemo(() =>
-  deviceState.devices.filter((d) => d.connectionState === "online")
-);
+export function onlineDevices(): Device[] {
+  return deviceState.devices.filter((d) => d.connectionState === "online");
+}
 
-export const deviceCount = createMemo(() => onlineDevices().length);
+export function deviceCount(): number {
+  return onlineDevices().length;
+}
 
 /**
  * Set of AVD names that have a running emulator in the connected device list.
  * Matches by display name (lowercased, spaces normalized) against the emulator model name.
  */
-export const runningAvdNames = createMemo((): Set<string> => {
+export function runningAvdNames(): Set<string> {
   const running = new Set<string>();
   const emulators = deviceState.devices.filter(
     (d) => d.deviceKind === "emulator" && d.connectionState === "online"
@@ -64,14 +65,18 @@ export const runningAvdNames = createMemo((): Set<string> => {
     const normalizedAvd = avd.name.toLowerCase().replace(/[\s_-]/g, "");
     for (const em of emulators) {
       const emModel = (em.model ?? em.name).toLowerCase().replace(/[\s_-]/g, "");
-      if (normalizedAvd === emModel || emModel.includes(normalizedAvd) || normalizedAvd.includes(emModel)) {
+      if (
+        normalizedAvd === emModel ||
+        emModel.includes(normalizedAvd) ||
+        normalizedAvd.includes(emModel)
+      ) {
         running.add(avd.name);
         break;
       }
     }
   }
   return running;
-});
+}
 
 /** Running serial for a given AVD name, if it's currently online. */
 export function serialForAvd(avdName: string): string | null {

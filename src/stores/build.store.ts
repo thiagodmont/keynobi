@@ -1,5 +1,5 @@
 import { createStore, produce } from "solid-js/store";
-import { createMemo, createSignal } from "solid-js";
+import { createSignal } from "solid-js";
 import type { BuildError, BuildRecord, BuildLine, LogEntry } from "@/bindings";
 import { createLogStore, type LogStore } from "@/stores/log.store";
 import { clearBuildHistory as clearBuildHistoryApi } from "@/lib/tauri-api";
@@ -60,18 +60,29 @@ export const buildLogStore: LogStore = createLogStore({ maxEntries: 10_000 });
 // ── Derived ───────────────────────────────────────────────────────────────────
 
 /** Live elapsed time in milliseconds (only meaningful while running). */
-export const buildDurationMs = createMemo(() => {
+export function buildDurationMs(): number {
   _tick(); // reactive dependency — forces recompute every second while building
   if (buildState.phase !== "running" || !buildState.startedAt) {
     return buildState.durationMs ?? 0;
   }
   return Date.now() - buildState.startedAt;
-});
+}
 
-export const hasErrors = createMemo(() => buildState.errors.length > 0);
-export const hasWarnings = createMemo(() => buildState.warnings.length > 0);
-export const isBuilding = createMemo(() => buildState.phase === "running");
-export const isDeploying = createMemo(() => buildState.deployPhase !== null);
+export function hasErrors(): boolean {
+  return buildState.errors.length > 0;
+}
+
+export function hasWarnings(): boolean {
+  return buildState.warnings.length > 0;
+}
+
+export function isBuilding(): boolean {
+  return buildState.phase === "running";
+}
+
+export function isDeploying(): boolean {
+  return buildState.deployPhase !== null;
+}
 
 // ── Batching ──────────────────────────────────────────────────────────────────
 
@@ -81,10 +92,13 @@ let buildLogIdCounter = 0;
 
 export function lineToLogEntry(line: BuildLine): LogEntry {
   const level: LogEntry["level"] =
-    line.kind === "error" ? "error"
-    : line.kind === "warning" ? "warn"
-    : line.kind === "summary" || line.kind === "info" ? "info"
-    : "debug";
+    line.kind === "error"
+      ? "error"
+      : line.kind === "warning"
+        ? "warn"
+        : line.kind === "summary" || line.kind === "info"
+          ? "info"
+          : "debug";
 
   const message = line.file
     ? `${line.file}:${line.line ?? "?"}:${line.col ?? "?"} — ${line.content}`

@@ -11,7 +11,6 @@
  */
 
 import { createStore } from "solid-js/store";
-import { createMemo } from "solid-js";
 import { settingsState } from "@/stores/settings.store";
 import { runHealthChecks } from "@/lib/tauri-api";
 import type { SystemHealthReport } from "@/bindings";
@@ -78,12 +77,10 @@ export async function refreshHealthChecks(): Promise<void> {
 // ── Reactive checks (derived from stores) ────────────────────────────────────
 
 function openSettingsAction(): void {
-  import("@/components/settings/SettingsPanel").then(({ openSettings }) =>
-    openSettings()
-  );
+  import("@/components/settings/SettingsPanel").then(({ openSettings }) => openSettings());
 }
 
-export const healthChecks = createMemo<HealthCheck[]>(() => {
+export function healthChecks(): HealthCheck[] {
   const report = healthState.systemReport;
   const checks: HealthCheck[] = [];
 
@@ -97,20 +94,18 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
     status: !sdkPath
       ? "error"
       : sdkValid === false
-      ? "warning"
-      : sdkValid === true
-      ? "ok"
-      : "loading",
+        ? "warning"
+        : sdkValid === true
+          ? "ok"
+          : "loading",
     detail: !sdkPath
       ? "ANDROID_HOME not configured — Gradle cannot find the Android SDK"
       : sdkValid === false
-      ? `Path set but SDK not found at: ${sdkPath}`
-      : sdkValid === true
-      ? sdkPath
-      : "Checking…",
-    fix: !sdkPath
-      ? { label: "Open Settings", action: openSettingsAction }
-      : undefined,
+        ? `Path set but SDK not found at: ${sdkPath}`
+        : sdkValid === true
+          ? sdkPath
+          : "Checking…",
+    fix: !sdkPath ? { label: "Open Settings", action: openSettingsAction } : undefined,
   });
 
   // ── 2. ADB ──────────────────────────────────────────────────────────────────
@@ -120,23 +115,16 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
     id: "adb",
     category: "environment",
     name: "ADB (Android Debug Bridge)",
-    status: adbFound === undefined
-      ? "loading"
-      : adbFound
-      ? "ok"
-      : !sdkPath
-      ? "skip"
-      : "warning",
-    detail: adbFound === true
-      ? adbVersion ?? "Found in platform-tools"
-      : adbFound === false
-      ? "adb not found — device operations will not work"
-      : !sdkPath
-      ? "No SDK configured"
-      : "Checking…",
-    fix: adbFound === false
-      ? { label: "Open Settings", action: openSettingsAction }
-      : undefined,
+    status: adbFound === undefined ? "loading" : adbFound ? "ok" : !sdkPath ? "skip" : "warning",
+    detail:
+      adbFound === true
+        ? (adbVersion ?? "Found in platform-tools")
+        : adbFound === false
+          ? "adb not found — device operations will not work"
+          : !sdkPath
+            ? "No SDK configured"
+            : "Checking…",
+    fix: adbFound === false ? { label: "Open Settings", action: openSettingsAction } : undefined,
   });
 
   // ── 3. Emulator ─────────────────────────────────────────────────────────────
@@ -145,23 +133,24 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
     id: "emulator",
     category: "environment",
     name: "Android Emulator",
-    status: emulatorFound === undefined
-      ? "loading"
-      : emulatorFound
-      ? "ok"
-      : !sdkPath
-      ? "skip"
-      : "warning",
-    detail: emulatorFound === true
-      ? "Found in $ANDROID_HOME/emulator/"
-      : emulatorFound === false
-      ? "Emulator binary not found — cannot launch AVDs"
-      : !sdkPath
-      ? "No SDK configured"
-      : "Checking…",
-    fix: emulatorFound === false
-      ? { label: "Open Settings", action: openSettingsAction }
-      : undefined,
+    status:
+      emulatorFound === undefined
+        ? "loading"
+        : emulatorFound
+          ? "ok"
+          : !sdkPath
+            ? "skip"
+            : "warning",
+    detail:
+      emulatorFound === true
+        ? "Found in $ANDROID_HOME/emulator/"
+        : emulatorFound === false
+          ? "Emulator binary not found — cannot launch AVDs"
+          : !sdkPath
+            ? "No SDK configured"
+            : "Checking…",
+    fix:
+      emulatorFound === false ? { label: "Open Settings", action: openSettingsAction } : undefined,
   });
 
   // ── 3b. Android Studio CLI ──────────────────────────────────────────────────
@@ -170,16 +159,13 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
     id: "studio-command",
     category: "environment",
     name: "Android Studio CLI (studio)",
-    status: studioFound === undefined
-      ? "loading"
-      : studioFound
-      ? "ok"
-      : "warning",
-    detail: studioFound === true
-      ? "studio command found — crash stack frames can be opened directly"
-      : studioFound === false
-      ? "studio command not found — add Android Studio's MacOS bin dir to $PATH to enable jump-to-line"
-      : "Checking…",
+    status: studioFound === undefined ? "loading" : studioFound ? "ok" : "warning",
+    detail:
+      studioFound === true
+        ? "studio command found — crash stack frames can be opened directly"
+        : studioFound === false
+          ? "studio command not found — add Android Studio's MacOS bin dir to $PATH to enable jump-to-line"
+          : "Checking…",
   });
 
   // ── 4. Java / JDK ──────────────────────────────────────────────────────────
@@ -190,23 +176,20 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
     id: "java",
     category: "environment",
     name: "Java / JDK",
-    status: javaFound === false
-      ? "error"
-      : javaFound === true
-      ? "ok"
-      : !javaHome
-      ? "warning"
-      : "loading",
-    detail: javaFound === true
-      ? javaVersion ?? `Found at ${report?.javaBinUsed}`
-      : javaFound === false
-      ? `Not found at: ${report?.javaBinUsed ?? "java"} — Gradle compilation may fail`
-      : !javaHome
-      ? "Not configured — Gradle may use an incompatible JVM"
-      : "Checking…",
-    fix: javaFound === false || !javaHome
-      ? { label: "Open Settings", action: openSettingsAction }
-      : undefined,
+    status:
+      javaFound === false ? "error" : javaFound === true ? "ok" : !javaHome ? "warning" : "loading",
+    detail:
+      javaFound === true
+        ? (javaVersion ?? `Found at ${report?.javaBinUsed}`)
+        : javaFound === false
+          ? `Not found at: ${report?.javaBinUsed ?? "java"} — Gradle compilation may fail`
+          : !javaHome
+            ? "Not configured — Gradle may use an incompatible JVM"
+            : "Checking…",
+    fix:
+      javaFound === false || !javaHome
+        ? { label: "Open Settings", action: openSettingsAction }
+        : undefined,
   });
 
   // ── 5. App Directory ────────────────────────────────────────────────────────
@@ -215,33 +198,32 @@ export const healthChecks = createMemo<HealthCheck[]>(() => {
     id: "app-dir",
     category: "system",
     name: "App Data Directory",
-    status:
-      appDirOk === undefined ? "loading" : appDirOk ? "ok" : "error",
+    status: appDirOk === undefined ? "loading" : appDirOk ? "ok" : "error",
     detail:
       appDirOk === undefined
         ? "Checking ~/.keynobi/…"
         : appDirOk
-        ? "~/.keynobi/ is writable"
-        : "Cannot create ~/.keynobi/ — check file permissions",
+          ? "~/.keynobi/ is writable"
+          : "Cannot create ~/.keynobi/ — check file permissions",
   });
 
   return checks;
-});
+}
 
 // ── Overall health ────────────────────────────────────────────────────────────
 
-export const overallHealth = createMemo<OverallHealth>(() => {
+export function overallHealth(): OverallHealth {
   if (healthState.isRunning) return "loading";
   const checks = healthChecks();
   const active = checks.filter((c) => c.status !== "skip");
   if (active.some((c) => c.status === "error")) return "error";
   if (active.some((c) => c.status === "warning" || c.status === "loading")) return "warning";
   return "ok";
-});
+}
 
-export const healthSummary = createMemo(() => {
+export function healthSummary(): { ok: number; total: number } {
   const checks = healthChecks().filter((c) => c.status !== "skip");
   const ok = checks.filter((c) => c.status === "ok").length;
   const total = checks.length;
   return { ok, total };
-});
+}
