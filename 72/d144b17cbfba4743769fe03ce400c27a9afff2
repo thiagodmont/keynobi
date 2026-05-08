@@ -1,0 +1,23 @@
+e2e/smoke/logcat-regressions.spec.ts
+  s_3a0085dce7ddc9::t_23a2d603b4472f 169-170
+src/components/logcat/QueryBarParts.tsx
+  s_3a0085dce7ddc9::t_26ed96fc13f137 28-30,55-56
+src/components/logcat/QueryBar.test.ts
+  s_3a0085dce7ddc9::t_629138b7cfab6b 97,113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "72d144b17cbfba4743769fe03ce400c27a9afff2",
+  "prompts": {},
+  "sessions": {
+    "s_3a0085dce7ddc9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e084b-da50-7c82-a22b-2ba51bdf1f9e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
