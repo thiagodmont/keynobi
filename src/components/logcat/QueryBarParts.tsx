@@ -25,6 +25,9 @@ export function QueryBarOrBadge(props: { onToggle?: () => void } = {}): JSX.Elem
           onMouseDown={(e) => {
             e.preventDefault();
             e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
             props.onToggle?.();
           }}
           style={queryBarOrBadgeStyle(true)}
@@ -48,6 +51,9 @@ export function QueryBarAndBadge(props: { onToggle?: () => void } = {}): JSX.Ele
           title="Change AND to OR"
           onMouseDown={(e) => {
             e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
             e.stopPropagation();
             props.onToggle?.();
           }}

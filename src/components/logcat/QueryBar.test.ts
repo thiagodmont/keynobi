@@ -94,7 +94,7 @@ describe("QueryBar — clickable connectors", () => {
       })
     );
 
-    fireEvent.mouseDown(getByRole("button", { name: "Change AND to OR" }));
+    fireEvent.click(getByRole("button", { name: "Change AND to OR" }));
 
     expect(changes[changes.length - 1]).toBe("level:error | tag:App | is:crash ");
   });
@@ -110,7 +110,7 @@ describe("QueryBar — clickable connectors", () => {
       })
     );
 
-    fireEvent.mouseDown(getAllByRole("button", { name: "Change OR to AND" })[0]!);
+    fireEvent.click(getAllByRole("button", { name: "Change OR to AND" })[0]!);
 
     expect(changes[changes.length - 1]).toBe("level:error tag:App | is:crash ");
   });

@@ -166,7 +166,8 @@ test("logcat query connector badges toggle only the clicked condition", async ({
   await expect(page.getByText("Beta only row")).toBeVisible();
   await expect(page.getByText("Gamma only row")).toBeVisible();
 
-  await page.getByRole("button", { name: "Change OR to AND" }).first().click();
+  await page.getByRole("button", { name: "Change OR to AND" }).first().focus();
+  await page.keyboard.press("Enter");
 
   await expect(page.getByText("Alpha beta row")).toBeVisible({ timeout: 5_000 });
   await expect(page.getByText("Gamma only row")).toBeVisible();
