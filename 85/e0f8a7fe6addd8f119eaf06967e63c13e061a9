@@ -1,0 +1,47 @@
+src/components/logcat/LogcatPanel.auto-filter.test.ts
+  s_3a0085dce7ddc9::t_c1060e48dbb526 46-48
+  s_3a0085dce7ddc9::t_79493d902f3136 20,24,107-117
+src/services/build.service.ts
+  s_3a0085dce7ddc9::t_1eb0877df32f42 267
+src/components/logcat/LogcatPanel.tsx
+  s_3a0085dce7ddc9::t_a5dd5ffaff3d29 381
+  s_3a0085dce7ddc9::t_c1060e48dbb526 376-378,380,382-383
+src/lib/logcat-query.ts
+  s_3a0085dce7ddc9::t_6ded58d3f7cd13 1080-1127
+src/components/logcat/querybar-styles.ts
+  s_3a0085dce7ddc9::t_5bad2f9456d38c 103,105,116-117,121,123-124,134-135
+e2e/smoke/logcat-regressions.spec.ts
+  s_3a0085dce7ddc9::t_6cce5e85e72da2 143-176
+src/components/logcat/QueryBar.tsx
+  s_3a0085dce7ddc9::t_5bad2f9456d38c 40-41,428-446,471,496
+src/stores/build.store.ts
+  s_3a0085dce7ddc9::t_8b33a8bf79219f 191-194
+  s_3a0085dce7ddc9::t_1eb0877df32f42 22,54,190,232
+docs/USER_MANUAL.md
+  s_3a0085dce7ddc9::t_5f0cabcdadcc15 145
+src/components/logcat/QueryBarParts.tsx
+  s_3a0085dce7ddc9::t_37d5b83cfd41f6 19-37,43-61
+  s_3a0085dce7ddc9::t_5bad2f9456d38c 17-18,38,41-42,62
+src/lib/logcat-query.test.ts
+  s_3a0085dce7ddc9::t_c0e122064e6c10 31-32,942-968
+src/components/logcat/QueryBar.test.ts
+  s_3a0085dce7ddc9::t_a80ea03e7f151e 85-118
+src/stores/build.store.test.ts
+  s_3a0085dce7ddc9::t_33e2e71e66c474 313-318,323,330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "85e0f8a7fe6addd8f119eaf06967e63c13e061a9",
+  "prompts": {},
+  "sessions": {
+    "s_3a0085dce7ddc9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e084b-da50-7c82-a22b-2ba51bdf1f9e",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
