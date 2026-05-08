@@ -1,0 +1,32 @@
+docs/USER_MANUAL.md
+  s_6a7dbd66b1bc9f::t_f9713031d09abd 124
+src/components/logcat/LogcatPanel.tsx
+  s_6a7dbd66b1bc9f::t_097579f656a563 56,126,194-197,215-218,221-222,253,257,259,815,819
+src/lib/logcat-lifecycle.ts
+  s_6a7dbd66b1bc9f::t_6d23d1ae7ab29e 1-5
+src/components/logcat/LogcatFilterControls.test.tsx
+  s_6a7dbd66b1bc9f::t_c46e0b860a7fa5 14,18,59-63,65-71,73-76
+  s_6a7dbd66b1bc9f::t_52347ac26c165a 64,72
+src/components/logcat/LogcatPanel.click-filter.test.tsx
+  s_6a7dbd66b1bc9f::t_cbeeb1b9d6b26c 251-295
+src/components/logcat/LogcatFilterControls.tsx
+  s_6a7dbd66b1bc9f::t_2dfe1447852ed3 25,29,117-138
+src/lib/logcat-lifecycle.test.ts
+  s_6a7dbd66b1bc9f::t_c66bfc78c8389f 1-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "216e2f90ebead6d414f5f9dd0be5fb7e41889400",
+  "prompts": {},
+  "sessions": {
+    "s_6a7dbd66b1bc9f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e0812-bce1-79d3-be39-cb91a0071bb0",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
