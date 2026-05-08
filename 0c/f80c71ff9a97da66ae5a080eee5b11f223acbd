@@ -1,0 +1,21 @@
+scripts/changelog.test.mjs
+  s_7630188fac2ac9::t_2b4a41e5e003aa 64-70,109-112,177-181,246-259
+scripts/changelog.mjs
+  s_7630188fac2ac9::t_f3d9b8f12b8bda 47-49,73-83,92,118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "0cf80c71ff9a97da66ae5a080eee5b11f223acbd",
+  "prompts": {},
+  "sessions": {
+    "s_7630188fac2ac9": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e0874-644b-79c1-a279-fffb30aba247",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
