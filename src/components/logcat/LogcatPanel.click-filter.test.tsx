@@ -293,4 +293,37 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
     expect(screen.getByText("lifecycle row")).not.toBeNull();
     expect(screen.getByText(/PROCESS DIED/)).not.toBeNull();
   });
+
+  it("excludes hidden lifecycle crash rows from the read-mode crash count", async () => {
+    const appCrashEntry = {
+      ...BASE_ENTRY,
+      id: 40n,
+      tag: "AppCrash",
+      message: "visible app crash",
+      category: "general",
+      kind: "normal",
+      isCrash: true,
+    } satisfies ProcessedEntry;
+    const lifecycleCrashEntry = {
+      ...BASE_ENTRY,
+      id: 41n,
+      tag: "ActivityManager",
+      message: "hidden lifecycle crash",
+      category: "lifecycle",
+      kind: "normal",
+      isCrash: true,
+    } satisfies ProcessedEntry;
+
+    installLogcatPanelMocks([appCrashEntry, lifecycleCrashEntry]);
+    render(() => <LogcatPanel />);
+
+    fireEvent.click(await screen.findByText("visible app crash"));
+    expect(screen.getByTitle("2 crashes — click to jump")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Lifecycle" }));
+
+    expect(screen.getAllByText("visible app crash").length).toBeGreaterThan(0);
+    expect(screen.queryByText("hidden lifecycle crash")).toBeNull();
+    expect(screen.getByTitle("1 crash — click to jump")).not.toBeNull();
+  });
 });

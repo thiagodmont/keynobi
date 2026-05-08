@@ -245,7 +245,7 @@ export function LogcatPanel(): JSX.Element {
     const frozen = frozenEntries();
     if (frozen !== null) {
       const indices: number[] = [];
-      frozen.forEach((entry, index) => {
+      displayedEntries().forEach((entry, index) => {
         if (entry.isCrash) indices.push(index);
       });
       return indices;
