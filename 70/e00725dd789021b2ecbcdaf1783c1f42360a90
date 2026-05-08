@@ -1,0 +1,58 @@
+src/lib/logcat-follow-tail.test.ts
+  s_b0ef2b6cbb7c02::t_aa9d62ca3e9272 41-52
+src/components/logcat/LogcatToolbar.test.tsx
+  s_b0ef2b6cbb7c02::t_17fca15b4de3b0 13
+src/components/ui/VirtualList/VirtualList.test.tsx
+  s_b0ef2b6cbb7c02::t_c86494c2c12f68 140
+  s_b0ef2b6cbb7c02::t_7ef214aa6b22bf 22-27,31-32
+  s_b0ef2b6cbb7c02::t_656a8017a6e56a 76-112
+  s_b0ef2b6cbb7c02::t_a308be40acc2ca 113-139,141
+src/lib/logcat-follow-tail.ts
+  s_b0ef2b6cbb7c02::t_f62bd0f454e649 14
+  s_b0ef2b6cbb7c02::t_c0f634412438ee 3,9
+src/components/logcat/logcat-selection-nav.ts
+  s_b0ef2b6cbb7c02::t_f4fdbd12e4c9ba 53-72
+src/components/logcat/LogcatPanel.click-filter.test.tsx
+  s_b0ef2b6cbb7c02::t_f0509519db6eca 234-236
+  s_b0ef2b6cbb7c02::t_131e91d413f50d 241
+  s_b0ef2b6cbb7c02::t_9535e9afbf2ed5 77-79,81,109-120,217-233,237-240,242-247
+src/components/logcat/LogcatPanel.tsx
+  s_b0ef2b6cbb7c02::t_2e6c5366b96b39 395,459-462,474
+  s_b0ef2b6cbb7c02::t_54f3baf826eb7b 48-52,463-465
+  s_b0ef2b6cbb7c02::t_093593dd1ec71c 592,601,605,628,646,665,667,682,712,723,734,738,753,783,850,856
+  s_b0ef2b6cbb7c02::t_28df6cda71b197 142
+  s_b0ef2b6cbb7c02::t_814ac983b468c7 118-121
+  s_b0ef2b6cbb7c02::t_417c91479dfab6 103-107
+  s_b0ef2b6cbb7c02::t_1ad59a9066ed01 680
+  s_b0ef2b6cbb7c02::t_119eec71fa300f 236-243
+  s_b0ef2b6cbb7c02::t_b2783a89da276a 192-215,218
+e2e/smoke/logcat-regressions.spec.ts
+  s_b0ef2b6cbb7c02::t_542eb31853ccf5 98-99,101,157-158,162-163
+  s_b0ef2b6cbb7c02::t_5dcf8c62b5051a 141-156,159-161,164-165
+docs/USER_MANUAL.md
+  s_b0ef2b6cbb7c02::t_6a90029713cda4 120,151-152
+src/components/logcat/LogcatToolbar.tsx
+  s_b0ef2b6cbb7c02::t_d39334d0220f39 12,131-137,141-143
+src/components/logcat/logcat-selection-nav.test.ts
+  s_b0ef2b6cbb7c02::t_5a614daaa58703 6,80-92
+src/components/ui/VirtualList/VirtualList.tsx
+  s_b0ef2b6cbb7c02::t_06c21bf5ee8743 227
+  s_b0ef2b6cbb7c02::t_eba85e15e51f59 31,159
+  s_b0ef2b6cbb7c02::t_3c7751861912a0 194
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "70e00725dd789021b2ecbcdaf1783c1f42360a90",
+  "prompts": {},
+  "sessions": {
+    "s_b0ef2b6cbb7c02": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e07a4-c4c6-7281-9977-990086a6e9f3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
