@@ -1,0 +1,22 @@
+src/components/logcat/LogcatPanel.click-filter.test.tsx
+  s_6fac7f938868bf::t_665a2759b79365 325
+  s_6fac7f938868bf::t_433d813795e967 296-324,326-328
+src/components/logcat/LogcatPanel.tsx
+  s_6fac7f938868bf::t_eb7733afc6af05 248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "6931111d8a41f3c4b0e6ee277d121b2c847bc63b",
+  "prompts": {},
+  "sessions": {
+    "s_6fac7f938868bf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e083d-33b0-7181-abc1-04e3224947d4",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
