@@ -1,0 +1,26 @@
+src/components/logcat/logcat-selection-nav.test.ts
+  s_b0ef2b6cbb7c02::t_abc6db4dac3dfb 91-92
+src/components/logcat/LogcatPanel.click-filter.test.tsx
+  s_b0ef2b6cbb7c02::t_8c58d20104115a 241-243
+e2e/smoke/logcat-regressions.spec.ts
+  s_b0ef2b6cbb7c02::t_425765eecaabd6 98-99
+  s_b0ef2b6cbb7c02::t_247b86a9c5c467 144-156,179-185
+src/components/logcat/logcat-selection-nav.ts
+  s_b0ef2b6cbb7c02::t_e01e768faf4f11 68-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "2158460590babb24a4110c31550fc44be44af368",
+  "prompts": {},
+  "sessions": {
+    "s_b0ef2b6cbb7c02": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e07a4-c4c6-7281-9977-990086a6e9f3",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
