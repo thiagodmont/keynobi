@@ -95,7 +95,13 @@ describe("build.store", () => {
       {
         id: 1,
         task: "assembleDebug",
-        status: { state: "Success", success: true, durationMs: 1000, errorCount: 0, warningCount: 0 } as any,
+        status: {
+          state: "Success",
+          success: true,
+          durationMs: 1000,
+          errorCount: 0,
+          warningCount: 0,
+        } as any,
         errors: [],
         startedAt: new Date().toISOString(),
         projectRoot: "/home/user/my-app",
@@ -112,9 +118,12 @@ describe("build.store", () => {
   it("resetBuildState clears history along with build state", () => {
     setBuildHistory([
       {
-        id: 1, task: "assembleDebug",
-        status: { state: "success" } as any, errors: [],
-        startedAt: new Date().toISOString(), projectRoot: "/home/user/my-app",
+        id: 1,
+        task: "assembleDebug",
+        status: { state: "success" } as any,
+        errors: [],
+        startedAt: new Date().toISOString(),
+        projectRoot: "/home/user/my-app",
       },
     ]);
     startBuild("assembleDebug");
@@ -127,9 +136,12 @@ describe("build.store", () => {
   it("clearBuild does NOT clear history — only resetBuildState does", () => {
     setBuildHistory([
       {
-        id: 1, task: "assembleDebug",
-        status: { state: "success" } as any, errors: [],
-        startedAt: new Date().toISOString(), projectRoot: "/home/user/my-app",
+        id: 1,
+        task: "assembleDebug",
+        status: { state: "success" } as any,
+        errors: [],
+        startedAt: new Date().toISOString(),
+        projectRoot: "/home/user/my-app",
       },
     ]);
     startBuild("assembleDebug");
@@ -285,7 +297,9 @@ describe("build.store batching", () => {
 // ── lastLaunchedAt ────────────────────────────────────────────────────────────
 
 describe("lastLaunchedAt", () => {
-  beforeEach(() => { resetBuildState(); });
+  beforeEach(() => {
+    resetBuildState();
+  });
 
   it("is null on initial state", () => {
     expect(buildState.lastLaunchedAt).toBeNull();
@@ -296,16 +310,24 @@ describe("lastLaunchedAt", () => {
     expect(buildState.lastLaunchedAt).toBe(1_000_000);
   });
 
+  it("setLastLaunchedAt stores the exact launched package when provided", () => {
+    setLastLaunchedAt(1_000_000, "com.example.flavor.debug");
+    expect(buildState.lastLaunchedAt).toBe(1_000_000);
+    expect(buildState.lastLaunchedPackage).toBe("com.example.flavor.debug");
+  });
+
   it("clearBuild resets lastLaunchedAt to null", () => {
     setLastLaunchedAt(1_000_000);
     clearBuild();
     expect(buildState.lastLaunchedAt).toBeNull();
+    expect(buildState.lastLaunchedPackage).toBeNull();
   });
 
   it("resetBuildState resets lastLaunchedAt to null", () => {
     setLastLaunchedAt(1_000_000);
     resetBuildState();
     expect(buildState.lastLaunchedAt).toBeNull();
+    expect(buildState.lastLaunchedPackage).toBeNull();
   });
 
   it("successive deploys each update the timestamp", () => {

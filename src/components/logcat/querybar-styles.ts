@@ -100,8 +100,9 @@ export function queryBarGroupBoxStyle(): Record<string, string> {
   };
 }
 
-export function queryBarOrBadgeStyle(): Record<string, string> {
+export function queryBarOrBadgeStyle(clickable = false): Record<string, string> {
   return {
+    appearance: "none",
     "font-size": "9px",
     "font-weight": "700",
     "letter-spacing": "0.05em",
@@ -112,11 +113,15 @@ export function queryBarOrBadgeStyle(): Record<string, string> {
     padding: "1px 5px",
     "flex-shrink": "0",
     "user-select": "none",
+    cursor: clickable ? "pointer" : "default",
+    "line-height": "1.2",
   };
 }
 
-export function queryBarAndBadgeStyle(): Record<string, string> {
+export function queryBarAndBadgeStyle(clickable = false): Record<string, string> {
   return {
+    appearance: "none",
+    background: "transparent",
     "font-size": "9px",
     "font-weight": "600",
     "letter-spacing": "0.04em",
@@ -126,6 +131,8 @@ export function queryBarAndBadgeStyle(): Record<string, string> {
     padding: "1px 5px",
     "flex-shrink": "0",
     "user-select": "none",
+    cursor: clickable ? "pointer" : "default",
+    "line-height": "1.2",
   };
 }
 

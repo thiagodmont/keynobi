@@ -67,7 +67,8 @@ export async function initBuildService(): Promise<void> {
 }
 
 // One-shot resolver for the current build. Set before a build starts, cleared on completion.
-let _resolveBuildComplete: ((result: { success: boolean; durationMs: number }) => void) | null = null;
+let _resolveBuildComplete: ((result: { success: boolean; durationMs: number }) => void) | null =
+  null;
 
 // ── Build actions ─────────────────────────────────────────────────────────────
 
@@ -104,12 +105,15 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
   // something goes wrong in the Rust on_exit callback.
   const buildComplete = new Promise<{ success: boolean; durationMs: number }>((resolve, reject) => {
     _resolveBuildComplete = resolve;
-    setTimeout(() => {
-      if (_resolveBuildComplete === resolve) {
-        _resolveBuildComplete = null;
-        reject(new Error("Build timed out waiting for build:complete event after 5 minutes."));
-      }
-    }, 5 * 60 * 1000);
+    setTimeout(
+      () => {
+        if (_resolveBuildComplete === resolve) {
+          _resolveBuildComplete = null;
+          reject(new Error("Build timed out waiting for build:complete event after 5 minutes."));
+        }
+      },
+      5 * 60 * 1000
+    );
   });
 
   try {
@@ -130,7 +134,13 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
     // Process-level spawn failure (e.g. gradlew not found).
     _resolveBuildComplete = null;
     const msg = formatError(e);
-    addBuildLine({ kind: "error", content: `Failed to start Gradle: ${msg}`, file: null, line: null, col: null });
+    addBuildLine({
+      kind: "error",
+      content: `Failed to start Gradle: ${msg}`,
+      file: null,
+      line: null,
+      col: null,
+    });
     setBuildResult({ success: false, durationMs: 0, errorCount: 1, warningCount: 0 });
     throw e;
   }
@@ -142,7 +152,13 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
   } catch (e) {
     // Timeout or unexpected rejection.
     const msg = formatError(e);
-    addBuildLine({ kind: "error", content: `Build event error: ${msg}`, file: null, line: null, col: null });
+    addBuildLine({
+      kind: "error",
+      content: `Build event error: ${msg}`,
+      file: null,
+      line: null,
+      col: null,
+    });
     setBuildResult({ success: false, durationMs: 0, errorCount: 1, warningCount: 0 });
     throw e;
   }
@@ -198,9 +214,7 @@ export async function runAndDeploy(): Promise<void> {
     //    context header as the very first callback line from the Gradle channel.
     setDeployPhase("building");
     await runBuild(`assemble${capitalize(variant)}`, {
-      headerLines: [
-        `── Deploy: ${variant} → ${serial} ──`,
-      ],
+      headerLines: [`── Deploy: ${variant} → ${serial} ──`],
     });
 
     const phase = buildState.phase;
@@ -216,7 +230,7 @@ export async function runAndDeploy(): Promise<void> {
     if (!apkPath) {
       logError(
         `APK not found for variant "${variant}". ` +
-        "Expected: app/build/outputs/apk/. Make sure the build produced an APK."
+          "Expected: app/build/outputs/apk/. Make sure the build produced an APK."
       );
       throw new Error("APK not found.");
     }
@@ -250,11 +264,11 @@ export async function runAndDeploy(): Promise<void> {
       logStep(`adb shell am start (package: ${packageName})`);
       const launchOutput = await launchAppOnDevice(serial, packageName);
       logStep(`Launch: ${launchOutput.trim()}`);
-      setLastLaunchedAt(Date.now());
+      setLastLaunchedAt(Date.now(), packageName);
     } else {
       logStep(
         "APK installed. Could not determine package name — cannot auto-launch. " +
-        "Ensure aapt2 is available in your Android SDK or set applicationId in Project App Info."
+          "Ensure aapt2 is available in your Android SDK or set applicationId in Project App Info."
       );
     }
   } catch (e) {
@@ -339,9 +353,13 @@ export async function jumpToBuildError(error: BuildError): Promise<void> {
       const filename = parts[parts.length - 1] ?? error.file;
       // Build a dotted class path from the path relative to java/ or kotlin/.
       const srcIdx = parts.findIndex((p) => p === "java" || p === "kotlin");
-      const classPath = srcIdx >= 0
-        ? parts.slice(srcIdx + 1).join(".").replace(/\.(kt|java)$/, "")
-        : filename.replace(/\.(kt|java)$/, "");
+      const classPath =
+        srcIdx >= 0
+          ? parts
+              .slice(srcIdx + 1)
+              .join(".")
+              .replace(/\.(kt|java)$/, "")
+          : filename.replace(/\.(kt|java)$/, "");
       await openInStudio(classPath, filename, error.line ?? 1);
       return;
     } catch (e) {

@@ -142,6 +142,7 @@ Use the query bar for targeted searches:
 | `level:error | is:crash` | OR search |
 
 Press **Enter** to commit a typed condition as a filter pill. Use **+ AND** and **+ OR** for compound filters. Saved filters are capped at 50.
+Click an `AND` or `OR` connector badge between filter pills to toggle only that connector while keeping the surrounding filters in place.
 
 ### Reading logs
 

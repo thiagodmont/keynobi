@@ -17,10 +17,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createRoot, createSignal, createEffect } from "solid-js";
 import { buildState, setLastLaunchedAt, resetBuildState } from "@/stores/build.store";
-import { setPackageInQuery } from "@/lib/logcat-query";
+import { getMinePackage, setMinePackage, setPackageInQuery } from "@/lib/logcat-query";
 
 function resetState() {
   resetBuildState();
+  setMinePackage(null);
 }
 
 /**
@@ -42,6 +43,9 @@ function mountAutoFilterEffect(initialQuery: string): [() => string, () => void]
       if (launchedAt === _prevLaunchedAt) return;
       _prevLaunchedAt = launchedAt;
       if (launchedAt === null) return;
+      if (buildState.lastLaunchedPackage) {
+        setMinePackage(buildState.lastLaunchedPackage);
+      }
       const q = query();
       if (q.includes("package:mine") || q.includes("pkg:mine")) return;
       const next = setPackageInQuery(q, "mine");
@@ -97,6 +101,20 @@ describe("auto-apply package:mine on deploy", () => {
 
     // query unchanged — no duplicate package token
     expect(query()).toBe(initial);
+    dispose();
+  });
+
+  it("updates the mine resolver to the exact launched package when package:mine already exists", async () => {
+    setMinePackage("com.example.base");
+    const initial = "package:mine level:error ";
+    const [query, dispose] = mountAutoFilterEffect(initial);
+    await Promise.resolve();
+
+    setLastLaunchedAt(1_000_000, "com.example.flavor.debug");
+    await Promise.resolve();
+
+    expect(query()).toBe(initial);
+    expect(getMinePackage()).toBe("com.example.flavor.debug");
     dispose();
   });
 
