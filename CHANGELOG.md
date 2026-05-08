@@ -7,6 +7,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.25] — 2026-05-08
+
+### Added
+- add lifecycle visibility filter (#67)
+
+### Changed
+- switch condition and package mine fix (#68)
+- log improvements (#66)
+
+---
+
 ## [0.1.24] — 2026-05-06
 
 ### Added
