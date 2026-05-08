@@ -10,6 +10,7 @@ function renderToolbar(overrides: Partial<Parameters<typeof LogcatToolbar>[0]> =
     crashes: 0,
     selectedCount: 0,
     autoScroll: true,
+    newEntriesCount: 0,
     toolbarCount: { text: "0 rows", title: "No rows" },
     onStart: vi.fn(),
     onStop: vi.fn(),

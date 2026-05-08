@@ -28,6 +28,7 @@ import {
   createSignal,
   onCleanup,
   onMount,
+  untrack,
 } from "solid-js";
 
 export interface VirtualListHandle {
@@ -155,7 +156,7 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
   const scheduleAutoScroll = () => {
     if (props.autoScroll && wasAtBottom) {
       queueMicrotask(() => {
-        if (outerRef) {
+        if (outerRef && untrack(() => props.autoScroll) && wasAtBottom) {
           outerRef.scrollTop = outerRef.scrollHeight;
         }
       });
@@ -190,7 +191,7 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
     const delta = current - prevCompensate;
     prevCompensate = current;
     if (delta !== 0 && outerRef) {
-      outerRef.scrollTop += delta;
+      outerRef.scrollTop = Math.max(0, outerRef.scrollTop - delta);
     }
   });
 
@@ -223,6 +224,7 @@ export function VirtualList<T>(props: VirtualListProps<T>): JSX.Element {
       style={{
         "overflow-y": "auto",
         "overflow-x": "hidden",
+        "overflow-anchor": "none",
         position: "relative",
         ...(props.style ?? {}),
       }}

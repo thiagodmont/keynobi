@@ -117,7 +117,7 @@ Use **Log Mode** from the title bar when logs are the main task. It hides the pr
 
 - **Start / Stop**: begin or end streaming.
 - **Pause / Resume**: pause display updates without losing buffered data.
-- **Jump to end**: resume follow-tail and clear row/detail selection.
+- **Jump to end**: resume follow-tail, apply any logs that arrived while you were reading, and clear row/detail selection.
 - **Clear**: clear displayed entries and the in-memory buffer.
 - **Export**: save filtered entries to a `.log` file.
 - **Filters**: use quick filters or saved filters.
@@ -148,7 +148,8 @@ Press **Enter** to commit a typed condition as a filter pill. Use **+ AND** and 
 - ANRs get an ANR badge.
 - JSON messages show a `{}` badge; open it to view formatted JSON.
 - Arrow keys move the selected row when focus is not in the query bar.
-- Scrolling away from the end or selecting a row pauses follow-tail until you use **Jump to end**.
+- Scrolling away from the end or selecting a row enters read mode: the visible list is frozen so the row you are reading cannot be pushed out by new logs or UI-buffer overflow.
+- While in read mode, new logs continue to be captured in the background. The **Jump to end** button shows how many matching logs arrived; use it to apply them and resume follow-tail.
 - In **Entry Detail**, click a tag, package, level, PID, TID, time, or message value to add it to the query bar as an **AND** or **OR** filter. Select part of the message before clicking to filter by only that selected text.
 
 Logcat keeps a bounded ring buffer. Configure the ring size, max visible lines, and Logcat output font size under **Settings -> Logcat**.

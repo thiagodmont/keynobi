@@ -50,3 +50,35 @@ export function clampSelectionIndices(
   const nb = end === null ? null : Math.min(Math.max(0, end), max);
   return { anchor: na, end: nb };
 }
+
+/** Shift row selection after `dropped` rows were removed from the front. */
+export function shiftSelectionAfterFrontDrop(
+  anchor: number | null,
+  end: number | null,
+  dropped: number
+): { anchor: number | null; end: number | null } {
+  if (anchor === null || dropped <= 0) return { anchor, end: anchor === null ? null : end };
+
+  const shift = (index: number | null): number | null => {
+    if (index === null) return null;
+    const shifted = index - dropped;
+    return shifted >= 0 ? shifted : null;
+  };
+
+  if (end !== null) {
+    const low = Math.min(anchor, end);
+    const high = Math.max(anchor, end);
+    if (high < dropped) return { anchor: null, end: null };
+
+    const shiftedLow = Math.max(0, low - dropped);
+    const shiftedHigh = high - dropped;
+    return anchor <= end
+      ? { anchor: shiftedLow, end: shiftedHigh }
+      : { anchor: shiftedHigh, end: shiftedLow };
+  }
+
+  return {
+    anchor: shift(anchor),
+    end: shift(end),
+  };
+}

@@ -9,6 +9,7 @@ export function LogcatToolbar(props: {
   crashes: number;
   selectedCount: number;
   autoScroll: boolean;
+  newEntriesCount: number;
   toolbarCount: { text: string; title: string };
   onStart: () => void;
   onStop: () => void;
@@ -127,10 +128,19 @@ export function LogcatToolbar(props: {
 
       <button
         onClick={() => props.onScrollToEnd()}
-        title="Scroll to end"
+        title={
+          props.newEntriesCount > 0
+            ? `${props.newEntriesCount.toLocaleString()} new ${
+                props.newEntriesCount === 1 ? "log" : "logs"
+              } available - Jump to end`
+            : "Scroll to end"
+        }
         style={btnStyle(props.autoScroll ? "var(--text-muted)" : "var(--accent)")}
       >
         ↓
+        <Show when={props.newEntriesCount > 0}>
+          <span>{props.newEntriesCount.toLocaleString()} new</span>
+        </Show>
       </button>
 
       <button
