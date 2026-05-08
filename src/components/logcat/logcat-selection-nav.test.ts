@@ -88,7 +88,7 @@ describe("shiftSelectionAfterFrontDrop", () => {
   });
 
   it("preserves the remaining part of a range after a partial front drop", () => {
-    expect(shiftSelectionAfterFrontDrop(2, 6, 4)).toEqual({ anchor: null, end: 2 });
-    expect(shiftSelectionAfterFrontDrop(8, 3, 5)).toEqual({ anchor: 3, end: null });
+    expect(shiftSelectionAfterFrontDrop(2, 6, 4)).toEqual({ anchor: 0, end: 2 });
+    expect(shiftSelectionAfterFrontDrop(8, 3, 5)).toEqual({ anchor: 3, end: 0 });
   });
 });

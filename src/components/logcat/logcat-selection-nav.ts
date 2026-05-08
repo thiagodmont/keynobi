@@ -65,6 +65,18 @@ export function shiftSelectionAfterFrontDrop(
     return shifted >= 0 ? shifted : null;
   };
 
+  if (end !== null) {
+    const low = Math.min(anchor, end);
+    const high = Math.max(anchor, end);
+    if (high < dropped) return { anchor: null, end: null };
+
+    const shiftedLow = Math.max(0, low - dropped);
+    const shiftedHigh = high - dropped;
+    return anchor <= end
+      ? { anchor: shiftedLow, end: shiftedHigh }
+      : { anchor: shiftedHigh, end: shiftedLow };
+  }
+
   return {
     anchor: shift(anchor),
     end: shift(end),

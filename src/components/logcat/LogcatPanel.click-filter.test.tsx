@@ -238,7 +238,9 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
 
     emitLogcatEntries([incomingEntry]);
 
-    expect(screen.getAllByText("Selected row should stay visible").length).toBeGreaterThan(0);
+    const virtualList = screen.getByTestId("logcat-virtual-list");
+    expect(virtualList.textContent).toContain("Selected row should stay visible");
+    expect(virtualList.textContent).not.toContain("Incoming row should wait");
     expect(screen.queryByText("Incoming row should wait")).toBeNull();
     expect(await screen.findByText("1 new")).not.toBeNull();
 

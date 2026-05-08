@@ -95,6 +95,8 @@ test("logcat follow-tail stays paused after manual scrolling until Jump to end",
   await page.waitForTimeout(100);
   const pausedAfterManualBottom = await scrollState(scroller);
   expect(pausedAfterManualBottom.scrollTop).toBe(manualBottomTop);
+  // Read mode freezes the rendered list, so incoming logs do not increase scrollHeight
+  // until Jump to end applies them.
   expect(pausedAfterManualBottom.maxScrollTop).toBe(manualBottomTop);
   await expect(page.getByText("2 new")).toBeVisible({ timeout: 5_000 });
 
@@ -139,6 +141,19 @@ test("logcat detail panel opens for the clicked filtered row", async ({ page }) 
 });
 
 test("logcat selected row stays frozen while the live buffer overflows", async ({ page }) => {
+  await page.evaluate(() => {
+    window.__keynobi_e2e_settings_overrides = {
+      logcat: {
+        autoStart: false,
+        autoScrollToEnd: true,
+        outputFontSize: 11,
+        maxUiLines: 5000,
+        ringMaxEntries: 50000,
+      },
+    };
+  });
+  await page.reload();
+  await page.waitForFunction(() => typeof window.__e2e__ !== "undefined", { timeout: 10_000 });
   await openLogcatWithEmptyEntries(page);
   await pushLogcatEntries(page, makeScrollEntries(0, 5000));
 
@@ -161,6 +176,13 @@ test("logcat selected row stays frozen while the live buffer overflows", async (
   await page.getByTitle("120 new logs available - Jump to end").click();
   await expect(scroller.getByText("Auto row 5119")).toBeVisible({ timeout: 5_000 });
   await expect(scroller.getByText("Auto row 000")).not.toBeVisible();
+
+  await scroller.evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event("scroll", { bubbles: true }));
+  });
+  await expect(scroller.getByText("Auto row 120")).toBeVisible({ timeout: 5_000 });
+  await expect(scroller.getByText("Auto row 119")).not.toBeVisible();
 });
 
 test("logcat package filter dropdown closes when the window loses focus", async ({ page }) => {
