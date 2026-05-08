@@ -44,6 +44,9 @@ export function parseCommits(lines) {
   // Matches GitHub squash titles commonly produced from branch/PR names:
   // <hash> <type>/<description>
   const SLASH_RE = /^([a-f0-9]+)\s+([a-z]+)\/(.+)$/i;
+  // Matches plain GitHub squash titles:
+  // <hash> <description> (#<number>)
+  const PR_TITLE_RE = /^([a-f0-9]+)\s+(.+\(#\d+\))$/;
   return lines.map((line) => {
     const m = line.match(RE);
     if (m) {
@@ -67,6 +70,17 @@ export function parseCommits(lines) {
       };
     }
 
+    const prTitle = line.match(PR_TITLE_RE);
+    if (prTitle) {
+      return {
+        hash: prTitle[1],
+        type: "change",
+        scope: null,
+        breaking: false,
+        description: prTitle[2].trim(),
+      };
+    }
+
     const hash = line.split(" ")[0] ?? "";
     const description = line.slice(hash.length + 1).trim();
     return { hash, type: "unknown", scope: null, breaking: false, description };
@@ -75,7 +89,7 @@ export function parseCommits(lines) {
 
 // ── filterUserFacing ──────────────────────────────────────────────────────────
 
-const USER_FACING_TYPES = new Set(["feat", "fix", "perf", "refactor"]);
+const USER_FACING_TYPES = new Set(["feat", "fix", "perf", "refactor", "change"]);
 
 /**
  * Keep only user-facing commits, stripping noise.
@@ -101,6 +115,7 @@ const TYPE_TO_SECTION = {
   fix: "Fixed",
   perf: "Changed",
   refactor: "Changed",
+  change: "Changed",
 };
 
 /**

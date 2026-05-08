@@ -61,6 +61,13 @@ describe("parseCommits", () => {
     ]);
   });
 
+  it("parses plain GitHub squash PR titles as changed entries", () => {
+    const result = parseCommits(["abc1234 log improvements (#66)"]);
+    expect(result).toEqual([
+      { hash: "abc1234", type: "change", scope: null, breaking: false, description: "log improvements (#66)" },
+    ]);
+  });
+
   it("handles multiple lines", () => {
     const result = parseCommits([
       "aaa0001 feat: first",
@@ -97,6 +104,10 @@ describe("filterUserFacing", () => {
 
   it("keeps refactor commits", () => {
     expect(filterUserFacing([commit("refactor", "clean up")])).toHaveLength(1);
+  });
+
+  it("keeps plain GitHub squash PR title commits", () => {
+    expect(filterUserFacing([commit("change", "log improvements (#66)")])).toHaveLength(1);
   });
 
   it("excludes docs commits", () => {
@@ -163,6 +174,11 @@ describe("groupBySection", () => {
     expect(sections.get("Changed")).toEqual(["clean up auth"]);
   });
 
+  it("groups plain GitHub squash PR titles into Changed", () => {
+    const sections = groupBySection([commit("change", "log improvements (#66)")]);
+    expect(sections.get("Changed")).toEqual(["log improvements (#66)"]);
+  });
+
   it("groups breaking commits into Breaking Changes and not their normal section", () => {
     const sections = groupBySection([commit("feat", "new API", true)]);
     expect(sections.get("Breaking Changes")).toEqual(["new API"]);
@@ -226,6 +242,21 @@ describe("formatEntry", () => {
     ]);
     const result = formatEntry("1.0.0", "2026-04-09", sections);
     expect(result.indexOf("### Breaking Changes")).toBeLessThan(result.indexOf("### Added"));
+  });
+
+  it("renders the current release range with conventional and plain PR titles", () => {
+    const commits = filterUserFacing(parseCommits([
+      "14c24ad switch condition and package mine fix (#68)",
+      "e642763 feat(logcat): add lifecycle visibility filter (#67)",
+      "1ef4dc1 log improvements (#66)",
+    ]));
+    const result = formatEntry("0.1.25", "2026-05-08", groupBySection(commits));
+
+    expect(result).toBe(
+      "## [0.1.25] — 2026-05-08\n\n" +
+      "### Added\n- add lifecycle visibility filter (#67)\n\n" +
+      "### Changed\n- switch condition and package mine fix (#68)\n- log improvements (#66)\n"
+    );
   });
 });
 
