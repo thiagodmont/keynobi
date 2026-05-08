@@ -53,6 +53,7 @@ import {
 import { formatLogcatToolbarCount } from "./logcat-toolbar-count";
 import { clampLogcatMaxUiLines, clampLogcatRingMaxEntries } from "@/lib/logcat-ui-lines";
 import { effectiveLogcatFollowTail } from "@/lib/logcat-follow-tail";
+import { isLifecycleLogcatEntry } from "@/lib/logcat-lifecycle";
 import {
   emptyLogcatFilterSpec,
   groupsToFilterSpec,
@@ -122,6 +123,7 @@ export function LogcatPanel(): JSX.Element {
   let virtualListRef: VirtualListHandle | undefined;
   const [paused, setPaused] = createSignal(false);
   const [restarting, setRestarting] = createSignal(false);
+  const [showLifecycle, setShowLifecycle] = createSignal(true);
 
   // Crash navigation
   const [jumpTarget, setJumpTarget] = createSignal<number | null>(null);
@@ -189,7 +191,10 @@ export function LogcatPanel(): JSX.Element {
     { equals: false }
   );
 
-  const displayedEntries = createMemo(() => frozenEntries() ?? filteredEntries());
+  const displayedEntries = createMemo(() => {
+    const entries = frozenEntries() ?? filteredEntries();
+    return showLifecycle() ? entries : entries.filter((entry) => !isLifecycleLogcatEntry(entry));
+  });
   const readMode = createMemo(() => frozenEntries() !== null);
 
   function enterReadMode(): void {
@@ -207,10 +212,14 @@ export function LogcatPanel(): JSX.Element {
 
   function countVisibleIncoming(entries: LogcatEntry[]): number {
     if (entries.length === 0) return 0;
-    if (!needsFrontendFilter()) return entries.length;
+    const lifecycleFiltered = showLifecycle()
+      ? entries
+      : entries.filter((entry) => !isLifecycleLogcatEntry(entry));
+    if (!needsFrontendFilter()) return lifecycleFiltered.length;
     const groups = parsedGroups();
     const currentNow = hasAgeFilter() ? now() : Date.now();
-    return entries.filter((entry) => matchesFilterGroups(entry, groups, currentNow)).length;
+    return lifecycleFiltered.filter((entry) => matchesFilterGroups(entry, groups, currentNow))
+      .length;
   }
 
   const filteredEntryIndexById = createMemo(() => {
@@ -236,18 +245,18 @@ export function LogcatPanel(): JSX.Element {
     const frozen = frozenEntries();
     if (frozen !== null) {
       const indices: number[] = [];
-      frozen.forEach((entry, index) => {
+      displayedEntries().forEach((entry, index) => {
         if (entry.isCrash) indices.push(index);
       });
       return indices;
     }
-    if (!needsFrontendFilter()) {
+    if (!needsFrontendFilter() && showLifecycle()) {
       // Fast path: no frontend filtering, use the incremental index.
       return logcatState.crashIndicesFull;
     }
-    // Slow path: frontend tokens active, rescan the (small) filtered set.
+    // Slow path: frontend tokens or lifecycle display filter active, rescan the visible set.
     const indices: number[] = [];
-    filteredEntries().forEach((e, i) => {
+    displayedEntries().forEach((e, i) => {
       if (e.isCrash) indices.push(i);
     });
     return indices;
@@ -803,9 +812,11 @@ export function LogcatPanel(): JSX.Element {
         activeAge={activeAge()}
         activePackage={activePackage()}
         isFiltered={isFiltered()}
+        showLifecycle={showLifecycle()}
         onQueryChange={updateQuery}
         onAgeSelect={handleAgePill}
         onPackageSelect={handlePackageSelect}
+        onToggleLifecycle={() => setShowLifecycle((v) => !v)}
         onClear={() => updateQuery("")}
         renderSavedFilterMenu={() => (
           <SavedFilterMenu query={query()} isFiltered={isFiltered()} onApplyQuery={updateQuery} />

@@ -121,6 +121,7 @@ Use **Log Mode** from the title bar when logs are the main task. It hides the pr
 - **Clear**: clear displayed entries and the in-memory buffer.
 - **Export**: save filtered entries to a `.log` file.
 - **Filters**: use quick filters or saved filters.
+- **Lifecycle**: show or hide lifecycle/process entries such as ActivityManager rows and process separators. Hidden entries remain captured and can be shown again.
 - **Package dropdown**: show all packages, only your app, or a package seen in this session.
 
 ### Filters

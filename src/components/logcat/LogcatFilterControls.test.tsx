@@ -11,9 +11,11 @@ function renderFilterControls(overrides: Partial<Parameters<typeof LogcatFilterC
     activeAge: null,
     activePackage: null,
     isFiltered: false,
+    showLifecycle: true,
     onQueryChange: vi.fn(),
     onAgeSelect: vi.fn(),
     onPackageSelect: vi.fn(),
+    onToggleLifecycle: vi.fn(),
     onClear: vi.fn(),
     renderSavedFilterMenu: () => <div data-testid="saved-filter-menu">Filters</div>,
     ...overrides,
@@ -52,6 +54,26 @@ describe("LogcatFilterControls", () => {
 
     fireEvent.click(screen.getByText("All"));
     expect(onAgeSelect).toHaveBeenCalledWith(null);
+  });
+
+  it("shows lifecycle quick filter as active by default", () => {
+    renderFilterControls();
+
+    const button = screen.getByRole("button", { name: "Lifecycle" });
+
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("toggles lifecycle quick filter", () => {
+    const onToggleLifecycle = vi.fn();
+    renderFilterControls({ showLifecycle: false, onToggleLifecycle });
+
+    const button = screen.getByRole("button", { name: "Lifecycle" });
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(button);
+
+    expect(onToggleLifecycle).toHaveBeenCalledOnce();
   });
 
   it("selects package filters from the package dropdown", () => {

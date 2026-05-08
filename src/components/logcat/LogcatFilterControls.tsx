@@ -22,9 +22,11 @@ export function LogcatFilterControls(props: {
   activeAge: string | null;
   activePackage: string | null;
   isFiltered: boolean;
+  showLifecycle: boolean;
   onQueryChange: (query: string) => void;
   onAgeSelect: (value: LogcatAgePillValue) => void;
   onPackageSelect: (pkg: string | null) => void;
+  onToggleLifecycle: () => void;
   onClear: () => void;
   renderSavedFilterMenu: () => JSX.Element;
 }): JSX.Element {
@@ -111,6 +113,29 @@ export function LogcatFilterControls(props: {
             );
           }}
         </For>
+
+        <button
+          onClick={() => props.onToggleLifecycle()}
+          aria-pressed={props.showLifecycle}
+          title={
+            props.showLifecycle
+              ? "Hide lifecycle and process logs"
+              : "Show lifecycle and process logs"
+          }
+          style={{
+            padding: "1px 7px",
+            "font-size": "10px",
+            background: props.showLifecycle ? "var(--accent)" : "var(--bg-primary)",
+            color: props.showLifecycle ? "#fff" : "var(--text-muted)",
+            border: `1px solid ${props.showLifecycle ? "var(--accent)" : "var(--border)"}`,
+            "border-radius": "10px",
+            cursor: "pointer",
+            "flex-shrink": "0",
+            transition: "all 0.1s",
+          }}
+        >
+          Lifecycle
+        </button>
 
         <div
           style={{
