@@ -82,6 +82,40 @@ describe("QueryBar — Enter keyboard commit", () => {
   });
 });
 
+describe("QueryBar — clickable connectors", () => {
+  it("toggles only the clicked AND connector to OR", () => {
+    const changes: string[] = [];
+    const { getByRole } = render(() =>
+      QueryBar({
+        value: "level:error tag:App | is:crash ",
+        onChange: (q) => changes.push(q),
+        knownTags: [],
+        knownPackages: [],
+      })
+    );
+
+    fireEvent.mouseDown(getByRole("button", { name: "Change AND to OR" }));
+
+    expect(changes[changes.length - 1]).toBe("level:error | tag:App | is:crash ");
+  });
+
+  it("toggles only the clicked OR connector to AND", () => {
+    const changes: string[] = [];
+    const { getAllByRole } = render(() =>
+      QueryBar({
+        value: "level:error | tag:App | is:crash ",
+        onChange: (q) => changes.push(q),
+        knownTags: [],
+        knownPackages: [],
+      })
+    );
+
+    fireEvent.mouseDown(getAllByRole("button", { name: "Change OR to AND" })[0]!);
+
+    expect(changes[changes.length - 1]).toBe("level:error tag:App | is:crash ");
+  });
+});
+
 // ── parseQueryState — trailing-space convention ───────────────────────────────
 
 describe("parseQueryState — trailing-space convention", () => {

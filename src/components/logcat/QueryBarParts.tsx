@@ -14,12 +14,52 @@ import {
   suggestionMenuStyle,
 } from "./querybar-styles";
 
-export function QueryBarOrBadge(): JSX.Element {
-  return <span style={queryBarOrBadgeStyle()}>OR</span>;
+export function QueryBarOrBadge(props: { onToggle?: () => void } = {}): JSX.Element {
+  return (
+    <>
+      {props.onToggle ? (
+        <button
+          type="button"
+          aria-label="Change OR to AND"
+          title="Change OR to AND"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            props.onToggle?.();
+          }}
+          style={queryBarOrBadgeStyle(true)}
+        >
+          OR
+        </button>
+      ) : (
+        <span style={queryBarOrBadgeStyle()}>OR</span>
+      )}
+    </>
+  );
 }
 
-export function QueryBarAndBadge(): JSX.Element {
-  return <span style={queryBarAndBadgeStyle()}>AND</span>;
+export function QueryBarAndBadge(props: { onToggle?: () => void } = {}): JSX.Element {
+  return (
+    <>
+      {props.onToggle ? (
+        <button
+          type="button"
+          aria-label="Change AND to OR"
+          title="Change AND to OR"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            props.onToggle?.();
+          }}
+          style={queryBarAndBadgeStyle(true)}
+        >
+          AND
+        </button>
+      ) : (
+        <span style={queryBarAndBadgeStyle()}>AND</span>
+      )}
+    </>
+  );
 }
 
 export function QueryBarInlineEditInput(props: {

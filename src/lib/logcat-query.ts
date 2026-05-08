@@ -1077,6 +1077,54 @@ export function insertPillAtGroupPosition(
   );
 }
 
+/** Toggle the displayed AND connector before `tokenIdxAfterConnector` into an OR boundary. */
+export function toggleQueryBarAndConnector(
+  committed: string[],
+  groupIdx: number,
+  tokenIdxAfterConnector: number,
+  draftInNewGroup: boolean
+): string[] {
+  const groups = buildQueryBarPillGroups(committed).map((g) => [...g]);
+  const group = groups[groupIdx];
+  if (!group || tokenIdxAfterConnector <= 0 || tokenIdxAfterConnector >= group.length) {
+    return committed;
+  }
+
+  const before = group.slice(0, tokenIdxAfterConnector);
+  const after = group.slice(tokenIdxAfterConnector);
+  const nextGroups = [...groups.slice(0, groupIdx), before, after, ...groups.slice(groupIdx + 1)];
+  return flattenPillGroupsToCommitted(
+    nextGroups.filter((g) => g.length > 0),
+    draftInNewGroup
+  );
+}
+
+/** Toggle the displayed OR connector before `groupIdxAfterConnector` into an AND relationship. */
+export function toggleQueryBarOrConnector(
+  committed: string[],
+  groupIdxAfterConnector: number,
+  draftInNewGroup: boolean
+): string[] {
+  const groups = buildQueryBarPillGroups(committed).map((g) => [...g]);
+  if (groupIdxAfterConnector <= 0 || groupIdxAfterConnector >= groups.length) {
+    return committed;
+  }
+
+  const previous = groups[groupIdxAfterConnector - 1];
+  const current = groups[groupIdxAfterConnector];
+  if (!previous || !current) return committed;
+
+  const nextGroups = [
+    ...groups.slice(0, groupIdxAfterConnector - 1),
+    [...previous, ...current],
+    ...groups.slice(groupIdxAfterConnector + 1),
+  ];
+  return flattenPillGroupsToCommitted(
+    nextGroups.filter((g) => g.length > 0),
+    draftInNewGroup
+  );
+}
+
 /**
  * Compute the new committed array when an inline pill edit is confirmed.
  *

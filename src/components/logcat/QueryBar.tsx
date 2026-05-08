@@ -37,6 +37,8 @@ import {
   insertPillAtGroupPosition,
   applyInlineEditCommit,
   commitQueryBarDraft,
+  toggleQueryBarAndConnector,
+  toggleQueryBarOrConnector,
 } from "@/lib/logcat-query";
 import {
   QueryBarAndBadge,
@@ -423,6 +425,25 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
     queueMicrotask(() => draftRef?.focus());
   }
 
+  function toggleAndConnector(groupIdx: number, tokenIdxAfterConnector: number) {
+    if (inlineEdit()) commitInlineEdit();
+    const next = toggleQueryBarAndConnector(
+      committed(),
+      groupIdx,
+      tokenIdxAfterConnector,
+      draftInNewGroup()
+    );
+    props.onChange(buildQuery(next, draft()));
+    queueMicrotask(() => draftRef?.focus());
+  }
+
+  function toggleOrConnector(groupIdxAfterConnector: number) {
+    if (inlineEdit()) commitInlineEdit();
+    const next = toggleQueryBarOrConnector(committed(), groupIdxAfterConnector, draftInNewGroup());
+    props.onChange(buildQuery(next, draft()));
+    queueMicrotask(() => draftRef?.focus());
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -447,7 +468,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
               <>
                 {/* OR badge between groups */}
                 <Show when={gi() > 0}>
-                  <QueryBarOrBadge />
+                  <QueryBarOrBadge onToggle={() => toggleOrConnector(gi())} />
                 </Show>
 
                 {/* Group container: visible box only when 2+ groups exist */}
@@ -472,7 +493,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                         </Show>
                         {/* AND badge between pills in the same group */}
                         <Show when={ti() > 0}>
-                          <QueryBarAndBadge />
+                          <QueryBarAndBadge onToggle={() => toggleAndConnector(gi(), ti())} />
                         </Show>
 
                         <QueryBarPill

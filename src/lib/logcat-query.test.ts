@@ -28,6 +28,8 @@ import {
   committedEndsWithOrSeparator,
   quoteMessageTokenForEditDraft,
   serializeQueryBarCommittedPart,
+  toggleQueryBarAndConnector,
+  toggleQueryBarOrConnector,
   splitRawQueryParts,
   commitQueryBarDraft,
   getQueryBarSuggestions,
@@ -934,6 +936,36 @@ describe("insertPillAtGroupPosition", () => {
 
   it("inserts into an empty query", () => {
     expect(insertPillAtGroupPosition([], 0, 0, "level:error", false)).toEqual(["level:error"]);
+  });
+});
+
+describe("toggleQueryBarAndConnector", () => {
+  it("splits a single group at the clicked AND connector", () => {
+    expect(toggleQueryBarAndConnector(["level:error", "tag:App", "is:crash"], 0, 1, false)).toEqual(
+      ["level:error", "|", "tag:App", "is:crash"]
+    );
+  });
+
+  it("preserves other OR groups when splitting one AND connector", () => {
+    expect(
+      toggleQueryBarAndConnector(["level:error", "tag:App", "|", "is:crash"], 0, 1, false)
+    ).toEqual(["level:error", "|", "tag:App", "|", "is:crash"]);
+  });
+});
+
+describe("toggleQueryBarOrConnector", () => {
+  it("merges only the adjacent groups at the clicked OR connector", () => {
+    expect(
+      toggleQueryBarOrConnector(["level:error", "|", "tag:App", "|", "is:crash"], 1, false)
+    ).toEqual(["level:error", "tag:App", "|", "is:crash"]);
+  });
+
+  it("preserves trailing draft OR state when present", () => {
+    expect(toggleQueryBarOrConnector(["level:error", "|", "tag:App"], 1, true)).toEqual([
+      "level:error",
+      "tag:App",
+      "|",
+    ]);
   });
 });
 

@@ -140,6 +140,40 @@ test("logcat detail panel opens for the clicked filtered row", async ({ page }) 
   await expect(page.getByTitle("Filter by message")).toHaveText("Beta target message");
 });
 
+test("logcat query connector badges toggle only the clicked condition", async ({ page }) => {
+  await openLogcatWithEmptyEntries(page);
+  await pushLogcatEntries(page, [
+    { id: 110, tag: "AlphaOnly", message: "Alpha only row" },
+    { id: 111, tag: "AlphaBeta", message: "Alpha beta row" },
+    { id: 112, tag: "BetaOnly", message: "Beta only row" },
+    { id: 113, tag: "GammaOnly", message: "Gamma only row" },
+  ]);
+
+  await expect(page.getByTitle(ROW_TITLE)).toHaveCount(4, { timeout: 5_000 });
+
+  const filterInput = page.locator('input[type="text"][placeholder*="Filter"]').first();
+  await filterInput.fill("tag:Alpha tag:Beta | tag:Gamma ");
+
+  await expect(page.getByText("Alpha beta row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Gamma only row")).toBeVisible();
+  await expect(page.getByText("Alpha only row")).not.toBeVisible();
+  await expect(page.getByText("Beta only row")).not.toBeVisible();
+
+  await page.getByRole("button", { name: "Change AND to OR" }).click();
+
+  await expect(page.getByText("Alpha only row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Alpha beta row")).toBeVisible();
+  await expect(page.getByText("Beta only row")).toBeVisible();
+  await expect(page.getByText("Gamma only row")).toBeVisible();
+
+  await page.getByRole("button", { name: "Change OR to AND" }).first().click();
+
+  await expect(page.getByText("Alpha beta row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Gamma only row")).toBeVisible();
+  await expect(page.getByText("Alpha only row")).not.toBeVisible();
+  await expect(page.getByText("Beta only row")).not.toBeVisible();
+});
+
 test("logcat selected row stays frozen while the live buffer overflows", async ({ page }) => {
   await page.evaluate(() => {
     window.__keynobi_e2e_settings_overrides = {

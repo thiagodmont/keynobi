@@ -373,8 +373,14 @@ export function LogcatPanel(): JSX.Element {
     if (launchedAt === _prevLaunchedAt) return;
     _prevLaunchedAt = launchedAt;
     if (launchedAt === null) return; // initial mount — skip
+    if (buildState.lastLaunchedPackage) {
+      setMinePackage(buildState.lastLaunchedPackage);
+    }
     const q = query();
-    if (q.includes("package:mine") || q.includes("pkg:mine")) return;
+    if (q.includes("package:mine") || q.includes("pkg:mine")) {
+      void syncBackendFilter(parseFilterGroups(q));
+      return;
+    }
     const next = setPackageInQuery(q, "mine");
     updateQuery(next.trimEnd() ? next.trimEnd() + " " : "");
   });
