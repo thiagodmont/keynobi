@@ -74,8 +74,11 @@ function filterEntries(entries: ProcessedEntry[], spec: LogcatFilterSpec): Proce
   });
 }
 
-function installLogcatPanelMocks(entries: ProcessedEntry[]): void {
+function installLogcatPanelMocks(entries: ProcessedEntry[]): {
+  emitLogcatEntries: (entries: ProcessedEntry[]) => void;
+} {
   let activeFilter = emptyFilter();
+  const listeners = new Map<string, (event: { payload: unknown }) => void>();
 
   vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
     switch (command) {
@@ -103,7 +106,18 @@ function installLogcatPanelMocks(entries: ProcessedEntry[]): void {
     }
   });
 
-  vi.mocked(listen).mockResolvedValue(() => {});
+  vi.mocked(listen).mockImplementation(async (event, callback) => {
+    listeners.set(String(event), callback as (event: { payload: unknown }) => void);
+    return () => {
+      listeners.delete(String(event));
+    };
+  });
+
+  return {
+    emitLogcatEntries(nextEntries: ProcessedEntry[]) {
+      listeners.get("logcat:entries")?.({ payload: filterEntries(nextEntries, activeFilter) });
+    },
+  };
 }
 
 describe("LogcatPanel Entry Detail click-to-filter integration", () => {
@@ -199,5 +213,37 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
     fireEvent.click(screen.getByText("Beta target message"));
 
     expect(screen.getByTitle("Filter by message").textContent).toBe("Beta target message");
+  });
+
+  it("freezes the visible log list after selecting a row until jumping to the end", async () => {
+    const selectedEntry = {
+      ...BASE_ENTRY,
+      id: 20n,
+      tag: "SelectedTag",
+      message: "Selected row should stay visible",
+    } satisfies ProcessedEntry;
+    const incomingEntry = {
+      ...BASE_ENTRY,
+      id: 21n,
+      tag: "IncomingTag",
+      message: "Incoming row should wait",
+    } satisfies ProcessedEntry;
+    const { emitLogcatEntries } = installLogcatPanelMocks([selectedEntry]);
+    render(() => <LogcatPanel />);
+
+    await waitFor(() =>
+      expect(vi.mocked(listen)).toHaveBeenCalledWith("logcat:entries", expect.any(Function))
+    );
+    fireEvent.click(await screen.findByText("Selected row should stay visible"));
+
+    emitLogcatEntries([incomingEntry]);
+
+    expect(screen.getAllByText("Selected row should stay visible").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Incoming row should wait")).toBeNull();
+    expect(await screen.findByText("1 new")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("1 new log available - Jump to end"));
+
+    expect(await screen.findByText("Incoming row should wait")).not.toBeNull();
   });
 });

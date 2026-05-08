@@ -3,6 +3,7 @@ import {
   isLogcatEntrySelectable,
   nextSelectableIndex,
   clampSelectionIndices,
+  shiftSelectionAfterFrontDrop,
 } from "./logcat-selection-nav";
 
 describe("isLogcatEntrySelectable", () => {
@@ -74,5 +75,20 @@ describe("clampSelectionIndices", () => {
 
   it("preserves null end", () => {
     expect(clampSelectionIndices(8, null, 10)).toEqual({ anchor: 8, end: null });
+  });
+});
+
+describe("shiftSelectionAfterFrontDrop", () => {
+  it("moves a single selected row upward by the dropped count", () => {
+    expect(shiftSelectionAfterFrontDrop(10, null, 3)).toEqual({ anchor: 7, end: null });
+  });
+
+  it("clears a single selected row when that row was dropped", () => {
+    expect(shiftSelectionAfterFrontDrop(2, null, 3)).toEqual({ anchor: null, end: null });
+  });
+
+  it("preserves the remaining part of a range after a partial front drop", () => {
+    expect(shiftSelectionAfterFrontDrop(2, 6, 4)).toEqual({ anchor: null, end: 2 });
+    expect(shiftSelectionAfterFrontDrop(8, 3, 5)).toEqual({ anchor: 3, end: null });
   });
 });

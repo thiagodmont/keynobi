@@ -38,6 +38,18 @@ describe("effectiveLogcatFollowTail", () => {
         autoScroll: true,
         selectionAnchor: null,
         selectedJsonEntry: { id: "x" },
+        selectedDetailEntry: null,
+      })
+    ).toBe(false);
+  });
+
+  it("is false when entry detail is open", () => {
+    expect(
+      effectiveLogcatFollowTail({
+        autoScroll: true,
+        selectionAnchor: null,
+        selectedJsonEntry: null,
+        selectedDetailEntry: { id: "x" },
       })
     ).toBe(false);
   });

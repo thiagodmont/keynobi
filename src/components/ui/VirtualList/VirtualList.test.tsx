@@ -19,10 +19,17 @@ describe("VirtualList", () => {
   it("renders visible items", () => {
     const items = Array.from({ length: 10 }, (_, i) => `item-${i}`);
     const { container } = render(() => (
-      <VirtualList items={items} rowHeight={30} renderRow={(item) => <div>{item}</div>} />
+      <VirtualList
+        items={items}
+        rowHeight={30}
+        renderRow={(item) => <div>{item}</div>}
+        class="virtual-list-test"
+      />
     ));
     // At least some items rendered (jsdom has no real scroll height, so all items may render)
     expect(container.textContent).toContain("item-0");
+    const scroller = container.querySelector(".virtual-list-test") as HTMLElement;
+    expect(scroller.style.overflowAnchor).toBe("none");
   });
 
   it("does not re-enable auto-scroll when manually scrolling back to the bottom", () => {
@@ -65,5 +72,71 @@ describe("VirtualList", () => {
     Object.defineProperty(scroller, "scrollTop", { value: 1000, writable: true });
     scroller.dispatchEvent(new Event("scroll"));
     expect(state.textContent).toBe("off");
+  });
+
+  it("does not run a queued auto-scroll after follow-tail is disabled", async () => {
+    let setItems!: (items: string[]) => void;
+    let setAutoScroll!: (enabled: boolean) => void;
+
+    function Harness() {
+      const [items, _setItems] = createSignal(["item-0"]);
+      const [autoScroll, _setAutoScroll] = createSignal(true);
+      setItems = _setItems;
+      setAutoScroll = _setAutoScroll;
+
+      return (
+        <VirtualList
+          items={items()}
+          rowHeight={30}
+          renderRow={(item) => <div>{item}</div>}
+          autoScroll={autoScroll()}
+          class="virtual-list-test"
+        />
+      );
+    }
+
+    const { container } = render(() => <Harness />);
+    const scroller = container.querySelector(".virtual-list-test") as HTMLElement;
+    Object.defineProperty(scroller, "clientHeight", { value: 200, writable: true });
+    Object.defineProperty(scroller, "scrollHeight", { value: 1200, writable: true });
+    Object.defineProperty(scroller, "scrollTop", { value: 0, writable: true });
+
+    await Promise.resolve();
+    scroller.scrollTop = 125;
+
+    setItems(["item-0", "item-1"]);
+    setAutoScroll(false);
+    await Promise.resolve();
+
+    expect(scroller.scrollTop).toBe(125);
+  });
+
+  it("keeps the viewport stable when rows are evicted from the front", async () => {
+    let compensate!: (px: number) => void;
+
+    function Harness() {
+      const [scrollCompensate, setScrollCompensate] = createSignal(0);
+      compensate = (px: number) => setScrollCompensate((current) => current + px);
+
+      return (
+        <VirtualList
+          items={Array.from({ length: 100 }, (_, i) => `item-${i}`)}
+          rowHeight={30}
+          renderRow={(item) => <div>{item}</div>}
+          autoScroll={false}
+          scrollCompensate={scrollCompensate()}
+          class="virtual-list-test"
+        />
+      );
+    }
+
+    const { container } = render(() => <Harness />);
+    const scroller = container.querySelector(".virtual-list-test") as HTMLElement;
+    Object.defineProperty(scroller, "scrollTop", { value: 300, writable: true });
+
+    compensate(90);
+    await Promise.resolve();
+
+    expect(scroller.scrollTop).toBe(210);
   });
 });

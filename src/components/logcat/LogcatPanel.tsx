@@ -45,7 +45,11 @@ import { buildState } from "@/stores/build.store";
 import { LogEntryDetailPanel } from "./LogEntryDetailPanel";
 import { getLastActiveQuery, setLastActiveQuery } from "@/lib/logcat-filter-storage";
 import { uiState } from "@/stores/ui.store";
-import { clampSelectionIndices, nextSelectableIndex } from "./logcat-selection-nav";
+import {
+  clampSelectionIndices,
+  nextSelectableIndex,
+  shiftSelectionAfterFrontDrop,
+} from "./logcat-selection-nav";
 import { formatLogcatToolbarCount } from "./logcat-toolbar-count";
 import { clampLogcatMaxUiLines, clampLogcatRingMaxEntries } from "@/lib/logcat-ui-lines";
 import { effectiveLogcatFollowTail } from "@/lib/logcat-follow-tail";
@@ -96,6 +100,11 @@ export function LogcatPanel(): JSX.Element {
   let _queryDebounce: ReturnType<typeof setTimeout> | undefined;
 
   function updateQuery(q: string) {
+    exitReadMode();
+    setSelectionAnchor(null);
+    setSelectionEnd(null);
+    setSelectedJsonEntry(null);
+    setSelectedDetailEntry(null);
     setQuery(q);
     clearTimeout(_queryDebounce);
     _queryDebounce = setTimeout(() => setDebouncedQuery(q), 150);
@@ -106,6 +115,10 @@ export function LogcatPanel(): JSX.Element {
   const rowHeight = createMemo(() =>
     logcatRowHeightForFontSize(settingsState.logcat.outputFontSize)
   );
+  const [frozenEntries, setFrozenEntries] = createSignal<LogcatEntry[] | null>(null, {
+    equals: false,
+  });
+  const [pendingNewEntries, setPendingNewEntries] = createSignal(0);
   let virtualListRef: VirtualListHandle | undefined;
   const [paused, setPaused] = createSignal(false);
   const [restarting, setRestarting] = createSignal(false);
@@ -126,6 +139,7 @@ export function LogcatPanel(): JSX.Element {
       autoScroll: autoScroll(),
       selectionAnchor: selectionAnchor(),
       selectedJsonEntry: selectedJsonEntry(),
+      selectedDetailEntry: selectedDetailEntry(),
     })
   );
 
@@ -175,9 +189,33 @@ export function LogcatPanel(): JSX.Element {
     { equals: false }
   );
 
+  const displayedEntries = createMemo(() => frozenEntries() ?? filteredEntries());
+  const readMode = createMemo(() => frozenEntries() !== null);
+
+  function enterReadMode(): void {
+    if (frozenEntries() === null) {
+      setFrozenEntries(filteredEntries().slice());
+      setPendingNewEntries(0);
+    }
+    setAutoScroll(false);
+  }
+
+  function exitReadMode(): void {
+    setFrozenEntries(null);
+    setPendingNewEntries(0);
+  }
+
+  function countVisibleIncoming(entries: LogcatEntry[]): number {
+    if (entries.length === 0) return 0;
+    if (!needsFrontendFilter()) return entries.length;
+    const groups = parsedGroups();
+    const currentNow = hasAgeFilter() ? now() : Date.now();
+    return entries.filter((entry) => matchesFilterGroups(entry, groups, currentNow)).length;
+  }
+
   const filteredEntryIndexById = createMemo(() => {
     const indexById = new Map<LogcatEntry["id"], number>();
-    filteredEntries().forEach((entry, index) => {
+    displayedEntries().forEach((entry, index) => {
       indexById.set(entry.id, index);
     });
     return indexById;
@@ -195,6 +233,14 @@ export function LogcatPanel(): JSX.Element {
   // When frontend tokens are active filteredEntries may differ from the store,
   // so we fall back to scanning filteredEntries() (the set is already small).
   const crashIndices = createMemo(() => {
+    const frozen = frozenEntries();
+    if (frozen !== null) {
+      const indices: number[] = [];
+      frozen.forEach((entry, index) => {
+        if (entry.isCrash) indices.push(index);
+      });
+      return indices;
+    }
     if (!needsFrontendFilter()) {
       // Fast path: no frontend filtering, use the incremental index.
       return logcatState.crashIndicesFull;
@@ -346,7 +392,7 @@ export function LogcatPanel(): JSX.Element {
         const excess = len - cap;
         if (excess > 0) {
           replaceLogcatEntries(cap === 0 ? [] : logcatState.entries.slice(-cap));
-          if (!followTailForList()) {
+          if (!readMode() && !followTailForList()) {
             setScrollCompensate((c) => c + excess * rowHeight());
           }
         }
@@ -410,7 +456,13 @@ export function LogcatPanel(): JSX.Element {
     unlistenEntries = await listenLogcatEntries((newEntries) => {
       if (paused()) return;
       const dropped = appendLogcatEntries(newEntries, maxUiLinesCap());
-      if (dropped > 0 && !followTailForList()) {
+      if (readMode()) {
+        const visibleNew = countVisibleIncoming(newEntries);
+        if (visibleNew > 0) setPendingNewEntries((count) => count + visibleNew);
+      } else if (dropped > 0 && !followTailForList()) {
+        const shifted = shiftSelectionAfterFrontDrop(selectionAnchor(), selectionEnd(), dropped);
+        setSelectionAnchor(shifted.anchor);
+        setSelectionEnd(shifted.end);
         setScrollCompensate((c) => c + dropped * rowHeight());
       }
 
@@ -419,6 +471,7 @@ export function LogcatPanel(): JSX.Element {
     });
 
     unlistenCleared = await listenLogcatCleared(() => {
+      exitReadMode();
       clearLogcatEntries();
       suggestions.clear();
       setAutoScroll(true);
@@ -536,7 +589,7 @@ export function LogcatPanel(): JSX.Element {
     const next = Math.max(0, Math.min(indices.length - 1, crashCursor() + direction));
     setCrashCursor(next);
     setJumpTarget(indices[next]);
-    setAutoScroll(false);
+    enterReadMode();
   }
 
   function jumpToLastCrash() {
@@ -545,11 +598,11 @@ export function LogcatPanel(): JSX.Element {
     const last = indices.length - 1;
     setCrashCursor(last);
     setJumpTarget(indices[last]);
-    setAutoScroll(false);
+    enterReadMode();
   }
 
   createEffect(() => {
-    filteredEntries();
+    displayedEntries();
     setCrashCursor((c) => Math.min(c, Math.max(0, crashIndices().length - 1)));
   });
 
@@ -572,6 +625,7 @@ export function LogcatPanel(): JSX.Element {
     } else {
       setSelectionAnchor(idx);
       setSelectionEnd(null);
+      enterReadMode();
       // Plain click (no shift) — toggle detail panel
       setSelectedDetailEntry((prev) => (prev?.id === entry.id ? null : entry));
     }
@@ -589,7 +643,7 @@ export function LogcatPanel(): JSX.Element {
     const range = getSelectionRange();
     if (!range) return;
     const [lo, hi] = range;
-    const text = filteredEntries()
+    const text = displayedEntries()
       .slice(lo, hi + 1)
       .map(formatEntry)
       .join("\n");
@@ -608,9 +662,9 @@ export function LogcatPanel(): JSX.Element {
         defaultPath: "logcat.log",
       });
       if (!path) return;
-      const text = filteredEntries().map(formatEntry).join("\n");
+      const text = displayedEntries().map(formatEntry).join("\n");
       await writeTextFile(path, text);
-      showToast(`Exported ${filteredEntries().length} entries`, "success");
+      showToast(`Exported ${displayedEntries().length} entries`, "success");
     } catch (e) {
       showToast(`Export failed: ${formatError(e)}`, "error");
     }
@@ -623,9 +677,9 @@ export function LogcatPanel(): JSX.Element {
     updateQuery(q.trimEnd() ? q.trimEnd() + " " : "");
   }
 
-  // Clamp row selection when the filtered list shrinks or clears; drop detail if the entry vanished.
+  // Clamp row selection when the displayed list shrinks or clears; drop detail if the entry vanished.
   createEffect(() => {
-    const entries = filteredEntries();
+    const entries = displayedEntries();
     const n = entries.length;
     const anchor = selectionAnchor();
     const end = selectionEnd();
@@ -655,7 +709,7 @@ export function LogcatPanel(): JSX.Element {
       if (isPaletteOpen()) return;
       if (isLogcatTypingTarget(e.target)) return;
 
-      const entries = filteredEntries();
+      const entries = displayedEntries();
       if (entries.length === 0) return;
 
       const direction: 1 | -1 = e.key === "ArrowDown" ? 1 : -1;
@@ -666,7 +720,7 @@ export function LogcatPanel(): JSX.Element {
       setSelectionEnd(null);
       setSelectionAnchor(nextIdx);
       setSelectedDetailEntry(entries[nextIdx]);
-      setAutoScroll(false);
+      enterReadMode();
       virtualListRef?.scrollToIndex(nextIdx);
     }
 
@@ -677,10 +731,11 @@ export function LogcatPanel(): JSX.Element {
   function handleJsonBadgeClick(e: MouseEvent, entry: LogcatEntry) {
     e.stopPropagation();
     setSelectedJsonEntry((prev: LogcatEntry | null) => (prev?.id === entry.id ? null : entry));
-    setAutoScroll(false);
+    enterReadMode();
   }
 
   function handleScrollToEnd() {
+    exitReadMode();
     setSelectionAnchor(null);
     setSelectionEnd(null);
     setSelectedJsonEntry(null);
@@ -695,7 +750,7 @@ export function LogcatPanel(): JSX.Element {
   const toolbarCount = createMemo(() =>
     formatLogcatToolbarCount({
       queryActive: isFiltered(),
-      visible: filteredEntries().length,
+      visible: displayedEntries().length,
       ringTotal: logcatState.ringBufferTotal,
     })
   );
@@ -725,6 +780,7 @@ export function LogcatPanel(): JSX.Element {
         crashes={crashes()}
         selectedCount={selCount()}
         autoScroll={autoScroll()}
+        newEntriesCount={pendingNewEntries()}
         toolbarCount={toolbarCount()}
         onStart={handleStart}
         onStop={handleStop}
@@ -791,13 +847,13 @@ export function LogcatPanel(): JSX.Element {
       {/* ── Virtualised log list ──────────────────────────────────────────── */}
       <Show when={logcatState.entries.length > 0}>
         <VirtualList
-          items={filteredEntries()}
+          items={displayedEntries()}
           rowHeight={rowHeight()}
           autoScroll={followTailForList()}
           data-testid="logcat-virtual-list"
           scrollCompensate={scrollCompensate()}
           jumpTo={jumpTarget()}
-          onScrolledUp={() => setAutoScroll(false)}
+          onScrolledUp={enterReadMode}
           handle={(api) => {
             virtualListRef = api;
           }}
