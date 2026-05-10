@@ -1,40 +1,29 @@
-import { For, Show, createSignal, onCleanup, onMount, type JSX } from "solid-js";
+import { For, Show, createSignal } from "solid-js";
+import { Button, MenuList, MenuSectionHeader, Popover, Separator } from "@/components/ui";
 import { MAX_SAVED_FILTERS, type SavedFilter } from "@/lib/logcat-filter-storage";
-import { btnStyle } from "./logcat-styles";
+import { BUILTIN_LOGCAT_FILTER_PRESETS, commitSavedFilterQuery } from "./saved-filter-presets";
 import {
-  logcatDropdownOverlayStyle,
-  logcatDropdownPanelStyle,
-  logcatDropdownRootStyle,
-  logcatDropdownSectionHeaderStyle,
-  logcatDropdownSeparatorStyle,
-} from "./logcat-dropdown-styles";
-
-interface LogcatPreset {
-  name: string;
-  query: string;
-  builtin?: true;
-}
-
-const BUILTIN_PRESETS: LogcatPreset[] = [
-  { name: "My App", query: "package:mine", builtin: true },
-  { name: "Crashes", query: "is:crash", builtin: true },
-  { name: "Errors+", query: "level:error", builtin: true },
-  { name: "Last 5 min", query: "age:5m", builtin: true },
-  { name: "My App OR Crashes", query: "package:mine | is:crash", builtin: true },
-];
+  SavedFilterActionButton,
+  SavedFilterCountHeader,
+  SavedFilterEmptyState,
+  SavedFilterMenuRow,
+  SavedFilterName,
+  SavedFilterQueryPreview,
+  SavedFilterRenameInput,
+} from "./SavedFilterMenuParts";
 
 export function SavedFilterMenu(props: {
   savedFilters: readonly SavedFilter[];
   onApplyQuery: (query: string) => void;
   onDeleteSavedFilter: (id: string) => void;
   onRenameSavedFilter: (id: string, name: string) => void;
-}): JSX.Element {
+}) {
   const [open, setOpen] = createSignal(false);
   const [renamingId, setRenamingId] = createSignal<string | null>(null);
   const [renameDraft, setRenameDraft] = createSignal("");
 
   function applyPreset(q: string) {
-    props.onApplyQuery(q.trimEnd() + " ");
+    props.onApplyQuery(commitSavedFilterQuery(q));
     setOpen(false);
   }
 
@@ -62,232 +51,92 @@ export function SavedFilterMenu(props: {
     cancelRename();
   }
 
-  function handleVisibilityChange() {
-    if (document.visibilityState === "hidden") closeMenu();
-  }
-
-  onMount(() => {
-    window.addEventListener("blur", closeMenu);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-  });
-
-  onCleanup(() => {
-    window.removeEventListener("blur", closeMenu);
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
-  });
-
   return (
-    <div style={logcatDropdownRootStyle()}>
-      <button
-        onClick={() => {
-          setOpen((v) => !v);
+    <Popover
+      open={open()}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
           setRenamingId(null);
-        }}
-        title="Filter presets"
-        style={btnStyle("var(--text-muted)")}
-      >
-        ☰ Filters
-      </button>
-      <Show when={open()}>
-        <div
-          style={logcatDropdownPanelStyle({
-            align: "left",
-            minWidth: "260px",
-            maxWidth: "340px",
-          })}
+          setOpen(true);
+        } else {
+          closeMenu();
+        }
+      }}
+      align="left"
+      minWidth="260px"
+      maxWidth="340px"
+      trigger={() => (
+        <Button
+          variant="outline"
+          size="xs"
+          tone="muted"
+          title="Filter presets"
+          onClick={() => {
+            setRenamingId(null);
+            setOpen((v) => !v);
+          }}
         >
-          <div style={{ padding: "6px 0" }}>
-            <div style={logcatDropdownSectionHeaderStyle()}>Quick Filters</div>
-            <For each={BUILTIN_PRESETS}>
+          ☰ Filters
+        </Button>
+      )}
+    >
+      <Show when={open()}>
+        <>
+          <MenuList style={{ padding: "6px 0" }}>
+            <MenuSectionHeader label="Quick Filters" />
+            <For each={BUILTIN_LOGCAT_FILTER_PRESETS}>
               {(p) => (
-                <div
-                  onClick={() => applyPreset(p.query)}
-                  style={{
-                    display: "flex",
-                    "align-items": "center",
-                    padding: "5px 10px",
-                    cursor: "pointer",
-                    color: "var(--text-primary)",
-                    "font-family": "var(--font-mono)",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "transparent";
-                  }}
-                >
+                <SavedFilterMenuRow onClick={() => applyPreset(p.query)} mono>
                   <span style={{ flex: "1" }}>{p.name}</span>
-                  <span
-                    style={{
-                      color: "var(--text-muted)",
-                      "font-size": "10px",
-                      "max-width": "130px",
-                      overflow: "hidden",
-                      "text-overflow": "ellipsis",
-                      "white-space": "nowrap",
-                    }}
-                  >
-                    {p.query}
-                  </span>
-                </div>
+                  <SavedFilterQueryPreview query={p.query} />
+                </SavedFilterMenuRow>
               )}
             </For>
 
-            <div style={logcatDropdownSeparatorStyle()} />
-            <div style={{ display: "flex", "align-items": "center", padding: "2px 10px 4px" }}>
-              <span
-                style={{
-                  "font-size": "10px",
-                  color: "var(--text-muted)",
-                  "text-transform": "uppercase",
-                  "letter-spacing": "0.05em",
-                  flex: "1",
-                }}
-              >
-                Saved
-              </span>
-              <span style={{ "font-size": "10px", color: "var(--text-muted)" }}>
-                {props.savedFilters.length} / {MAX_SAVED_FILTERS}
-              </span>
-            </div>
+            <Separator spacing="sm" />
+            <SavedFilterCountHeader count={props.savedFilters.length} max={MAX_SAVED_FILTERS} />
 
             <Show when={props.savedFilters.length === 0}>
-              <div
-                style={{
-                  padding: "4px 10px 6px",
-                  "font-size": "10px",
-                  color: "var(--text-muted)",
-                  "font-style": "italic",
-                }}
-              >
-                No saved filters yet
-              </div>
+              <SavedFilterEmptyState />
             </Show>
 
             <For each={props.savedFilters}>
               {(f) => (
-                <div
-                  style={{
-                    display: "flex",
-                    "align-items": "center",
-                    padding: "4px 10px",
-                    cursor: "pointer",
-                    color: "var(--text-primary)",
-                    gap: "4px",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "transparent";
-                  }}
-                >
+                <SavedFilterMenuRow gap="4px">
                   <Show
                     when={renamingId() === f.id}
                     fallback={
                       <>
-                        <span
-                          onClick={() => applyPreset(f.query)}
-                          style={{
-                            flex: "1",
-                            overflow: "hidden",
-                            "text-overflow": "ellipsis",
-                            "white-space": "nowrap",
-                          }}
-                          title={f.query}
-                        >
-                          {f.name}
-                        </span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            startRename(f);
-                          }}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "var(--text-muted)",
-                            cursor: "pointer",
-                            padding: "0 3px",
-                            "font-size": "10px",
-                          }}
-                          title="Rename"
-                        >
+                        <SavedFilterName
+                          name={f.name}
+                          query={f.query}
+                          onApply={() => applyPreset(f.query)}
+                        />
+                        <SavedFilterActionButton title="Rename" onClick={() => startRename(f)}>
                           ✎
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            props.onDeleteSavedFilter(f.id);
-                          }}
-                          style={{
-                            background: "none",
-                            border: "none",
-                            color: "var(--text-muted)",
-                            cursor: "pointer",
-                            padding: "0 3px",
-                            "font-size": "10px",
-                          }}
+                        </SavedFilterActionButton>
+                        <SavedFilterActionButton
                           title="Delete"
+                          onClick={() => props.onDeleteSavedFilter(f.id)}
                         >
                           ✕
-                        </button>
+                        </SavedFilterActionButton>
                       </>
                     }
                   >
-                    <input
-                      type="text"
+                    <SavedFilterRenameInput
                       value={renameDraft()}
-                      onInput={(e) => setRenameDraft(e.currentTarget.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.stopPropagation();
-                          commitRename();
-                        }
-                        if (e.key === "Escape") {
-                          e.stopPropagation();
-                          cancelRename();
-                        }
-                      }}
-                      autofocus
-                      style={{
-                        flex: "1",
-                        background: "var(--bg-primary)",
-                        border: "1px solid var(--accent)",
-                        color: "var(--text-primary)",
-                        "border-radius": "3px",
-                        padding: "2px 5px",
-                        "font-size": "11px",
-                        outline: "none",
-                      }}
+                      onInput={setRenameDraft}
+                      onCommit={commitRename}
+                      onCancel={cancelRename}
                     />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        commitRename();
-                      }}
-                      style={btnStyle("var(--accent)")}
-                    >
-                      ✓
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        cancelRename();
-                      }}
-                      style={btnStyle("var(--text-muted)")}
-                    >
-                      ✕
-                    </button>
                   </Show>
-                </div>
+                </SavedFilterMenuRow>
               )}
             </For>
-          </div>
-        </div>
-        <div style={logcatDropdownOverlayStyle()} onClick={closeMenu} />
+          </MenuList>
+        </>
       </Show>
-    </div>
+    </Popover>
   );
 }
