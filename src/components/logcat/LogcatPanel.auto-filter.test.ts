@@ -17,7 +17,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createRoot, createSignal, createEffect } from "solid-js";
 import { buildState, setLastLaunchedAt, resetBuildState } from "@/stores/build.store";
-import { getMinePackage, setMinePackage, setPackageInQuery } from "@/lib/logcat-query";
+import { setPackageInQuery } from "@/lib/logcat-query";
+import { getMinePackage, setMinePackage } from "@/lib/logcat-mine-package";
 
 function resetState() {
   resetBuildState();

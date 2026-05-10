@@ -20,10 +20,16 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createRoot, createSignal, createEffect } from "solid-js";
 import { projectState, setApplicationId, setProjectState } from "@/stores/project.store";
-import { setMinePackage, getMinePackage } from "@/lib/logcat-query";
+import { getMinePackage, setMinePackage } from "@/lib/logcat-mine-package";
 
 function resetState() {
-  setProjectState({ projectRoot: null, gradleRoot: null, projectName: null, applicationId: null, loading: false });
+  setProjectState({
+    projectRoot: null,
+    gradleRoot: null,
+    projectName: null,
+    applicationId: null,
+    loading: false,
+  });
   setMinePackage(null);
 }
 
@@ -248,14 +254,50 @@ describe("package:mine re-sync on applicationId change", () => {
     const { parseQuery, matchesQuery } = await import("@/lib/logcat-query");
     const tokens = parseQuery("package:mine");
     const NOW = Date.now();
-    expect(matchesQuery(
-      { id: 1n, timestamp: "01-23 12:34:56.789", pid: 1, tid: 1, level: "debug", tag: "T", message: "", isCrash: false, package: "com.project-b.app", kind: "normal", flags: 0, category: "general", crashGroupId: null, jsonBody: null },
-      tokens, NOW
-    )).toBe(true);
-    expect(matchesQuery(
-      { id: 2n, timestamp: "01-23 12:34:56.789", pid: 1, tid: 1, level: "debug", tag: "T", message: "", isCrash: false, package: "com.project-a.app", kind: "normal", flags: 0, category: "general", crashGroupId: null, jsonBody: null },
-      tokens, NOW
-    )).toBe(false);
+    expect(
+      matchesQuery(
+        {
+          id: 1n,
+          timestamp: "01-23 12:34:56.789",
+          pid: 1,
+          tid: 1,
+          level: "debug",
+          tag: "T",
+          message: "",
+          isCrash: false,
+          package: "com.project-b.app",
+          kind: "normal",
+          flags: 0,
+          category: "general",
+          crashGroupId: null,
+          jsonBody: null,
+        },
+        tokens,
+        NOW
+      )
+    ).toBe(true);
+    expect(
+      matchesQuery(
+        {
+          id: 2n,
+          timestamp: "01-23 12:34:56.789",
+          pid: 1,
+          tid: 1,
+          level: "debug",
+          tag: "T",
+          message: "",
+          isCrash: false,
+          package: "com.project-a.app",
+          kind: "normal",
+          flags: 0,
+          category: "general",
+          crashGroupId: null,
+          jsonBody: null,
+        },
+        tokens,
+        NOW
+      )
+    ).toBe(false);
 
     disposeRoot();
   });

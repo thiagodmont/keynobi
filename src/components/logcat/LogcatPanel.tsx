@@ -26,25 +26,22 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { save } from "@tauri-apps/plugin-dialog";
 import { selectedDevice } from "@/stores/device.store";
 import { logcatRowHeightForFontSize, settingsState } from "@/stores/settings.store";
-import { showToast } from "@/components/ui";
+import { EmptyState, showToast } from "@/components/ui";
 import { VirtualList, type VirtualListHandle, isPaletteOpen } from "@/components/ui";
 import {
   parseAge,
   parseFilterGroups,
   matchesFilterGroups,
   buildEffectiveQueryWithDisabledPills,
-  reconcileDisabledQueryPillIds,
-  ensureQueryVariableValues,
-  resolveQueryVariables,
   setAgeInQuery,
   setPackageInQuery,
   getPackageFromQuery,
-  setMinePackage,
   appendLogEntryDetailFilterToken,
   type LogEntryDetailFilterMode,
   type FilterGroup,
-  type QueryVariableValues,
 } from "@/lib/logcat-query";
+import { setMinePackage } from "@/lib/logcat-mine-package";
+import { resolveQueryVariables } from "@/lib/logcat-query-variables";
 import { projectState } from "@/stores/project.store";
 import { buildState } from "@/stores/build.store";
 import { LogEntryDetailPanel } from "./LogEntryDetailPanel";
@@ -82,6 +79,9 @@ import {
 } from "./LogcatFilterControls";
 import { LogcatToolbar } from "./LogcatToolbar";
 import { createLogcatSuggestionRuntime } from "./logcat-suggestion-runtime";
+import { createLogcatQueryController } from "./logcat-query-controller";
+import { formatLogcatEntries } from "./logcat-entry-format";
+import { copyToClipboard } from "@/utils/clipboard";
 
 function maxUiLinesCap(): number {
   return clampLogcatMaxUiLines(
@@ -100,85 +100,32 @@ function isLogcatTypingTarget(target: unknown): boolean {
 }
 
 export function LogcatPanel(): JSX.Element {
-  const [query, setQuery] = createSignal("");
-  const [debouncedQuery, setDebouncedQuery] = createSignal("");
-  const [disabledPillIds, setDisabledPillIds] = createSignal<Set<string>>(new Set(), {
-    equals: false,
+  function resetQueryInteraction(): void {
+    exitReadMode();
+    setSelectionAnchor(null);
+    setSelectionEnd(null);
+    setSelectedJsonEntry(null);
+    setSelectedDetailEntry(null);
+  }
+
+  const queryController = createLogcatQueryController({
+    onQueryInteractionReset: resetQueryInteraction,
   });
-  const [queryVariableValues, setQueryVariableValues] = createSignal<QueryVariableValues>({});
-  const [debouncedQueryVariableValues, setDebouncedQueryVariableValues] =
-    createSignal<QueryVariableValues>({});
-  let _queryDebounce: ReturnType<typeof setTimeout> | undefined;
-  let _variableDebounce: ReturnType<typeof setTimeout> | undefined;
-
-  function updateQuery(q: string) {
-    exitReadMode();
-    setSelectionAnchor(null);
-    setSelectionEnd(null);
-    setSelectedJsonEntry(null);
-    setSelectedDetailEntry(null);
-    setQuery(q);
-    setQueryVariableValues((values) => ensureQueryVariableValues(q, values));
-    setDebouncedQueryVariableValues((values) => ensureQueryVariableValues(q, values));
-    setDisabledPillIds((ids) => reconcileDisabledQueryPillIds(q, ids));
-    clearTimeout(_queryDebounce);
-    _queryDebounce = setTimeout(() => setDebouncedQuery(q), 150);
-  }
-
-  function scheduleDebouncedQueryVariableValues(values: QueryVariableValues): void {
-    clearTimeout(_variableDebounce);
-    _variableDebounce = setTimeout(() => {
-      setDebouncedQueryVariableValues(ensureQueryVariableValues(query(), values));
-    }, 150);
-  }
-
-  function updateQueryVariableValue(name: string, value: string): void {
-    exitReadMode();
-    setSelectionAnchor(null);
-    setSelectionEnd(null);
-    setSelectedJsonEntry(null);
-    setSelectedDetailEntry(null);
-    const nextValues = ensureQueryVariableValues(query(), {
-      ...queryVariableValues(),
-      [name]: value,
-    });
-    setQueryVariableValues(nextValues);
-    scheduleDebouncedQueryVariableValues(nextValues);
-  }
-
-  function deleteQueryVariable(name: string): void {
-    const next = { ...queryVariableValues() };
-    delete next[name];
-    const nextValues = ensureQueryVariableValues(query(), next);
-    setQueryVariableValues(nextValues);
-    scheduleDebouncedQueryVariableValues(nextValues);
-  }
-
-  function insertQueryVariable(name: string): void {
-    updateQuery(`${query()}\${${name}}`);
-  }
-
-  function applyPresetQuery(q: string): void {
-    setDisabledPillIds(new Set<string>());
-    updateQuery(q);
-  }
-
-  function togglePillDisabled(id: string): void {
-    exitReadMode();
-    setSelectionAnchor(null);
-    setSelectionEnd(null);
-    setSelectedJsonEntry(null);
-    setSelectedDetailEntry(null);
-    setDisabledPillIds((ids) => {
-      const next = new Set(ids);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return reconcileDisabledQueryPillIds(query(), next);
-    });
-  }
+  const {
+    query,
+    debouncedQuery,
+    disabledPillIds,
+    queryVariableValues,
+    debouncedQueryVariableValues,
+    updateQuery,
+    updateQueryVariableValue,
+    deleteQueryVariable,
+    insertQueryVariable,
+    applyPresetQuery,
+    togglePillDisabled,
+    clearQuery,
+    restoreQuery,
+  } = queryController;
 
   const [autoScroll, setAutoScroll] = createSignal(settingsState.logcat.autoScrollToEnd !== false);
   const [scrollCompensate, setScrollCompensate] = createSignal(0);
@@ -505,10 +452,7 @@ export function LogcatPanel(): JSX.Element {
     // backfill respects any persisted filter.
     const savedQuery = getLastActiveQuery();
     if (savedQuery) {
-      setQuery(savedQuery);
-      setQueryVariableValues((values) => ensureQueryVariableValues(savedQuery, values));
-      setDebouncedQueryVariableValues((values) => ensureQueryVariableValues(savedQuery, values));
-      setDebouncedQuery(savedQuery);
+      restoreQuery(savedQuery);
       _prevDebouncedQuery = savedQuery;
       _prevEffectiveDebouncedQuery = savedQuery;
     }
@@ -624,8 +568,6 @@ export function LogcatPanel(): JSX.Element {
     unlistenDevices?.();
     unlistenReconnecting?.();
     clearInterval(nowTimer);
-    clearTimeout(_queryDebounce);
-    clearTimeout(_variableDebounce);
     filterSyncGuard.invalidate();
     // Clear backend filter on unmount so it doesn't persist
     setLogcatFilter(emptyLogcatFilterSpec()).catch(() => {});
@@ -707,11 +649,6 @@ export function LogcatPanel(): JSX.Element {
 
   // ── Row copy ──────────────────────────────────────────────────────────────────
 
-  function formatEntry(e: LogcatEntry): string {
-    const pkg = e.package ? `[${e.package}] ` : "";
-    return `${e.timestamp}  ${e.level.toUpperCase()}  ${pkg}${e.tag}: ${e.message}`;
-  }
-
   function currentEntryIndex(entry: LogcatEntry): number {
     return filteredEntryIndexById().get(entry.id) ?? -1;
   }
@@ -742,11 +679,8 @@ export function LogcatPanel(): JSX.Element {
     const range = getSelectionRange();
     if (!range) return;
     const [lo, hi] = range;
-    const text = displayedEntries()
-      .slice(lo, hi + 1)
-      .map(formatEntry)
-      .join("\n");
-    await navigator.clipboard.writeText(text);
+    const text = formatLogcatEntries(displayedEntries().slice(lo, hi + 1));
+    await copyToClipboard(text);
     showToast(`Copied ${hi - lo + 1} rows`, "success");
     setSelectionAnchor(null);
     setSelectionEnd(null);
@@ -761,7 +695,7 @@ export function LogcatPanel(): JSX.Element {
         defaultPath: "logcat.log",
       });
       if (!path) return;
-      const text = displayedEntries().map(formatEntry).join("\n");
+      const text = formatLogcatEntries(displayedEntries());
       await writeTextFile(path, text);
       showToast(`Exported ${displayedEntries().length} entries`, "success");
     } catch (e) {
@@ -914,10 +848,7 @@ export function LogcatPanel(): JSX.Element {
         onPackageSelect={handlePackageSelect}
         onToggleLifecycle={() => setShowLifecycle((v) => !v)}
         onApplySavedQuery={applyPresetQuery}
-        onClear={() => {
-          setDisabledPillIds(new Set<string>());
-          updateQuery("");
-        }}
+        onClear={clearQuery}
       />
 
       {/* ── Empty state ───────────────────────────────────────────────────── */}
@@ -928,26 +859,20 @@ export function LogcatPanel(): JSX.Element {
             display: "flex",
             "align-items": "center",
             "justify-content": "center",
-            "flex-direction": "column",
-            gap: "8px",
-            color: "var(--text-muted)",
-            "font-size": "13px",
           }}
         >
           <Show
             when={logcatState.streaming}
             fallback={
-              <>
-                <span style={{ "font-size": "24px", opacity: "0.3" }}>📋</span>
-                <span>No logcat data</span>
-                <span style={{ "font-size": "11px", opacity: "0.6" }}>
-                  Connect a device — logcat starts automatically
-                </span>
-              </>
+              <EmptyState
+                density="compact"
+                icon="terminal"
+                title="No logcat data"
+                description="Connect a device — logcat starts automatically"
+              />
             }
           >
-            <span style={{ "font-size": "24px", opacity: "0.3" }}>⏳</span>
-            <span>Waiting for log entries…</span>
+            <EmptyState density="compact" icon="spinner" title="Waiting for log entries…" />
           </Show>
         </div>
       </Show>
