@@ -1245,12 +1245,15 @@ export function toggleQueryBarOrConnector(
     return committed;
   }
 
-  const previous = groups[groupIdxAfterConnector - 1];
+  let previousIdx = groupIdxAfterConnector - 1;
+  while (previousIdx >= 0 && groups[previousIdx]!.length === 0) previousIdx--;
+
+  const previous = previousIdx >= 0 ? groups[previousIdx] : undefined;
   const current = groups[groupIdxAfterConnector];
   if (!previous || !current) return committed;
 
   const nextGroups = [
-    ...groups.slice(0, groupIdxAfterConnector - 1),
+    ...groups.slice(0, previousIdx),
     [...previous, ...current],
     ...groups.slice(groupIdxAfterConnector + 1),
   ];

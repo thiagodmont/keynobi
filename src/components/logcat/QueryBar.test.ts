@@ -139,6 +139,58 @@ describe("QueryBar — clickable connectors", () => {
 
     expect(queryByText("level:")).toBeNull();
   });
+
+  it("toggles an AND connector after an empty OR group", async () => {
+    const changes: string[] = [];
+    const { getByRole } = render(() =>
+      QueryBar({
+        value: "level:error | | tag:App is:crash ",
+        onChange: (q) => changes.push(q),
+        knownTags: [],
+        knownPackages: [],
+      })
+    );
+
+    fireEvent.click(getByRole("button", { name: "Change AND to OR" }));
+    await Promise.resolve();
+
+    expect(changes[changes.length - 1]).toBe("level:error | tag:App | is:crash ");
+  });
+});
+
+describe("QueryBar — sparse OR groups", () => {
+  it("toggles a visible OR connector after an empty OR group", async () => {
+    const changes: string[] = [];
+    const { getByRole } = render(() =>
+      QueryBar({
+        value: "level:error | | tag:App ",
+        onChange: (q) => changes.push(q),
+        knownTags: [],
+        knownPackages: [],
+      })
+    );
+
+    fireEvent.click(getByRole("button", { name: "Change OR to AND" }));
+    await Promise.resolve();
+
+    expect(changes[changes.length - 1]).toBe("level:error tag:App ");
+  });
+
+  it("removes a pill after an empty OR group", () => {
+    const changes: string[] = [];
+    const { getAllByTitle } = render(() =>
+      QueryBar({
+        value: "level:error | | tag:App ",
+        onChange: (q) => changes.push(q),
+        knownTags: [],
+        knownPackages: [],
+      })
+    );
+
+    fireEvent.mouseDown(getAllByTitle("Remove filter")[1]!);
+
+    expect(changes[changes.length - 1]).toBe("level:error ");
+  });
 });
 
 describe("QueryBar — temporarily disabled pills", () => {
