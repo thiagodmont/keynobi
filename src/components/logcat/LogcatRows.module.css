@@ -1,0 +1,145 @@
+.separatorRow {
+  display: flex;
+  align-items: center;
+  height: var(--logcat-row-height);
+  min-height: var(--logcat-row-height);
+  overflow: hidden;
+  padding: 0 8px;
+}
+
+.separatorDied {
+  background: color-mix(in srgb, var(--error) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--error) 30%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--error) 30%, transparent);
+}
+
+.separatorRestarted {
+  background: color-mix(in srgb, var(--success) 7%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--success) 20%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--success) 20%, transparent);
+}
+
+.separatorRule {
+  flex: 1;
+  border-top: 1px dashed color-mix(in srgb, var(--success) 20%, transparent);
+}
+
+.separatorDied .separatorRule {
+  border-top-color: color-mix(in srgb, var(--error) 30%, transparent);
+}
+
+.separatorLabel {
+  padding: 0 10px;
+  color: var(--success);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.separatorDied .separatorLabel {
+  color: var(--error);
+}
+
+.separatorTimestamp {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  height: var(--logcat-row-height);
+  min-height: var(--logcat-row-height);
+  gap: 6px;
+  overflow: hidden;
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: var(--font-size-logcat-output);
+}
+
+.timestamp {
+  flex-shrink: 0;
+  color: var(--text-disabled, #4b5563);
+  font-size: 10px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+.level {
+  flex-shrink: 0;
+  min-width: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.packageName {
+  flex-shrink: 0;
+  max-width: 90px;
+  overflow: hidden;
+  color: var(--accent);
+  font-size: 9px;
+  opacity: 0.8;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag {
+  flex-shrink: 0;
+  min-width: 80px;
+  max-width: 120px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.studioJump {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 3px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 30%, transparent);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-disabled);
+  cursor: not-allowed;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 500;
+  opacity: 1;
+  transition:
+    background 0.1s,
+    opacity 0.1s;
+  white-space: nowrap;
+}
+
+.studioJump:hover {
+  background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+}
+
+.studioReady {
+  border-color: color-mix(in srgb, var(--info) 40%, transparent);
+  color: var(--info);
+  cursor: pointer;
+}
+
+.studioReady:hover {
+  background: color-mix(in srgb, var(--info) 15%, transparent);
+}
+
+.studioOpening {
+  cursor: wait;
+  opacity: 0.6;
+}

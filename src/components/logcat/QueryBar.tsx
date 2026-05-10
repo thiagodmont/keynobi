@@ -55,6 +55,7 @@ import {
   QueryBarPill,
   QueryBarSuggestions,
 } from "./QueryBarParts";
+import { Icon } from "@/components/ui";
 import {
   queryBarClearButtonStyle,
   queryBarConnectorGroupStyle,
@@ -394,7 +395,9 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
       {/* the natural flex height as pills wrap to multiple rows.              */}
       <div onClick={() => draftRef?.focus()} style={queryBarContainerStyle(isActive())}>
         {/* Search icon — inline flex item, always at start of first row */}
-        <span style={searchIconStyle()}>⌕</span>
+        <span style={searchIconStyle()}>
+          <Icon name="search" size={12} />
+        </span>
 
         {/* ── Pill groups ─────────────────────────────────────────────── */}
         <For each={pillRefGroups()}>
@@ -580,7 +583,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                 (e.currentTarget as HTMLElement).style.opacity = "0.6";
               }}
             >
-              ✕
+              <Icon name="close" size={11} />
             </button>
           </Show>
         </div>

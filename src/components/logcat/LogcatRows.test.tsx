@@ -2,6 +2,7 @@ import { render, screen } from "@solidjs/testing-library";
 import { describe, expect, it } from "vitest";
 import type { LogcatEntry } from "@/lib/tauri-api";
 import { LogcatVirtualRow } from "./LogcatRows";
+import styles from "./LogcatRows.module.css";
 
 const ENTRY: LogcatEntry = {
   id: 1n,
@@ -21,7 +22,7 @@ const ENTRY: LogcatEntry = {
 };
 
 describe("LogcatRows", () => {
-  it("sizes log output rows from the Logcat font CSS variables", () => {
+  it("uses the Logcat row chrome class and keeps dynamic row styles inline", () => {
     render(() => (
       <LogcatVirtualRow
         entry={ENTRY}
@@ -38,8 +39,8 @@ describe("LogcatRows", () => {
 
     const row = screen.getByTitle("Click to copy · Shift+click to select range");
 
-    expect(row.style.fontSize).toBe("var(--font-size-logcat-output)");
-    expect(row.style.height).toBe("var(--logcat-row-height)");
-    expect(row.style.minHeight).toBe("var(--logcat-row-height)");
+    expect(row.classList.contains(styles.row)).toBe(true);
+    expect(row.style.background).not.toBe("");
+    expect(row.style.borderLeft).toBe("2px solid transparent");
   });
 });

@@ -1,5 +1,6 @@
 import { Show, type JSX } from "solid-js";
 import { Button, ControlStrip, Icon, Separator, StatusDot } from "@/components/ui";
+import styles from "./LogcatToolbar.module.css";
 
 export function LogcatToolbar(props: {
   streaming: boolean;
@@ -56,7 +57,9 @@ export function LogcatToolbar(props: {
         onClick={() => props.onTogglePaused()}
         title={props.paused ? "Resume" : "Pause new entries"}
       >
-        {props.paused ? "▶" : "⏸"}
+        <Show when={props.paused} fallback={<Icon name="pause" size={12} />}>
+          <Icon name="play" size={12} />
+        </Show>
       </Button>
 
       <Button
@@ -67,7 +70,7 @@ export function LogcatToolbar(props: {
         title="Stop, clear and restart logcat"
         disabled={props.restarting}
       >
-        ↺ Restart
+        <Icon name="refresh" size={12} /> Restart
       </Button>
 
       <Button
@@ -83,19 +86,16 @@ export function LogcatToolbar(props: {
       <Separator orientation="vertical" style={{ height: "18px", "align-self": "center" }} />
 
       <Show when={props.crashes > 0}>
-        <div style={{ display: "flex", "align-items": "center", gap: "2px", "flex-shrink": "0" }}>
+        <div class={styles.crashGroup}>
           <Button
             variant="outline"
             size="xs"
             tone="danger"
             onClick={() => props.onJumpToLastCrash()}
             title={`${props.crashes} crash${props.crashes !== 1 ? "es" : ""} — click to jump`}
-            style={{
-              gap: "3px",
-              animation: "lsp-dot-pulse 3s ease-in-out infinite",
-            }}
+            class={styles.crashButton}
           >
-            ⚡ {props.crashes}
+            <Icon name="bolt" size={12} /> {props.crashes}
           </Button>
           <Button
             variant="outline"
@@ -104,7 +104,7 @@ export function LogcatToolbar(props: {
             onClick={() => props.onJumpToPreviousCrash()}
             title="Previous crash"
           >
-            ↑
+            <Icon name="arrow-up" size={12} />
           </Button>
           <Button
             variant="outline"
@@ -113,7 +113,7 @@ export function LogcatToolbar(props: {
             onClick={() => props.onJumpToNextCrash()}
             title="Next crash"
           >
-            ↓
+            <Icon name="arrow-down" size={12} />
           </Button>
         </div>
       </Show>
@@ -130,7 +130,8 @@ export function LogcatToolbar(props: {
               : `Copy ${props.selectedCount} selected rows`
           }
         >
-          ⎘ {props.selectedCount === 1 ? "1 row" : `${props.selectedCount} rows`}
+          <Icon name="copy" size={12} />{" "}
+          {props.selectedCount === 1 ? "1 row" : `${props.selectedCount} rows`}
         </Button>
       </Show>
 
@@ -147,7 +148,7 @@ export function LogcatToolbar(props: {
             : "Scroll to end"
         }
       >
-        ↓
+        <Icon name="arrow-down" size={12} />
         <Show when={props.newEntriesCount > 0}>
           <span>{props.newEntriesCount.toLocaleString()} new</span>
         </Show>
@@ -160,20 +161,12 @@ export function LogcatToolbar(props: {
         onClick={() => props.onExport()}
         title="Export filtered log to file"
       >
-        ↓ Export
+        <Icon name="download" size={12} /> Export
       </Button>
 
-      <div style={{ flex: "1" }} />
+      <div class={styles.spacer} />
 
-      <span
-        title={props.toolbarCount.title}
-        style={{
-          "font-size": "11px",
-          color: "var(--text-muted)",
-          "flex-shrink": "0",
-          cursor: "default",
-        }}
-      >
+      <span title={props.toolbarCount.title} class={styles.count}>
         {props.toolbarCount.text}
       </span>
 

@@ -1,13 +1,12 @@
 import { type JSX, Show, createMemo, createSignal } from "solid-js";
 import type { LogcatEntry } from "@/lib/tauri-api";
-import { Badge, showToast } from "@/components/ui";
+import { Badge, Icon, showToast } from "@/components/ui";
 import { openInStudio } from "@/lib/tauri-api";
 import { healthState } from "@/stores/health.store";
 import { isProjectFrame, parseStackFrame } from "@/lib/logcat-stack-frame";
 import { LEVEL_CONFIG } from "./logcat-levels";
 import { rowFocusMarked, rowInSelectionRange } from "./logcat-row-selection";
-
-export const LOGCAT_ROW_HEIGHT_CSS = "var(--logcat-row-height)";
+import styles from "./LogcatRows.module.css";
 
 const ENTRY_FLAGS = {
   CRASH: 1 << 0,
@@ -59,51 +58,20 @@ export function LogcatVirtualRow(props: {
 export function SeparatorRow(props: { entry: LogcatEntry }): JSX.Element {
   const isDied = () => props.entry.kind === "processDied";
   const pkg = () => props.entry.package ?? props.entry.tag;
-  const label = () => (isDied() ? `⚠  ${pkg()} PROCESS DIED` : `▶  ${pkg()} PROCESS RESTARTED`);
+  const label = () => (isDied() ? `${pkg()} PROCESS DIED` : `${pkg()} PROCESS RESTARTED`);
 
   return (
     <div
-      style={{
-        display: "flex",
-        "align-items": "center",
-        height: LOGCAT_ROW_HEIGHT_CSS,
-        "min-height": LOGCAT_ROW_HEIGHT_CSS,
-        padding: "0 8px",
-        background: isDied()
-          ? "color-mix(in srgb, var(--error) 10%, transparent)"
-          : "color-mix(in srgb, var(--success) 7%, transparent)",
-        "border-top": `1px solid ${isDied() ? "color-mix(in srgb, var(--error) 30%, transparent)" : "color-mix(in srgb, var(--success) 20%, transparent)"}`,
-        "border-bottom": `1px solid ${isDied() ? "color-mix(in srgb, var(--error) 30%, transparent)" : "color-mix(in srgb, var(--success) 20%, transparent)"}`,
-        overflow: "hidden",
-      }}
+      class={[styles.separatorRow, isDied() ? styles.separatorDied : styles.separatorRestarted]
+        .filter(Boolean)
+        .join(" ")}
     >
-      <span
-        style={{
-          flex: "1",
-          "border-top": `1px dashed ${isDied() ? "color-mix(in srgb, var(--error) 30%, transparent)" : "color-mix(in srgb, var(--success) 20%, transparent)"}`,
-        }}
-      />
-      <span
-        style={{
-          "font-size": "10px",
-          color: isDied() ? "var(--error)" : "var(--success)",
-          "font-weight": "600",
-          "white-space": "nowrap",
-          padding: "0 10px",
-          "letter-spacing": "0.04em",
-        }}
-      >
-        {label()}
+      <span class={styles.separatorRule} />
+      <span class={styles.separatorLabel}>
+        <Icon name={isDied() ? "warning" : "play"} size={10} /> {label()}
       </span>
-      <span style={{ "font-size": "10px", color: "var(--text-muted)", "flex-shrink": "0" }}>
-        {props.entry.timestamp}
-      </span>
-      <span
-        style={{
-          flex: "1",
-          "border-top": `1px dashed ${isDied() ? "color-mix(in srgb, var(--error) 30%, transparent)" : "color-mix(in srgb, var(--success) 20%, transparent)"}`,
-        }}
-      />
+      <span class={styles.separatorTimestamp}>{props.entry.timestamp}</span>
+      <span class={styles.separatorRule} />
     </div>
   );
 }
@@ -115,7 +83,6 @@ function StudioJumpButton(props: { message: string }): JSX.Element {
     return f;
   };
   const studioReady = () => healthState.systemReport?.studioCommandFound === true;
-  const [hovered, setHovered] = createSignal(false);
   const [opening, setOpening] = createSignal(false);
 
   const handleOpen = async (e: MouseEvent) => {
@@ -139,38 +106,22 @@ function StudioJumpButton(props: { message: string }): JSX.Element {
   return (
     <Show when={frame() !== null}>
       <button
+        type="button"
         onClick={handleOpen}
         title={
           studioReady()
             ? `Open ${frame()!.filename}:${frame()!.line} in Android Studio`
             : "Install the studio command to enable jump-to-line (see Health Panel)"
         }
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          "flex-shrink": "0",
-          display: "inline-flex",
-          "align-items": "center",
-          gap: "3px",
-          padding: "1px 6px",
-          "border-radius": "3px",
-          border: `1px solid ${studioReady() ? "color-mix(in srgb, var(--info) 40%, transparent)" : "color-mix(in srgb, var(--text-muted) 30%, transparent)"}`,
-          background: hovered()
-            ? studioReady()
-              ? "color-mix(in srgb, var(--info) 15%, transparent)"
-              : "color-mix(in srgb, var(--text-muted) 10%, transparent)"
-            : "transparent",
-          color: studioReady() ? "var(--info)" : "var(--text-disabled)",
-          cursor: opening() ? "wait" : studioReady() ? "pointer" : "not-allowed",
-          "font-size": "9px",
-          "font-family": "var(--font-ui)",
-          "font-weight": "500",
-          opacity: opening() ? "0.6" : "1",
-          transition: "background 0.1s, opacity 0.1s",
-          "white-space": "nowrap",
-        }}
+        class={[
+          styles.studioJump,
+          studioReady() ? styles.studioReady : "",
+          opening() ? styles.studioOpening : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
       >
-        {opening() ? "⟳" : "↗"} Studio
+        <Icon name={opening() ? "spinner" : "external-link"} size={10} /> Studio
       </button>
     </Show>
   );
@@ -213,20 +164,12 @@ function LogcatRow(props: {
     <div
       onClick={(e) => props.onClick(e)}
       title="Click to copy · Shift+click to select range"
+      class={styles.row}
       style={{
-        display: "flex",
-        "align-items": "center",
-        gap: "6px",
-        padding: "0 10px",
-        height: LOGCAT_ROW_HEIGHT_CSS,
-        "min-height": LOGCAT_ROW_HEIGHT_CSS,
-        "font-size": "var(--font-size-logcat-output)",
         background: defaultRowBackground(),
         "border-left": props.focusMarked
           ? "4px solid var(--accent)"
           : `2px solid ${semanticBorderColor()}`,
-        overflow: "hidden",
-        cursor: "pointer",
       }}
       onMouseEnter={(e) => {
         if (!props.focusMarked && !props.inSelectionRange && !props.jsonSelected) {
@@ -245,62 +188,24 @@ function LogcatRow(props: {
         }
       }}
     >
-      <span
-        style={{
-          color: "var(--text-disabled, #4b5563)",
-          "white-space": "nowrap",
-          "flex-shrink": "0",
-          "font-size": "10px",
-          opacity: "0.7",
-        }}
-      >
-        {props.entry.timestamp}
-      </span>
+      <span class={styles.timestamp}>{props.entry.timestamp}</span>
 
       <span
+        class={styles.level}
         style={{
           color: cfg().color,
-          "font-weight": "700",
-          "min-width": "12px",
-          "text-align": "center",
-          "flex-shrink": "0",
-          "font-size": "11px",
         }}
       >
         {cfg().label}
       </span>
 
       <Show when={props.entry.package}>
-        <span
-          style={{
-            "font-size": "9px",
-            color: "var(--accent)",
-            "flex-shrink": "0",
-            "max-width": "90px",
-            overflow: "hidden",
-            "text-overflow": "ellipsis",
-            "white-space": "nowrap",
-            opacity: "0.8",
-          }}
-          title={props.entry.package ?? ""}
-        >
+        <span class={styles.packageName} title={props.entry.package ?? ""}>
           {props.entry.package}
         </span>
       </Show>
 
-      <span
-        style={{
-          color: "var(--text-secondary)",
-          "min-width": "80px",
-          "max-width": "120px",
-          overflow: "hidden",
-          "text-overflow": "ellipsis",
-          "white-space": "nowrap",
-          "flex-shrink": "0",
-          "font-size": "10px",
-        }}
-        title={props.entry.tag}
-      >
+      <span class={styles.tag} title={props.entry.tag}>
         {props.entry.tag}
       </span>
 
@@ -322,8 +227,8 @@ function LogcatRow(props: {
       </Show>
 
       <span
+        class={styles.message}
         style={{
-          flex: "1",
           color: props.entry.isCrash
             ? "var(--error)"
             : hasAnr()
@@ -331,9 +236,6 @@ function LogcatRow(props: {
               : props.entry.level.toLowerCase() === "info"
                 ? "var(--text-primary)"
                 : cfg().color,
-          "white-space": "nowrap",
-          overflow: "hidden",
-          "text-overflow": "ellipsis",
         }}
         title={props.entry.message}
       >

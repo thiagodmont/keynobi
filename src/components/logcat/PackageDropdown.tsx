@@ -11,6 +11,7 @@
 import { type JSX, createSignal, createMemo, For, Show } from "solid-js";
 import {
   FilterChip,
+  Icon,
   Input,
   MenuEmptyState,
   MenuList,
@@ -19,6 +20,7 @@ import {
   Separator,
 } from "@/components/ui";
 import { getMinePackage } from "@/lib/logcat-mine-package";
+import styles from "./PackageDropdown.module.css";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -30,10 +32,6 @@ export interface PackageDropdownProps {
   /** Called with the chosen package name, or null to clear. */
   onSelect: (pkg: string | null) => void;
 }
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const MAX_VISIBLE_ROWS = 10;
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -115,19 +113,14 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
           onClick={handleToggle}
           title={isActive() ? `Package filter: ${props.selected}` : "Filter by package"}
         >
-          <span
-            style={{ overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}
-          >
-            {displayLabel()}
-          </span>
-          <span style={{ opacity: "0.6", "flex-shrink": "0", "font-size": "9px" }}>▾</span>
+          <span class={styles.triggerLabel}>{displayLabel()}</span>
+          <Icon name="chevron-down" size={10} class={styles.triggerChevron} />
         </FilterChip>
       )}
     >
       <Show when={open()}>
         <>
-          {/* Search input */}
-          <div style={{ padding: "6px 8px 4px", "border-bottom": "1px solid var(--border)" }}>
+          <div class={styles.searchFrame}>
             <Input
               inputRef={(el) => {
                 searchRef = el;
@@ -144,18 +137,11 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
                   setOpen(false);
                 }
               }}
-              style={{ width: "100%", "box-sizing": "border-box" }}
+              class={styles.searchInput}
             />
           </div>
 
-          {/* Package list */}
-          <MenuList
-            style={{
-              "max-height": `${MAX_VISIBLE_ROWS * 26}px`,
-              "overflow-y": "auto",
-            }}
-          >
-            {/* "All packages" row */}
+          <MenuList class={styles.packageList}>
             <Show when={!search()}>
               <PackageRow
                 label="All packages"
@@ -165,7 +151,6 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
               />
             </Show>
 
-            {/* "My App" shortcut (only when a project is open) */}
             <Show when={!search() && minePackage() !== null}>
               <PackageRow
                 label="My App"
@@ -175,12 +160,10 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
               />
             </Show>
 
-            {/* Separator */}
             <Show when={!search() && props.packages.length > 0}>
               <Separator spacing="sm" />
             </Show>
 
-            {/* Actual package list */}
             <For each={filteredPackages()}>
               {(pkg) => (
                 <PackageRow
@@ -192,12 +175,10 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
               )}
             </For>
 
-            {/* Empty state when search yields no results */}
             <Show when={search() && filteredPackages().length === 0}>
               <MenuEmptyState>No packages matching "{search()}"</MenuEmptyState>
             </Show>
 
-            {/* Empty state when no packages have been seen yet */}
             <Show when={!search() && props.packages.length === 0}>
               <MenuEmptyState>
                 No packages seen yet — start logcat to populate this list.
@@ -220,36 +201,16 @@ function PackageRow(props: {
 }): JSX.Element {
   return (
     <MenuListItem onClick={() => props.onClick()} active={props.active}>
-      {/* Active indicator */}
-      <span style={{ width: "8px", "flex-shrink": "0", "font-size": "9px" }}>
+      <span class={styles.activeMarker} aria-hidden="true">
         {props.active ? "●" : ""}
       </span>
 
-      <span
-        style={{
-          flex: "1",
-          "font-family": "var(--font-mono)",
-          "font-size": "10px",
-          overflow: "hidden",
-          "text-overflow": "ellipsis",
-          "white-space": "nowrap",
-        }}
-        title={props.label}
-      >
+      <span class={styles.label} title={props.label}>
         {props.label}
       </span>
 
       <Show when={props.sublabel}>
-        <span
-          style={{
-            "font-size": "9px",
-            color: "var(--text-muted)",
-            "flex-shrink": "0",
-            "font-family": "var(--font-mono)",
-          }}
-        >
-          {props.sublabel}
-        </span>
+        <span class={styles.sublabel}>{props.sublabel}</span>
       </Show>
     </MenuListItem>
   );

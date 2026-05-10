@@ -1,5 +1,5 @@
 import { type JSX, For } from "solid-js";
-import { Badge, Input, MenuList, MenuListItem } from "@/components/ui";
+import { Badge, Icon, Input, MenuList, MenuListItem } from "@/components/ui";
 import type { QueryBarSuggestion } from "@/lib/logcat-query";
 import {
   getQueryBarTokenStyle,
@@ -160,7 +160,7 @@ export function QueryBarPill(props: {
           (e.currentTarget as HTMLElement).style.opacity = "0.55";
         }}
       >
-        ✕
+        <Icon name="close" size={9} />
       </button>
     </span>
   );

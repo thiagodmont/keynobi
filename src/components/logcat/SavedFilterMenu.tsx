@@ -1,13 +1,14 @@
 import { For, Show, createSignal } from "solid-js";
-import { Button, MenuList, MenuSectionHeader, Popover, Separator } from "@/components/ui";
+import { Button, Icon, MenuList, MenuSectionHeader, Popover, Separator } from "@/components/ui";
 import { MAX_SAVED_FILTERS, type SavedFilter } from "@/lib/logcat-filter-storage";
 import { BUILTIN_LOGCAT_FILTER_PRESETS, commitSavedFilterQuery } from "./saved-filter-presets";
 import {
   SavedFilterActionButton,
+  SavedFilterApplyItem,
   SavedFilterCountHeader,
   SavedFilterEmptyState,
+  SavedFilterItemLayout,
   SavedFilterMenuRow,
-  SavedFilterName,
   SavedFilterQueryPreview,
   SavedFilterRenameInput,
 } from "./SavedFilterMenuParts";
@@ -76,7 +77,7 @@ export function SavedFilterMenu(props: {
             setOpen((v) => !v);
           }}
         >
-          ☰ Filters
+          <Icon name="list" size={12} /> Filters
         </Button>
       )}
     >
@@ -102,36 +103,37 @@ export function SavedFilterMenu(props: {
 
             <For each={props.savedFilters}>
               {(f) => (
-                <SavedFilterMenuRow gap="4px">
-                  <Show
-                    when={renamingId() === f.id}
-                    fallback={
-                      <>
-                        <SavedFilterName
-                          name={f.name}
-                          query={f.query}
-                          onApply={() => applyPreset(f.query)}
-                        />
-                        <SavedFilterActionButton title="Rename" onClick={() => startRename(f)}>
-                          ✎
-                        </SavedFilterActionButton>
-                        <SavedFilterActionButton
-                          title="Delete"
-                          onClick={() => props.onDeleteSavedFilter(f.id)}
-                        >
-                          ✕
-                        </SavedFilterActionButton>
-                      </>
-                    }
-                  >
+                <Show
+                  when={renamingId() === f.id}
+                  fallback={
+                    <SavedFilterItemLayout>
+                      <SavedFilterApplyItem
+                        name={f.name}
+                        query={f.query}
+                        onApply={() => applyPreset(f.query)}
+                      />
+                      <SavedFilterActionButton
+                        title="Rename"
+                        icon="pencil"
+                        onClick={() => startRename(f)}
+                      />
+                      <SavedFilterActionButton
+                        title="Delete"
+                        icon="trash"
+                        onClick={() => props.onDeleteSavedFilter(f.id)}
+                      />
+                    </SavedFilterItemLayout>
+                  }
+                >
+                  <SavedFilterMenuRow gap="4px">
                     <SavedFilterRenameInput
                       value={renameDraft()}
                       onInput={setRenameDraft}
                       onCommit={commitRename}
                       onCancel={cancelRename}
                     />
-                  </Show>
-                </SavedFilterMenuRow>
+                  </SavedFilterMenuRow>
+                </Show>
               )}
             </For>
           </MenuList>
