@@ -1,0 +1,36 @@
+.storybook/preview.css
+  s_8ce10aa3af3fff::t_d2838ecd2019ea 1-23
+package.json
+  s_8ce10aa3af3fff::t_6ac88f921507e5 24
+  s_8ce10aa3af3fff::t_b573cd1142d69c 57-58,69-70
+  s_8ce10aa3af3fff::t_5d3bb5a3cf09bc 23
+  s_8ce10aa3af3fff::t_2d4eb45bebe2d5 22,25-26
+  s_8ce10aa3af3fff::t_6784154b0e65fd 52
+.storybook/preview.tsx
+  s_8ce10aa3af3fff::t_d2838ecd2019ea 1-36
+package-lock.json
+  ai_agent 3,9,21,26-27,38-39,46-52,104-116,578-1014,1018-1022,1025-1031,1035-1039,1227-1246,1297-1314,1974-2102,2386-2426,2529-2535,2904-2910,3010-3032,3162-3177,3209-3218,3305-3311,3357-3366,3374-3416,3504-3545,3733-3746,4069-4078,4086-4101,4154-4172,4193-4208,4754-4760,4827-4836,4986-5004,5122-5131,5309-5341,5349-5379,5448-5460,5474-5480,5629-5638,5663-5812,5869-5881,5899-5905,5950-5959,6029-6038,6044,6083-6098,6140-6149,6386-6392,6504-6539
+.storybook/main.ts
+  s_8ce10aa3af3fff::t_d2838ecd2019ea 1-5,7-32,37-41
+  s_8ce10aa3af3fff::t_938ab57b05910d 6,33-36
+vite.config.ts
+  s_8ce10aa3af3fff::t_6ac88f921507e5 21-23
+.gitignore
+  s_8ce10aa3af3fff::t_da38dc7fc80519 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "ab2eeb695f83429fb34ec684901a31a3f8d6c9d6",
+  "prompts": {},
+  "sessions": {
+    "s_8ce10aa3af3fff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e12c7-3d30-7533-be0b-bbdbd1834d64",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
