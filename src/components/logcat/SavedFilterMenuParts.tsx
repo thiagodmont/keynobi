@@ -106,6 +106,8 @@ export function SavedFilterRenameInput(props: {
         variant="outline"
         size="xs"
         tone="accent"
+        title="Commit rename"
+        ariaLabel="Commit rename"
         onClick={(e) => {
           e.stopPropagation();
           props.onCommit();
@@ -117,6 +119,8 @@ export function SavedFilterRenameInput(props: {
         variant="outline"
         size="xs"
         tone="muted"
+        title="Cancel rename"
+        ariaLabel="Cancel rename"
         onClick={(e) => {
           e.stopPropagation();
           props.onCancel();

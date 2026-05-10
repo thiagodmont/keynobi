@@ -15,6 +15,7 @@ export interface ButtonProps {
   class?: string;
   style?: JSX.CSSProperties;
   title?: string;
+  ariaLabel?: string;
   ariaPressed?: boolean;
   onClick?: (e: MouseEvent) => void;
   children: JSX.Element;
@@ -45,6 +46,7 @@ export function Button(props: ButtonProps): JSX.Element {
       ].join(" ")}
       style={props.style}
       title={props.title}
+      aria-label={props.ariaLabel}
       aria-pressed={
         props.ariaPressed === undefined ? undefined : props.ariaPressed ? "true" : "false"
       }

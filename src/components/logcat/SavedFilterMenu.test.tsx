@@ -84,4 +84,16 @@ describe("SavedFilterMenu", () => {
     fireEvent.click(renameButton);
     expect(onApplyQuery).not.toHaveBeenCalled();
   });
+
+  it("labels saved-filter rename commit and cancel actions", () => {
+    renderSavedFilterMenu({
+      savedFilters: [{ id: "filter-1", name: "Errors", query: "level:error", createdAt: 1 }],
+    });
+
+    fireEvent.click(screen.getByTitle("Filter presets"));
+    fireEvent.click(screen.getByTitle("Rename"));
+
+    expect(screen.getByRole("button", { name: "Commit rename" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel rename" })).not.toBeNull();
+  });
 });

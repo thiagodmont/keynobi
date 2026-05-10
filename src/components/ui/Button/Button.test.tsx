@@ -65,4 +65,10 @@ describe("Button", () => {
 
     expect(container.querySelector("button")!.getAttribute("aria-pressed")).toBe("false");
   });
+
+  it("passes aria-label through to the button element", () => {
+    const { container } = render(() => <Button ariaLabel="Commit rename">✓</Button>);
+
+    expect(container.querySelector("button")!.getAttribute("aria-label")).toBe("Commit rename");
+  });
 });
