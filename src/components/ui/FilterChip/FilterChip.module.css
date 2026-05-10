@@ -30,7 +30,7 @@
 
 .soft {
   background: rgba(var(--accent-rgb, 59, 130, 246), 0.15);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .muted.active {

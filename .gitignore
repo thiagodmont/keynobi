@@ -1,6 +1,7 @@
 node_modules/
 target/
 dist/
+storybook-static/
 .DS_Store
 *.log
 playwright-report/

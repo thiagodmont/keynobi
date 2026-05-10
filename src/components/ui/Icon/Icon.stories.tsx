@@ -1,0 +1,43 @@
+import { For } from "solid-js";
+import type { Meta, StoryObj } from "storybook-solidjs-vite";
+import { Icon } from "./Icon";
+import "../design-system.stories.css";
+
+const meta = {
+  title: "Design System/Components/Icon",
+  component: Icon,
+  tags: ["autodocs"],
+} satisfies Meta<typeof Icon>;
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+const icons = [
+  "folder",
+  "terminal",
+  "play",
+  "stop",
+  "refresh",
+  "search",
+  "gear",
+  "warning",
+  "error-circle",
+  "copy",
+  "trash",
+  "device",
+];
+
+export const Library: Story = {
+  render: () => (
+    <div class="dsGrid">
+      <For each={icons}>
+        {(name) => (
+          <div class="dsStack">
+            <Icon name={name} size={18} />
+            <span class="dsCode">{name}</span>
+          </div>
+        )}
+      </For>
+    </div>
+  ),
+};

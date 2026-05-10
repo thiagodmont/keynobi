@@ -9,15 +9,16 @@ const isCI = !!process.env.CI;
 delete process.env.NO_COLOR;
 
 export default defineConfig({
-  testDir: "./e2e",
-  testIgnore: "**/storybook/**",
+  testDir: "./e2e/storybook",
+  timeout: 10_000,
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
-  workers: isCI ? 1 : undefined,
+  workers: 1,
   reporter: isCI ? [["github"], ["list"], ["html", { open: "never" }]] : "list",
+  outputDir: "test-results/storybook",
   use: {
-    baseURL: "http://localhost:1421",
+    baseURL: "http://127.0.0.1:6106",
     trace: "on-first-retry",
   },
   projects: [
@@ -27,9 +28,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "npm run dev:web",
-    url: "http://localhost:1421",
-    reuseExistingServer: !isCI,
+    command: "npm run storybook:build && npm run storybook:preview",
+    url: "http://127.0.0.1:6106",
+    reuseExistingServer: false,
     timeout: 120_000,
   },
 });

@@ -32,12 +32,13 @@
 ## Testing Instructions
 
 ### Frontend
-This command should be run after the development is completed to guarantee that the development is working properly. 
+This command should be run after the development is completed to guarantee that the development is working properly. All the should succeed. 
 ```bash
 npm run test              # run all frontend tests once
 npm run test:ui           # Vitest browser UI
 npm run lint              # Check lint rules
 npm run typescript:check  # Check typescript 
+npm run test:e2e          # Run end-to-end tests
 ```
 
 **Design system / UI refactor PRs:** run `npm test && npm run typescript:check && npm run lint` before merge (see `docs/CODE_PATTERN.md` §Testing Patterns — verification gate).

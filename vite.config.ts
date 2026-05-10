@@ -18,7 +18,9 @@ const host = process.env.TAURI_DEV_HOST;
 
 // @ts-expect-error process is a nodejs global
 const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN?.trim();
-const sentryUploadEnabled = Boolean(sentryAuthToken);
+// @ts-expect-error process is a nodejs global
+const isStorybook = process.env.STORYBOOK === "true";
+const sentryUploadEnabled = Boolean(sentryAuthToken) && !isStorybook;
 // @ts-expect-error process is a nodejs global
 const sentryOrg = process.env.SENTRY_ORG ?? "keynobi";
 // @ts-expect-error process is a nodejs global

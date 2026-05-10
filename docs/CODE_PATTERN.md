@@ -103,6 +103,18 @@ Commit regenerated files under `src/bindings/`.
 
 ## Frontend Patterns
 
+### Design System Documentation
+
+Storybook is the design-system workshop and living documentation for
+`src/components/ui`.
+
+- Configure Storybook only under `.storybook/`.
+- Keep stories as `*.stories.tsx` files and never import them from production code.
+- Import app theme/global CSS into Storybook, not Storybook code into the app.
+- Prefer stories that show real variants, density, disabled/loading/error states, and accessibility semantics.
+- Storybook smoke/a11y coverage lives under `e2e/storybook` and runs through `playwright.storybook.config.ts`.
+- See `docs/DESIGN_SYSTEM.md` for the component ownership map, adoption checklist, accessibility rules, story coverage standard, and feature adoption order.
+
 ### Stores
 
 Each logical domain has a `{domain}.store.ts` file that exports:
@@ -221,7 +233,7 @@ Do not use bare `registerKeybinding()` for app commands unless the shortcut is i
 For design-system work, shared panel styling, broad UI refactors, or token/color changes, run:
 
 ```bash
-npm test && npm run typescript:check && npm run lint
+npm test && npm run test:ds
 ```
 
 For Rust changes, match the relevant CI commands in `CONTRIBUTING.md`.

@@ -11,12 +11,13 @@
   /* Text */
   --text-primary: #cccccc;
   --text-secondary: #ababab;
-  --text-muted: #6e7681;
+  --text-muted: #8a949e;
   --text-disabled: #5a5a5a;
 
   /* Accent */
   --accent: #007acc;
   --accent-hover: #1f8ad2;
+  --accent-text: #4aa3df;
   --accent-bg: rgba(0, 122, 204, 0.15);
   --accent-fg: #fff;
 
@@ -25,7 +26,7 @@
   --border-focus: #007acc;
 
   /* Semantic colors */
-  --error: #f14c4c;
+  --error: #ff7777;
   --warning: #cca700;
   --success: #4caf50;
   --info: #75beff;
