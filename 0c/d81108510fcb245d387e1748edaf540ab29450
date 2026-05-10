@@ -1,0 +1,63 @@
+src/components/logcat/LogcatRows.module.css
+  s_8ce10aa3af3fff::t_5bc19ea5db472f 1-121,125-145
+  s_8ce10aa3af3fff::t_c40f04246d5112 122-124
+src/components/logcat/LogcatJsonDetailPanel.module.css
+  s_8ce10aa3af3fff::t_f45ac8e10e59bf 1-12
+src/components/logcat/SavedFilterMenuParts.module.css
+  s_8ce10aa3af3fff::t_35ca31c12b0fb7 1-16,28-36
+  s_8ce10aa3af3fff::t_6a7ae66f870bac 17-27
+src/components/logcat/PackageDropdown.tsx
+  s_8ce10aa3af3fff::t_615911ef825e4a 14,23,116-117,123,140,144,204,208,213
+src/components/logcat/SavedFilterMenu.test.tsx
+  s_8ce10aa3af3fff::t_03098c23f26281 6-13
+  s_8ce10aa3af3fff::t_1a397d20f976b0 71-86
+  s_8ce10aa3af3fff::t_fbee6321153f36 62
+  s_8ce10aa3af3fff::t_2d66bd95fc9e86 3,16-19,58-61,63-68
+  s_8ce10aa3af3fff::t_4cc16f441a3088 69
+src/components/logcat/SavedFilterMenu.tsx
+  s_8ce10aa3af3fff::t_066461864e6e2f 106-128,135-136
+  s_8ce10aa3af3fff::t_cfb6d32dd77326 2,80
+  s_8ce10aa3af3fff::t_825f2718e7b1ef 7,10
+src/components/logcat/SavedFilterMenuParts.tsx
+  s_8ce10aa3af3fff::t_c40f04246d5112 2-9
+  s_8ce10aa3af3fff::t_625261a51ecd13 29-30,33,39-44
+  s_8ce10aa3af3fff::t_37cd235c031dfa 10,46,59,63-68,74-75,103,114,125
+  s_8ce10aa3af3fff::t_03098c23f26281 49-51
+src/components/logcat/LogcatToolbar.tsx
+  s_8ce10aa3af3fff::t_57d8f0a4fa77e7 3,60-62,73,89,96,98,107,116,133-134,151,164,167,169
+src/components/logcat/QueryBarParts.tsx
+  s_8ce10aa3af3fff::t_06172eb08950dc 2,163
+src/components/logcat/LogcatFilterControls.tsx
+  s_8ce10aa3af3fff::t_60b6062a84afe3 7,176,328,366,375,449,452
+src/components/logcat/LogcatRows.test.tsx
+  s_8ce10aa3af3fff::t_f8d2d4f41dc34e 5,25,42-44
+src/components/logcat/LogcatJsonDetailPanel.tsx
+  s_8ce10aa3af3fff::t_3fb86ee0d5e47c 2,4,46,56,61
+src/components/logcat/LogcatRows.tsx
+  s_8ce10aa3af3fff::t_c40f04246d5112 71,191
+  s_8ce10aa3af3fff::t_29d577cade3e7e 3,9,61,65-67,69-70,73-74,109,116-122,124,167,194,203,208,230
+src/components/logcat/PackageDropdown.module.css
+  s_8ce10aa3af3fff::t_6134dc63111529 1-49
+src/components/logcat/LogEntryDetailPanel.tsx
+  s_8ce10aa3af3fff::t_75575cbc1125d7 5,147,156
+src/components/logcat/LogcatToolbar.module.css
+  s_8ce10aa3af3fff::t_2f2760a7a26c51 1-22
+src/components/logcat/QueryBar.tsx
+  s_8ce10aa3af3fff::t_a30b32545d81c1 58,398-400,586
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "0cd81108510fcb245d387e1748edaf540ab29450",
+  "prompts": {},
+  "sessions": {
+    "s_8ce10aa3af3fff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e12c7-3d30-7533-be0b-bbdbd1834d64",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
