@@ -1,0 +1,23 @@
+html,
+body,
+#storybook-root {
+  width: 100%;
+  min-height: 100%;
+  height: auto;
+  overflow: auto;
+}
+
+body.sb-show-main {
+  background: var(--bg-primary);
+}
+
+.storybook-keynobi-surface {
+  min-height: 100vh;
+  padding: 24px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.docs-story {
+  background: var(--bg-primary);
+}
