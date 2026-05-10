@@ -37,10 +37,11 @@ Use this map before adding local markup or styles in a feature folder.
 |------|-----|-------|
 | Primary or secondary command | `Button` | Keep `variant="primary"` for the main action in a surface. |
 | Compact labeled toolbar action | `Button variant="outline" size="xs"` | Preferred for dense panels such as Logcat. |
+| Icon inside a labeled action | `Button` + `Icon` | Preferred when a dense action still has visible text, such as Logcat Start, Restart, Copy, and Export. |
 | Icon-only toolbar action | `IconButton` + `Icon` | Provide a meaningful `title`; add `Tooltip` when the icon is not obvious. |
 | Toolbar or filter band | `ControlStrip` | Use `wrap` when filters may overflow. |
 | Toggle filter pill | `FilterChip` | Preserve explicit pressed state. |
-| Search or inline edit | `Input size="xs" | "sm"` | Use `mono` for queries, package names, paths, and tags. |
+| Search or inline edit | `Input size="xs" \| "sm"` | Use `mono` for queries, package names, paths, and tags. |
 | Longer text input | `Textarea` | Use `mono` for logs, command output, or code-like text. |
 | Settings field | `FormField` + form control | Owns label, description, required marker, and error text. |
 | Binary setting | `Toggle` or `Checkbox` | Use `Toggle` for on/off modes, `Checkbox` for inclusion choices. |
@@ -92,6 +93,12 @@ Use design-system adoption to reduce real duplication, not to churn stable code.
 
 Stop a refactor when the remaining local code is genuinely domain-specific or
 when extracting it would make the behavior harder to understand.
+
+For dense feature surfaces such as Logcat, use DS primitives for control
+semantics and keep domain-specific row/chip layout in local CSS Modules. Static
+styling should live in the feature CSS module; inline styles are reserved for
+runtime-derived values such as log level color, row selection background, and
+viewport-constrained popover coordinates.
 
 ## Story Guidelines
 

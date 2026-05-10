@@ -117,3 +117,52 @@ export const ToolbarsAndFilters: Story = {
     );
   },
 };
+
+export const DenseLogcatControls: Story = {
+  render: () => {
+    const [paused, setPaused] = createSignal(false);
+    const [lifecycle, setLifecycle] = createSignal(true);
+
+    return (
+      <div class="dsPage">
+        <section class="dsSection">
+          <h2 class="dsSectionTitle">Dense Logcat Controls</h2>
+          <ControlStrip wrap>
+            <Button variant="outline" size="xs" tone="success">
+              <Icon name="play" size={13} /> Start
+            </Button>
+            <Button
+              variant="outline"
+              size="xs"
+              tone={paused() ? "warning" : "muted"}
+              ariaPressed={paused()}
+              onClick={() => setPaused(!paused())}
+            >
+              <Icon name={paused() ? "play" : "pause"} size={12} />
+              {paused() ? "Resume" : "Pause"}
+            </Button>
+            <Button variant="outline" size="xs" tone="muted">
+              <Icon name="refresh" size={12} /> Restart
+            </Button>
+            <Button variant="outline" size="xs" tone="danger">
+              <Icon name="bolt" size={12} /> 3
+            </Button>
+            <Button variant="outline" size="xs" tone="accent">
+              <Icon name="copy" size={12} /> 2 rows
+            </Button>
+            <FilterChip
+              active={lifecycle()}
+              ariaPressed={lifecycle()}
+              onClick={() => setLifecycle(!lifecycle())}
+            >
+              Lifecycle
+            </FilterChip>
+            <Button variant="outline" size="xs" tone="muted">
+              <Icon name="download" size={12} /> Export
+            </Button>
+          </ControlStrip>
+        </section>
+      </div>
+    );
+  },
+};
