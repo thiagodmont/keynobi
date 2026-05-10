@@ -1,0 +1,41 @@
+src/lib/logcat-stack-frame.test.ts
+  s_8ce10aa3af3fff::t_905c9ea7a61a65 1-88
+src/lib/logcat-query-variables.ts
+  s_8ce10aa3af3fff::t_2fcfa57bee6d62 1-52
+src/lib/logcat-mine-package.ts
+  s_8ce10aa3af3fff::t_2fcfa57bee6d62 1-10
+src/lib/logcat-query-types.ts
+  s_8ce10aa3af3fff::t_2fcfa57bee6d62 1-17
+src/lib/logcat-query.ts
+  s_8ce10aa3af3fff::t_af6514d3fc3555 26-46,438
+src/lib/logcat-frontend-only-tokens.test.ts
+  s_8ce10aa3af3fff::t_905c9ea7a61a65 1-204
+src/services/project.service.ts
+  s_8ce10aa3af3fff::t_0850e9a0595c05 40
+src/lib/logcat-query-variables.test.ts
+  s_8ce10aa3af3fff::t_905c9ea7a61a65 1-142
+src/lib/logcat-filter-spec.ts
+  s_8ce10aa3af3fff::t_0850e9a0595c05 2-4
+src/lib/logcat-stack-frame.ts
+  s_8ce10aa3af3fff::t_2fcfa57bee6d62 1-76
+src/lib/logcat-query.test.ts
+  s_8ce10aa3af3fff::t_46296ec438b8ef 42
+src/lib/logcat-frontend-only-tokens.ts
+  s_8ce10aa3af3fff::t_2fcfa57bee6d62 1-90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "ee83ea351786fd6eacf04b1335c043cfcd5370d4",
+  "prompts": {},
+  "sessions": {
+    "s_8ce10aa3af3fff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e12c7-3d30-7533-be0b-bbdbd1834d64",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
