@@ -1,0 +1,117 @@
+src/components/ui/ControlStrip/index.ts
+  s_8ce10aa3af3fff::t_fa4504add24a7d 1-2
+src/components/ui/EmptyState/EmptyState.tsx
+  s_8ce10aa3af3fff::t_4d4fa010bec215 10,15-16,18-20,22
+src/components/ui/MenuList/MenuList.tsx
+  s_8ce10aa3af3fff::t_151eb3a6884038 22-24,51-53
+  s_8ce10aa3af3fff::t_3dd3c598d96c5a 1-7,10-11,13-20,25-33,46-48,54,61-91
+  s_8ce10aa3af3fff::t_e489556a2a86c2 8,21
+  s_8ce10aa3af3fff::t_b3a9d5fb41550c 9,34-44,49
+  s_8ce10aa3af3fff::t_80c82a5cd07848 50,55-60
+  s_8ce10aa3af3fff::t_bc68d21b2503ee 12,45
+src/components/ui/Popover/Popover.test.tsx
+  s_8ce10aa3af3fff::t_57bb2fa8d2a23e 1-38
+src/components/ui/MetadataGrid/index.ts
+  s_8ce10aa3af3fff::t_38a15e000c0276 1-2
+src/components/ui/EmptyState/EmptyState.module.css
+  s_8ce10aa3af3fff::t_0a3916482d5a72 12-16,22-25,32-35,43-45
+src/components/ui/Button/index.ts
+  s_8ce10aa3af3fff::t_1a5389eb398393 2
+src/components/ui/Input/Input.module.css
+  s_8ce10aa3af3fff::t_4843b391b9e9da 12-23,53-58
+src/components/ui/Input/Input.test.tsx
+  s_8ce10aa3af3fff::t_93a094b0ae456a 64-76
+src/components/ui/MetadataGrid/MetadataGrid.test.tsx
+  s_8ce10aa3af3fff::t_d052db592c5727 1-28
+src/components/ui/Button/Button.module.css
+  s_8ce10aa3af3fff::t_bbc2fdaeea6b06 63-72,74-80,85-103
+src/components/ui/FilterChip/FilterChip.tsx
+  s_8ce10aa3af3fff::t_ab1e635891523f 20,26
+  s_8ce10aa3af3fff::t_5afe80e73d58e6 1-19,22-25,27-42
+  s_8ce10aa3af3fff::t_b6a5e261ea9f2c 21
+src/components/ui/Button/Button.tsx
+  s_8ce10aa3af3fff::t_212e67f4fda37b 5-7,12,16-18,25-35,42-43,46-48
+src/components/ui/MenuList/MenuList.test.tsx
+  s_8ce10aa3af3fff::t_e7c3902a620358 3,10,25
+  s_8ce10aa3af3fff::t_f69126f5e17609 1-2,4-9,11-24,26-32
+src/components/ui/ControlStrip/ControlStrip.test.tsx
+  s_8ce10aa3af3fff::t_d2756fc1d557cf 1-16
+src/components/ui/Popover/Popover.module.css
+  s_8ce10aa3af3fff::t_5eff420d873550 1-30
+src/components/ui/Separator/Separator.tsx
+  s_8ce10aa3af3fff::t_963a7099a509e2 8,22-25
+src/components/ui/MenuList/MenuList.module.css
+  s_8ce10aa3af3fff::t_67ba1dc6710996 1-64
+src/components/ui/Badge/Badge.module.css
+  s_8ce10aa3af3fff::t_b2d491c0f522e5 2,14-31
+src/components/ui/Badge/index.ts
+  s_8ce10aa3af3fff::t_f00ab88a5dbb20 2
+src/components/ui/DockedPanel/DockedPanel.module.css
+  s_8ce10aa3af3fff::t_ede681a08cdedc 1-62
+src/components/ui/MetadataGrid/MetadataGrid.module.css
+  s_8ce10aa3af3fff::t_5300de7488b6fc 1-53
+src/components/ui/Badge/Badge.test.tsx
+  s_8ce10aa3af3fff::t_a6799dcea021a4 1-2,28-45
+src/components/ui/EmptyState/EmptyState.test.tsx
+  s_8ce10aa3af3fff::t_7c949e69b22efb 39-40,42-43
+src/components/ui/DockedPanel/index.ts
+  s_8ce10aa3af3fff::t_978f05ca384b85 1-2
+src/components/ui/MetadataGrid/MetadataGrid.tsx
+  s_8ce10aa3af3fff::t_85ab15b5f47272 1-55
+src/components/ui/Input/Input.tsx
+  s_8ce10aa3af3fff::t_3c3b711528e1b0 6,13-14,17-18,21,24-28,31-34,45-47,54,60,64,66-67,71-77
+src/components/ui/FilterChip/FilterChip.module.css
+  s_8ce10aa3af3fff::t_325e7b8d8ca755 1-40
+src/components/ui/DockedPanel/DockedPanel.test.tsx
+  s_8ce10aa3af3fff::t_feb43b3a842964 1-18
+src/components/ui/DockedPanel/DockedPanel.tsx
+  s_8ce10aa3af3fff::t_50873af64e9d48 1-24,26-44
+src/components/ui/ControlStrip/ControlStrip.module.css
+  s_8ce10aa3af3fff::t_7ecd70fc8c59ef 1-22
+src/components/ui/index.ts
+  s_8ce10aa3af3fff::t_8b29c7050a0afb 50,52
+  s_8ce10aa3af3fff::t_1d6360bd949b16 19-24
+  s_8ce10aa3af3fff::t_cea2adee3b29d0 35-40
+  s_8ce10aa3af3fff::t_9d1b720bc34d75 6-12
+  s_8ce10aa3af3fff::t_95bfd198191c8d 33-34
+  s_8ce10aa3af3fff::t_8e97702be1f71f 47-49,51,53-55
+  s_8ce10aa3af3fff::t_95b56ce64aeb5a 13
+  s_8ce10aa3af3fff::t_a63c38f73a37e7 27
+  s_8ce10aa3af3fff::t_b7a84def55d6de 46
+src/components/ui/Input/index.ts
+  s_8ce10aa3af3fff::t_e6e71b1e446063 2
+src/components/ui/Popover/index.ts
+  s_8ce10aa3af3fff::t_8ca017a9e00a0a 1-2
+src/components/ui/ControlStrip/ControlStrip.tsx
+  s_8ce10aa3af3fff::t_6e5c1a28ffd748 1-32
+src/components/ui/Badge/Badge.tsx
+  s_8ce10aa3af3fff::t_ce80e5f7e628dc 22,30,43-51,62
+  s_8ce10aa3af3fff::t_3df8fd4dbc3dac 5,9,12-13,17,23-29,31-35,40-42,60-61
+  s_8ce10aa3af3fff::t_1c9dadfb6acf0b 14,16,52-59
+src/components/ui/FilterChip/index.ts
+  s_8ce10aa3af3fff::t_d19cad8235e260 1-2
+src/components/ui/MenuList/index.ts
+  s_8ce10aa3af3fff::t_79ad8f84892ac5 1-2
+src/components/ui/FilterChip/FilterChip.test.tsx
+  s_8ce10aa3af3fff::t_3cad800bb8024f 1-28
+src/components/ui/Button/Button.test.tsx
+  s_8ce10aa3af3fff::t_e3a2d64584c8e1 49-61
+src/components/ui/Popover/Popover.tsx
+  s_8ce10aa3af3fff::t_1a1d3bcf1dedba 1-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "4a551960c0168f4873ab9cb3a44f68737a03c6be",
+  "prompts": {},
+  "sessions": {
+    "s_8ce10aa3af3fff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e12c7-3d30-7533-be0b-bbdbd1834d64",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
