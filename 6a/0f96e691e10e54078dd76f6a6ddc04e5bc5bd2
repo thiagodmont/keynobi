@@ -1,0 +1,50 @@
+src/components/logcat/SavedFilterMenu.tsx
+  s_eaced28605cfd4::t_7e89627dfefea2 2,27,29-30,49,151,155,168,222
+src/components/logcat/LogcatPanel.tsx
+  s_eaced28605cfd4::t_450e2a209f77f6 415,418-425,440,461,473,495
+  s_eaced28605cfd4::t_25d56ff0966e47 513
+  s_eaced28605cfd4::t_88ec6b657beac7 231,235-236
+  s_eaced28605cfd4::t_5d4f33183ebd8f 38,46,108,135-140,147-148,230,232-233,906,910
+  s_7be1d5133909e2::t_429a3e46454c46 109-110,112,122,159-163,234,510,628,916
+  s_eaced28605cfd4::t_4cdfdf1fdf94d0 351
+  s_eaced28605cfd4::t_31971c8d484e71 37,121,149,155-158,164-165,509,911-912
+  s_eaced28605cfd4::t_8661801bea1ee8 905,909,917,919-920
+  s_eaced28605cfd4::t_f479aace42ca11 35-36
+  s_eaced28605cfd4::t_b547b268b5577b 918
+  ai_agent 141-144
+  s_eaced28605cfd4::t_da31374602e2dd 105-107,123,166-180
+  s_7be1d5133909e2::t_a0a1f037579f04 128-134,145-146,150-154
+src/components/logcat/LogcatFilterControls.tsx
+  s_eaced28605cfd4::t_9da8a99510d15e 110-111
+  s_eaced28605cfd4::t_5a3ab6820ba5a6 14,45-46,118-123,250-269,277,350-572,574-587
+  s_eaced28605cfd4::t_e70e10e2b22e84 61-65
+  s_eaced28605cfd4::t_8082e706fa5f4e 2,5-10,18,53-60,66-82,99-100,113-117,143-144,146-148,573,588-641,643-688
+  s_eaced28605cfd4::t_2cc3aa15f40d74 1,11-13,15-16,40,44,127-131,270-276,278-349
+  s_7be1d5133909e2::t_82229eb86959f8 50,145
+  s_eaced28605cfd4::t_c9c6c1bf14806e 39,43
+  s_eaced28605cfd4::t_57ef9c2d4e87b5 642
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "6a0f96e691e10e54078dd76f6a6ddc04e5bc5bd2",
+  "prompts": {},
+  "sessions": {
+    "s_7be1d5133909e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e128c-e39c-7632-9b29-c684b41f5629",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    },
+    "s_eaced28605cfd4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e120b-d02a-7d21-9e1e-a9b227208b6b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
