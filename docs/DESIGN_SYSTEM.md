@@ -162,6 +162,8 @@ npm run test:ds
 smoke/a11y checks. The Storybook Playwright suite uses the static Storybook
 build through `playwright.storybook.config.ts` so it does not depend on the
 production Tauri app or app E2E server.
+Serve the static build directly from `storybook-static`; do not use the app
+Vite preview server for Storybook tests.
 
 CI runs the same command in the `Design System` workflow job.
 
