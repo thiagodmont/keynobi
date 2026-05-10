@@ -10,11 +10,12 @@ delete process.env.NO_COLOR;
 
 export default defineConfig({
   testDir: "./e2e/storybook",
+  timeout: 10_000,
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
-  workers: isCI ? 1 : undefined,
-  reporter: "html",
+  workers: 1,
+  reporter: isCI ? [["github"], ["list"], ["html", { open: "never" }]] : "list",
   outputDir: "test-results/storybook",
   use: {
     baseURL: "http://127.0.0.1:6106",
