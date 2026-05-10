@@ -1,0 +1,33 @@
+src/components/ui/Badge/Badge.module.css
+  s_8ce10aa3af3fff::t_e7dc6d2b27001c 75
+src/components/ui/MenuList/MenuList.module.css
+  s_8ce10aa3af3fff::t_e7dc6d2b27001c 21
+src/components/ui/Input/Input.tsx
+  s_8ce10aa3af3fff::t_e7dc6d2b27001c 35,66
+src/components/ui/Input/Input.test.tsx
+  s_8ce10aa3af3fff::t_94c748a84e1e76 33-37
+src/components/ui/Button/Button.module.css
+  s_8ce10aa3af3fff::t_e7dc6d2b27001c 91
+src/components/ui/FilterChip/FilterChip.module.css
+  s_8ce10aa3af3fff::t_e7dc6d2b27001c 33
+src/components/ui/MetadataGrid/MetadataGrid.module.css
+  s_8ce10aa3af3fff::t_e7dc6d2b27001c 48
+src/styles/theme.css
+  s_8ce10aa3af3fff::t_e7dc6d2b27001c 14,20,29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "fa8105e387f2ab893a07c2e491087bd413975738",
+  "prompts": {},
+  "sessions": {
+    "s_8ce10aa3af3fff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e12c7-3d30-7533-be0b-bbdbd1834d64",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
