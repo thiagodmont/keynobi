@@ -1,0 +1,27 @@
+src/components/ui/Icon/Icon.tsx
+  s_8ce10aa3af3fff::t_7f848006fb6353 25-26,33-38,40-41
+  s_8ce10aa3af3fff::t_c40f04246d5112 39
+src/components/ui/DesignSystemActions.stories.tsx
+  s_8ce10aa3af3fff::t_ca1d40de47374d 120-168
+src/components/ui/Icon/Icon.stories.tsx
+  s_8ce10aa3af3fff::t_37d64738280599 19,22-23,28-29,32
+docs/DESIGN_SYSTEM.md
+  s_8ce10aa3af3fff::t_7c735b3927077b 97-101
+  s_8ce10aa3af3fff::t_e25c70a9f8e149 40,44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "86b2efdc803f4fba2f322258b52f0b26506b7955",
+  "prompts": {},
+  "sessions": {
+    "s_8ce10aa3af3fff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e12c7-3d30-7533-be0b-bbdbd1834d64",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
