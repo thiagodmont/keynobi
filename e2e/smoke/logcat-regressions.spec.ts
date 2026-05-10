@@ -165,6 +165,7 @@ test("logcat query connector badges toggle only the clicked condition", async ({
   await expect(page.getByText("Alpha beta row")).toBeVisible();
   await expect(page.getByText("Beta only row")).toBeVisible();
   await expect(page.getByText("Gamma only row")).toBeVisible();
+  await expect(page.getByText(/Tab\/Enter select/)).not.toBeVisible();
 
   await page.getByRole("button", { name: "Change OR to AND" }).first().focus();
   await page.keyboard.press("Enter");
@@ -173,6 +174,231 @@ test("logcat query connector badges toggle only the clicked condition", async ({
   await expect(page.getByText("Gamma only row")).toBeVisible();
   await expect(page.getByText("Alpha only row")).not.toBeVisible();
   await expect(page.getByText("Beta only row")).not.toBeVisible();
+  await expect(page.getByText(/Tab\/Enter select/)).not.toBeVisible();
+});
+
+test("logcat filter pill can be temporarily disabled and re-enabled", async ({ page }) => {
+  await openLogcatWithEmptyEntries(page);
+  await pushLogcatEntries(page, [
+    { id: 120, tag: "AlphaOnly", message: "Alpha only disable row" },
+    { id: 121, tag: "AlphaBeta", message: "Alpha beta disable row" },
+    { id: 122, tag: "BetaOnly", message: "Beta only disable row" },
+  ]);
+
+  await expect(page.getByTitle(ROW_TITLE)).toHaveCount(3, { timeout: 5_000 });
+
+  const filterInput = page.locator('input[type="text"][placeholder*="Filter"]').first();
+  await filterInput.fill("tag:Alpha tag:Beta ");
+
+  await expect(page.getByText("Alpha beta disable row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Alpha only disable row")).not.toBeVisible();
+  await expect(page.getByText("Beta only disable row")).not.toBeVisible();
+  await expect(page.getByText("tag:Beta")).toBeVisible();
+
+  await page.getByRole("button", { name: "Disable filter tag:Beta" }).click();
+
+  await expect(page.getByText("Alpha only disable row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Alpha beta disable row")).toBeVisible();
+  await expect(page.getByText("Beta only disable row")).not.toBeVisible();
+  await expect(page.getByText("tag:Beta")).toBeVisible();
+
+  await page.getByRole("button", { name: "Re-enable filter tag:Beta" }).click();
+
+  await expect(page.getByText("Alpha beta disable row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Alpha only disable row")).not.toBeVisible();
+  await expect(page.getByText("Beta only disable row")).not.toBeVisible();
+});
+
+test("logcat active filter can be saved from the query row and reapplied", async ({ page }) => {
+  await openLogcatWithEmptyEntries(page);
+  await pushLogcatEntries(page, [
+    { id: 130, tag: "SaveAlpha", message: "Saved alpha row" },
+    { id: 131, tag: "SaveBeta", message: "Saved beta row" },
+  ]);
+
+  await expect(page.getByTitle(ROW_TITLE)).toHaveCount(2, { timeout: 5_000 });
+
+  const filterInput = page.locator('input[type="text"][placeholder*="Filter"]').first();
+  await filterInput.fill("tag:SaveAlpha ");
+
+  await expect(page.getByText("Saved alpha row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Saved beta row")).not.toBeVisible();
+
+  await page.getByTitle("Save current filter").click();
+  await page.getByPlaceholder("Filter name…").fill("Saved Alpha E2E");
+  await page.getByRole("button", { name: "Save" }).last().click();
+
+  await page.getByTitle("Clear all filters").first().click();
+  await expect(page.getByText("Saved alpha row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Saved beta row")).toBeVisible();
+
+  await page.getByTitle("Filter presets").click();
+  await page.getByTestId("logcat-filter-quick-row").getByText("Saved Alpha E2E").click();
+
+  await expect(page.getByText("Saved alpha row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Saved beta row")).not.toBeVisible();
+});
+
+test("logcat saving with a disabled pill stores only the effective filter", async ({ page }) => {
+  await openLogcatWithEmptyEntries(page);
+  await pushLogcatEntries(page, [
+    { id: 140, tag: "SaveAlpha", message: "Saved disabled alpha row" },
+    { id: 141, tag: "SaveAlphaBeta", message: "Saved disabled alpha beta row" },
+    { id: 142, tag: "SaveBeta", message: "Saved disabled beta row" },
+  ]);
+
+  await expect(page.getByTitle(ROW_TITLE)).toHaveCount(3, { timeout: 5_000 });
+
+  const filterInput = page.locator('input[type="text"][placeholder*="Filter"]').first();
+  await filterInput.fill("tag:SaveAlpha tag:Beta ");
+
+  await expect(page.getByText("Saved disabled alpha beta row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Saved disabled alpha row")).not.toBeVisible();
+  await expect(page.getByText("Saved disabled beta row")).not.toBeVisible();
+
+  await page.getByRole("button", { name: "Disable filter tag:Beta" }).click();
+  await expect(page.getByText("Saved disabled alpha row")).toBeVisible({ timeout: 5_000 });
+
+  await page.getByTitle("Save current filter").click();
+  await page.getByPlaceholder("Filter name…").fill("Effective Alpha E2E");
+  await page.getByRole("button", { name: "Save" }).last().click();
+
+  await page.getByTitle("Clear all filters").first().click();
+  await page.getByTitle("Filter presets").click();
+  await page.getByTestId("logcat-filter-quick-row").getByText("Effective Alpha E2E").click();
+
+  await expect(page.getByText("Saved disabled alpha row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Saved disabled alpha beta row")).toBeVisible();
+  await expect(page.getByText("Saved disabled beta row")).not.toBeVisible();
+});
+
+test("logcat filter variables resolve from the variable row", async ({ page }) => {
+  await openLogcatWithEmptyEntries(page);
+  await pushLogcatEntries(page, [
+    { id: 150, tag: "VariableAction", message: "action_checkout_done" },
+    { id: 151, tag: "VariableAction", message: "action_login_done" },
+  ]);
+
+  await expect(page.getByTitle(ROW_TITLE)).toHaveCount(2, { timeout: 5_000 });
+
+  const filterInput = page.locator('input[type="text"][placeholder*="Filter"]').first();
+  await filterInput.fill("message:action_${action_name}_done ");
+
+  await expect(page.getByTestId("logcat-filter-variable-row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("action_checkout_done")).not.toBeVisible();
+  await expect(page.getByText("action_login_done")).not.toBeVisible();
+
+  await page.getByTitle("Variable action_name").fill("checkout");
+
+  await expect(page.getByText("action_checkout_done")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("action_login_done")).not.toBeVisible();
+
+  await page.getByTitle("Save current filter").click();
+  await page.getByPlaceholder("Filter name…").fill("Variable Action E2E");
+  await page.getByRole("button", { name: "Save" }).last().click();
+
+  await page.getByTitle("Clear all filters").first().click();
+  await expect(page.getByText("action_checkout_done")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("action_login_done")).toBeVisible();
+
+  await page.getByTitle("Filter presets").click();
+  await page.getByTestId("logcat-filter-quick-row").getByText("Variable Action E2E").click();
+
+  await expect(page.getByTestId("logcat-filter-variable-row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("action_checkout_done")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("action_login_done")).not.toBeVisible();
+
+  await page.getByTitle("Variable action_name").fill("login");
+
+  await expect(page.getByText("action_login_done")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("action_checkout_done")).not.toBeVisible();
+});
+
+test("logcat variables can be created before they are used in a filter", async ({ page }) => {
+  await openLogcatWithEmptyEntries(page);
+  await pushLogcatEntries(page, [
+    { id: 155, tag: "PrecreatedVariable", message: "action_checkout" },
+    { id: 156, tag: "PrecreatedVariable", message: "action_login" },
+  ]);
+
+  await expect(page.getByTitle(ROW_TITLE)).toHaveCount(2, { timeout: 5_000 });
+
+  await page.getByTitle("Manage filter variables").click();
+  await page.getByPlaceholder("variable_name").fill("action_name");
+  await page.getByPlaceholder("Initial value").fill("checkout");
+  await page.getByRole("button", { name: "Add variable" }).click();
+  await expect(
+    page.getByTestId("logcat-filter-variable-row").getByTitle("Variable action_name")
+  ).toHaveValue("checkout");
+
+  await page.mouse.click(5, 5);
+  await expect(page.getByTestId("logcat-variable-manager")).not.toBeVisible();
+  await page.locator('input[type="text"][placeholder*="Filter"]').first().fill("message:action_");
+  await page.getByTitle("Manage filter variables").click();
+  await page.getByTitle("Insert variable action_name").click();
+
+  await expect(page.getByText("action_checkout")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("action_login")).not.toBeVisible();
+});
+
+test("logcat filter variables work inside quoted OR group filters", async ({ page }) => {
+  await openLogcatWithEmptyEntries(page);
+  await pushLogcatEntries(page, [
+    { id: 160, tag: "VariableAction", message: "User checkout button clicked" },
+    { id: 161, tag: "VariableAction", message: "User login button clicked" },
+    { id: 162, tag: "VariableFallback", message: "fallback variable row" },
+  ]);
+
+  await expect(page.getByTitle(ROW_TITLE)).toHaveCount(3, { timeout: 5_000 });
+
+  const filterInput = page.locator('input[type="text"][placeholder*="Filter"]').first();
+  await filterInput.fill('message:"User ${action_name} clicked" | tag:VariableFallback ');
+
+  await expect(page.getByTestId("logcat-filter-variable-row")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("fallback variable row")).toBeVisible();
+  await expect(page.getByText("User checkout button clicked")).not.toBeVisible();
+  await expect(page.getByText("User login button clicked")).not.toBeVisible();
+
+  await page.getByTitle("Variable action_name").fill("checkout button");
+
+  await expect(page.getByText("User checkout button clicked")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("fallback variable row")).toBeVisible();
+  await expect(page.getByText("User login button clicked")).not.toBeVisible();
+});
+
+test("logcat disabled variable pills stay editable and stop affecting filtering", async ({ page }) => {
+  await openLogcatWithEmptyEntries(page);
+  await pushLogcatEntries(page, [
+    { id: 170, tag: "VariableAlpha", message: "alpha_checkout_done" },
+    { id: 171, tag: "VariableAlpha", message: "alpha_login_done" },
+    { id: 172, tag: "VariableBeta", message: "beta_checkout_done" },
+  ]);
+
+  await expect(page.getByTitle(ROW_TITLE)).toHaveCount(3, { timeout: 5_000 });
+
+  const filterInput = page.locator('input[type="text"][placeholder*="Filter"]').first();
+  await filterInput.fill("tag:VariableAlpha message:${action_name}_checkout_done ");
+  await page.getByTitle("Variable action_name").fill("alpha");
+
+  await expect(page.getByText("alpha_checkout_done")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("alpha_login_done")).not.toBeVisible();
+  await expect(page.getByText("beta_checkout_done")).not.toBeVisible();
+
+  await page
+    .getByRole("button", { name: "Disable filter message:${action_name}_checkout_done" })
+    .click();
+
+  await expect(page.getByTestId("logcat-filter-variable-row")).toBeVisible();
+  await expect(page.getByText("message:${action_name}_checkout_done")).toBeVisible();
+  await expect(page.getByText("alpha_checkout_done")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("alpha_login_done")).toBeVisible();
+  await expect(page.getByText("beta_checkout_done")).not.toBeVisible();
+
+  await page.getByTitle("Variable action_name").fill("beta");
+
+  await expect(page.getByText("alpha_checkout_done")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("alpha_login_done")).toBeVisible();
+  await expect(page.getByText("beta_checkout_done")).not.toBeVisible();
 });
 
 test("logcat selected row stays frozen while the live buffer overflows", async ({ page }) => {

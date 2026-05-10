@@ -138,7 +138,8 @@ export function queryBarAndBadgeStyle(clickable = false): Record<string, string>
 
 export function queryBarPillStyle(
   tokenStyle: QueryBarTokenStyle,
-  negated: boolean
+  negated: boolean,
+  disabled = false
 ): Record<string, string> {
   return {
     display: "inline-flex",
@@ -153,12 +154,34 @@ export function queryBarPillStyle(
     padding: "1px 4px 1px 6px",
     "flex-shrink": "0",
     "white-space": "nowrap",
-    opacity: negated ? "0.65" : "1",
+    opacity: disabled ? "0.45" : negated ? "0.65" : "1",
   };
 }
 
-export function queryBarPillLabelStyle(): Record<string, string> {
-  return { cursor: "text", "user-select": "none" };
+export function queryBarPillLabelStyle(disabled = false): Record<string, string> {
+  return {
+    cursor: "text",
+    "user-select": "none",
+    "text-decoration": disabled ? "line-through" : "none",
+  };
+}
+
+export function queryBarPillToggleButtonStyle(
+  color: string,
+  disabled = false
+): Record<string, string> {
+  return {
+    background: "none",
+    border: "none",
+    color,
+    cursor: "pointer",
+    padding: "0 1px",
+    "font-size": "9px",
+    "line-height": "1",
+    opacity: disabled ? "0.9" : "0.45",
+    display: "flex",
+    "align-items": "center",
+  };
 }
 
 export function queryBarPillRemoveButtonStyle(color: string): Record<string, string> {

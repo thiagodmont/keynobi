@@ -140,9 +140,12 @@ Use the query bar for targeted searches:
 | `-tag:system` | exclude matching tag |
 | `level:warn tag:MyApp` | AND search |
 | `level:error | is:crash` | OR search |
+| `message:action_${action_name}_done` | message contains a value supplied by the `action_name` variable |
 
-Press **Enter** to commit a typed condition as a filter pill. Use **+ AND** and **+ OR** for compound filters. Saved filters are capped at 50.
+Press **Enter** to commit a typed condition as a filter pill. Use **+ AND** and **+ OR** for compound filters. When a filter is active, click **Save** beside the query bar to name and reuse it later from **Filters**. Saved filters are capped at 50.
 Click an `AND` or `OR` connector badge between filter pills to toggle only that connector while keeping the surrounding filters in place.
+Click the power icon on a filter pill to temporarily disable or re-enable that condition without removing it. Disabled filters stay editable and reset when the app session restarts.
+Use `${name}` inside filter values to create a filter variable. Click **Variables** beside the query bar to create variables before they are used, edit their values, insert them into the query, or delete them. Variables also appear in a compact row under the query bar for quick edits. Variable values are session-local and reset when the app restarts; saved filters keep the `${name}` template.
 
 ### Reading logs
 

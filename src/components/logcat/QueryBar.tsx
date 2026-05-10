@@ -29,6 +29,7 @@ import {
   parseQueryBarState,
   balanceMessageDraftQuotes,
   buildQueryBarPillGroups,
+  buildQueryBarPillRefGroups,
   applyMessageKeySpaceAutoQuote,
   pasteIntoMessageKeyDraft,
   rebuildCommittedAfterRemovingPill,
@@ -68,6 +69,8 @@ export interface QueryBarProps {
   knownTags: string[];
   knownPackages: string[];
   placeholder?: string;
+  disabledPillIds?: ReadonlySet<string>;
+  onTogglePillDisabled?: (id: string) => void;
 }
 
 // ── Query parsing helpers (local to this component) ───────────────────────────
@@ -119,6 +122,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
   const committed = createMemo(() => queryState().committed);
   const draft = createMemo(() => queryState().draft);
   const pillGroups = createMemo(() => buildQueryBarPillGroups(committed()));
+  const pillRefGroups = createMemo(() => buildQueryBarPillRefGroups(committed()));
   const multiGroup = createMemo(() => pillGroups().filter((g) => g.length > 0).length >= 2);
 
   function totalPillCount(): number {
@@ -427,6 +431,8 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
 
   function toggleAndConnector(groupIdx: number, tokenIdxAfterConnector: number) {
     if (inlineEdit()) commitInlineEdit();
+    setOpen(false);
+    setSelectedIdx(0);
     const next = toggleQueryBarAndConnector(
       committed(),
       groupIdx,
@@ -434,14 +440,14 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
       draftInNewGroup()
     );
     props.onChange(buildQuery(next, draft()));
-    queueMicrotask(() => draftRef?.focus());
   }
 
   function toggleOrConnector(groupIdxAfterConnector: number) {
     if (inlineEdit()) commitInlineEdit();
+    setOpen(false);
+    setSelectedIdx(0);
     const next = toggleQueryBarOrConnector(committed(), groupIdxAfterConnector, draftInNewGroup());
     props.onChange(buildQuery(next, draft()));
-    queueMicrotask(() => draftRef?.focus());
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -462,68 +468,87 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
         <span style={searchIconStyle()}>⌕</span>
 
         {/* ── Pill groups ─────────────────────────────────────────────── */}
-        <For each={pillGroups()}>
-          {(group, gi) => (
-            <Show when={group.length > 0}>
-              <>
-                {/* OR badge between groups */}
-                <Show when={gi() > 0}>
-                  <QueryBarOrBadge onToggle={() => toggleOrConnector(gi())} />
-                </Show>
-
-                {/* Group container: visible box only when 2+ groups exist */}
-                <div style={multiGroup() ? queryBarGroupBoxStyle() : { display: "contents" }}>
-                  {/* Tokens in this group */}
-                  <For each={group}>
-                    {(token, ti) => (
-                      <>
-                        <Show
-                          when={inlineEdit()?.groupIdx === gi() && inlineEdit()?.tokenIdx === ti()}
-                        >
-                          <QueryBarInlineEditInput
-                            inputRef={(el) => {
-                              inlineEditRef = el;
-                            }}
-                            value={inlineEdit()?.text ?? ""}
-                            onInput={handleInlineInput}
-                            onKeyDown={handleInlineKeyDown}
-                            onBlur={handleInlineBlur}
-                            style={{ flex: "0 1 auto" }}
-                          />
-                        </Show>
-                        {/* AND badge between pills in the same group */}
-                        <Show when={ti() > 0}>
-                          <QueryBarAndBadge onToggle={() => toggleAndConnector(gi(), ti())} />
-                        </Show>
-
-                        <QueryBarPill
-                          token={token}
-                          onEdit={() => editToken(gi(), ti(), token)}
-                          onRemove={() => removeToken(gi(), ti())}
-                        />
-                      </>
-                    )}
-                  </For>
-                  <Show
-                    when={
-                      inlineEdit()?.groupIdx === gi() && inlineEdit()?.tokenIdx === group.length
-                    }
-                  >
-                    <QueryBarInlineEditInput
-                      inputRef={(el) => {
-                        inlineEditRef = el;
-                      }}
-                      value={inlineEdit()?.text ?? ""}
-                      onInput={handleInlineInput}
-                      onKeyDown={handleInlineKeyDown}
-                      onBlur={handleInlineBlur}
-                      style={{ flex: "0 1 auto" }}
-                    />
+        <For each={pillRefGroups()}>
+          {(group, gi) => {
+            const groupIdx = () => group[0]?.groupIdx ?? gi();
+            return (
+              <Show when={group.length > 0}>
+                <>
+                  {/* OR badge between groups */}
+                  <Show when={gi() > 0}>
+                    <QueryBarOrBadge onToggle={() => toggleOrConnector(groupIdx())} />
                   </Show>
-                </div>
-              </>
-            </Show>
-          )}
+
+                  {/* Group container: visible box only when 2+ groups exist */}
+                  <div style={multiGroup() ? queryBarGroupBoxStyle() : { display: "contents" }}>
+                    {/* Tokens in this group */}
+                    <For each={group}>
+                      {(tokenRef, ti) => (
+                        <>
+                          <Show
+                            when={
+                              inlineEdit()?.groupIdx === tokenRef.groupIdx &&
+                              inlineEdit()?.tokenIdx === tokenRef.tokenIdx
+                            }
+                          >
+                            <QueryBarInlineEditInput
+                              inputRef={(el) => {
+                                inlineEditRef = el;
+                              }}
+                              value={inlineEdit()?.text ?? ""}
+                              onInput={handleInlineInput}
+                              onKeyDown={handleInlineKeyDown}
+                              onBlur={handleInlineBlur}
+                              style={{ flex: "0 1 auto" }}
+                            />
+                          </Show>
+                          {/* AND badge between pills in the same group */}
+                          <Show when={ti() > 0}>
+                            <QueryBarAndBadge
+                              onToggle={() =>
+                                toggleAndConnector(tokenRef.groupIdx, tokenRef.tokenIdx)
+                              }
+                            />
+                          </Show>
+
+                          <QueryBarPill
+                            token={tokenRef.token}
+                            disabled={props.disabledPillIds?.has(tokenRef.id) ?? false}
+                            onToggleDisabled={
+                              props.onTogglePillDisabled
+                                ? () => props.onTogglePillDisabled?.(tokenRef.id)
+                                : undefined
+                            }
+                            onEdit={() =>
+                              editToken(tokenRef.groupIdx, tokenRef.tokenIdx, tokenRef.token)
+                            }
+                            onRemove={() => removeToken(tokenRef.groupIdx, tokenRef.tokenIdx)}
+                          />
+                        </>
+                      )}
+                    </For>
+                    <Show
+                      when={
+                        inlineEdit()?.groupIdx === groupIdx() &&
+                        inlineEdit()?.tokenIdx === group.length
+                      }
+                    >
+                      <QueryBarInlineEditInput
+                        inputRef={(el) => {
+                          inlineEditRef = el;
+                        }}
+                        value={inlineEdit()?.text ?? ""}
+                        onInput={handleInlineInput}
+                        onKeyDown={handleInlineKeyDown}
+                        onBlur={handleInlineBlur}
+                        style={{ flex: "0 1 auto" }}
+                      />
+                    </Show>
+                  </div>
+                </>
+              </Show>
+            );
+          }}
         </For>
 
         <Show when={inlineEditOrphanAfterOrBranch()}>
@@ -613,8 +638,9 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
               onMouseDown={(e) => {
                 e.preventDefault();
                 setInlineEdit(null);
+                setOpen(false);
+                setSelectedIdx(0);
                 props.onChange("");
-                draftRef?.focus();
               }}
               title="Clear all filters (Esc)"
               style={queryBarClearButtonStyle()}
