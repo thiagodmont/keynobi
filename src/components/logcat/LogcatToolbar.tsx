@@ -1,6 +1,5 @@
 import { Show, type JSX } from "solid-js";
-import { Icon } from "@/components/ui";
-import { btnStyle } from "./logcat-styles";
+import { Button, ControlStrip, Icon, Separator, StatusDot } from "@/components/ui";
 
 export function LogcatToolbar(props: {
   streaming: boolean;
@@ -24,109 +23,121 @@ export function LogcatToolbar(props: {
   onExport: () => void;
 }): JSX.Element {
   return (
-    <div
-      style={{
-        display: "flex",
-        "align-items": "flex-start",
-        gap: "6px",
-        padding: "5px 10px",
-        background: "var(--bg-secondary)",
-        "border-bottom": "1px solid var(--border)",
-        "flex-shrink": "0",
-        "flex-wrap": "wrap",
-      }}
-    >
+    <ControlStrip align="start" wrap>
       <Show
         when={props.streaming}
         fallback={
-          <button
+          <Button
+            variant="outline"
+            size="xs"
+            tone="success"
             onClick={() => props.onStart()}
             title="Start Logcat"
-            style={btnStyle("var(--success)")}
           >
             <Icon name="play" size={13} /> Start
-          </button>
+          </Button>
         }
       >
-        <button onClick={() => props.onStop()} title="Stop Logcat" style={btnStyle("var(--error)")}>
+        <Button
+          variant="outline"
+          size="xs"
+          tone="danger"
+          onClick={() => props.onStop()}
+          title="Stop Logcat"
+        >
           <Icon name="stop" size={13} /> Stop
-        </button>
+        </Button>
       </Show>
 
-      <button
+      <Button
+        variant="outline"
+        size="xs"
+        tone={props.paused ? "warning" : "muted"}
         onClick={() => props.onTogglePaused()}
         title={props.paused ? "Resume" : "Pause new entries"}
-        style={btnStyle(props.paused ? "var(--warning)" : "var(--text-muted)")}
       >
         {props.paused ? "▶" : "⏸"}
-      </button>
+      </Button>
 
-      <button
+      <Button
+        variant="outline"
+        size="xs"
+        tone="muted"
         onClick={() => props.onRestart()}
         title="Stop, clear and restart logcat"
         disabled={props.restarting}
-        style={btnStyle("var(--text-muted)")}
       >
         ↺ Restart
-      </button>
+      </Button>
 
-      <button
+      <Button
+        variant="outline"
+        size="xs"
+        tone="muted"
         onClick={() => props.onClear()}
         title="Clear logcat buffer"
-        style={btnStyle("var(--text-muted)")}
       >
         <Icon name="trash" size={12} />
-      </button>
+      </Button>
 
-      <div
-        style={{ width: "1px", height: "18px", background: "var(--border)", "flex-shrink": "0" }}
-      />
+      <Separator orientation="vertical" style={{ height: "18px", "align-self": "center" }} />
 
       <Show when={props.crashes > 0}>
         <div style={{ display: "flex", "align-items": "center", gap: "2px", "flex-shrink": "0" }}>
-          <button
+          <Button
+            variant="outline"
+            size="xs"
+            tone="danger"
             onClick={() => props.onJumpToLastCrash()}
             title={`${props.crashes} crash${props.crashes !== 1 ? "es" : ""} — click to jump`}
             style={{
-              ...btnStyle("var(--error)"),
               gap: "3px",
               animation: "lsp-dot-pulse 3s ease-in-out infinite",
             }}
           >
             ⚡ {props.crashes}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
+            tone="muted"
             onClick={() => props.onJumpToPreviousCrash()}
             title="Previous crash"
-            style={btnStyle("var(--text-muted)")}
           >
             ↑
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
+            tone="muted"
             onClick={() => props.onJumpToNextCrash()}
             title="Next crash"
-            style={btnStyle("var(--text-muted)")}
           >
             ↓
-          </button>
+          </Button>
         </div>
       </Show>
 
       <Show when={props.selectedCount > 0}>
-        <button
+        <Button
+          variant="outline"
+          size="xs"
+          tone="accent"
           onClick={() => props.onCopySelectedRows()}
           title={
             props.selectedCount === 1
               ? "Copy selected row"
               : `Copy ${props.selectedCount} selected rows`
           }
-          style={btnStyle("var(--accent)")}
         >
           ⎘ {props.selectedCount === 1 ? "1 row" : `${props.selectedCount} rows`}
-        </button>
+        </Button>
       </Show>
 
-      <button
+      <Button
+        variant="outline"
+        size="xs"
+        tone={props.autoScroll ? "muted" : "accent"}
         onClick={() => props.onScrollToEnd()}
         title={
           props.newEntriesCount > 0
@@ -135,21 +146,22 @@ export function LogcatToolbar(props: {
               } available - Jump to end`
             : "Scroll to end"
         }
-        style={btnStyle(props.autoScroll ? "var(--text-muted)" : "var(--accent)")}
       >
         ↓
         <Show when={props.newEntriesCount > 0}>
           <span>{props.newEntriesCount.toLocaleString()} new</span>
         </Show>
-      </button>
+      </Button>
 
-      <button
+      <Button
+        variant="outline"
+        size="xs"
+        tone="muted"
         onClick={() => props.onExport()}
         title="Export filtered log to file"
-        style={btnStyle("var(--text-muted)")}
       >
         ↓ Export
-      </button>
+      </Button>
 
       <div style={{ flex: "1" }} />
 
@@ -166,17 +178,8 @@ export function LogcatToolbar(props: {
       </span>
 
       <Show when={props.streaming}>
-        <span
-          style={{
-            width: "6px",
-            height: "6px",
-            "border-radius": "50%",
-            background: "var(--success)",
-            "flex-shrink": "0",
-            animation: "lsp-dot-pulse 2s ease-in-out infinite",
-          }}
-        />
+        <StatusDot status="ok" size="sm" />
       </Show>
-    </div>
+    </ControlStrip>
   );
 }

@@ -88,16 +88,34 @@ Handle high-volume and simple filters in Rust before crossing IPC. Frontend-only
 
 Keep `LogcatPanel.tsx` as composition/orchestration. Domain logic lives in focused helpers:
 
-- Query parsing: `lib/logcat-query.ts`.
+- Query parsing/matching compatibility surface: `lib/logcat-query.ts`.
+- Query variable helpers: `lib/logcat-query-variables.ts`.
+- Backend/frontend filter boundary helpers: `lib/logcat-frontend-only-tokens.ts`.
+- Stack-frame parsing for Studio jumps: `lib/logcat-stack-frame.ts`.
+- Current project package resolution: `lib/logcat-mine-package.ts`.
 - Backend filter conversion: `lib/logcat-filter-spec.ts`.
 - Autocomplete data: `lib/logcat-suggestions.ts`.
 - UI entry storage and UI cap: `stores/logcat.store.ts`.
 - Async request ordering: `services/logcat.service.ts`.
-- Query interaction: `QueryBar.tsx`, `QueryBarParts.tsx`, `querybar-styles.ts`.
+- Query state/debounce orchestration: `logcat-query-controller.ts`.
+- Query interaction: `QueryBar.tsx`, `QueryBarParts.tsx`, `querybar-query-state.ts`, `querybar-styles.ts`.
 - Suggestion runtime: `logcat-suggestion-runtime.ts`.
+- Saved filter menu presets and pieces: `saved-filter-presets.ts`, `SavedFilterMenuParts.tsx`.
+- Entry text formatting for copy/export: `logcat-entry-format.ts`.
 - Presentational pieces: `LogcatToolbar.tsx`, `SavedFilterMenu.tsx`, `LogcatRows.tsx`, `LogcatFilterControls.tsx`, `LogcatJsonDetailPanel.tsx`.
 
 Presentational components should not call Tauri IPC except for narrow row actions, such as opening a stack frame in Android Studio.
+Reusable Logcat UI chrome should prefer design-system primitives before adding Logcat-local style helpers:
+
+- `Button variant="outline" size="xs"` for compact toolbar/menu actions.
+- `FilterChip` for quick filter pills and compact toggle chips.
+- `Popover` for controlled custom dropdown surfaces that need search, rename, or custom row content.
+- `MenuList` primitives for custom popover rows, section headers, and empty states.
+- `Input` compact/mono modes for dense filter, search, and inline-edit fields.
+- `Badge size="xs"` for dense row badges and small state markers.
+- `DockedPanel` and `MetadataGrid` for log entry detail/readout panels.
+- `ControlStrip` for Logcat toolbar and filter bands.
+- `EmptyState density="compact"` for dense panel empty/waiting states.
 
 ### IPC Type
 

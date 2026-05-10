@@ -33,9 +33,12 @@ describe("EmptyState", () => {
   });
 
   it("passes class prop through to root", () => {
-    const { container } = render(() => (
-      <EmptyState icon="folder" title="T" class="my-empty" />
-    ));
+    const { container } = render(() => <EmptyState icon="folder" title="T" class="my-empty" />);
     expect(container.firstElementChild!.classList.contains("my-empty")).toBe(true);
+  });
+
+  it("supports compact density", () => {
+    const { container } = render(() => <EmptyState icon="folder" title="T" density="compact" />);
+    expect(container.firstElementChild!.className).toContain("compact");
   });
 });

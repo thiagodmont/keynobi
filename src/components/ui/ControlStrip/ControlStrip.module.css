@@ -1,0 +1,22 @@
+.root {
+  align-items: center;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 5px 10px;
+}
+
+.column {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.alignStart {
+  align-items: flex-start;
+}
+
+.wrap {
+  flex-wrap: wrap;
+}

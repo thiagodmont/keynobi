@@ -144,7 +144,17 @@ Use shared UI primitives from `@/components/ui`.
 
 - `Button` for labeled actions.
 - `IconButton` for compact toolbar controls.
+- `Button variant="outline" size="xs"` for compact labeled toolbar/menu actions.
+- `FilterChip` for pill-shaped filter toggles.
+- `Input size="xs" | "sm"` with `mono` for dense search, rename, and inline-edit fields.
+- `MenuList`, `MenuListItem`, `MenuSectionHeader`, and `MenuEmptyState` for custom popover/menu content.
+- `Badge size="xs"` for dense semantic labels; use `mono` for code-like labels.
+- `DockedPanel` for bottom-docked detail/readout panels.
+- `MetadataGrid` / `MetadataCell` for compact labeled key/value readouts.
+- `ControlStrip` for child-based dense toolbar/filter bands.
+- `Popover` for controlled custom dropdown surfaces; use `Dropdown` for simple menu-item lists.
 - `Dropdown` / `MenuItem` for option menus; mark destructive items with `destructive: true`.
+- `EmptyState density="compact"` in dense panels.
 - `Tooltip` for icon-only controls when practical.
 - Semantic CSS tokens over hardcoded colors.
 - `Panel`, `Tabs`, `Toolbar`, and form controls before inventing local variants.

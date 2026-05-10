@@ -8,14 +8,17 @@
  * `onSelect(null)` to clear the filter.
  */
 
-import { type JSX, createSignal, createMemo, For, Show, onCleanup, onMount } from "solid-js";
-import { getMinePackage } from "@/lib/logcat-query";
+import { type JSX, createSignal, createMemo, For, Show } from "solid-js";
 import {
-  logcatDropdownOverlayStyle,
-  logcatDropdownPanelStyle,
-  logcatDropdownRootStyle,
-  logcatDropdownSeparatorStyle,
-} from "./logcat-dropdown-styles";
+  FilterChip,
+  Input,
+  MenuEmptyState,
+  MenuList,
+  MenuListItem,
+  Popover,
+  Separator,
+} from "@/components/ui";
+import { getMinePackage } from "@/lib/logcat-mine-package";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
@@ -92,96 +95,64 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
     setSearch("");
   }
 
-  function handleVisibilityChange() {
-    if (document.visibilityState === "hidden") closeDropdown();
-  }
-
-  onMount(() => {
-    window.addEventListener("blur", closeDropdown);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-  });
-
-  onCleanup(() => {
-    window.removeEventListener("blur", closeDropdown);
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
-  });
-
   // ── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <div style={logcatDropdownRootStyle()}>
-      {/* Trigger button */}
-      <button
-        onClick={handleToggle}
-        title={isActive() ? `Package filter: ${props.selected}` : "Filter by package"}
-        style={{
-          display: "flex",
-          "align-items": "center",
-          gap: "4px",
-          padding: "1px 7px",
-          "font-size": "10px",
-          background: isActive() ? "rgba(var(--accent-rgb, 59,130,246),0.15)" : "var(--bg-primary)",
-          color: isActive() ? "var(--accent)" : "var(--text-muted)",
-          border: `1px solid ${isActive() ? "var(--accent)" : "var(--border)"}`,
-          "border-radius": "10px",
-          cursor: "pointer",
-          "white-space": "nowrap",
-          "max-width": "160px",
-          overflow: "hidden",
-          "text-overflow": "ellipsis",
-          transition: "all 0.1s",
-        }}
-      >
-        <span style={{ overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
-          {displayLabel()}
-        </span>
-        <span style={{ opacity: "0.6", "flex-shrink": "0", "font-size": "9px" }}>▾</span>
-      </button>
-
-      {/* Dropdown panel */}
-      <Show when={open()}>
-        <div
-          style={logcatDropdownPanelStyle({
-            align: "left",
-            minWidth: "220px",
-            maxWidth: "320px",
-          })}
+    <Popover
+      open={open()}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) handleToggle();
+        else closeDropdown();
+      }}
+      align="left"
+      minWidth="220px"
+      maxWidth="320px"
+      trigger={() => (
+        <FilterChip
+          active={isActive()}
+          activeStyle="soft"
+          maxWidth="160px"
+          onClick={handleToggle}
+          title={isActive() ? `Package filter: ${props.selected}` : "Filter by package"}
         >
+          <span
+            style={{ overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}
+          >
+            {displayLabel()}
+          </span>
+          <span style={{ opacity: "0.6", "flex-shrink": "0", "font-size": "9px" }}>▾</span>
+        </FilterChip>
+      )}
+    >
+      <Show when={open()}>
+        <>
           {/* Search input */}
           <div style={{ padding: "6px 8px 4px", "border-bottom": "1px solid var(--border)" }}>
-            <input
-              ref={searchRef}
+            <Input
+              inputRef={(el) => {
+                searchRef = el;
+              }}
               type="text"
               placeholder="Search packages…"
               value={search()}
-              onInput={(e) => setSearch(e.currentTarget.value)}
+              size="xs"
+              mono
+              onInput={setSearch}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
                   e.preventDefault();
                   setOpen(false);
                 }
               }}
-              style={{
-                width: "100%",
-                background: "var(--bg-primary)",
-                border: "1px solid var(--border)",
-                color: "var(--text-primary)",
-                "border-radius": "3px",
-                padding: "3px 7px",
-                "font-size": "10px",
-                "font-family": "var(--font-mono)",
-                outline: "none",
-                "box-sizing": "border-box",
-              }}
+              style={{ width: "100%", "box-sizing": "border-box" }}
             />
           </div>
 
           {/* Package list */}
-          <div
+          <MenuList
             style={{
               "max-height": `${MAX_VISIBLE_ROWS * 26}px`,
               "overflow-y": "auto",
-              padding: "4px 0",
             }}
           >
             {/* "All packages" row */}
@@ -206,7 +177,7 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
 
             {/* Separator */}
             <Show when={!search() && props.packages.length > 0}>
-              <div style={logcatDropdownSeparatorStyle()} />
+              <Separator spacing="sm" />
             </Show>
 
             {/* Actual package list */}
@@ -223,24 +194,19 @@ export function PackageDropdown(props: PackageDropdownProps): JSX.Element {
 
             {/* Empty state when search yields no results */}
             <Show when={search() && filteredPackages().length === 0}>
-              <div style={{ padding: "8px 12px", color: "var(--text-muted)", "font-size": "10px" }}>
-                No packages matching "{search()}"
-              </div>
+              <MenuEmptyState>No packages matching "{search()}"</MenuEmptyState>
             </Show>
 
             {/* Empty state when no packages have been seen yet */}
             <Show when={!search() && props.packages.length === 0}>
-              <div style={{ padding: "8px 12px", color: "var(--text-muted)", "font-size": "10px" }}>
+              <MenuEmptyState>
                 No packages seen yet — start logcat to populate this list.
-              </div>
+              </MenuEmptyState>
             </Show>
-          </div>
-        </div>
-
-        {/* Click-outside overlay */}
-        <div style={logcatDropdownOverlayStyle()} onClick={closeDropdown} />
+          </MenuList>
+        </>
       </Show>
-    </div>
+    </Popover>
   );
 }
 
@@ -253,25 +219,7 @@ function PackageRow(props: {
   onClick: () => void;
 }): JSX.Element {
   return (
-    <div
-      onClick={() => props.onClick()}
-      style={{
-        display: "flex",
-        "align-items": "center",
-        gap: "6px",
-        padding: "4px 12px",
-        cursor: "pointer",
-        background: props.active ? "rgba(var(--accent-rgb, 59,130,246),0.15)" : "transparent",
-        color: props.active ? "var(--accent)" : "var(--text-primary)",
-      }}
-      onMouseEnter={(e) => {
-        if (!props.active)
-          (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
-      }}
-      onMouseLeave={(e) => {
-        if (!props.active) (e.currentTarget as HTMLElement).style.background = "transparent";
-      }}
-    >
+    <MenuListItem onClick={() => props.onClick()} active={props.active}>
       {/* Active indicator */}
       <span style={{ width: "8px", "flex-shrink": "0", "font-size": "9px" }}>
         {props.active ? "●" : ""}
@@ -303,7 +251,7 @@ function PackageRow(props: {
           {props.sublabel}
         </span>
       </Show>
-    </div>
+    </MenuListItem>
   );
 }
 

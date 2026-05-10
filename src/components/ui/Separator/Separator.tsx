@@ -5,6 +5,7 @@ export interface SeparatorProps {
   orientation?: "horizontal" | "vertical";
   spacing?: "sm" | "md";
   class?: string;
+  style?: JSX.CSSProperties;
 }
 
 export function Separator(props: SeparatorProps): JSX.Element {
@@ -18,12 +19,10 @@ export function Separator(props: SeparatorProps): JSX.Element {
     <div
       role="separator"
       aria-orientation={orientation()}
-      class={[
-        styles.root,
-        styles[orientation()],
-        spacingClass(),
-        props.class,
-      ].filter(Boolean).join(" ")}
+      class={[styles.root, styles[orientation()], spacingClass(), props.class]
+        .filter(Boolean)
+        .join(" ")}
+      style={props.style}
     />
   );
 }

@@ -9,6 +9,18 @@
   transition: border-color 0.1s;
 }
 
+.xs {
+  font-size: 10px;
+}
+
+.sm {
+  font-size: 11px;
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
 .wrapper:focus-within {
   border-color: var(--border-focus);
 }
@@ -36,6 +48,14 @@
   flex: 1;
   min-width: 0;
   width: 100%;
+}
+
+.xs .input {
+  padding: 2px 6px;
+}
+
+.sm .input {
+  padding: 3px 7px;
 }
 
 .input::placeholder {

@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { parseFilterGroups, parseQuery, setMinePackage } from "@/lib/logcat-query";
+import { parseFilterGroups, parseQuery } from "@/lib/logcat-query";
+import { setMinePackage } from "@/lib/logcat-mine-package";
 import {
   groupsToFilterSpec,
   hasAnyFrontendOnlyLogic,

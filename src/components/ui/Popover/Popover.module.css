@@ -1,0 +1,30 @@
+.root {
+  display: inline-flex;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  font-size: 11px;
+  position: absolute;
+  top: calc(100% + 4px);
+  z-index: 700;
+}
+
+.alignLeft {
+  left: 0;
+}
+
+.alignRight {
+  right: 0;
+}
+
+.overlay {
+  inset: 0;
+  position: fixed;
+  z-index: 699;
+}

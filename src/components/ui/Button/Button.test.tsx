@@ -22,7 +22,11 @@ describe("Button", () => {
 
   it("does not call onClick when disabled", () => {
     const fn = vi.fn();
-    const { container } = render(() => <Button disabled onClick={fn}>Click</Button>);
+    const { container } = render(() => (
+      <Button disabled onClick={fn}>
+        Click
+      </Button>
+    ));
     fireEvent.click(container.querySelector("button")!);
     expect(fn).not.toHaveBeenCalled();
   });
@@ -41,5 +45,24 @@ describe("Button", () => {
   it("passes class prop through to the button element", () => {
     const { container } = render(() => <Button class="extra">Click</Button>);
     expect(container.querySelector("button")!.classList.contains("extra")).toBe(true);
+  });
+
+  it("supports compact outline toolbar buttons", () => {
+    const { container } = render(() => (
+      <Button variant="outline" size="xs" tone="accent" title="Save">
+        Save
+      </Button>
+    ));
+    const button = container.querySelector("button")!;
+    expect(button.className).toContain("outline");
+    expect(button.className).toContain("xs");
+    expect(button.className).toContain("tone-accent");
+    expect(button.title).toBe("Save");
+  });
+
+  it("preserves explicit false aria-pressed state", () => {
+    const { container } = render(() => <Button ariaPressed={false}>Toggle</Button>);
+
+    expect(container.querySelector("button")!.getAttribute("aria-pressed")).toBe("false");
   });
 });

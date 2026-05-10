@@ -23,20 +23,27 @@
  */
 
 import type { LogcatEntry } from "@/lib/tauri-api";
+import { getMinePackage } from "./logcat-mine-package";
+import { isStackTraceLine } from "./logcat-stack-frame";
+import type { FilterGroup, QueryToken } from "./logcat-query-types";
 
-// ── Token types ───────────────────────────────────────────────────────────────
-
-export type QueryToken =
-  | { type: "level"; value: string; negate: boolean }
-  | { type: "tag"; value: string; negate: boolean; regex: boolean }
-  | { type: "message"; value: string; negate: boolean; regex: boolean }
-  | { type: "package"; value: string; negate: boolean }
-  | { type: "pid"; value: number; negate: boolean }
-  | { type: "tid"; value: number; negate: boolean }
-  | { type: "time"; value: string; negate: boolean }
-  | { type: "age"; seconds: number }
-  | { type: "is"; value: string }
-  | { type: "freetext"; value: string; negate: boolean };
+export type { FilterGroup, QueryToken } from "./logcat-query-types";
+export {
+  ensureQueryVariableValues,
+  extractQueryVariables,
+  isValidQueryVariableName,
+  reconcileQueryVariableValues,
+  resolveQueryVariables,
+  type QueryVariableValues,
+} from "./logcat-query-variables";
+export { getMinePackage, setMinePackage } from "./logcat-mine-package";
+export { getFrontendOnlyTokens } from "./logcat-frontend-only-tokens";
+export {
+  isProjectFrame,
+  isStackTraceLine,
+  parseStackFrame,
+  type StackFrameInfo,
+} from "./logcat-stack-frame";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -64,59 +71,6 @@ export const IS_SUGGESTIONS = ["crash", "stacktrace"];
 export interface QueryBarSuggestion {
   display: string;
   insert: string;
-}
-
-export type QueryVariableValues = Record<string, string>;
-
-const QUERY_VARIABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
-const QUERY_VARIABLE_RE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
-
-export function isValidQueryVariableName(name: string): boolean {
-  return QUERY_VARIABLE_NAME_RE.test(name);
-}
-
-export function extractQueryVariables(query: string): string[] {
-  const seen = new Set<string>();
-  const names: string[] = [];
-
-  for (const match of query.matchAll(QUERY_VARIABLE_RE)) {
-    const name = match[1];
-    if (!seen.has(name)) {
-      seen.add(name);
-      names.push(name);
-    }
-  }
-
-  return names;
-}
-
-export function resolveQueryVariables(query: string, values: QueryVariableValues): string {
-  return query.replace(QUERY_VARIABLE_RE, (raw, name: string) => {
-    const value = values[name]?.trim();
-    return value ? value : raw;
-  });
-}
-
-export function reconcileQueryVariableValues(
-  query: string,
-  values: QueryVariableValues
-): QueryVariableValues {
-  const next: QueryVariableValues = {};
-  for (const name of extractQueryVariables(query)) {
-    if (values[name] !== undefined) next[name] = values[name];
-  }
-  return next;
-}
-
-export function ensureQueryVariableValues(
-  query: string,
-  values: QueryVariableValues
-): QueryVariableValues {
-  const next: QueryVariableValues = { ...values };
-  for (const name of extractQueryVariables(query)) {
-    if (next[name] === undefined) next[name] = "";
-  }
-  return next;
 }
 
 export function getQueryBarSuggestions(
@@ -424,97 +378,6 @@ export function parseLogcatTimestamp(ts: string): number {
   return new Date(`${year}-${mo}-${d}T${hh}:${mm}:${ss}.${ms.padEnd(3, "0")}`).getTime();
 }
 
-// ── Stack-trace detector ──────────────────────────────────────────────────────
-
-const STACKTRACE_RE = /^(\s+at |\s*Caused by:|\s*\.\.\. \d+ more)/;
-
-export function isStackTraceLine(message: string): boolean {
-  return STACKTRACE_RE.test(message);
-}
-
-/** Parsed info from an `at com.example.Foo.bar(Foo.kt:42)` frame line. */
-export interface StackFrameInfo {
-  /** Fully-qualified class, e.g. `com.example.app.MainActivity` */
-  classPath: string;
-  /** Package portion only, e.g. `com.example.app` */
-  packagePath: string;
-  /** Source filename, e.g. `MainActivity.kt` */
-  filename: string;
-  /** 1-based line number */
-  line: number;
-}
-
-/**
- * Matches: `\tat com.example.app.Foo.bar(Foo.kt:42)`
- *            group1=full qualified class+method  group2=filename  group3=line
- */
-const STACK_FRAME_RE = /^\s+at\s+([\w$.]+)\.([\w$<>]+)\(([\w$]+\.(?:kt|java)):(\d+)\)/;
-
-/**
- * Parse a logcat stack frame line into its constituent parts.
- * Returns `null` for non-frame lines (e.g. `Caused by:`, `... N more`).
- */
-export function parseStackFrame(message: string): StackFrameInfo | null {
-  const m = STACK_FRAME_RE.exec(message);
-  if (!m) return null;
-  const [, fqClass, , filename, lineStr] = m;
-  const line = parseInt(lineStr, 10);
-  if (!Number.isFinite(line) || line < 1) return null;
-  // Strip the simple class name from the end to get just the package.
-  const lastDot = fqClass.lastIndexOf(".");
-  const packagePath = lastDot >= 0 ? fqClass.slice(0, lastDot) : fqClass;
-  return { classPath: fqClass, packagePath, filename, line };
-}
-
-/**
- * Known Android / Java / Kotlin / Google framework package prefixes.
- * Stack frames whose class path starts with any of these are NOT part of
- * the user's project source code and should not get a "jump to Studio" button.
- */
-const FRAMEWORK_PREFIXES = [
-  "android.",
-  "androidx.",
-  "com.android.",
-  "com.google.android.",
-  "com.google.firebase.",
-  "com.google.gson.",
-  "com.google.common.", // Guava
-  "java.",
-  "javax.",
-  "kotlin.",
-  "kotlinx.",
-  "dalvik.",
-  "sun.",
-  "libcore.",
-  "org.apache.",
-  "org.chromium.",
-  "io.flutter.",
-  "com.unity3d.",
-];
-
-/**
- * Returns `true` when the class path belongs to the user's project code
- * (i.e. is NOT a known Android / Java / Kotlin / Google framework package).
- *
- * Use this to decide whether to show the "Open in Studio" jump button.
- */
-export function isProjectFrame(classPath: string): boolean {
-  return !FRAMEWORK_PREFIXES.some((prefix) => classPath.startsWith(prefix));
-}
-
-// ── package:mine resolution ───────────────────────────────────────────────────
-
-/** Set by the app on project open. Used to resolve `package:mine`. */
-let _minePackage: string | null = null;
-
-export function setMinePackage(pkg: string | null): void {
-  _minePackage = pkg;
-}
-
-export function getMinePackage(): string | null {
-  return _minePackage;
-}
-
 // ── Separator entry check ─────────────────────────────────────────────────────
 
 /** Separator entries (process start/die) should only be filtered by age. */
@@ -572,7 +435,7 @@ function matchToken(entry: LogcatEntry, token: QueryToken, now: number): boolean
       return token.negate ? !matches : matches;
     }
     case "package": {
-      const resolvedValue = token.value === "mine" ? (_minePackage ?? "mine") : token.value;
+      const resolvedValue = token.value === "mine" ? (getMinePackage() ?? "mine") : token.value;
       const haystack = (entry.package ?? entry.tag).toLowerCase();
       const matches = haystack.includes(resolvedValue.toLowerCase());
       return token.negate ? !matches : matches;
@@ -797,65 +660,6 @@ export function getPackageFromQuery(query: string): string | null {
  * by "socket"; the frontend must additionally verify "IPPROTO_TCP" for correct
  * AND semantics.
  */
-export function getFrontendOnlyTokens(tokens: QueryToken[]): QueryToken[] {
-  // Track which backend spec slots have been consumed.
-  let levelConsumed = false;
-  let tagConsumed = false;
-  let textConsumed = false; // shared by message: and freetext
-  let packageConsumed = false;
-
-  return tokens.filter((token) => {
-    // Always frontend-only
-    if (token.type === "age") return true;
-    if ("negate" in token && token.negate) return true;
-    if ((token.type === "tag" || token.type === "message") && token.regex) return true;
-    // is:stacktrace — backend has no handler for this
-    if (token.type === "is" && token.value === "stacktrace") return true;
-
-    // For backend-handleable tokens: first occurrence goes to backend, rest → frontend
-    switch (token.type) {
-      case "level":
-        if (!levelConsumed) {
-          levelConsumed = true;
-          return false;
-        }
-        return true;
-      case "tag":
-        if (!tagConsumed) {
-          tagConsumed = true;
-          return false;
-        }
-        return true;
-      case "message":
-        if (!textConsumed) {
-          textConsumed = true;
-          return false;
-        }
-        return true;
-      case "package":
-        if (!packageConsumed) {
-          packageConsumed = true;
-          return false;
-        }
-        return true;
-      case "pid":
-      case "tid":
-      case "time":
-        return true;
-      case "is":
-        // is:crash → onlyCrashes flag (boolean, no overflow); handled above for stacktrace
-        return false;
-      case "freetext":
-        if (!textConsumed) {
-          textConsumed = true;
-          return false;
-        }
-        return true;
-      default:
-        return false;
-    }
-  });
-}
 export function getActiveTokenContext(query: string): {
   key: string | null;
   partial: string;
@@ -1331,12 +1135,6 @@ export function quoteMessageTokenForEditDraft(token: string): string {
 }
 
 // ── OR-group support ──────────────────────────────────────────────────────────
-
-/**
- * A FilterGroup is a set of tokens that are AND-ed together.
- * Multiple groups joined by `|` are OR-ed together.
- */
-export type FilterGroup = QueryToken[];
 
 // Split raw on outer | separators only — quote-aware so message:"A|B" is one segment.
 // Quotes are preserved in each segment so parseQuery can strip them via splitRawQueryParts.

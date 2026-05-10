@@ -24,9 +24,7 @@
 
 import { type JSX, createSignal, createMemo, For, Show, untrack } from "solid-js";
 import {
-  getActiveTokenContext,
   getQueryBarSuggestions,
-  parseQueryBarState,
   balanceMessageDraftQuotes,
   buildQueryBarPillGroups,
   buildQueryBarPillRefGroups,
@@ -41,6 +39,14 @@ import {
   toggleQueryBarAndConnector,
   toggleQueryBarOrConnector,
 } from "@/lib/logcat-query";
+import {
+  buildCommittedWithAndConnector,
+  buildCommittedWithOrGroup,
+  buildDraftAfterSuggestion,
+  buildQuery,
+  parseQueryState,
+  removeLastCommittedPill,
+} from "./querybar-query-state";
 import {
   QueryBarAndBadge,
   QueryBarConnectorButton,
@@ -61,6 +67,8 @@ import {
   searchIconStyle,
 } from "./querybar-styles";
 
+export { buildQuery, parseQueryState } from "./querybar-query-state";
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 export interface QueryBarProps {
@@ -71,27 +79,6 @@ export interface QueryBarProps {
   placeholder?: string;
   disabledPillIds?: ReadonlySet<string>;
   onTogglePillDisabled?: (id: string) => void;
-}
-
-// ── Query parsing helpers (local to this component) ───────────────────────────
-
-/**
- * Split the full query into committed parts and the trailing draft.
- * Uses {@link parseQueryBarState} from `logcat-query` (same lexer as `parseQuery`).
- */
-export function parseQueryState(value: string): { committed: string[]; draft: string } {
-  return parseQueryBarState(value);
-}
-
-/**
- * Build the canonical query string from committed parts + current draft.
- * When there is no draft the committed section always gets a trailing space
- * so on the next render all parts are recognised as committed (not draft).
- */
-export function buildQuery(committed: string[], draft: string): string {
-  const base = committed.map(serializeQueryBarCommittedPart).join(" ");
-  if (!draft) return base ? `${base} ` : "";
-  return base ? `${base} ${draft}` : draft;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -157,30 +144,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
   // ── Autocomplete selection ────────────────────────────────────────────────
 
   function applySelection(insert: string) {
-    const ctx = getActiveTokenContext(draft());
-    const draftBefore = draft().slice(0, ctx.offset);
-
-    let newDraft: string;
-    if (ctx.key) {
-      // Use the actual colon position to reconstruct the key part.
-      // Computing `key.length + 1` would be wrong for regex variants like
-      // `tag~:` where the key is reported as "tag" (length 3) but the prefix
-      // in the draft string is "tag~:" (5 chars including ~ and :).
-      const colonPos = draft().indexOf(":", ctx.offset);
-      const keyPart =
-        colonPos >= 0
-          ? draft().slice(ctx.offset, colonPos + 1)
-          : draft().slice(ctx.offset, ctx.offset + ctx.key.length + 1); // fallback
-      newDraft = `${draftBefore}${keyPart}${insert} `;
-    } else {
-      // When there is no key context the entire draft token is being replaced.
-      // If the draft starts with `-` (negation), preserve that prefix so that
-      // selecting e.g. "tag:" after typing "-ta" produces "-tag:" not "tag:".
-      const negationPrefix = draft().startsWith("-") ? "-" : "";
-      newDraft = `${draftBefore}${negationPrefix}${insert}`;
-      if (!insert.endsWith(":") && !insert.endsWith("~:")) newDraft += " ";
-    }
-
+    const newDraft = buildDraftAfterSuggestion(draft(), insert);
     props.onChange(buildQuery(committed(), newDraft));
     setOpen(false);
     setSelectedIdx(0);
@@ -234,27 +198,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
     if (e.key === "Backspace" && draft() === "") {
       e.preventDefault();
       if (inlineEdit()) commitInlineEdit();
-      const parts = [...committed()];
-      // Strip trailing separators
-      while (
-        parts.length > 0 &&
-        (parts[parts.length - 1] === "|" ||
-          parts[parts.length - 1] === "&&" ||
-          parts[parts.length - 1] === "&")
-      ) {
-        parts.pop();
-      }
-      if (parts.length > 0) parts.pop();
-      // Strip newly-trailing separators
-      while (
-        parts.length > 0 &&
-        (parts[parts.length - 1] === "|" ||
-          parts[parts.length - 1] === "&&" ||
-          parts[parts.length - 1] === "&")
-      ) {
-        parts.pop();
-      }
-      props.onChange(buildQuery(parts, ""));
+      props.onChange(buildQuery(removeLastCommittedPill(committed()), ""));
       return;
     }
 
@@ -345,8 +289,8 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
     props.onChange(buildQuery(next, ""));
   }
 
-  function handleInlineInput(e: InputEvent) {
-    setInlineEdit((s) => (s ? { ...s, text: (e.currentTarget as HTMLInputElement).value } : null));
+  function handleInlineInput(value: string) {
+    setInlineEdit((s) => (s ? { ...s, text: value } : null));
   }
 
   function handleInlineKeyDown(e: KeyboardEvent) {
@@ -404,28 +348,13 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
 
   function handleAddAndConnector() {
     if (inlineEdit()) commitInlineEdit();
-    const d = balanceMessageDraftQuotes(draft().trim());
-    const parts = [...committed()];
-    if (d) parts.push(d);
-    while (parts.length > 0 && parts[parts.length - 1] === "|") parts.pop();
-    const last = parts[parts.length - 1];
-    if (parts.length > 0 && last !== "&&" && last !== "&") parts.push("&&");
-    props.onChange(buildQuery(parts, ""));
+    props.onChange(buildQuery(buildCommittedWithAndConnector(committed(), draft()), ""));
     queueMicrotask(() => draftRef?.focus());
   }
 
   function handleAddOrGroup() {
     if (inlineEdit()) commitInlineEdit();
-    const d = balanceMessageDraftQuotes(draft().trim());
-    const parts = [...committed()];
-    if (d) parts.push(d);
-    while (
-      parts.length > 0 &&
-      (parts[parts.length - 1] === "&&" || parts[parts.length - 1] === "&")
-    )
-      parts.pop();
-    if (parts.length > 0 || d) parts.push("|");
-    props.onChange(buildQuery(parts, ""));
+    props.onChange(buildQuery(buildCommittedWithOrGroup(committed(), draft()), ""));
     queueMicrotask(() => draftRef?.focus());
   }
 

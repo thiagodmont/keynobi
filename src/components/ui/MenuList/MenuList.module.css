@@ -1,0 +1,64 @@
+.root {
+  padding: 4px 0;
+}
+
+.item {
+  align-items: center;
+  color: var(--text-primary);
+  cursor: pointer;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  padding: 5px 10px;
+}
+
+.item:hover,
+.active {
+  background: var(--bg-hover);
+}
+
+.active {
+  color: var(--accent);
+}
+
+.destructive {
+  color: var(--error);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.gapXs {
+  gap: 4px;
+  padding: 4px 10px;
+}
+
+.gapMd {
+  gap: 8px;
+}
+
+.sectionHeader {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: 10px;
+  gap: 8px;
+  letter-spacing: 0.05em;
+  padding: 2px 10px 4px;
+  text-transform: uppercase;
+}
+
+.sectionHeaderEnd {
+  flex: 1;
+  text-align: right;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.empty {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-style: italic;
+  padding: 4px 10px 6px;
+}

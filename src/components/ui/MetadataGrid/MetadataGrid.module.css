@@ -1,0 +1,53 @@
+.grid {
+  display: grid;
+  flex-shrink: 0;
+}
+
+.cell {
+  border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  min-width: 0;
+  padding: 6px 12px;
+}
+
+.cell:last-child {
+  border-right: 0;
+}
+
+.label {
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+}
+
+.value,
+.valueButton {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.valueButton {
+  background: transparent;
+  border: 0;
+  cursor: context-menu;
+  display: block;
+  margin: 0;
+  max-width: 100%;
+  padding: 0;
+  text-align: left;
+}
+
+.valueButton:hover,
+.valueButton:focus-visible {
+  color: var(--accent);
+  outline: none;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}

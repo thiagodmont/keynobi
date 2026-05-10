@@ -1,9 +1,9 @@
 import { type JSX, Show, createMemo, createSignal } from "solid-js";
 import type { LogcatEntry } from "@/lib/tauri-api";
-import { showToast } from "@/components/ui";
+import { Badge, showToast } from "@/components/ui";
 import { openInStudio } from "@/lib/tauri-api";
 import { healthState } from "@/stores/health.store";
-import { isProjectFrame, parseStackFrame } from "@/lib/logcat-query";
+import { isProjectFrame, parseStackFrame } from "@/lib/logcat-stack-frame";
 import { LEVEL_CONFIG } from "./logcat-levels";
 import { rowFocusMarked, rowInSelectionRange } from "./logcat-row-selection";
 
@@ -305,42 +305,20 @@ function LogcatRow(props: {
       </span>
 
       <Show when={hasJson()}>
-        <span
+        <Badge
+          size="xs"
+          variant="info"
           onClick={(e) => props.onJsonClick(e)}
           title="Click to view formatted JSON"
-          style={{
-            "font-size": "9px",
-            color: props.jsonSelected ? "var(--accent-fg)" : "var(--info)",
-            "flex-shrink": "0",
-            opacity: "1",
-            "font-weight": "600",
-            background: props.jsonSelected
-              ? "color-mix(in srgb, var(--info) 50%, transparent)"
-              : "color-mix(in srgb, var(--info) 10%, transparent)",
-            padding: "0 4px",
-            "border-radius": "2px",
-            cursor: "pointer",
-            border: "1px solid color-mix(in srgb, var(--info) 30%, transparent)",
-          }}
         >
           {"{}"}
-        </span>
+        </Badge>
       </Show>
 
       <Show when={hasAnr()}>
-        <span
-          style={{
-            "font-size": "9px",
-            color: "var(--warning)",
-            "flex-shrink": "0",
-            "font-weight": "600",
-            background: "color-mix(in srgb, var(--warning) 10%, transparent)",
-            padding: "0 3px",
-            "border-radius": "2px",
-          }}
-        >
+        <Badge size="xs" variant="warning">
           ANR
-        </span>
+        </Badge>
       </Show>
 
       <span

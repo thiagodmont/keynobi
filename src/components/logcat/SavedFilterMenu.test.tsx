@@ -13,19 +13,28 @@ function renderSavedFilterMenu() {
   ));
 }
 
+function closestClassContaining(element: Element | null, classNamePart: string): Element | null {
+  let current = element;
+  while (current) {
+    if (current.className.toString().includes(classNamePart)) return current;
+    current = current.parentElement;
+  }
+  return null;
+}
+
 describe("SavedFilterMenu", () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it("opens the dropdown to the right of the trigger when placed near the left edge", () => {
+  it("opens the dropdown aligned to the left edge of the trigger", () => {
     renderSavedFilterMenu();
 
     fireEvent.click(screen.getByTitle("Filter presets"));
 
-    const panel = screen.getByText("Quick Filters").parentElement?.parentElement;
-    expect(panel?.getAttribute("style")).toContain("left: 0");
-    expect(panel?.getAttribute("style")).not.toContain("right: 0");
+    const panel = closestClassContaining(screen.getByText("Quick Filters"), "panel");
+    expect(panel?.className).toContain("alignLeft");
+    expect(panel?.className).not.toContain("alignRight");
   });
 
   it("closes when the window loses focus", () => {
