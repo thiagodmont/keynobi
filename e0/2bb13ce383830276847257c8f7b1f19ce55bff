@@ -1,0 +1,41 @@
+src/components/logcat/logcat-entry-format.test.ts
+  s_8ce10aa3af3fff::t_2978c843212a6e 1-43
+src/components/logcat/LogcatPanel.mine-filter.test.ts
+  s_8ce10aa3af3fff::t_b34222550b8202 23
+src/components/logcat/LogcatPanel.filter-spec.test.ts
+  s_8ce10aa3af3fff::t_b34222550b8202 2-3
+src/components/logcat/LogcatPanel.tsx
+  s_8ce10aa3af3fff::t_2b1b65f222d427 43-44
+  s_8ce10aa3af3fff::t_263b5822c35ebe 82-84,103,111-128,455,682-683,698,851
+  s_8ce10aa3af3fff::t_932662aecd5ed9 29,867-872,875
+src/components/logcat/logcat-entry-format.ts
+  s_8ce10aa3af3fff::t_2978c843212a6e 1-10
+src/components/logcat/logcat-query-controller.test.ts
+  s_8ce10aa3af3fff::t_10c942dca7887c 56,76
+  s_8ce10aa3af3fff::t_2b1b65f222d427 4
+  s_8ce10aa3af3fff::t_394d1bde532416 59
+  s_8ce10aa3af3fff::t_2978c843212a6e 1-2,5-14,16-23,25-27,29-33,35-42,44-46,48-55,57-58,60-75,77-84
+  s_8ce10aa3af3fff::t_4ff67c3ac3d258 15,24,28,34,43,47
+src/components/logcat/LogcatPanel.auto-filter.test.ts
+  s_8ce10aa3af3fff::t_b34222550b8202 20-21
+src/components/logcat/logcat-query-controller.ts
+  s_8ce10aa3af3fff::t_fee50011f12fad 116-117
+  s_8ce10aa3af3fff::t_2b1b65f222d427 3
+  s_8ce10aa3af3fff::t_2978c843212a6e 1,4-115,118-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "e02bb13ce383830276847257c8f7b1f19ce55bff",
+  "prompts": {},
+  "sessions": {
+    "s_8ce10aa3af3fff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e12c7-3d30-7533-be0b-bbdbd1834d64",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
