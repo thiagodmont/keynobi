@@ -29,6 +29,7 @@ import {
   parseQueryBarState,
   balanceMessageDraftQuotes,
   buildQueryBarPillGroups,
+  buildQueryBarPillRefGroups,
   applyMessageKeySpaceAutoQuote,
   pasteIntoMessageKeyDraft,
   rebuildCommittedAfterRemovingPill,
@@ -68,6 +69,8 @@ export interface QueryBarProps {
   knownTags: string[];
   knownPackages: string[];
   placeholder?: string;
+  disabledPillIds?: ReadonlySet<string>;
+  onTogglePillDisabled?: (id: string) => void;
 }
 
 // ── Query parsing helpers (local to this component) ───────────────────────────
@@ -119,6 +122,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
   const committed = createMemo(() => queryState().committed);
   const draft = createMemo(() => queryState().draft);
   const pillGroups = createMemo(() => buildQueryBarPillGroups(committed()));
+  const pillRefGroups = createMemo(() => buildQueryBarPillRefGroups(committed()));
   const multiGroup = createMemo(() => pillGroups().filter((g) => g.length > 0).length >= 2);
 
   function totalPillCount(): number {
@@ -427,6 +431,8 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
 
   function toggleAndConnector(groupIdx: number, tokenIdxAfterConnector: number) {
     if (inlineEdit()) commitInlineEdit();
+    setOpen(false);
+    setSelectedIdx(0);
     const next = toggleQueryBarAndConnector(
       committed(),
       groupIdx,
@@ -434,14 +440,14 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
       draftInNewGroup()
     );
     props.onChange(buildQuery(next, draft()));
-    queueMicrotask(() => draftRef?.focus());
   }
 
   function toggleOrConnector(groupIdxAfterConnector: number) {
     if (inlineEdit()) commitInlineEdit();
+    setOpen(false);
+    setSelectedIdx(0);
     const next = toggleQueryBarOrConnector(committed(), groupIdxAfterConnector, draftInNewGroup());
     props.onChange(buildQuery(next, draft()));
-    queueMicrotask(() => draftRef?.focus());
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -462,7 +468,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
         <span style={searchIconStyle()}>⌕</span>
 
         {/* ── Pill groups ─────────────────────────────────────────────── */}
-        <For each={pillGroups()}>
+        <For each={pillRefGroups()}>
           {(group, gi) => (
             <Show when={group.length > 0}>
               <>
@@ -475,7 +481,7 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                 <div style={multiGroup() ? queryBarGroupBoxStyle() : { display: "contents" }}>
                   {/* Tokens in this group */}
                   <For each={group}>
-                    {(token, ti) => (
+                    {(tokenRef, ti) => (
                       <>
                         <Show
                           when={inlineEdit()?.groupIdx === gi() && inlineEdit()?.tokenIdx === ti()}
@@ -497,8 +503,14 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
                         </Show>
 
                         <QueryBarPill
-                          token={token}
-                          onEdit={() => editToken(gi(), ti(), token)}
+                          token={tokenRef.token}
+                          disabled={props.disabledPillIds?.has(tokenRef.id) ?? false}
+                          onToggleDisabled={
+                            props.onTogglePillDisabled
+                              ? () => props.onTogglePillDisabled?.(tokenRef.id)
+                              : undefined
+                          }
+                          onEdit={() => editToken(gi(), ti(), tokenRef.token)}
                           onRemove={() => removeToken(gi(), ti())}
                         />
                       </>
@@ -613,8 +625,9 @@ export function QueryBar(props: QueryBarProps): JSX.Element {
               onMouseDown={(e) => {
                 e.preventDefault();
                 setInlineEdit(null);
+                setOpen(false);
+                setSelectedIdx(0);
                 props.onChange("");
-                draftRef?.focus();
               }}
               title="Clear all filters (Esc)"
               style={queryBarClearButtonStyle()}

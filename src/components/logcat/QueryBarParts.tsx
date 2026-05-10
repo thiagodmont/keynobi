@@ -9,6 +9,7 @@ import {
   queryBarPillLabelStyle,
   queryBarPillRemoveButtonStyle,
   queryBarPillStyle,
+  queryBarPillToggleButtonStyle,
   suggestionFooterStyle,
   suggestionItemStyle,
   suggestionMenuStyle,
@@ -95,16 +96,42 @@ export function QueryBarInlineEditInput(props: {
 
 export function QueryBarPill(props: {
   token: string;
+  disabled?: boolean;
   onEdit: () => void;
   onRemove: () => void;
+  onToggleDisabled?: () => void;
 }): JSX.Element {
   const style = () => getQueryBarTokenStyle(props.token);
+  const disabled = () => props.disabled === true;
 
   return (
     <span
       onClick={(e) => e.stopPropagation()}
-      style={queryBarPillStyle(style(), props.token.startsWith("-"))}
+      style={queryBarPillStyle(style(), props.token.startsWith("-"), disabled())}
     >
+      {props.onToggleDisabled ? (
+        <button
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onToggleDisabled?.();
+          }}
+          aria-label={`${disabled() ? "Re-enable" : "Disable"} filter ${props.token}`}
+          title={disabled() ? "Re-enable filter" : "Disable filter temporarily"}
+          style={queryBarPillToggleButtonStyle(style().color, disabled())}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.opacity = "1";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.opacity = disabled() ? "0.9" : "0.45";
+          }}
+        >
+          ⏻
+        </button>
+      ) : null}
       <span
         onMouseDown={(e) => {
           e.preventDefault();
@@ -112,7 +139,7 @@ export function QueryBarPill(props: {
           props.onEdit();
         }}
         title="Edit filter"
-        style={queryBarPillLabelStyle()}
+        style={queryBarPillLabelStyle(disabled())}
       >
         {props.token}
       </span>

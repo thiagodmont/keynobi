@@ -66,6 +66,59 @@ export interface QueryBarSuggestion {
   insert: string;
 }
 
+export type QueryVariableValues = Record<string, string>;
+
+const QUERY_VARIABLE_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const QUERY_VARIABLE_RE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+export function isValidQueryVariableName(name: string): boolean {
+  return QUERY_VARIABLE_NAME_RE.test(name);
+}
+
+export function extractQueryVariables(query: string): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+
+  for (const match of query.matchAll(QUERY_VARIABLE_RE)) {
+    const name = match[1];
+    if (!seen.has(name)) {
+      seen.add(name);
+      names.push(name);
+    }
+  }
+
+  return names;
+}
+
+export function resolveQueryVariables(query: string, values: QueryVariableValues): string {
+  return query.replace(QUERY_VARIABLE_RE, (raw, name: string) => {
+    const value = values[name]?.trim();
+    return value ? value : raw;
+  });
+}
+
+export function reconcileQueryVariableValues(
+  query: string,
+  values: QueryVariableValues
+): QueryVariableValues {
+  const next: QueryVariableValues = {};
+  for (const name of extractQueryVariables(query)) {
+    if (values[name] !== undefined) next[name] = values[name];
+  }
+  return next;
+}
+
+export function ensureQueryVariableValues(
+  query: string,
+  values: QueryVariableValues
+): QueryVariableValues {
+  const next: QueryVariableValues = { ...values };
+  for (const name of extractQueryVariables(query)) {
+    if (next[name] === undefined) next[name] = "";
+  }
+  return next;
+}
+
 export function getQueryBarSuggestions(
   draft: string,
   knownTags: readonly string[],
@@ -952,6 +1005,88 @@ export function buildQueryBarPillGroups(committed: string[]): string[][] {
     }
   }
   return groups.map(normalizeGroupParenTokens);
+}
+
+export interface QueryBarPillRef {
+  id: string;
+  token: string;
+  groupIdx: number;
+  tokenIdx: number;
+}
+
+export function queryBarPillId(token: string, occurrence: number): string {
+  return JSON.stringify([token, occurrence]);
+}
+
+export function buildQueryBarPillRefs(committed: string[]): QueryBarPillRef[] {
+  const seen = new Map<string, number>();
+  const refs: QueryBarPillRef[] = [];
+
+  buildQueryBarPillGroups(committed).forEach((group, groupIdx) => {
+    group.forEach((token, tokenIdx) => {
+      const occurrence = seen.get(token) ?? 0;
+      seen.set(token, occurrence + 1);
+      refs.push({
+        id: queryBarPillId(token, occurrence),
+        token,
+        groupIdx,
+        tokenIdx,
+      });
+    });
+  });
+
+  return refs;
+}
+
+export function buildQueryBarPillRefGroups(committed: string[]): QueryBarPillRef[][] {
+  const refs = buildQueryBarPillRefs(committed);
+  const groups: QueryBarPillRef[][] = [];
+
+  for (const ref of refs) {
+    if (!groups[ref.groupIdx]) groups[ref.groupIdx] = [];
+    groups[ref.groupIdx]!.push(ref);
+  }
+
+  return groups.filter((group) => group.length > 0);
+}
+
+function buildQueryFromCommittedAndDraft(committed: string[], draft: string): string {
+  const base = committed.map(serializeQueryBarCommittedPart).join(" ");
+  if (!draft) return base ? `${base} ` : "";
+  return base ? `${base} ${draft}` : draft;
+}
+
+export function reconcileDisabledQueryPillIds(
+  query: string,
+  disabledIds: ReadonlySet<string>
+): Set<string> {
+  if (disabledIds.size === 0) return new Set();
+  const validIds = new Set(
+    buildQueryBarPillRefs(parseQueryBarState(query).committed).map((r) => r.id)
+  );
+  return new Set([...disabledIds].filter((id) => validIds.has(id)));
+}
+
+export function buildEffectiveQueryWithDisabledPills(
+  query: string,
+  disabledIds: ReadonlySet<string>
+): string {
+  if (disabledIds.size === 0) return query;
+
+  const { committed, draft } = parseQueryBarState(query);
+  const draftInNewGroup = committedEndsWithOrSeparator(committed);
+  const refGroups = buildQueryBarPillRefGroups(committed);
+  const activeGroups = refGroups
+    .map((group) => group.filter((ref) => !disabledIds.has(ref.id)).map((ref) => ref.token))
+    .filter((group) => group.length > 0);
+
+  const activeCommitted = flattenPillGroupsToCommitted(activeGroups, false);
+  if (draft.trim()) {
+    if (draftInNewGroup && activeCommitted.length > 0) activeCommitted.push("|");
+    return buildQueryFromCommittedAndDraft(activeCommitted, draft);
+  }
+
+  return buildQueryFromCommittedAndDraft(activeCommitted, "");
 }
 
 /** True when the last structural committed part is `|` (draft starts a new OR group). */
