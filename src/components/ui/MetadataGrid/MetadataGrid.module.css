@@ -45,7 +45,7 @@
 
 .valueButton:hover,
 .valueButton:focus-visible {
-  color: var(--accent);
+  color: var(--accent-text);
   outline: none;
   text-decoration: underline;
   text-decoration-thickness: 1px;

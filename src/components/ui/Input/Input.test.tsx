@@ -30,6 +30,11 @@ describe("Input", () => {
     expect(container.querySelector("input")!.getAttribute("aria-invalid")).toBe("true");
   });
 
+  it("passes ariaLabel to the input", () => {
+    render(() => <Input ariaLabel="Log query" />);
+    expect(screen.getByLabelText("Log query")).toBeInstanceOf(HTMLInputElement);
+  });
+
   it("renders prefix slot", () => {
     const { container } = render(() => <Input prefix={<span data-testid="pfx" />} />);
     expect(container.querySelector("[data-testid='pfx']")).not.toBeNull();

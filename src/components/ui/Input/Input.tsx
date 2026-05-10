@@ -32,6 +32,7 @@ export interface InputProps {
   style?: JSX.CSSProperties;
   inputStyle?: JSX.CSSProperties;
   title?: string;
+  ariaLabel?: string;
 }
 
 export function Input(props: InputProps): JSX.Element {
@@ -62,6 +63,7 @@ export function Input(props: InputProps): JSX.Element {
         value={props.value ?? ""}
         placeholder={props.placeholder}
         title={props.title}
+        aria-label={props.ariaLabel}
         disabled={isDisabled()}
         autofocus={props.autofocus}
         spellcheck={props.spellcheck}
