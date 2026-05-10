@@ -1,0 +1,40 @@
+.root {
+  align-items: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  padding: 1px 7px;
+  text-overflow: ellipsis;
+  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  white-space: nowrap;
+}
+
+.root:hover {
+  border-color: var(--accent);
+}
+
+.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.soft {
+  background: rgba(var(--accent-rgb, 59, 130, 246), 0.15);
+  color: var(--accent);
+}
+
+.muted.active {
+  background: var(--bg-active);
+  border-color: var(--border);
+  color: var(--text-secondary);
+}

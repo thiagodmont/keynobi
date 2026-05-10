@@ -9,9 +9,18 @@
   color: var(--text-muted);
 }
 
+.compact {
+  gap: 5px;
+  padding: 16px 12px;
+}
+
 .icon {
   opacity: 0.4;
   margin-bottom: 4px;
+}
+
+.compact .icon {
+  margin-bottom: 0;
 }
 
 .title {
@@ -20,11 +29,20 @@
   color: var(--text-secondary);
 }
 
+.compact .title {
+  font-size: 12px;
+}
+
 .description {
   font-size: var(--font-size-ui);
   color: var(--text-muted);
   max-width: 280px;
   line-height: 1.5;
+}
+
+.compact .description {
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .action {

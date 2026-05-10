@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render } from "@solidjs/testing-library";
+import { describe, it, expect, vi } from "vitest";
+import { fireEvent, render } from "@solidjs/testing-library";
 import { Badge } from "./Badge";
 
 describe("Badge", () => {
@@ -24,5 +24,24 @@ describe("Badge", () => {
   it("passes class prop through", () => {
     const { container } = render(() => <Badge class="my-badge">x</Badge>);
     expect(container.querySelector("span")!.classList.contains("my-badge")).toBe(true);
+  });
+
+  it("supports compact mono badges", () => {
+    const { container } = render(() => (
+      <Badge size="xs" mono>
+        JSON
+      </Badge>
+    ));
+    const badge = container.querySelector("span")!;
+    expect(badge.className).toContain("xs");
+    expect(badge.className).toContain("mono");
+  });
+
+  it("renders clickable badges as buttons", () => {
+    const onClick = vi.fn();
+    const { container } = render(() => <Badge onClick={onClick}>JSON</Badge>);
+    const button = container.querySelector("button")!;
+    fireEvent.click(button);
+    expect(onClick).toHaveBeenCalledOnce();
   });
 });

@@ -31,38 +31,28 @@ describe("Input", () => {
   });
 
   it("renders prefix slot", () => {
-    const { container } = render(() => (
-      <Input prefix={<span data-testid="pfx" />} />
-    ));
+    const { container } = render(() => <Input prefix={<span data-testid="pfx" />} />);
     expect(container.querySelector("[data-testid='pfx']")).not.toBeNull();
   });
 
   it("renders suffix slot", () => {
-    const { container } = render(() => (
-      <Input suffix={<span data-testid="sfx" />} />
-    ));
+    const { container } = render(() => <Input suffix={<span data-testid="sfx" />} />);
     expect(container.querySelector("[data-testid='sfx']")).not.toBeNull();
   });
 
   it("renders clear button when clearable and value is non-empty", () => {
-    const { container } = render(() => (
-      <Input clearable value="hello" onClear={vi.fn()} />
-    ));
+    const { container } = render(() => <Input clearable value="hello" onClear={vi.fn()} />);
     expect(container.querySelector("button")).not.toBeNull();
   });
 
   it("does not render clear button when value is empty", () => {
-    const { container } = render(() => (
-      <Input clearable value="" onClear={vi.fn()} />
-    ));
+    const { container } = render(() => <Input clearable value="" onClear={vi.fn()} />);
     expect(container.querySelector("button")).toBeNull();
   });
 
   it("calls onClear when clear button is clicked", () => {
     const fn = vi.fn();
-    const { container } = render(() => (
-      <Input clearable value="hello" onClear={fn} />
-    ));
+    const { container } = render(() => <Input clearable value="hello" onClear={fn} />);
     fireEvent.click(container.querySelector("button")!);
     expect(fn).toHaveBeenCalledOnce();
   });
@@ -70,5 +60,18 @@ describe("Input", () => {
   it("passes class prop through to wrapper", () => {
     const { container } = render(() => <Input class="my-input" />);
     expect(container.firstElementChild!.classList.contains("my-input")).toBe(true);
+  });
+
+  it("supports compact mono inputs and keyboard handlers", () => {
+    const onKeyDown = vi.fn();
+    const { container } = render(() => (
+      <Input size="xs" mono spellcheck={false} onKeyDown={onKeyDown} />
+    ));
+    const wrapper = container.firstElementChild!;
+    expect(wrapper.className).toContain("xs");
+    expect(wrapper.className).toContain("mono");
+
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
+    expect(onKeyDown).toHaveBeenCalledOnce();
   });
 });
