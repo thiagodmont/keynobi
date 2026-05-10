@@ -100,42 +100,6 @@ export function queryBarGroupBoxStyle(): Record<string, string> {
   };
 }
 
-export function queryBarOrBadgeStyle(clickable = false): Record<string, string> {
-  return {
-    appearance: "none",
-    "font-size": "9px",
-    "font-weight": "700",
-    "letter-spacing": "0.05em",
-    color: "var(--accent)",
-    background: "rgba(var(--accent-rgb,59,130,246),0.13)",
-    border: "1px solid rgba(var(--accent-rgb,59,130,246),0.35)",
-    "border-radius": "10px",
-    padding: "1px 5px",
-    "flex-shrink": "0",
-    "user-select": "none",
-    cursor: clickable ? "pointer" : "default",
-    "line-height": "1.2",
-  };
-}
-
-export function queryBarAndBadgeStyle(clickable = false): Record<string, string> {
-  return {
-    appearance: "none",
-    background: "transparent",
-    "font-size": "9px",
-    "font-weight": "600",
-    "letter-spacing": "0.04em",
-    color: "var(--text-muted)",
-    border: "1px dashed var(--border)",
-    "border-radius": "10px",
-    padding: "1px 5px",
-    "flex-shrink": "0",
-    "user-select": "none",
-    cursor: clickable ? "pointer" : "default",
-    "line-height": "1.2",
-  };
-}
-
 export function queryBarPillStyle(
   tokenStyle: QueryBarTokenStyle,
   negated: boolean,

@@ -1,11 +1,10 @@
 import { type JSX, For } from "solid-js";
+import { Badge, Input, MenuList, MenuListItem } from "@/components/ui";
 import type { QueryBarSuggestion } from "@/lib/logcat-query";
 import {
   getQueryBarTokenStyle,
-  queryBarAndBadgeStyle,
   queryBarConnectorButtonStyle,
   queryBarInlineEditStyle,
-  queryBarOrBadgeStyle,
   queryBarPillLabelStyle,
   queryBarPillRemoveButtonStyle,
   queryBarPillStyle,
@@ -19,9 +18,10 @@ export function QueryBarOrBadge(props: { onToggle?: () => void } = {}): JSX.Elem
   return (
     <>
       {props.onToggle ? (
-        <button
-          type="button"
-          aria-label="Change OR to AND"
+        <Badge
+          size="xs"
+          variant="accent"
+          ariaLabel="Change OR to AND"
           title="Change OR to AND"
           onMouseDown={(e) => {
             e.preventDefault();
@@ -31,12 +31,13 @@ export function QueryBarOrBadge(props: { onToggle?: () => void } = {}): JSX.Elem
             e.stopPropagation();
             props.onToggle?.();
           }}
-          style={queryBarOrBadgeStyle(true)}
         >
           OR
-        </button>
+        </Badge>
       ) : (
-        <span style={queryBarOrBadgeStyle()}>OR</span>
+        <Badge size="xs" variant="accent">
+          OR
+        </Badge>
       )}
     </>
   );
@@ -46,9 +47,9 @@ export function QueryBarAndBadge(props: { onToggle?: () => void } = {}): JSX.Ele
   return (
     <>
       {props.onToggle ? (
-        <button
-          type="button"
-          aria-label="Change AND to OR"
+        <Badge
+          size="xs"
+          ariaLabel="Change AND to OR"
           title="Change AND to OR"
           onMouseDown={(e) => {
             e.preventDefault();
@@ -58,12 +59,11 @@ export function QueryBarAndBadge(props: { onToggle?: () => void } = {}): JSX.Ele
             e.stopPropagation();
             props.onToggle?.();
           }}
-          style={queryBarAndBadgeStyle(true)}
         >
           AND
-        </button>
+        </Badge>
       ) : (
-        <span style={queryBarAndBadgeStyle()}>AND</span>
+        <Badge size="xs">AND</Badge>
       )}
     </>
   );
@@ -72,18 +72,20 @@ export function QueryBarAndBadge(props: { onToggle?: () => void } = {}): JSX.Ele
 export function QueryBarInlineEditInput(props: {
   value: string;
   inputRef: (el: HTMLInputElement) => void;
-  onInput: (e: InputEvent) => void;
+  onInput: (value: string) => void;
   onKeyDown: (e: KeyboardEvent) => void;
   onBlur: () => void;
   style?: Record<string, string>;
 }): JSX.Element {
   return (
-    <input
-      ref={props.inputRef}
+    <Input
+      inputRef={props.inputRef}
       type="text"
       spellcheck={false}
       value={props.value}
-      onInput={(e) => props.onInput(e)}
+      size="xs"
+      mono
+      onInput={props.onInput}
       onKeyDown={(e) => props.onKeyDown(e)}
       onBlur={() => props.onBlur()}
       onClick={(e) => e.stopPropagation()}
@@ -199,27 +201,29 @@ export function QueryBarSuggestions(props: {
   onHover: (idx: number) => void;
 }): JSX.Element {
   return (
-    <div style={suggestionMenuStyle()}>
+    <MenuList style={suggestionMenuStyle()}>
       <For each={props.suggestions}>
         {(suggestion, i) => {
           const isSelected = () => i() === props.selectedIdx;
           return (
-            <div
+            <MenuListItem
               onMouseDown={(e) => {
                 e.preventDefault();
                 props.onSelect(suggestion.insert);
               }}
               onMouseEnter={() => props.onHover(i())}
+              active={isSelected()}
+              mono
               style={suggestionItemStyle(isSelected())}
             >
               {suggestion.display}
-            </div>
+            </MenuListItem>
           );
         }}
       </For>
       <div style={suggestionFooterStyle()}>
         ↑↓ navigate · Tab/Enter select · Esc close · && = AND · | = OR group
       </div>
-    </div>
+    </MenuList>
   );
 }
