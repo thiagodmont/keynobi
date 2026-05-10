@@ -1,4 +1,5 @@
 import { createSignal, type JSX } from "solid-js";
+import { Button, DockedPanel } from "@/components/ui";
 import type { LogcatEntry } from "@/lib/tauri-api";
 
 export function JsonDetailPanel(props: { entry: LogcatEntry; onClose: () => void }): JSX.Element {
@@ -27,73 +28,34 @@ export function JsonDetailPanel(props: { entry: LogcatEntry; onClose: () => void
   }
 
   return (
-    <div
-      style={{
-        "flex-shrink": "0",
-        "max-height": "220px",
-        display: "flex",
-        "flex-direction": "column",
-        background: "var(--bg-secondary)",
-        "border-top": "1px solid var(--border)",
-      }}
+    <DockedPanel
+      title="JSON"
+      titleTone="info"
+      subtitle={`${props.entry.tag}: ${props.entry.timestamp}`}
+      maxHeight="220px"
+      actions={
+        <>
+          <Button
+            variant="outline"
+            size="xs"
+            tone={copied() ? "success" : "muted"}
+            onClick={copyJson}
+            title="Copy JSON"
+          >
+            {copied() ? "Copied!" : "Copy"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            tone="muted"
+            onClick={() => props.onClose()}
+            title="Close JSON viewer"
+          >
+            ✕
+          </Button>
+        </>
+      }
     >
-      <div
-        style={{
-          display: "flex",
-          "align-items": "center",
-          gap: "6px",
-          padding: "3px 10px",
-          background: "var(--bg-tertiary)",
-          "border-bottom": "1px solid var(--border)",
-          "flex-shrink": "0",
-        }}
-      >
-        <span style={{ "font-size": "10px", color: "var(--info)", "font-weight": "600" }}>
-          JSON
-        </span>
-        <span
-          style={{
-            "font-size": "10px",
-            color: "var(--text-muted)",
-            flex: "1",
-            overflow: "hidden",
-            "text-overflow": "ellipsis",
-            "white-space": "nowrap",
-          }}
-        >
-          {props.entry.tag}: {props.entry.timestamp}
-        </span>
-        <button
-          onClick={copyJson}
-          title="Copy JSON"
-          style={{
-            background: "none",
-            border: "1px solid var(--border)",
-            color: copied() ? "var(--success)" : "var(--text-muted)",
-            "border-radius": "3px",
-            cursor: "pointer",
-            "font-size": "10px",
-            padding: "1px 6px",
-          }}
-        >
-          {copied() ? "Copied!" : "Copy"}
-        </button>
-        <button
-          onClick={() => props.onClose()}
-          title="Close JSON viewer"
-          style={{
-            background: "none",
-            border: "none",
-            color: "var(--text-muted)",
-            cursor: "pointer",
-            "font-size": "12px",
-            padding: "0 4px",
-          }}
-        >
-          ✕
-        </button>
-      </div>
-
       <pre
         style={{
           flex: "1",
@@ -110,6 +72,6 @@ export function JsonDetailPanel(props: { entry: LogcatEntry; onClose: () => void
       >
         {formattedJson() ?? "(invalid JSON)"}
       </pre>
-    </div>
+    </DockedPanel>
   );
 }

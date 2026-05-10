@@ -1,0 +1,154 @@
+.root {
+  gap: 6px;
+  padding: 6px 10px;
+}
+
+.queryRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.quickRow,
+.variableRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.quickRow {
+  gap: 5px;
+}
+
+.variableRow {
+  padding: 1px 0;
+}
+
+.rowLabel {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.ageSeparator {
+  height: 14px;
+  margin-right: 2px;
+}
+
+.packageSeparator {
+  height: 14px;
+  margin-left: 2px;
+}
+
+.variableToken {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-primary);
+}
+
+.variableName {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.variableValueInput {
+  width: 120px;
+  min-width: 72px;
+  border: 0;
+  background: transparent;
+}
+
+.variableValueInputControl {
+  padding: 0;
+}
+
+.strongButton {
+  height: 28px;
+  padding: 0 10px;
+  font-weight: 600;
+}
+
+.variableManagerPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 360px;
+  padding: 8px;
+}
+
+.variableManager {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.addVariableGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.addVariableButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.emptyVariables {
+  padding: 4px 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.variableList {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.variableListItem {
+  display: grid;
+  grid-template-columns: minmax(80px, 0.8fr) minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.variableListName {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.variableListNameText {
+  overflow: hidden;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.savePanel {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+}
+
+.saveInput {
+  flex: 1;
+}

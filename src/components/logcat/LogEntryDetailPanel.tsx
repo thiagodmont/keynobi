@@ -1,18 +1,23 @@
 import { Show, createSignal, onCleanup, onMount } from "solid-js";
-import { showToast } from "@/components/ui";
+import {
+  Button,
+  DockedPanel,
+  MenuList,
+  MenuListItem,
+  MetadataCell,
+  MetadataGrid,
+  showToast,
+} from "@/components/ui";
 import type { LogcatEntry } from "@/lib/tauri-api";
 import {
   buildLogEntryDetailFilterToken,
   type LogEntryDetailFilterField,
   type LogEntryDetailFilterMode,
 } from "@/lib/logcat-query";
+import { copyToClipboard } from "@/utils/clipboard";
+import { formatLogcatEntry } from "./logcat-entry-format";
 import { getLevelConfig } from "./logcat-levels";
 import styles from "./LogEntryDetailPanel.module.css";
-
-function formatEntry(e: LogcatEntry): string {
-  const pkg = e.package ? `[${e.package}] ` : "";
-  return `${e.timestamp}  ${e.level.toUpperCase()}  ${pkg}${e.tag}: ${e.message}`;
-}
 
 interface LogEntryDetailPanelProps {
   entry: LogcatEntry;
@@ -26,12 +31,10 @@ interface FilterMenuState {
   y: number;
 }
 
-function MetaCell(props: {
+function FilterableMetadataCell(props: {
   label: string;
   value: string;
   valueStyle?: Record<string, string>;
-  borderRight?: boolean;
-  borderLeft?: boolean;
   filterField?: LogEntryDetailFilterField;
   filterValue?: unknown;
   onFilterClick?: (field: LogEntryDetailFilterField, value: unknown, target: HTMLElement) => void;
@@ -39,42 +42,18 @@ function MetaCell(props: {
   const canFilter = () => props.filterField && props.value !== "—" && props.onFilterClick;
 
   return (
-    <div
-      class={[
-        styles.cell,
-        props.borderRight ? styles.cellBorderRight : "",
-        props.borderLeft ? styles.cellBorderLeft : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-    >
-      <div class={styles.cellLabel}>{props.label}</div>
-      <Show
-        when={canFilter()}
-        fallback={
-          <div class={styles.cellValue} style={props.valueStyle}>
-            {props.value}
-          </div>
-        }
-      >
-        <button
-          type="button"
-          class={styles.cellValueButton}
-          style={props.valueStyle}
-          title={`Filter by ${props.label}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onFilterClick?.(
-              props.filterField!,
-              props.filterValue ?? props.value,
-              e.currentTarget
-            );
-          }}
-        >
-          {props.value}
-        </button>
-      </Show>
-    </div>
+    <MetadataCell
+      label={props.label}
+      value={props.value}
+      valueStyle={props.valueStyle}
+      title={`Filter by ${props.label}`}
+      onClick={
+        canFilter()
+          ? (target) =>
+              props.onFilterClick?.(props.filterField!, props.filterValue ?? props.value, target)
+          : undefined
+      }
+    />
   );
 }
 
@@ -128,7 +107,7 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
   }
 
   function copyEntry() {
-    navigator.clipboard.writeText(formatEntry(props.entry)).then(() => {
+    copyToClipboard(formatLogcatEntry(props.entry)).then(() => {
       showToast("Copied to clipboard", "info");
     });
   }
@@ -158,36 +137,42 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
   });
 
   return (
-    <div class={styles.panel}>
-      <div class={styles.header}>
-        <span class={styles.headerTitle}>Entry Detail</span>
-        <div class={styles.headerActions}>
-          <button class={styles.iconBtn} onClick={copyEntry} title="Copy">
+    <DockedPanel
+      title="Entry Detail"
+      maxHeight="30vh"
+      actions={
+        <>
+          <Button variant="ghost" size="xs" tone="muted" onClick={copyEntry} title="Copy">
             ⎘ Copy
-          </button>
-          <button class={styles.iconBtn} onClick={() => props.onClose()} title="Close">
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            tone="muted"
+            onClick={() => props.onClose()}
+            title="Close"
+          >
             ✕
-          </button>
-        </div>
-      </div>
-
-      <div class={styles.grid}>
-        <MetaCell
+          </Button>
+        </>
+      }
+      bodyClass={styles.body}
+    >
+      <MetadataGrid>
+        <FilterableMetadataCell
           label="Tag"
           value={props.entry.tag}
-          borderRight
           filterField="tag"
           onFilterClick={openFilterMenu}
         />
-        <MetaCell
+        <FilterableMetadataCell
           label="Package"
           value={props.entry.package ?? "—"}
-          borderRight
           filterField="package"
           filterValue={props.entry.package}
           onFilterClick={openFilterMenu}
         />
-        <MetaCell
+        <FilterableMetadataCell
           label="Level"
           value={props.entry.level.toUpperCase()}
           valueStyle={{ color: cfg().color }}
@@ -195,32 +180,30 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
           filterValue={props.entry.level}
           onFilterClick={openFilterMenu}
         />
-      </div>
+      </MetadataGrid>
 
-      <div class={styles.grid}>
-        <MetaCell
+      <MetadataGrid>
+        <FilterableMetadataCell
           label="PID"
           value={String(props.entry.pid ?? "—")}
-          borderRight
           filterField="pid"
           filterValue={props.entry.pid}
           onFilterClick={openFilterMenu}
         />
-        <MetaCell
+        <FilterableMetadataCell
           label="TID"
           value={String(props.entry.tid ?? "—")}
-          borderRight
           filterField="tid"
           filterValue={props.entry.tid}
           onFilterClick={openFilterMenu}
         />
-        <MetaCell
+        <FilterableMetadataCell
           label="Time"
           value={props.entry.timestamp}
           filterField="time"
           onFilterClick={openFilterMenu}
         />
-      </div>
+      </MetadataGrid>
 
       <div class={styles.messageArea}>
         <pre
@@ -244,31 +227,23 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
 
       <Show when={filterMenu()}>
         {(menu) => (
-          <div
-            ref={menuRef}
+          <MenuList
+            listRef={(el) => {
+              menuRef = el;
+            }}
             class={styles.filterMenu}
             role="menu"
             style={{ left: `${menu().x}px`, top: `${menu().y}px` }}
           >
-            <button
-              type="button"
-              role="menuitem"
-              class={styles.filterMenuItem}
-              onClick={() => addFilter("and")}
-            >
+            <MenuListItem role="menuitem" onClick={() => addFilter("and")}>
               Add as AND
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              class={styles.filterMenuItem}
-              onClick={() => addFilter("or")}
-            >
+            </MenuListItem>
+            <MenuListItem role="menuitem" onClick={() => addFilter("or")}>
               Add as OR
-            </button>
-          </div>
+            </MenuListItem>
+          </MenuList>
         )}
       </Show>
-    </div>
+    </DockedPanel>
   );
 }

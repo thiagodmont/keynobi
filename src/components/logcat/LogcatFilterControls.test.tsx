@@ -3,6 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LogcatFilterControls } from "./LogcatFilterControls";
 import { buildQueryBarPillRefs } from "@/lib/logcat-query";
 
+function closestClassContaining(element: Element | null, classNamePart: string): Element | null {
+  let current = element;
+  while (current) {
+    if (current.className.toString().includes(classNamePart)) return current;
+    current = current.parentElement;
+  }
+  return null;
+}
+
 function renderFilterControls(overrides: Partial<Parameters<typeof LogcatFilterControls>[0]> = {}) {
   const props: Parameters<typeof LogcatFilterControls>[0] = {
     query: "",
@@ -211,7 +220,7 @@ describe("LogcatFilterControls", () => {
     expect(screen.getByText("Errors")).not.toBeNull();
   });
 
-  it("opens the direct save name box with an opaque panel background", () => {
+  it("opens the direct save name box inside the shared popover surface", () => {
     renderFilterControls({
       isFiltered: true,
       query: "level:error ",
@@ -219,8 +228,8 @@ describe("LogcatFilterControls", () => {
 
     fireEvent.click(screen.getByTitle("Save current filter"));
 
-    const box = screen.getByPlaceholderText("Filter name…").parentElement;
-    expect(box?.getAttribute("style")).toContain("background:var(--bg-secondary)");
+    const panel = closestClassContaining(screen.getByPlaceholderText("Filter name…"), "panel");
+    expect(panel?.className).toContain("panel");
   });
 
   it("saves the effective active query when a pill is temporarily disabled", () => {
