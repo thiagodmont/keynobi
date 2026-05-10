@@ -32,6 +32,10 @@ import {
   parseAge,
   parseFilterGroups,
   matchesFilterGroups,
+  buildEffectiveQueryWithDisabledPills,
+  reconcileDisabledQueryPillIds,
+  ensureQueryVariableValues,
+  resolveQueryVariables,
   setAgeInQuery,
   setPackageInQuery,
   getPackageFromQuery,
@@ -39,6 +43,7 @@ import {
   appendLogEntryDetailFilterToken,
   type LogEntryDetailFilterMode,
   type FilterGroup,
+  type QueryVariableValues,
 } from "@/lib/logcat-query";
 import { projectState } from "@/stores/project.store";
 import { buildState } from "@/stores/build.store";
@@ -70,7 +75,6 @@ import {
 import { createLatestOnlyGuard } from "@/services/logcat.service";
 import { JsonDetailPanel } from "./LogcatJsonDetailPanel";
 import { LogcatVirtualRow, SeparatorRow } from "./LogcatRows";
-import { SavedFilterMenu } from "./SavedFilterMenu";
 import {
   LogcatFilterControls,
   LOGCAT_AGE_PILLS,
@@ -98,7 +102,14 @@ function isLogcatTypingTarget(target: unknown): boolean {
 export function LogcatPanel(): JSX.Element {
   const [query, setQuery] = createSignal("");
   const [debouncedQuery, setDebouncedQuery] = createSignal("");
+  const [disabledPillIds, setDisabledPillIds] = createSignal<Set<string>>(new Set(), {
+    equals: false,
+  });
+  const [queryVariableValues, setQueryVariableValues] = createSignal<QueryVariableValues>({});
+  const [debouncedQueryVariableValues, setDebouncedQueryVariableValues] =
+    createSignal<QueryVariableValues>({});
   let _queryDebounce: ReturnType<typeof setTimeout> | undefined;
+  let _variableDebounce: ReturnType<typeof setTimeout> | undefined;
 
   function updateQuery(q: string) {
     exitReadMode();
@@ -107,8 +118,66 @@ export function LogcatPanel(): JSX.Element {
     setSelectedJsonEntry(null);
     setSelectedDetailEntry(null);
     setQuery(q);
+    setQueryVariableValues((values) => ensureQueryVariableValues(q, values));
+    setDebouncedQueryVariableValues((values) => ensureQueryVariableValues(q, values));
+    setDisabledPillIds((ids) => reconcileDisabledQueryPillIds(q, ids));
     clearTimeout(_queryDebounce);
     _queryDebounce = setTimeout(() => setDebouncedQuery(q), 150);
+  }
+
+  function scheduleDebouncedQueryVariableValues(values: QueryVariableValues): void {
+    clearTimeout(_variableDebounce);
+    _variableDebounce = setTimeout(() => {
+      setDebouncedQueryVariableValues(ensureQueryVariableValues(query(), values));
+    }, 150);
+  }
+
+  function updateQueryVariableValue(name: string, value: string): void {
+    exitReadMode();
+    setSelectionAnchor(null);
+    setSelectionEnd(null);
+    setSelectedJsonEntry(null);
+    setSelectedDetailEntry(null);
+    const nextValues = ensureQueryVariableValues(query(), {
+      ...queryVariableValues(),
+      [name]: value,
+    });
+    setQueryVariableValues(nextValues);
+    scheduleDebouncedQueryVariableValues(nextValues);
+  }
+
+  function deleteQueryVariable(name: string): void {
+    const next = { ...queryVariableValues() };
+    delete next[name];
+    const nextValues = ensureQueryVariableValues(query(), next);
+    setQueryVariableValues(nextValues);
+    scheduleDebouncedQueryVariableValues(nextValues);
+  }
+
+  function insertQueryVariable(name: string): void {
+    updateQuery(`${query()}\${${name}}`);
+  }
+
+  function applyPresetQuery(q: string): void {
+    setDisabledPillIds(new Set<string>());
+    updateQuery(q);
+  }
+
+  function togglePillDisabled(id: string): void {
+    exitReadMode();
+    setSelectionAnchor(null);
+    setSelectionEnd(null);
+    setSelectedJsonEntry(null);
+    setSelectedDetailEntry(null);
+    setDisabledPillIds((ids) => {
+      const next = new Set(ids);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return reconcileDisabledQueryPillIds(query(), next);
+    });
   }
 
   const [autoScroll, setAutoScroll] = createSignal(settingsState.logcat.autoScrollToEnd !== false);
@@ -158,7 +227,13 @@ export function LogcatPanel(): JSX.Element {
   let nowTimer: ReturnType<typeof setInterval> | undefined;
 
   // ── Parsed query (debounced — avoids re-parsing on every keystroke)
-  const parsedGroups = createMemo(() => parseFilterGroups(debouncedQuery()));
+  const effectiveDebouncedQueryTemplate = createMemo(() =>
+    buildEffectiveQueryWithDisabledPills(debouncedQuery(), disabledPillIds())
+  );
+  const effectiveDebouncedQuery = createMemo(() =>
+    resolveQueryVariables(effectiveDebouncedQueryTemplate(), debouncedQueryVariableValues())
+  );
+  const parsedGroups = createMemo(() => parseFilterGroups(effectiveDebouncedQuery()));
   // Flat token list for single-group utilities (age detection, etc.)
   const parsedTokens = createMemo(() => parsedGroups().flat());
   const hasAgeFilter = createMemo(() => parsedTokens().some((t) => t.type === "age"));
@@ -273,7 +348,7 @@ export function LogcatPanel(): JSX.Element {
     return null;
   });
 
-  const activePackage = createMemo(() => getPackageFromQuery(debouncedQuery()));
+  const activePackage = createMemo(() => getPackageFromQuery(effectiveDebouncedQuery()));
 
   function handlePackageSelect(pkg: string | null) {
     const q = setPackageInQuery(query(), pkg);
@@ -337,12 +412,17 @@ export function LogcatPanel(): JSX.Element {
   // memos must be pure. The comparison guard prevents running on the initial
   // mount since onMount already fetches the unfiltered backfill.
   let _prevDebouncedQuery = "";
+  let _prevEffectiveDebouncedQuery = "";
   createEffect(() => {
     const q = debouncedQuery();
-    if (q === _prevDebouncedQuery) return;
-    _prevDebouncedQuery = q;
-    setLastActiveQuery(q);
-    syncBackendFilter(parseFilterGroups(q));
+    const effectiveQuery = effectiveDebouncedQuery();
+    if (q !== _prevDebouncedQuery) {
+      _prevDebouncedQuery = q;
+      setLastActiveQuery(q);
+    }
+    if (effectiveQuery === _prevEffectiveDebouncedQuery) return;
+    _prevEffectiveDebouncedQuery = effectiveQuery;
+    syncBackendFilter(parseFilterGroups(effectiveQuery));
   });
 
   // Re-sync the backend filter when the project's applicationId becomes available
@@ -357,7 +437,7 @@ export function LogcatPanel(): JSX.Element {
     _prevAppId = appId;
     setMinePackage(appId);
     // Re-evaluate the backend filter only if the current query references "mine".
-    const q = debouncedQuery();
+    const q = effectiveDebouncedQuery();
     if (q.includes("package:mine") || q.includes("pkg:mine")) {
       syncBackendFilter(parseFilterGroups(q));
     }
@@ -378,7 +458,7 @@ export function LogcatPanel(): JSX.Element {
     }
     const q = query();
     if (q.includes("package:mine") || q.includes("pkg:mine")) {
-      void syncBackendFilter(parseFilterGroups(q));
+      void syncBackendFilter(parseFilterGroups(effectiveDebouncedQuery()));
       return;
     }
     const next = setPackageInQuery(q, "mine");
@@ -390,7 +470,7 @@ export function LogcatPanel(): JSX.Element {
   createEffect(() => {
     const ring = clampLogcatRingMaxEntries(settingsState.logcat.ringMaxEntries);
     if (prevRingCap !== undefined && ring !== prevRingCap) {
-      void syncBackendFilter(parseFilterGroups(debouncedQuery()));
+      void syncBackendFilter(parseFilterGroups(effectiveDebouncedQuery()));
       void refreshLogcatRingStats();
     }
     prevRingCap = ring;
@@ -412,7 +492,7 @@ export function LogcatPanel(): JSX.Element {
           }
         }
       } else if (cap > prevLogcatMaxUi) {
-        void syncBackendFilter(parseFilterGroups(debouncedQuery()));
+        void syncBackendFilter(parseFilterGroups(effectiveDebouncedQuery()));
       }
     }
     prevLogcatMaxUi = cap;
@@ -426,8 +506,11 @@ export function LogcatPanel(): JSX.Element {
     const savedQuery = getLastActiveQuery();
     if (savedQuery) {
       setQuery(savedQuery);
+      setQueryVariableValues((values) => ensureQueryVariableValues(savedQuery, values));
+      setDebouncedQueryVariableValues((values) => ensureQueryVariableValues(savedQuery, values));
       setDebouncedQuery(savedQuery);
       _prevDebouncedQuery = savedQuery;
+      _prevEffectiveDebouncedQuery = savedQuery;
     }
 
     // Build the filter spec for the initial backfill.
@@ -542,6 +625,7 @@ export function LogcatPanel(): JSX.Element {
     unlistenReconnecting?.();
     clearInterval(nowTimer);
     clearTimeout(_queryDebounce);
+    clearTimeout(_variableDebounce);
     filterSyncGuard.invalidate();
     // Clear backend filter on unmount so it doesn't persist
     setLogcatFilter(emptyLogcatFilterSpec()).catch(() => {});
@@ -818,15 +902,22 @@ export function LogcatPanel(): JSX.Element {
         activeAge={activeAge()}
         activePackage={activePackage()}
         isFiltered={isFiltered()}
+        disabledPillIds={disabledPillIds()}
+        variableValues={queryVariableValues()}
         showLifecycle={showLifecycle()}
         onQueryChange={updateQuery}
+        onTogglePillDisabled={togglePillDisabled}
+        onVariableValueChange={updateQueryVariableValue}
+        onVariableDelete={deleteQueryVariable}
+        onVariableInsert={insertQueryVariable}
         onAgeSelect={handleAgePill}
         onPackageSelect={handlePackageSelect}
         onToggleLifecycle={() => setShowLifecycle((v) => !v)}
-        onClear={() => updateQuery("")}
-        renderSavedFilterMenu={() => (
-          <SavedFilterMenu query={query()} isFiltered={isFiltered()} onApplyQuery={updateQuery} />
-        )}
+        onApplySavedQuery={applyPresetQuery}
+        onClear={() => {
+          setDisabledPillIds(new Set<string>());
+          updateQuery("");
+        }}
       />
 
       {/* ── Empty state ───────────────────────────────────────────────────── */}

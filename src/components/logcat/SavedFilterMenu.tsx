@@ -1,13 +1,5 @@
 import { For, Show, createSignal, onCleanup, onMount, type JSX } from "solid-js";
-import { showToast } from "@/components/ui";
-import {
-  addSavedFilter,
-  deleteSavedFilter,
-  loadFilterStorage,
-  MAX_SAVED_FILTERS,
-  renameSavedFilter,
-  type SavedFilter,
-} from "@/lib/logcat-filter-storage";
+import { MAX_SAVED_FILTERS, type SavedFilter } from "@/lib/logcat-filter-storage";
 import { btnStyle } from "./logcat-styles";
 import {
   logcatDropdownOverlayStyle,
@@ -32,39 +24,18 @@ const BUILTIN_PRESETS: LogcatPreset[] = [
 ];
 
 export function SavedFilterMenu(props: {
-  query: string;
-  isFiltered: boolean;
+  savedFilters: readonly SavedFilter[];
   onApplyQuery: (query: string) => void;
+  onDeleteSavedFilter: (id: string) => void;
+  onRenameSavedFilter: (id: string, name: string) => void;
 }): JSX.Element {
   const [open, setOpen] = createSignal(false);
-  const [savedFilters, setSavedFilters] = createSignal<SavedFilter[]>(loadFilterStorage().filters);
-  const [savingPreset, setSavingPreset] = createSignal(false);
-  const [presetNameDraft, setPresetNameDraft] = createSignal("");
   const [renamingId, setRenamingId] = createSignal<string | null>(null);
   const [renameDraft, setRenameDraft] = createSignal("");
 
   function applyPreset(q: string) {
     props.onApplyQuery(q.trimEnd() + " ");
     setOpen(false);
-  }
-
-  function saveCurrentFilter() {
-    const name = presetNameDraft().trim();
-    if (!name) return;
-    try {
-      const saved = addSavedFilter(name, props.query);
-      setSavedFilters(loadFilterStorage().filters);
-      setSavingPreset(false);
-      setPresetNameDraft("");
-      showToast(`Saved filter "${saved.name}"`, "success");
-    } catch (e) {
-      showToast(String(e), "error");
-    }
-  }
-
-  function deleteSavedFilterItem(id: string) {
-    deleteSavedFilter(id);
-    setSavedFilters(loadFilterStorage().filters);
   }
 
   function startRename(filter: SavedFilter) {
@@ -75,8 +46,7 @@ export function SavedFilterMenu(props: {
   function commitRename() {
     const id = renamingId();
     if (id) {
-      renameSavedFilter(id, renameDraft());
-      setSavedFilters(loadFilterStorage().filters);
+      props.onRenameSavedFilter(id, renameDraft());
     }
     setRenamingId(null);
     setRenameDraft("");
@@ -89,7 +59,6 @@ export function SavedFilterMenu(props: {
 
   function closeMenu() {
     setOpen(false);
-    setSavingPreset(false);
     cancelRename();
   }
 
@@ -112,7 +81,6 @@ export function SavedFilterMenu(props: {
       <button
         onClick={() => {
           setOpen((v) => !v);
-          setSavingPreset(false);
           setRenamingId(null);
         }}
         title="Filter presets"
@@ -180,11 +148,11 @@ export function SavedFilterMenu(props: {
                 Saved
               </span>
               <span style={{ "font-size": "10px", color: "var(--text-muted)" }}>
-                {savedFilters().length} / {MAX_SAVED_FILTERS}
+                {props.savedFilters.length} / {MAX_SAVED_FILTERS}
               </span>
             </div>
 
-            <Show when={savedFilters().length === 0}>
+            <Show when={props.savedFilters.length === 0}>
               <div
                 style={{
                   padding: "4px 10px 6px",
@@ -197,7 +165,7 @@ export function SavedFilterMenu(props: {
               </div>
             </Show>
 
-            <For each={savedFilters()}>
+            <For each={props.savedFilters}>
               {(f) => (
                 <div
                   style={{
@@ -251,7 +219,7 @@ export function SavedFilterMenu(props: {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            deleteSavedFilterItem(f.id);
+                            props.onDeleteSavedFilter(f.id);
                           }}
                           style={{
                             background: "none",
@@ -316,59 +284,6 @@ export function SavedFilterMenu(props: {
                 </div>
               )}
             </For>
-
-            <div style={logcatDropdownSeparatorStyle()} />
-            <Show
-              when={savingPreset()}
-              fallback={
-                <div
-                  onClick={() => {
-                    setSavingPreset(true);
-                    setPresetNameDraft("");
-                  }}
-                  style={{
-                    padding: "5px 10px",
-                    cursor: "pointer",
-                    color: props.isFiltered ? "var(--accent)" : "var(--text-muted)",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.background = "transparent";
-                  }}
-                >
-                  + Save current filter
-                </div>
-              }
-            >
-              <div style={{ display: "flex", gap: "4px", padding: "4px 8px" }}>
-                <input
-                  type="text"
-                  placeholder="Filter name…"
-                  value={presetNameDraft()}
-                  onInput={(e) => setPresetNameDraft(e.currentTarget.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") saveCurrentFilter();
-                    if (e.key === "Escape") setSavingPreset(false);
-                  }}
-                  autofocus
-                  style={{
-                    flex: "1",
-                    background: "var(--bg-primary)",
-                    border: "1px solid var(--border)",
-                    color: "var(--text-primary)",
-                    "border-radius": "3px",
-                    padding: "3px 6px",
-                    "font-size": "11px",
-                    outline: "none",
-                  }}
-                />
-                <button onClick={saveCurrentFilter} style={btnStyle("var(--accent)")}>
-                  Save
-                </button>
-              </div>
-            </Show>
           </div>
         </div>
         <div style={logcatDropdownOverlayStyle()} onClick={closeMenu} />
