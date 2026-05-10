@@ -1,0 +1,22 @@
+docs/USER_MANUAL.md
+  s_eaced28605cfd4::t_809b3ebbb71cd3 148
+  s_eaced28605cfd4::t_b4cfa30caabefc 147
+  s_eaced28605cfd4::t_243b6cbd9e2379 143
+  s_eaced28605cfd4::t_37ad6fb5c8b871 145
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "5cc4f237deb25e3cb600723ee98148df08e37aed",
+  "prompts": {},
+  "sessions": {
+    "s_eaced28605cfd4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e120b-d02a-7d21-9e1e-a9b227208b6b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
