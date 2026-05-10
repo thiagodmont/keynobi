@@ -1,0 +1,24 @@
+playwright.storybook.config.ts
+  s_8ce10aa3af3fff::t_f7e5834f43c939 13
+  s_8ce10aa3af3fff::t_5b7b13f2f50ce2 17
+  s_8ce10aa3af3fff::t_abed87b0d8773f 18
+playwright.config.ts
+  s_8ce10aa3af3fff::t_f7e5834f43c939 13
+  s_8ce10aa3af3fff::t_abed87b0d8773f 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "c836198e49a112c60e801fe8c5a80451bd9176d5",
+  "prompts": {},
+  "sessions": {
+    "s_8ce10aa3af3fff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e12c7-3d30-7533-be0b-bbdbd1834d64",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
