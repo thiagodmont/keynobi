@@ -1,0 +1,121 @@
+.dsPage {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  max-width: 1100px;
+}
+
+.dsIntro {
+  display: grid;
+  gap: 6px;
+}
+
+.dsEyebrow {
+  color: var(--text-muted);
+  font-size: var(--font-size-ui-sm);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.dsTitle {
+  color: var(--text-primary);
+  font-size: 24px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.dsDescription {
+  max-width: 720px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-ui-lg);
+}
+
+.dsSection {
+  display: grid;
+  gap: 12px;
+}
+
+.dsSectionTitle {
+  color: var(--text-primary);
+  font-size: var(--font-size-ui-lg);
+  font-weight: 650;
+}
+
+.dsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.dsCard {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.dsCardTitle {
+  color: var(--text-secondary);
+  font-size: var(--font-size-ui-sm);
+  font-weight: 650;
+}
+
+.dsStack {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.dsColumn {
+  display: grid;
+  gap: 10px;
+}
+
+.dsSwatchGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.dsSwatch {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.dsSwatchColor {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.dsSwatchName {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-ui-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dsCode {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-ui-sm);
+}
+
+.dsPanelDemo {
+  height: 260px;
+  min-width: 0;
+}
+
+.dsScrollDemo {
+  max-height: 150px;
+}
