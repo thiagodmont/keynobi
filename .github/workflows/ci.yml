@@ -24,6 +24,26 @@ jobs:
       - run: npm run typescript:check
       - run: npm run test
 
+  design-system:
+    name: Design System
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+      - run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('package-lock.json') }}
+          restore-keys: playwright-chromium-
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+      - run: npm run test:ds
+
   rust:
     name: Rust
     runs-on: macos-latest
