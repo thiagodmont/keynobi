@@ -1,0 +1,63 @@
+src/components/logcat/SavedFilterMenu.test.tsx
+  s_eaced28605cfd4::t_c9c8df6275987a 7-12
+src/components/logcat/LogcatPanel.click-filter.test.tsx
+  s_7be1d5133909e2::t_4a92dbf1e51564 6,80,83,105,124-126,149,337-413
+src/lib/logcat-query.test.ts
+  s_eaced28605cfd4::t_d2f544a37c28d3 43-45
+  s_eaced28605cfd4::t_4a638da44b91af 1030-1082
+  s_eaced28605cfd4::t_e18aab124fa13a 46-48,1011-1029,1083-1096
+  s_eaced28605cfd4::t_f83104c1c17e9e 49-50,1097-1111
+  s_eaced28605cfd4::t_4de6c48c613ef7 980-1010,1112-1114
+e2e/smoke/logcat-regressions.spec.ts
+  s_eaced28605cfd4::t_de25778710f265 180-211
+  s_eaced28605cfd4::t_e3c49afd0decb9 236
+  s_eaced28605cfd4::t_e829956019b3bd 308,330-332
+  s_eaced28605cfd4::t_70568791b0264a 372-374,380-381,383-385,388,392-401
+  s_eaced28605cfd4::t_09546d8c4bf638 295-307,309-316,344-371,375-379,382,386-387,389-391
+  s_eaced28605cfd4::t_ee2e716073cf34 242-274
+  s_eaced28605cfd4::t_a8b4566e74c6e9 275-294
+  s_eaced28605cfd4::t_882c397510d728 212-235,237-241
+  s_eaced28605cfd4::t_2649a4e99d4fd0 168,177
+  s_eaced28605cfd4::t_12e0e67d010d91 317-329,333,336-343
+  s_eaced28605cfd4::t_7ba9c13df35af2 335
+  s_eaced28605cfd4::t_b7c5eb0b8a3248 334
+src/components/logcat/LogcatFilterControls.test.tsx
+  s_eaced28605cfd4::t_b148d4a6735009 136-143,145-191
+  s_eaced28605cfd4::t_e23a5eba9b78b4 223
+  s_eaced28605cfd4::t_12a4e15e3dba30 102-115,118-135
+  s_eaced28605cfd4::t_c7432b58ae392d 2,31-34,101,192-207,209-211
+  ai_agent 144,247
+  s_eaced28605cfd4::t_3f868b21e39c67 45,49,208
+  s_eaced28605cfd4::t_bcd1f5699977d5 4,212-213,226-246
+  s_eaced28605cfd4::t_ae4fdd4ac40740 116-117
+  s_eaced28605cfd4::t_85ae7b17252e47 214-222,224-225
+  s_eaced28605cfd4::t_a2b803736f81a2 248-268
+src/components/logcat/QueryBar.test.ts
+  s_eaced28605cfd4::t_b11b5acef74e6c 21,141-183
+  s_eaced28605cfd4::t_0998f88029179d 87,89,99,102,105,107,117,120-140
+  s_eaced28605cfd4::t_108c6669e9c3aa 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "fa2f6190cb4ba60c38371cfe0a32ea7e51ebf512",
+  "prompts": {},
+  "sessions": {
+    "s_7be1d5133909e2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e128c-e39c-7632-9b29-c684b41f5629",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    },
+    "s_eaced28605cfd4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e120b-d02a-7d21-9e1e-a9b227208b6b",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
