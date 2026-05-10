@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { LogcatFilterSpec, LogStats, ProcessedEntry } from "@/bindings";
+import { addSavedFilter } from "@/lib/logcat-filter-storage";
 import {
   replaceLogcatEntries,
   setLogcatRingBufferTotal,
@@ -76,8 +77,10 @@ function filterEntries(entries: ProcessedEntry[], spec: LogcatFilterSpec): Proce
 
 function installLogcatPanelMocks(entries: ProcessedEntry[]): {
   emitLogcatEntries: (entries: ProcessedEntry[]) => void;
+  setFilterCalls: () => LogcatFilterSpec[];
 } {
   let activeFilter = emptyFilter();
+  const setFilterCalls: LogcatFilterSpec[] = [];
   const listeners = new Map<string, (event: { payload: unknown }) => void>();
 
   vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
@@ -99,6 +102,7 @@ function installLogcatPanelMocks(entries: ProcessedEntry[]): {
       case "set_logcat_filter": {
         const payload = args as { filterSpec?: LogcatFilterSpec };
         activeFilter = payload.filterSpec ?? emptyFilter();
+        setFilterCalls.push(activeFilter);
         return undefined;
       }
       default:
@@ -116,6 +120,9 @@ function installLogcatPanelMocks(entries: ProcessedEntry[]): {
   return {
     emitLogcatEntries(nextEntries: ProcessedEntry[]) {
       listeners.get("logcat:entries")?.({ payload: filterEntries(nextEntries, activeFilter) });
+    },
+    setFilterCalls() {
+      return [...setFilterCalls];
     },
   };
 }
@@ -139,6 +146,7 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     replaceLogcatEntries([]);
     setLogcatStreaming(false);
     setLogcatRingBufferTotal(null);
@@ -325,5 +333,83 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
     expect(screen.getAllByText("visible app crash").length).toBeGreaterThan(0);
     expect(screen.queryByText("hidden lifecycle crash")).toBeNull();
     expect(screen.getByTitle("1 crash — click to jump")).not.toBeNull();
+  });
+
+  it("clears disabled pill state when applying a saved filter", async () => {
+    addSavedFilter("Beta only", "tag:Beta");
+    installLogcatPanelMocks([
+      {
+        ...BASE_ENTRY,
+        id: 50n,
+        tag: "AlphaOnly",
+        message: "Alpha only saved-filter row",
+      },
+      {
+        ...BASE_ENTRY,
+        id: 51n,
+        tag: "AlphaBeta",
+        message: "Alpha beta saved-filter row",
+      },
+      {
+        ...BASE_ENTRY,
+        id: 52n,
+        tag: "BetaOnly",
+        message: "Beta only saved-filter row",
+      },
+    ]);
+    render(() => <LogcatPanel />);
+
+    await waitFor(() => expect(screen.getAllByTitle(ROW_TITLE)).toHaveLength(3));
+
+    const input = screen.getByRole("textbox");
+    fireEvent.input(input, { target: { value: "tag:Alpha tag:Beta " } });
+
+    await waitFor(() => expect(screen.getByText("Alpha beta saved-filter row")).not.toBeNull());
+    await waitFor(() => expect(screen.queryByText("Alpha only saved-filter row")).toBeNull());
+
+    fireEvent.click(screen.getByRole("button", { name: "Disable filter tag:Beta" }));
+
+    await waitFor(() => expect(screen.getByText("Alpha only saved-filter row")).not.toBeNull());
+
+    fireEvent.click(screen.getByTitle("Filter presets"));
+    fireEvent.click(screen.getByText("Beta only"));
+
+    await waitFor(() => expect(screen.getByText("Beta only saved-filter row")).not.toBeNull());
+    expect(screen.getByText("Alpha beta saved-filter row")).not.toBeNull();
+    expect(screen.queryByText("Alpha only saved-filter row")).toBeNull();
+  });
+
+  it("debounces backend filter sync while editing variable values", async () => {
+    vi.useFakeTimers();
+    const mocks = installLogcatPanelMocks([BASE_ENTRY]);
+    render(() => <LogcatPanel />);
+
+    await vi.runOnlyPendingTimersAsync();
+    await waitFor(() => expect(screen.getAllByTitle(ROW_TITLE)).toHaveLength(1));
+
+    const input = screen.getByRole("textbox");
+    fireEvent.input(input, { target: { value: "message:action_${action_name}_done " } });
+    await vi.advanceTimersByTimeAsync(150);
+    await Promise.resolve();
+
+    const afterQueryCommit = mocks.setFilterCalls().length;
+    const variableInput = screen.getByTitle("Variable action_name");
+
+    fireEvent.input(variableInput, { target: { value: "c" } });
+    fireEvent.input(variableInput, { target: { value: "ch" } });
+    fireEvent.input(variableInput, { target: { value: "checkout" } });
+    await Promise.resolve();
+
+    expect(mocks.setFilterCalls()).toHaveLength(afterQueryCommit);
+
+    await vi.advanceTimersByTimeAsync(149);
+    await Promise.resolve();
+
+    expect(mocks.setFilterCalls()).toHaveLength(afterQueryCommit);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await Promise.resolve();
+
+    expect(mocks.setFilterCalls()).toHaveLength(afterQueryCommit + 1);
   });
 });

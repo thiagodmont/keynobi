@@ -14,10 +14,11 @@
  * of becoming a pill until the user presses Space.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { fireEvent, render } from "@solidjs/testing-library";
 import { QueryBar, parseQueryState, buildQuery } from "./QueryBar";
 import {
+  buildQueryBarPillRefs,
   rebuildCommittedAfterRemovingPill,
   quoteMessageTokenForEditDraft,
   setPackageInQuery,
@@ -83,9 +84,9 @@ describe("QueryBar — Enter keyboard commit", () => {
 });
 
 describe("QueryBar — clickable connectors", () => {
-  it("toggles only the clicked AND connector to OR", () => {
+  it("toggles only the clicked AND connector to OR", async () => {
     const changes: string[] = [];
-    const { getByRole } = render(() =>
+    const { getByRole, queryByText } = render(() =>
       QueryBar({
         value: "level:error tag:App | is:crash ",
         onChange: (q) => changes.push(q),
@@ -95,13 +96,15 @@ describe("QueryBar — clickable connectors", () => {
     );
 
     fireEvent.click(getByRole("button", { name: "Change AND to OR" }));
+    await Promise.resolve();
 
     expect(changes[changes.length - 1]).toBe("level:error | tag:App | is:crash ");
+    expect(queryByText("level:")).toBeNull();
   });
 
-  it("toggles only the clicked OR connector to AND", () => {
+  it("toggles only the clicked OR connector to AND", async () => {
     const changes: string[] = [];
-    const { getAllByRole } = render(() =>
+    const { getAllByRole, queryByText } = render(() =>
       QueryBar({
         value: "level:error | tag:App | is:crash ",
         onChange: (q) => changes.push(q),
@@ -111,8 +114,73 @@ describe("QueryBar — clickable connectors", () => {
     );
 
     fireEvent.click(getAllByRole("button", { name: "Change OR to AND" })[0]!);
+    await Promise.resolve();
 
     expect(changes[changes.length - 1]).toBe("level:error tag:App | is:crash ");
+    expect(queryByText("level:")).toBeNull();
+  });
+
+  it("closes open suggestions when toggling an AND connector", async () => {
+    const { container, getByRole, getByText, queryByText } = render(() =>
+      QueryBar({
+        value: "level:error tag:App ",
+        onChange: vi.fn(),
+        knownTags: [],
+        knownPackages: [],
+      })
+    );
+    const input = container.querySelector("input") as HTMLInputElement;
+
+    fireEvent.focus(input);
+    expect(getByText("level:")).not.toBeNull();
+
+    fireEvent.click(getByRole("button", { name: "Change AND to OR" }));
+    await Promise.resolve();
+
+    expect(queryByText("level:")).toBeNull();
+  });
+});
+
+describe("QueryBar — temporarily disabled pills", () => {
+  it("toggles a disabled pill without removing or editing it", () => {
+    const refs = buildQueryBarPillRefs(["level:error", "tag:App"]);
+    const tagRef = refs.find((ref) => ref.token === "tag:App")!;
+    const toggled: string[] = [];
+
+    const { getByRole } = render(() =>
+      QueryBar({
+        value: "level:error tag:App ",
+        onChange: vi.fn(),
+        knownTags: [],
+        knownPackages: [],
+        disabledPillIds: new Set([tagRef.id]),
+        onTogglePillDisabled: (id) => toggled.push(id),
+      })
+    );
+
+    fireEvent.click(getByRole("button", { name: "Re-enable filter tag:App" }));
+
+    expect(toggled).toEqual([tagRef.id]);
+  });
+
+  it("keeps disabled pills editable", () => {
+    const refs = buildQueryBarPillRefs(["level:error", "tag:App"]);
+    const tagRef = refs.find((ref) => ref.token === "tag:App")!;
+
+    const { getByText, getByDisplayValue } = render(() =>
+      QueryBar({
+        value: "level:error tag:App ",
+        onChange: vi.fn(),
+        knownTags: [],
+        knownPackages: [],
+        disabledPillIds: new Set([tagRef.id]),
+        onTogglePillDisabled: vi.fn(),
+      })
+    );
+
+    fireEvent.mouseDown(getByText("tag:App"));
+
+    expect(getByDisplayValue("tag:App")).not.toBeNull();
   });
 });
 

@@ -4,7 +4,12 @@ import { SavedFilterMenu } from "./SavedFilterMenu";
 
 function renderSavedFilterMenu() {
   return render(() => (
-    <SavedFilterMenu query="level:error " isFiltered={true} onApplyQuery={vi.fn()} />
+    <SavedFilterMenu
+      savedFilters={[]}
+      onApplyQuery={vi.fn()}
+      onDeleteSavedFilter={vi.fn()}
+      onRenameSavedFilter={vi.fn()}
+    />
   ));
 }
 
