@@ -46,7 +46,7 @@ export function MenuListItem(props: MenuListItemProps): JSX.Element {
   return (
     <div
       title={props.title}
-      role={props.role}
+      role={props.role ?? (props.onClick ? "menuitem" : undefined)}
       tabIndex={props.onClick ? 0 : undefined}
       style={props.style}
       onMouseDown={(e) => props.onMouseDown?.(e)}

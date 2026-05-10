@@ -19,7 +19,7 @@ export interface BadgeProps {
 }
 
 export function Badge(props: BadgeProps): JSX.Element {
-  const clickable = () => props.onClick !== undefined;
+  const clickable = () => props.onClick !== undefined || props.onMouseDown !== undefined;
   const className = () =>
     [
       styles.root,

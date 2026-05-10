@@ -44,4 +44,14 @@ describe("Badge", () => {
     fireEvent.click(button);
     expect(onClick).toHaveBeenCalledOnce();
   });
+
+  it("renders mousedown-only badges as buttons", () => {
+    const onMouseDown = vi.fn();
+    const { container } = render(() => <Badge onMouseDown={onMouseDown}>JSON</Badge>);
+    const button = container.querySelector("button")!;
+
+    fireEvent.mouseDown(button);
+
+    expect(onMouseDown).toHaveBeenCalledOnce();
+  });
 });

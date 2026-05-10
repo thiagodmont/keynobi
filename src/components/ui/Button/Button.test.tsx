@@ -59,4 +59,10 @@ describe("Button", () => {
     expect(button.className).toContain("tone-accent");
     expect(button.title).toBe("Save");
   });
+
+  it("preserves explicit false aria-pressed state", () => {
+    const { container } = render(() => <Button ariaPressed={false}>Toggle</Button>);
+
+    expect(container.querySelector("button")!.getAttribute("aria-pressed")).toBe("false");
+  });
 });

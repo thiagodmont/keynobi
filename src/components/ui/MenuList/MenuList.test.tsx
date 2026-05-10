@@ -29,4 +29,26 @@ describe("MenuList", () => {
     fireEvent.click(screen.getByText("Run"));
     expect(onClick).toHaveBeenCalledOnce();
   });
+
+  it("defaults clickable items to menuitem role", () => {
+    render(() => (
+      <MenuList>
+        <MenuListItem onClick={() => undefined}>Run</MenuListItem>
+      </MenuList>
+    ));
+
+    expect(screen.getByRole("menuitem", { name: "Run" })).not.toBeNull();
+  });
+
+  it("preserves explicit item roles", () => {
+    render(() => (
+      <MenuList>
+        <MenuListItem role="option" onClick={() => undefined}>
+          Run
+        </MenuListItem>
+      </MenuList>
+    ));
+
+    expect(screen.getByRole("option", { name: "Run" })).not.toBeNull();
+  });
 });

@@ -45,7 +45,9 @@ export function Button(props: ButtonProps): JSX.Element {
       ].join(" ")}
       style={props.style}
       title={props.title}
-      aria-pressed={props.ariaPressed ? "true" : undefined}
+      aria-pressed={
+        props.ariaPressed === undefined ? undefined : props.ariaPressed ? "true" : "false"
+      }
       disabled={props.disabled || props.loading}
       onClick={(e) => props.onClick?.(e)}
     >
