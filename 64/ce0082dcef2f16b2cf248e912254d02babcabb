@@ -1,0 +1,25 @@
+.github/workflows/ci.yml
+  s_8ce10aa3af3fff::t_f941c397db7361 27-46
+playwright.storybook.config.ts
+  s_8ce10aa3af3fff::t_f941c397db7361 32
+  s_8ce10aa3af3fff::t_2d4eb45bebe2d5 1-31,33-35
+e2e/storybook/design-system.spec.ts
+  s_8ce10aa3af3fff::t_e7dc6d2b27001c 55-58,77-83
+  s_8ce10aa3af3fff::t_2d4eb45bebe2d5 1-54,59-76,84-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "64ce0082dcef2f16b2cf248e912254d02babcabb",
+  "prompts": {},
+  "sessions": {
+    "s_8ce10aa3af3fff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e12c7-3d30-7533-be0b-bbdbd1834d64",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
