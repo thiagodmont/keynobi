@@ -37,7 +37,7 @@ import { resetBuildState, setBuildHistory } from "@/stores/build.store";
 import { getBuildHistory } from "@/lib/tauri-api";
 import { initDevices, pickDevice, onDeviceChange } from "@/stores/device.store";
 import { stopLogcat } from "@/lib/tauri-api";
-import { setMinePackage } from "@/lib/logcat-query";
+import { setMinePackage } from "@/lib/logcat-mine-package";
 import {
   loadVariants,
   onVariantChange,
@@ -52,10 +52,16 @@ import type { ProjectEntry } from "@/bindings";
 // Register callbacks so stores can notify this service without circular imports.
 // This runs once when the module is first imported (hoisted function refs are safe here).
 onVariantChange((_variant) => {
-  saveActiveProjectMeta().catch(e => { console.error(e); showToast(`Failed to save project state: ${formatError(e)}`, "error"); });
+  saveActiveProjectMeta().catch((e) => {
+    console.error(e);
+    showToast(`Failed to save project state: ${formatError(e)}`, "error");
+  });
 });
 onDeviceChange((_serial) => {
-  saveActiveProjectMeta().catch(e => { console.error(e); showToast(`Failed to save project state: ${formatError(e)}`, "error"); });
+  saveActiveProjectMeta().catch((e) => {
+    console.error(e);
+    showToast(`Failed to save project state: ${formatError(e)}`, "error");
+  });
 });
 
 export interface OpenProjectResult {
@@ -106,10 +112,7 @@ async function reloadVariantsAndRestoreMeta(entry: ProjectEntry | null): Promise
     showToast(`Failed to load build variants: ${variantState.error}`, "error");
   }
   const savedVariant = entry?.lastBuildVariant;
-  if (
-    savedVariant &&
-    variantState.variants.some((v) => v.name === savedVariant)
-  ) {
+  if (savedVariant && variantState.variants.some((v) => v.name === savedVariant)) {
     await selectVariant(savedVariant).catch(console.error);
   }
   if (entry?.lastDevice) {

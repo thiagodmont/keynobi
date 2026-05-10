@@ -1,10 +1,7 @@
 import type { LogcatFilterSpec } from "@/lib/tauri-api";
-import {
-  getFrontendOnlyTokens,
-  getMinePackage,
-  type FilterGroup,
-  type QueryToken,
-} from "@/lib/logcat-query";
+import { getFrontendOnlyTokens } from "@/lib/logcat-frontend-only-tokens";
+import { getMinePackage } from "@/lib/logcat-mine-package";
+import type { FilterGroup, QueryToken } from "@/lib/logcat-query-types";
 
 const LEVEL_PRIORITY_MAP: Record<string, number> = {
   verbose: 0,

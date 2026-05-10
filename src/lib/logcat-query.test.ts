@@ -4,7 +4,6 @@ import {
   matchesQuery,
   parseFilterGroups,
   matchesFilterGroups,
-  getFrontendOnlyTokens,
   addOrGroup,
   addAndConnector,
   getGroupCount,
@@ -35,20 +34,12 @@ import {
   getQueryBarSuggestions,
   buildLogEntryDetailFilterToken,
   appendLogEntryDetailFilterToken,
-  setMinePackage,
-  isStackTraceLine,
-  parseStackFrame,
-  isProjectFrame,
   applyInlineEditCommit,
   buildQueryBarPillRefs,
   buildEffectiveQueryWithDisabledPills,
   reconcileDisabledQueryPillIds,
-  extractQueryVariables,
-  resolveQueryVariables,
-  reconcileQueryVariableValues,
-  ensureQueryVariableValues,
-  isValidQueryVariableName,
 } from "./logcat-query";
+import { setMinePackage } from "./logcat-mine-package";
 import type { LogcatEntry } from "@/lib/tauri-api";
 
 // ── Test helpers ──────────────────────────────────────────────────────────────
@@ -1011,125 +1002,6 @@ describe("buildEffectiveQueryWithDisabledPills", () => {
   });
 });
 
-describe("query variables", () => {
-  it("extracts unique variables in first-seen order", () => {
-    expect(
-      extractQueryVariables("message:${action_name} tag:${screen} message:prefix_${action_name}")
-    ).toEqual(["action_name", "screen"]);
-  });
-
-  it("resolves variables inside filter values", () => {
-    expect(
-      resolveQueryVariables("message:some_prefix_${action_name} tag:${screen}", {
-        action_name: "tap",
-        screen: "Home",
-      })
-    ).toBe("message:some_prefix_tap tag:Home");
-  });
-
-  it("resolves variables inside quoted values with spaces", () => {
-    const resolved = resolveQueryVariables('message:"User ${action_name} clicked"', {
-      action_name: "checkout button",
-    });
-
-    expect(resolved).toBe('message:"User checkout button clicked"');
-    expect(parseQuery(resolved)[0]).toMatchObject({
-      type: "message",
-      value: "User checkout button clicked",
-    });
-  });
-
-  it("resolves variables before OR group matching", () => {
-    const groups = parseFilterGroups(
-      resolveQueryVariables("message:action_${action_name}_done | tag:Fallback", {
-        action_name: "checkout",
-      })
-    );
-
-    expect(
-      matchesFilterGroups(
-        makeEntry({ tag: "VariableAction", message: "action_checkout_done" }),
-        groups,
-        NOW
-      )
-    ).toBe(true);
-    expect(
-      matchesFilterGroups(makeEntry({ tag: "Fallback", message: "fallback path" }), groups, NOW)
-    ).toBe(true);
-    expect(
-      matchesFilterGroups(
-        makeEntry({ tag: "VariableAction", message: "action_login_done" }),
-        groups,
-        NOW
-      )
-    ).toBe(false);
-  });
-
-  it("can disable a variable pill before resolving active variables", () => {
-    const refs = buildQueryBarPillRefs(["tag:Alpha", "message:action_${action_name}_done"]);
-    const disabled = new Set([
-      refs.find((ref) => ref.token === "message:action_${action_name}_done")!.id,
-    ]);
-    const effectiveTemplate = buildEffectiveQueryWithDisabledPills(
-      "tag:Alpha message:action_${action_name}_done ",
-      disabled
-    );
-
-    expect(resolveQueryVariables(effectiveTemplate, { action_name: "checkout" })).toBe(
-      "tag:Alpha "
-    );
-  });
-
-  it("leaves empty or unset variables literal so they do not broaden filters", () => {
-    expect(resolveQueryVariables("message:${action_name}", {})).toBe("message:${action_name}");
-    expect(resolveQueryVariables("message:${action_name}", { action_name: "   " })).toBe(
-      "message:${action_name}"
-    );
-  });
-
-  it("reconciles variable values to variables still present in the query", () => {
-    expect(
-      reconcileQueryVariableValues("message:${next}", {
-        action_name: "tap",
-        next: "open",
-      })
-    ).toEqual({ next: "open" });
-  });
-
-  it("keeps predefined variable values while adding referenced variables", () => {
-    expect(
-      ensureQueryVariableValues("message:${screen}", {
-        action_name: "checkout",
-      })
-    ).toEqual({ action_name: "checkout", screen: "" });
-  });
-
-  it("validates user-created variable names", () => {
-    expect(isValidQueryVariableName("action_name")).toBe(true);
-    expect(isValidQueryVariableName("_screen2")).toBe(true);
-    expect(isValidQueryVariableName("2screen")).toBe(false);
-    expect(isValidQueryVariableName("screen-name")).toBe(false);
-  });
-});
-
-// ── isStackTraceLine ──────────────────────────────────────────────────────────
-
-describe("isStackTraceLine", () => {
-  it("detects 'at ' prefix", () => {
-    expect(isStackTraceLine("  at com.example.Foo.bar(Foo.kt:42)")).toBe(true);
-  });
-  it("detects 'Caused by:'", () => {
-    expect(isStackTraceLine("Caused by: java.lang.NullPointerException")).toBe(true);
-  });
-  it("detects '... N more'", () => {
-    expect(isStackTraceLine("  ... 5 more")).toBe(true);
-  });
-  it("does not match normal messages", () => {
-    expect(isStackTraceLine("Hello world")).toBe(false);
-    expect(isStackTraceLine("Error initializing app")).toBe(false);
-  });
-});
-
 // ── setPackageInQuery ─────────────────────────────────────────────────────────
 
 describe("setPackageInQuery", () => {
@@ -1628,160 +1500,6 @@ describe("getActiveTokenContext — AND connector handling", () => {
   });
 });
 
-// ── getFrontendOnlyTokens ─────────────────────────────────────────────────────
-
-describe("getFrontendOnlyTokens — always-frontend types", () => {
-  it("returns age tokens", () => {
-    const tokens = parseQuery("age:5m");
-    expect(getFrontendOnlyTokens(tokens)).toHaveLength(1);
-    expect(getFrontendOnlyTokens(tokens)[0].type).toBe("age");
-  });
-
-  it("returns negated tokens", () => {
-    const tokens = parseQuery("-tag:system");
-    expect(getFrontendOnlyTokens(tokens)).toHaveLength(1);
-  });
-
-  it("returns regex tag tokens", () => {
-    const tokens = parseQuery("tag~:My.*Tag");
-    expect(getFrontendOnlyTokens(tokens)).toHaveLength(1);
-  });
-
-  it("returns regex message tokens", () => {
-    const tokens = parseQuery("message~:Null.*Ex");
-    expect(getFrontendOnlyTokens(tokens)).toHaveLength(1);
-  });
-
-  it("returns is:stacktrace (backend has no stacktrace filter)", () => {
-    const tokens = parseQuery("is:stacktrace");
-    expect(getFrontendOnlyTokens(tokens)).toHaveLength(1);
-    expect(getFrontendOnlyTokens(tokens)[0]).toMatchObject({ type: "is", value: "stacktrace" });
-  });
-});
-
-describe("getFrontendOnlyTokens — single backend-handled tokens (no overflow)", () => {
-  it("first level: goes to backend → not returned", () => {
-    const tokens = parseQuery("level:error");
-    expect(getFrontendOnlyTokens(tokens)).toHaveLength(0);
-  });
-
-  it("first tag: goes to backend → not returned", () => {
-    const tokens = parseQuery("tag:OkHttp");
-    expect(getFrontendOnlyTokens(tokens)).toHaveLength(0);
-  });
-
-  it("first message: goes to backend → not returned", () => {
-    const tokens = parseQuery("message:socket");
-    expect(getFrontendOnlyTokens(tokens)).toHaveLength(0);
-  });
-
-  it("first package: goes to backend → not returned", () => {
-    const tokens = parseQuery("package:com.example");
-    expect(getFrontendOnlyTokens(tokens)).toHaveLength(0);
-  });
-
-  it("is:crash goes to backend onlyCrashes flag → not returned", () => {
-    const tokens = parseQuery("is:crash");
-    expect(getFrontendOnlyTokens(tokens)).toHaveLength(0);
-  });
-
-  it("first freetext goes to backend text slot → not returned", () => {
-    const tokens = parseQuery("login");
-    expect(getFrontendOnlyTokens(tokens)).toHaveLength(0);
-  });
-});
-
-describe("getFrontendOnlyTokens — overflow (same type, second+ occurrence)", () => {
-  it("second message: is returned (overflow — text slot already taken)", () => {
-    const tokens = parseQuery("message:socket message:IPPROTO_TCP");
-    const fe = getFrontendOnlyTokens(tokens);
-    expect(fe).toHaveLength(1);
-    expect(fe[0]).toMatchObject({ type: "message", value: "IPPROTO_TCP" });
-  });
-
-  it("third message: is returned too", () => {
-    const tokens = parseQuery("message:A message:B message:C");
-    const fe = getFrontendOnlyTokens(tokens);
-    expect(fe).toHaveLength(2);
-    expect(fe[0]).toMatchObject({ type: "message", value: "B" });
-    expect(fe[1]).toMatchObject({ type: "message", value: "C" });
-  });
-
-  it("second tag: is returned (overflow)", () => {
-    const tokens = parseQuery("tag:OkHttp tag:Retrofit");
-    const fe = getFrontendOnlyTokens(tokens);
-    expect(fe).toHaveLength(1);
-    expect(fe[0]).toMatchObject({ type: "tag", value: "Retrofit" });
-  });
-
-  it("second level: is returned (overflow)", () => {
-    const tokens = parseQuery("level:warn level:error");
-    const fe = getFrontendOnlyTokens(tokens);
-    expect(fe).toHaveLength(1);
-    expect(fe[0]).toMatchObject({ type: "level", value: "error" });
-  });
-
-  it("second package: is returned (overflow)", () => {
-    const tokens = parseQuery("package:com.a package:com.b");
-    const fe = getFrontendOnlyTokens(tokens);
-    expect(fe).toHaveLength(1);
-    expect(fe[0]).toMatchObject({ type: "package", value: "com.b" });
-  });
-
-  it("second freetext is returned (overflow — shares text slot with message:)", () => {
-    const tokens = parseQuery("hello world");
-    const fe = getFrontendOnlyTokens(tokens);
-    expect(fe).toHaveLength(1);
-    expect(fe[0]).toMatchObject({ type: "freetext", value: "world" });
-  });
-
-  it("freetext after message: is returned (overflow — same text slot)", () => {
-    const tokens = parseQuery("message:socket login");
-    const fe = getFrontendOnlyTokens(tokens);
-    expect(fe).toHaveLength(1);
-    expect(fe[0]).toMatchObject({ type: "freetext", value: "login" });
-  });
-
-  it("message: after freetext is returned (overflow)", () => {
-    const tokens = parseQuery("login message:socket");
-    const fe = getFrontendOnlyTokens(tokens);
-    expect(fe).toHaveLength(1);
-    expect(fe[0]).toMatchObject({ type: "message", value: "socket" });
-  });
-});
-
-describe("getFrontendOnlyTokens — mixed queries", () => {
-  it("complex query: only overflow and special tokens are returned", () => {
-    // level:error → backend (no overflow)
-    // tag:OkHttp  → backend (no overflow)
-    // message:socket → backend (no overflow)
-    // message:IPPROTO_TCP → frontend (overflow)
-    // -tag:system → frontend (negated)
-    const tokens = parseQuery(
-      "level:error tag:OkHttp message:socket message:IPPROTO_TCP -tag:system"
-    );
-    const fe = getFrontendOnlyTokens(tokens);
-    expect(fe).toHaveLength(2);
-    expect(fe[0]).toMatchObject({ type: "message", value: "IPPROTO_TCP" });
-    expect(fe[1]).toMatchObject({ type: "tag", value: "system", negate: true });
-  });
-
-  it("age + overflow: both returned", () => {
-    const tokens = parseQuery("age:5m message:socket message:IPPROTO_TCP");
-    const fe = getFrontendOnlyTokens(tokens);
-    expect(fe).toHaveLength(2);
-    expect(fe.find((t) => t.type === "age")).toBeDefined();
-    expect(fe.find((t) => t.type === "message")).toBeDefined();
-  });
-
-  it("no frontend-only tokens for a simple single-condition query", () => {
-    expect(getFrontendOnlyTokens(parseQuery("level:error"))).toHaveLength(0);
-    expect(getFrontendOnlyTokens(parseQuery("tag:App"))).toHaveLength(0);
-    expect(getFrontendOnlyTokens(parseQuery("is:crash"))).toHaveLength(0);
-    expect(getFrontendOnlyTokens(parseQuery("package:mine"))).toHaveLength(0);
-  });
-});
-
 describe("matchesQuery — AND semantics for same-type tokens (the key correctness property)", () => {
   it("message:socket AND message:IPPROTO_TCP requires both in message", () => {
     const tokens = parseQuery("message:socket message:IPPROTO_TCP");
@@ -1806,19 +1524,6 @@ describe("matchesQuery — AND semantics for same-type tokens (the key correctne
     const tokens = parseQuery("message:A message:B message:C");
     expect(matchesQuery(makeEntry({ message: "A B C here" }), tokens, NOW)).toBe(true);
     expect(matchesQuery(makeEntry({ message: "A B only" }), tokens, NOW)).toBe(false);
-  });
-
-  it("getFrontendOnlyTokens identifies the overflow that matchesQuery enforces", () => {
-    const tokens = parseQuery("message:socket message:IPPROTO_TCP");
-    const fe = getFrontendOnlyTokens(tokens);
-    // The overflow token is the second message:
-    expect(fe).toHaveLength(1);
-    expect(fe[0]).toMatchObject({ type: "message", value: "IPPROTO_TCP" });
-    // matchesQuery (used in filteredEntries) does verify both
-    const passEntry = makeEntry({ message: "socket IPPROTO_TCP connected" });
-    const failEntry = makeEntry({ message: "socket connected" });
-    expect(matchesQuery(passEntry, tokens, NOW)).toBe(true);
-    expect(matchesQuery(failEntry, tokens, NOW)).toBe(false);
   });
 });
 
@@ -1857,24 +1562,6 @@ describe("parseQuery — double negation edge case", () => {
   });
 });
 
-describe("getFrontendOnlyTokens — negated freetext", () => {
-  it("returns negated freetext as frontend-only (backend has no negation support)", () => {
-    const tokens = parseQuery("-system");
-    const fe = getFrontendOnlyTokens(tokens);
-    expect(fe).toHaveLength(1);
-    expect(fe[0]).toMatchObject({ type: "freetext", value: "system", negate: true });
-  });
-
-  it("non-negated freetext: first goes to backend, second is overflow (frontend)", () => {
-    const tokens = parseQuery("login startup");
-    // "login" → first freetext → backend text slot consumed
-    // "startup" → second freetext → frontend overflow
-    const fe = getFrontendOnlyTokens(tokens);
-    expect(fe).toHaveLength(1);
-    expect(fe[0]).toMatchObject({ type: "freetext", value: "startup" });
-  });
-});
-
 describe("matchesFilterGroups — age is scoped per group", () => {
   // Entry timestamp is 4 seconds before NOW.
   // Group 1 has age:2s (too short — entry is excluded from group 1).
@@ -1901,78 +1588,6 @@ describe("matchesFilterGroups — age is scoped per group", () => {
     expect(groups).toHaveLength(1);
     const entry = makeEntry();
     expect(matchesFilterGroups(entry, groups, NOW)).toBe(false);
-  });
-});
-
-// ── parseStackFrame ────────────────────────────────────────────────────────────
-
-describe("parseStackFrame", () => {
-  it("parses a Kotlin frame with tab indent", () => {
-    const f = parseStackFrame("\tat com.example.app.MainActivity.onCreate(MainActivity.kt:42)");
-    expect(f).not.toBeNull();
-    expect(f!.filename).toBe("MainActivity.kt");
-    expect(f!.line).toBe(42);
-    expect(f!.packagePath).toBe("com.example.app");
-    expect(f!.classPath).toBe("com.example.app.MainActivity");
-  });
-
-  it("parses a Java frame with spaces indent", () => {
-    const f = parseStackFrame("  at android.app.Activity.performCreate(Activity.java:8290)");
-    expect(f).not.toBeNull();
-    expect(f!.filename).toBe("Activity.java");
-    expect(f!.line).toBe(8290);
-    expect(f!.packagePath).toBe("android.app");
-  });
-
-  it("returns null for Caused by lines", () => {
-    const f = parseStackFrame("Caused by: java.lang.NullPointerException");
-    expect(f).toBeNull();
-  });
-
-  it("returns null for ... N more lines", () => {
-    const f = parseStackFrame("\t... 5 more");
-    expect(f).toBeNull();
-  });
-
-  it("returns null for non-frame lines", () => {
-    const f = parseStackFrame("E/AndroidRuntime: FATAL EXCEPTION: main");
-    expect(f).toBeNull();
-  });
-});
-
-// ── isProjectFrame ────────────────────────────────────────────────────────────
-
-describe("isProjectFrame", () => {
-  it("returns true for a user package", () => {
-    expect(isProjectFrame("com.example.app.MainActivity")).toBe(true);
-    expect(isProjectFrame("io.mycompany.feature.SomeClass")).toBe(true);
-  });
-
-  it("returns false for android. prefix", () => {
-    expect(isProjectFrame("android.app.Activity")).toBe(false);
-    expect(isProjectFrame("android.view.View")).toBe(false);
-  });
-
-  it("returns false for androidx. prefix", () => {
-    expect(isProjectFrame("androidx.lifecycle.ViewModel")).toBe(false);
-  });
-
-  it("returns false for com.android. prefix", () => {
-    expect(isProjectFrame("com.android.internal.os.ZygoteInit")).toBe(false);
-  });
-
-  it("returns false for kotlin. and kotlinx. prefixes", () => {
-    expect(isProjectFrame("kotlin.jvm.internal.Intrinsics")).toBe(false);
-    expect(isProjectFrame("kotlinx.coroutines.CoroutineScope")).toBe(false);
-  });
-
-  it("returns false for java. and javax. prefixes", () => {
-    expect(isProjectFrame("java.lang.Thread")).toBe(false);
-    expect(isProjectFrame("javax.inject.Inject")).toBe(false);
-  });
-
-  it("returns false for com.google.android. prefix", () => {
-    expect(isProjectFrame("com.google.android.gms.common.GoogleApiAvailability")).toBe(false);
   });
 });
 
