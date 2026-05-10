@@ -1,0 +1,28 @@
+docs/CODE_PATTERN.md
+  s_8ce10aa3af3fff::t_d2838ecd2019ea 106-114,117
+  s_8ce10aa3af3fff::t_2d4eb45bebe2d5 115
+  s_8ce10aa3af3fff::t_2831674fc5a23c 116
+  s_8ce10aa3af3fff::t_a010eb20940df6 236
+docs/DESIGN_SYSTEM.md
+  s_8ce10aa3af3fff::t_2831674fc5a23c 32-95,104-116,125-151
+  s_8ce10aa3af3fff::t_a010eb20940df6 158-160,168-172
+  s_8ce10aa3af3fff::t_2d4eb45bebe2d5 161-165
+  s_8ce10aa3af3fff::t_e3cc80f5a22fae 166-167
+  s_8ce10aa3af3fff::t_d2838ecd2019ea 1-31,96-103,117-124,152-157,173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "bc004722b70d7e73d92ee02d059e28fec04e234a",
+  "prompts": {},
+  "sessions": {
+    "s_8ce10aa3af3fff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e12c7-3d30-7533-be0b-bbdbd1834d64",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
