@@ -1,0 +1,22 @@
+package.json
+  s_8ce10aa3af3fff::t_554790592a5bf3 65
+  s_8ce10aa3af3fff::t_63760b14700277 25
+docs/DESIGN_SYSTEM.md
+  s_8ce10aa3af3fff::t_6a5b97664624f4 165-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "1ab739481633849ee972f6ec581a8dcd1d88c806",
+  "prompts": {},
+  "sessions": {
+    "s_8ce10aa3af3fff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e12c7-3d30-7533-be0b-bbdbd1834d64",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
