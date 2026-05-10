@@ -1,6 +1,7 @@
 import type { StorybookConfig } from "storybook-solidjs-vite";
+import { fileURLToPath } from "node:url";
 
-const srcPath = new URL("../src", import.meta.url).pathname;
+const srcPath = fileURLToPath(new URL("../src", import.meta.url));
 
 const config: StorybookConfig = {
   stories: ["../src/**/*.stories.@(ts|tsx)"],
