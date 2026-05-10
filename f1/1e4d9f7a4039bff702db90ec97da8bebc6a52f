@@ -1,0 +1,19 @@
+.storybook/main.ts
+  s_8ce10aa3af3fff::t_2b7921eba9f1ee 2,4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "f11e4d9f7a4039bff702db90ec97da8bebc6a52f",
+  "prompts": {},
+  "sessions": {
+    "s_8ce10aa3af3fff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e12c7-3d30-7533-be0b-bbdbd1834d64",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
