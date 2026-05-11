@@ -1,0 +1,28 @@
+src-tauri/src/services/log_store.rs
+  s_eab9c2a820d818::t_68fdd050b4e8d4 173-199
+  s_eab9c2a820d818::t_730bd762d9c643 395-436
+src-tauri/src/lib.rs
+  s_eab9c2a820d818::t_68fdd050b4e8d4 25-27,358
+src/test/mock-backend/logcat.ts
+  s_eab9c2a820d818::t_68fdd050b4e8d4 69-74,134-149,187
+src-tauri/src/commands/logcat.rs
+  s_eab9c2a820d818::t_68fdd050b4e8d4 87-103
+src/lib/tauri-api.ts
+  s_eab9c2a820d818::t_68fdd050b4e8d4 440-451
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "014fe1085e82f2fe5724fc12d6c2e9735b074318",
+  "prompts": {},
+  "sessions": {
+    "s_eab9c2a820d818": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e173c-e2d1-7170-8c2f-248d531c9ae0",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
