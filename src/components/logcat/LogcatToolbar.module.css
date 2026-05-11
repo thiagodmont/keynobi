@@ -1,0 +1,22 @@
+.crashGroup {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 2px;
+}
+
+.crashButton {
+  gap: 3px;
+  animation: lsp-dot-pulse 3s ease-in-out infinite;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.count {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  cursor: default;
+  font-size: 11px;
+}

@@ -1,0 +1,36 @@
+.queryPreview {
+  max-width: 130px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemLayout {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.applyItem {
+  flex: 1;
+  min-width: 0;
+}
+
+.actionButton {
+  min-width: 20px;
+  padding: 0 3px;
+}
+
+.renameInput {
+  flex: 1;
+  border-color: var(--accent);
+}

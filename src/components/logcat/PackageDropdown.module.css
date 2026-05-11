@@ -1,0 +1,49 @@
+.triggerLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.triggerChevron {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.searchFrame {
+  padding: 6px 8px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.searchInput {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.packageList {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.activeMarker {
+  flex-shrink: 0;
+  width: 8px;
+  color: var(--accent);
+  font-size: 9px;
+}
+
+.label {
+  flex: 1;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sublabel {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}

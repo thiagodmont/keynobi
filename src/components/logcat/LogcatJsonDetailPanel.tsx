@@ -1,6 +1,7 @@
 import { createSignal, type JSX } from "solid-js";
-import { Button, DockedPanel } from "@/components/ui";
+import { Button, DockedPanel, Icon } from "@/components/ui";
 import type { LogcatEntry } from "@/lib/tauri-api";
+import styles from "./LogcatJsonDetailPanel.module.css";
 
 export function JsonDetailPanel(props: { entry: LogcatEntry; onClose: () => void }): JSX.Element {
   const [copied, setCopied] = createSignal(false);
@@ -42,6 +43,7 @@ export function JsonDetailPanel(props: { entry: LogcatEntry; onClose: () => void
             onClick={copyJson}
             title="Copy JSON"
           >
+            <Icon name={copied() ? "check" : "copy"} size={12} />
             {copied() ? "Copied!" : "Copy"}
           </Button>
           <Button
@@ -51,27 +53,12 @@ export function JsonDetailPanel(props: { entry: LogcatEntry; onClose: () => void
             onClick={() => props.onClose()}
             title="Close JSON viewer"
           >
-            ✕
+            <Icon name="close" size={12} />
           </Button>
         </>
       }
     >
-      <pre
-        style={{
-          flex: "1",
-          overflow: "auto",
-          margin: "0",
-          padding: "8px 12px",
-          "font-family": "var(--font-mono)",
-          "font-size": "11px",
-          "line-height": "1.5",
-          color: "var(--text-primary)",
-          "white-space": "pre",
-          background: "transparent",
-        }}
-      >
-        {formattedJson() ?? "(invalid JSON)"}
-      </pre>
+      <pre class={styles.jsonValue}>{formattedJson() ?? "(invalid JSON)"}</pre>
     </DockedPanel>
   );
 }

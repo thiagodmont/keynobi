@@ -2,6 +2,7 @@ import { Show, createSignal, onCleanup, onMount } from "solid-js";
 import {
   Button,
   DockedPanel,
+  Icon,
   MenuList,
   MenuListItem,
   MetadataCell,
@@ -143,7 +144,7 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
       actions={
         <>
           <Button variant="ghost" size="xs" tone="muted" onClick={copyEntry} title="Copy">
-            ⎘ Copy
+            <Icon name="copy" size={12} /> Copy
           </Button>
           <Button
             variant="ghost"
@@ -152,7 +153,7 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
             onClick={() => props.onClose()}
             title="Close"
           >
-            ✕
+            <Icon name="close" size={12} />
           </Button>
         </>
       }

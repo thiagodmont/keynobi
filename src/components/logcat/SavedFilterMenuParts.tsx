@@ -1,5 +1,13 @@
 import { type JSX } from "solid-js";
-import { Button, Input, MenuEmptyState, MenuListItem, MenuSectionHeader } from "@/components/ui";
+import {
+  Button,
+  Icon,
+  Input,
+  MenuEmptyState,
+  MenuListItem,
+  MenuSectionHeader,
+} from "@/components/ui";
+import styles from "./SavedFilterMenuParts.module.css";
 
 export function SavedFilterMenuRow(props: {
   children: JSX.Element;
@@ -18,39 +26,29 @@ export function SavedFilterMenuRow(props: {
   );
 }
 
-export function SavedFilterQueryPreview(props: { query: string }): JSX.Element {
-  return (
-    <span
-      style={{
-        color: "var(--text-muted)",
-        "font-size": "10px",
-        "max-width": "130px",
-        overflow: "hidden",
-        "text-overflow": "ellipsis",
-        "white-space": "nowrap",
-      }}
-    >
-      {props.query}
-    </span>
-  );
+export function SavedFilterItemLayout(props: { children: JSX.Element }): JSX.Element {
+  return <div class={styles.itemLayout}>{props.children}</div>;
 }
 
-export function SavedFilterName(props: {
+export function SavedFilterApplyItem(props: {
   name: string;
   query: string;
   onApply: () => void;
 }): JSX.Element {
   return (
-    <span
-      onClick={() => props.onApply()}
-      style={{
-        flex: "1",
-        overflow: "hidden",
-        "text-overflow": "ellipsis",
-        "white-space": "nowrap",
-      }}
-      title={props.query}
-    >
+    <MenuListItem onClick={props.onApply} class={styles.applyItem}>
+      <SavedFilterName name={props.name} query={props.query} />
+    </MenuListItem>
+  );
+}
+
+export function SavedFilterQueryPreview(props: { query: string }): JSX.Element {
+  return <span class={styles.queryPreview}>{props.query}</span>;
+}
+
+export function SavedFilterName(props: { name: string; query: string }): JSX.Element {
+  return (
+    <span class={styles.name} title={props.query}>
       {props.name}
     </span>
   );
@@ -58,27 +56,23 @@ export function SavedFilterName(props: {
 
 export function SavedFilterActionButton(props: {
   title?: string;
-  children: JSX.Element;
+  icon: "pencil" | "trash";
   onClick: () => void;
 }): JSX.Element {
   return (
-    <button
+    <Button
+      variant="ghost"
+      size="xs"
+      tone="muted"
+      title={props.title}
+      class={styles.actionButton}
       onClick={(e) => {
         e.stopPropagation();
         props.onClick();
       }}
-      style={{
-        background: "none",
-        border: "none",
-        color: "var(--text-muted)",
-        cursor: "pointer",
-        padding: "0 3px",
-        "font-size": "10px",
-      }}
-      title={props.title}
     >
-      {props.children}
-    </button>
+      <Icon name={props.icon} size={11} />
+    </Button>
   );
 }
 
@@ -106,32 +100,33 @@ export function SavedFilterRenameInput(props: {
           }
         }}
         autofocus
-        style={{
-          flex: "1",
-          "border-color": "var(--accent)",
-        }}
+        class={styles.renameInput}
       />
       <Button
         variant="outline"
         size="xs"
         tone="accent"
+        title="Commit rename"
+        ariaLabel="Commit rename"
         onClick={(e) => {
           e.stopPropagation();
           props.onCommit();
         }}
       >
-        ✓
+        <Icon name="check" size={12} />
       </Button>
       <Button
         variant="outline"
         size="xs"
         tone="muted"
+        title="Cancel rename"
+        ariaLabel="Cancel rename"
         onClick={(e) => {
           e.stopPropagation();
           props.onCancel();
         }}
       >
-        ✕
+        <Icon name="close" size={12} />
       </Button>
     </>
   );

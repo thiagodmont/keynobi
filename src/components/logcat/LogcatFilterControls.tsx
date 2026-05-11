@@ -4,6 +4,7 @@ import {
   Button,
   ControlStrip,
   FilterChip,
+  Icon,
   Input,
   Popover,
   Separator,
@@ -172,7 +173,7 @@ export function LogcatFilterControls(props: {
             onClick={() => props.onClear()}
             title="Clear all filters"
           >
-            ✕ Clear
+            <Icon name="close" size={12} /> Clear
           </Button>
         </Show>
       </div>
@@ -324,7 +325,7 @@ function VariableManagerButton(props: {
             onClick={addVariable}
             class={styles.addVariableButton}
           >
-            Add variable
+            <Icon name="check" size={12} /> Add variable
           </Button>
         </div>
 
@@ -362,7 +363,7 @@ function VariableManagerButton(props: {
                     title={`Insert variable ${name}`}
                     onClick={() => props.onInsert?.(name)}
                   >
-                    Insert
+                    <Icon name="arrow-down" size={12} /> Insert
                   </Button>
                   <Button
                     variant="outline"
@@ -371,7 +372,7 @@ function VariableManagerButton(props: {
                     title={`Delete variable ${name}`}
                     onClick={() => props.onDelete?.(name)}
                   >
-                    Delete
+                    <Icon name="trash" size={12} /> Delete
                   </Button>
                 </div>
               )}
@@ -445,10 +446,10 @@ function DirectSaveFilterButton(props: {
           class={styles.saveInput}
         />
         <Button variant="outline" size="xs" tone="accent" onClick={save}>
-          Save
+          <Icon name="check" size={12} /> Save
         </Button>
         <Button variant="outline" size="xs" tone="muted" onClick={close}>
-          Cancel
+          <Icon name="close" size={12} /> Cancel
         </Button>
       </Popover>
     </Show>
