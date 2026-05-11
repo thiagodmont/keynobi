@@ -1,0 +1,21 @@
+src/components/logcat/LogcatRows.test.tsx
+  s_eab9c2a820d818::t_5b89b815bd17e1 1,48-72
+src/components/logcat/LogcatRows.tsx
+  s_eab9c2a820d818::t_97cbdd71600b85 198
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "2b11206248b9de201ad6835c2dc76900b6e09eca",
+  "prompts": {},
+  "sessions": {
+    "s_eab9c2a820d818": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e173c-e2d1-7170-8c2f-248d531c9ae0",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
