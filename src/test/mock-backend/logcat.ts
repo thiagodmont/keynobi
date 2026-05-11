@@ -66,6 +66,12 @@ type LogcatEntriesArgs = {
   onlyCrashes?: boolean | null;
 };
 
+type LogcatContextEntriesArgs = {
+  anchorId?: bigint | number | string | null;
+  direction?: "before" | "after" | string | null;
+  count?: number | null;
+};
+
 function emptyFilter(): LogcatFilterSpec {
   return { minLevel: null, tag: null, text: null, package: null, onlyCrashes: false };
 }
@@ -125,6 +131,22 @@ function argsToFilter(args: unknown): LogcatFilterSpec {
   };
 }
 
+function contextEntries(args: unknown): ProcessedEntry[] {
+  const opts = (args ?? {}) as LogcatContextEntriesArgs;
+  if (opts.anchorId === null || opts.anchorId === undefined) return [];
+  const anchorId = BigInt(opts.anchorId);
+  const anchorIndex = storedEntries.findIndex((entry) => entry.id === anchorId);
+  if (anchorIndex < 0) return [];
+  const count = Math.max(0, Math.floor(opts.count ?? 10));
+  if (opts.direction === "before") {
+    return storedEntries.slice(Math.max(0, anchorIndex - count), anchorIndex);
+  }
+  if (opts.direction === "after") {
+    return storedEntries.slice(anchorIndex + 1, anchorIndex + 1 + count);
+  }
+  return [];
+}
+
 export function logcatHandlers(): Record<string, (args: unknown) => unknown> {
   return {
     start_logcat: () => {
@@ -162,6 +184,7 @@ export function logcatHandlers(): Record<string, (args: unknown) => unknown> {
       triggerEvent("logcat:cleared", undefined);
     },
     get_logcat_entries: (args: unknown) => filterEntries(storedEntries, argsToFilter(args)),
+    get_logcat_context_entries: (args: unknown) => contextEntries(args),
     get_logcat_status: () => logcatRunning,
     list_logcat_packages: () => ["com.example.mockapp"],
     set_logcat_filter: (args: unknown) => {

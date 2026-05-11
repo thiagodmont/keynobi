@@ -140,6 +140,73 @@ test("logcat detail panel opens for the clicked filtered row", async ({ page }) 
   await expect(page.getByTitle("Filter by message")).toHaveText("Beta target message");
 });
 
+test("logcat entry detail filter menu has an opaque surface", async ({ page }) => {
+  await openLogcatWithEmptyEntries(page);
+  await pushLogcatEntries(page, [
+    { id: 103, tag: "DetailMenuTag", message: "Detail menu surface row" },
+  ]);
+
+  await expect(page.getByText("Detail menu surface row")).toBeVisible({ timeout: 5_000 });
+  await page.getByText("Detail menu surface row").click();
+  await page.getByTitle("Filter by Tag").click();
+
+  await expect(page.getByRole("menu")).toBeVisible();
+  await expect(page.getByRole("menu")).toHaveCSS(
+    "background-color",
+    /^(?!rgba\(0, 0, 0, 0\))/
+  );
+});
+
+test("logcat filtered rows can expand adjacent raw context", async ({ page }) => {
+  await openLogcatWithEmptyEntries(page);
+  await pushLogcatEntries(page, [
+    { id: 104, tag: "ContextBefore", message: "Context before one" },
+    { id: 105, tag: "ContextBefore", message: "Context before two" },
+    { id: 106, tag: "ContextTarget", message: "Focused context match" },
+    { id: 107, tag: "ContextAfter", message: "Context after one" },
+    { id: 108, tag: "ContextAfter", message: "Context after two" },
+  ]);
+
+  await expect(page.getByTitle(ROW_TITLE)).toHaveCount(5, { timeout: 5_000 });
+
+  const filterInput = page.locator('input[type="text"][placeholder*="Filter"]').first();
+  await filterInput.fill("message:Focused ");
+
+  await expect(page.getByTitle(ROW_TITLE)).toHaveCount(1, { timeout: 5_000 });
+  await expect(page.getByText("Focused context match")).toBeVisible();
+  await expect(page.getByText("Context before one")).not.toBeVisible();
+  await expect(page.getByText("Context after one")).not.toBeVisible();
+
+  await page.getByText("Focused context match").click({ button: "right" });
+  await expect(page.getByRole("menu")).toHaveCSS("background-color", /^(?!rgba\(0, 0, 0, 0\))/);
+  await page.getByRole("menuitem", { name: "Expand 10 up" }).click();
+
+  await expect(page.getByText("Context before one")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Context before two")).toBeVisible();
+  await expect(page.getByText("Context after one")).not.toBeVisible();
+  await expect(
+    page.locator(`div[title="${ROW_TITLE}"][data-expanded-context="true"]`).filter({
+      hasText: "Context before one",
+    })
+  ).toHaveCount(1);
+  await expect(
+    page.locator(`div[title="${ROW_TITLE}"][data-expanded-context="true"]`).filter({
+      hasText: "Focused context match",
+    })
+  ).toHaveCount(0);
+
+  await page.getByText("Context before one").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Expand 10 down" }).click();
+
+  await expect(page.getByText("Context after one")).toBeVisible({ timeout: 5_000 });
+  await expect(page.getByText("Context after two")).toBeVisible();
+  await expect(
+    page.locator(`div[title="${ROW_TITLE}"][data-expanded-context="true"]`).filter({
+      hasText: "Context after one",
+    })
+  ).toHaveCount(1);
+});
+
 test("logcat query connector badges toggle only the clicked condition", async ({ page }) => {
   await openLogcatWithEmptyEntries(page);
   await pushLogcatEntries(page, [

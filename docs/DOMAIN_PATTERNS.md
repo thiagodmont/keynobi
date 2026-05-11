@@ -84,6 +84,8 @@ Backend processing owns package resolution, crash detection, JSON detection, cat
 
 Handle high-volume and simple filters in Rust before crossing IPC. Frontend-only filters are limited to cases that require browser state or JS-only semantics, such as age filters, negation, and regex.
 
+Filtered Logcat context expansion should fetch adjacent raw rows from the backend ring buffer by anchor entry id. Do not clear the active filter or replace the filtered backfill just to show surrounding context; merge bounded context rows into the visible frontend list and mark them as expanded context.
+
 ### Frontend Boundaries
 
 Keep `LogcatPanel.tsx` as composition/orchestration. Domain logic lives in focused helpers:

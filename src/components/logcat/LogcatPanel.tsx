@@ -12,6 +12,7 @@ import {
   stopLogcat,
   clearLogcat,
   getLogcatEntries,
+  getLogcatContextEntries,
   getLogcatStatus,
   getLogcatStats,
   setLogcatFilter,
@@ -26,7 +27,7 @@ import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { save } from "@tauri-apps/plugin-dialog";
 import { selectedDevice } from "@/stores/device.store";
 import { logcatRowHeightForFontSize, settingsState } from "@/stores/settings.store";
-import { EmptyState, showToast } from "@/components/ui";
+import { EmptyState, Icon, MenuList, MenuListItem, showToast } from "@/components/ui";
 import { VirtualList, type VirtualListHandle, isPaletteOpen } from "@/components/ui";
 import {
   parseAge,
@@ -82,6 +83,13 @@ import { createLogcatSuggestionRuntime } from "./logcat-suggestion-runtime";
 import { createLogcatQueryController } from "./logcat-query-controller";
 import { formatLogcatEntries } from "./logcat-entry-format";
 import { copyToClipboard } from "@/utils/clipboard";
+import {
+  LOGCAT_CONTEXT_EXPAND_COUNT,
+  LOGCAT_MAX_EXPANDED_CONTEXT_ENTRIES,
+  isExpandedContextRow,
+  mergeExpandedContextEntries,
+  mergeLogcatEntriesChronologically,
+} from "./logcat-context-expansion";
 
 function maxUiLinesCap(): number {
   return clampLogcatMaxUiLines(
@@ -98,6 +106,14 @@ function isLogcatTypingTarget(target: unknown): boolean {
   const tag = target.tagName;
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
+
+type LogcatContextMenu = {
+  entry: LogcatEntry;
+  x: number;
+  y: number;
+};
+
+type LogcatContextDirection = "before" | "after";
 
 export function LogcatPanel(): JSX.Element {
   function resetQueryInteraction(): void {
@@ -127,6 +143,10 @@ export function LogcatPanel(): JSX.Element {
     restoreQuery,
   } = queryController;
 
+  function isFiltered() {
+    return query().trim() !== "";
+  }
+
   const [autoScroll, setAutoScroll] = createSignal(settingsState.logcat.autoScrollToEnd !== false);
   const [scrollCompensate, setScrollCompensate] = createSignal(0);
   const rowHeight = createMemo(() =>
@@ -140,6 +160,11 @@ export function LogcatPanel(): JSX.Element {
   const [paused, setPaused] = createSignal(false);
   const [restarting, setRestarting] = createSignal(false);
   const [showLifecycle, setShowLifecycle] = createSignal(true);
+  const [expandedContextEntries, setExpandedContextEntries] = createSignal<LogcatEntry[]>([], {
+    equals: false,
+  });
+  const [contextMenu, setContextMenu] = createSignal<LogcatContextMenu | null>(null);
+  let contextMenuRef: HTMLDivElement | undefined;
 
   // Crash navigation
   const [jumpTarget, setJumpTarget] = createSignal<number | null>(null);
@@ -213,18 +238,84 @@ export function LogcatPanel(): JSX.Element {
     { equals: false }
   );
 
+  const filteredEntryIds = createMemo(() => new Set(filteredEntries().map((entry) => entry.id)));
+  const expandedContextIds = createMemo(
+    () => new Set(expandedContextEntries().map((entry) => entry.id))
+  );
+  const mergedEntries = createMemo(() => {
+    if (!isFiltered()) return filteredEntries();
+    return mergeLogcatEntriesChronologically(filteredEntries(), expandedContextEntries());
+  });
+
   const displayedEntries = createMemo(() => {
-    const entries = frozenEntries() ?? filteredEntries();
+    const entries = frozenEntries() ?? mergedEntries();
     return showLifecycle() ? entries : entries.filter((entry) => !isLifecycleLogcatEntry(entry));
   });
   const readMode = createMemo(() => frozenEntries() !== null);
 
   function enterReadMode(): void {
     if (frozenEntries() === null) {
-      setFrozenEntries(filteredEntries().slice());
+      setFrozenEntries(mergedEntries().slice());
       setPendingNewEntries(0);
     }
     setAutoScroll(false);
+  }
+
+  function clearExpandedContext(): void {
+    setExpandedContextEntries([]);
+    setContextMenu(null);
+  }
+
+  function contextMenuPosition(x: number, y: number): { x: number; y: number } {
+    const menuWidth = 176;
+    const menuHeight = 80;
+    const maxX = Math.max(8, window.innerWidth - menuWidth - 8);
+    const maxY = Math.max(8, window.innerHeight - menuHeight - 8);
+    return {
+      x: Math.min(Math.max(8, x), maxX),
+      y: Math.min(Math.max(8, y), maxY),
+    };
+  }
+
+  function handleRowContextMenu(entry: LogcatEntry, e: MouseEvent): void {
+    if (!isFiltered()) return;
+    e.preventDefault();
+    enterReadMode();
+    setContextMenu({ entry, ...contextMenuPosition(e.clientX, e.clientY) });
+  }
+
+  function isExpandedRow(entry: LogcatEntry): boolean {
+    return isExpandedContextRow(entry.id, expandedContextIds(), filteredEntryIds());
+  }
+
+  async function expandLogContext(direction: LogcatContextDirection): Promise<void> {
+    const menu = contextMenu();
+    if (!menu) return;
+    setContextMenu(null);
+    try {
+      const entries = await getLogcatContextEntries({
+        anchorId: menu.entry.id,
+        direction,
+        count: LOGCAT_CONTEXT_EXPAND_COUNT,
+      });
+      if (entries.length === 0) {
+        showToast(
+          direction === "before" ? "No earlier logs in buffer" : "No later logs in buffer",
+          "info"
+        );
+        return;
+      }
+
+      setExpandedContextEntries((current) =>
+        mergeExpandedContextEntries(current, entries, LOGCAT_MAX_EXPANDED_CONTEXT_ENTRIES)
+      );
+      const frozen = frozenEntries();
+      if (frozen !== null) {
+        setFrozenEntries(mergeLogcatEntriesChronologically(frozen, entries));
+      }
+    } catch (err) {
+      showToast(`Failed to expand log context: ${formatError(err)}`, "error");
+    }
   }
 
   function exitReadMode(): void {
@@ -369,6 +460,7 @@ export function LogcatPanel(): JSX.Element {
     }
     if (effectiveQuery === _prevEffectiveDebouncedQuery) return;
     _prevEffectiveDebouncedQuery = effectiveQuery;
+    clearExpandedContext();
     syncBackendFilter(parseFilterGroups(effectiveQuery));
   });
 
@@ -514,6 +606,7 @@ export function LogcatPanel(): JSX.Element {
 
     unlistenCleared = await listenLogcatCleared(() => {
       exitReadMode();
+      clearExpandedContext();
       clearLogcatEntries();
       suggestions.clear();
       setAutoScroll(true);
@@ -573,6 +666,25 @@ export function LogcatPanel(): JSX.Element {
     setLogcatFilter(emptyLogcatFilterSpec()).catch(() => {});
   });
 
+  onMount(() => {
+    function closeContextMenu(e: MouseEvent): void {
+      const target = e.target as globalThis.Node | null;
+      if (target && contextMenuRef?.contains(target)) return;
+      setContextMenu(null);
+    }
+
+    function handleContextMenuEscape(e: KeyboardEvent): void {
+      if (e.key === "Escape") setContextMenu(null);
+    }
+
+    document.addEventListener("mousedown", closeContextMenu);
+    document.addEventListener("keydown", handleContextMenuEscape);
+    onCleanup(() => {
+      document.removeEventListener("mousedown", closeContextMenu);
+      document.removeEventListener("keydown", handleContextMenuEscape);
+    });
+  });
+
   // ── Controls ──────────────────────────────────────────────────────────────────
 
   async function handleStart() {
@@ -599,6 +711,7 @@ export function LogcatPanel(): JSX.Element {
   async function handleClear() {
     try {
       await clearLogcat();
+      clearExpandedContext();
       setSelectionAnchor(null);
       setSelectionEnd(null);
     } catch (e) {
@@ -773,13 +886,13 @@ export function LogcatPanel(): JSX.Element {
     setSelectionEnd(null);
     setSelectedJsonEntry(null);
     setSelectedDetailEntry(null);
+    clearExpandedContext();
     setAutoScroll(true);
     virtualListRef?.scrollToBottom();
   }
 
   // ── UI helpers ────────────────────────────────────────────────────────────────
 
-  const isFiltered = () => query().trim() !== "";
   const toolbarCount = createMemo(() =>
     formatLogcatToolbarCount({
       queryActive: isFiltered(),
@@ -898,7 +1011,13 @@ export function LogcatPanel(): JSX.Element {
           }}
           renderRow={(entry) => {
             if (entry.kind === "processDied" || entry.kind === "processStarted") {
-              return <SeparatorRow entry={entry} />;
+              return (
+                <SeparatorRow
+                  entry={entry}
+                  expandedContext={isExpandedRow(entry)}
+                  onContextMenu={(e) => handleRowContextMenu(entry, e)}
+                />
+              );
             }
             return (
               <LogcatVirtualRow
@@ -909,12 +1028,41 @@ export function LogcatPanel(): JSX.Element {
                 getEnd={() => selectionEnd()}
                 getDetailEntry={() => selectedDetailEntry()}
                 getJsonEntry={() => selectedJsonEntry()}
+                expandedContext={isExpandedRow(entry)}
                 onRowClick={(e) => handleRowClick(entry, e)}
+                onContextMenu={(e) => handleRowContextMenu(entry, e)}
                 onJsonClick={(e) => handleJsonBadgeClick(e, entry)}
               />
             );
           }}
         />
+      </Show>
+
+      <Show when={contextMenu()}>
+        {(menu) => (
+          <MenuList
+            role="menu"
+            surface="floating"
+            listRef={(el) => {
+              contextMenuRef = el;
+            }}
+            class="logcat-context-menu"
+            style={{
+              position: "fixed",
+              left: `${menu().x}px`,
+              top: `${menu().y}px`,
+              width: "176px",
+              "z-index": 1000,
+            }}
+          >
+            <MenuListItem role="menuitem" onClick={() => void expandLogContext("before")}>
+              <Icon name="arrow-up" size={12} /> Expand 10 up
+            </MenuListItem>
+            <MenuListItem role="menuitem" onClick={() => void expandLogContext("after")}>
+              <Icon name="arrow-down" size={12} /> Expand 10 down
+            </MenuListItem>
+          </MenuList>
+        )}
       </Show>
 
       {/* ── JSON Detail Panel ─────────────────────────────────────────────── */}

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { MenuEmptyState, MenuList, MenuListItem, MenuSectionHeader } from "./MenuList";
+import styles from "./MenuList.module.css";
 
 describe("MenuList", () => {
   it("renders section headers, items, and empty states", () => {
@@ -50,5 +51,23 @@ describe("MenuList", () => {
     ));
 
     expect(screen.getByRole("option", { name: "Run" })).not.toBeNull();
+  });
+
+  it("applies shared floating surface chrome only when requested", () => {
+    render(() => (
+      <>
+        <MenuList role="menu">
+          <MenuListItem onClick={() => undefined}>Flat</MenuListItem>
+        </MenuList>
+        <MenuList role="menu" surface="floating">
+          <MenuListItem onClick={() => undefined}>Floating</MenuListItem>
+        </MenuList>
+      </>
+    ));
+
+    const menus = screen.getAllByRole("menu");
+
+    expect(menus[0].classList.contains(styles.floatingSurface)).toBe(false);
+    expect(menus[1].classList.contains(styles.floatingSurface)).toBe(true);
   });
 });

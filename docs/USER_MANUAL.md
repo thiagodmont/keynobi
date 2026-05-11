@@ -153,6 +153,7 @@ Use `${name}` inside filter values to create a filter variable. Click **Variable
 - ANRs get an ANR badge.
 - JSON messages show a `{}` badge; open it to view formatted JSON.
 - Arrow keys move the selected row when focus is not in the query bar.
+- When a filter is active, right-click a log row and choose **Expand 10 up** or **Expand 10 down** to reveal adjacent raw log rows without clearing the filter. You can repeat this from any visible row. Rows added this way use a green left marker so they are distinct from rows that matched the filter.
 - Scrolling away from the end or selecting a row enters read mode: the visible list is frozen so the row you are reading cannot be pushed out by new logs or UI-buffer overflow.
 - While in read mode, new logs continue to be captured in the background. The **Jump to end** button shows how many matching logs arrived; use it to apply them and resume follow-tail.
 - In **Entry Detail**, click a tag, package, level, PID, TID, time, or message value to add it to the query bar as an **AND** or **OR** filter. Select part of the message before clicking to filter by only that selected text.

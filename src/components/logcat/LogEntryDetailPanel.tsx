@@ -234,6 +234,7 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
             }}
             class={styles.filterMenu}
             role="menu"
+            surface="floating"
             style={{ left: `${menu().x}px`, top: `${menu().y}px` }}
           >
             <MenuListItem role="menuitem" onClick={() => addFilter("and")}>

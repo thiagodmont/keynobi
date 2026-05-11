@@ -49,3 +49,23 @@ export const Empty: Story = {
     </div>
   ),
 };
+
+export const FloatingContextMenu: Story = {
+  render: () => (
+    <div style={{ height: "140px", position: "relative" }}>
+      <MenuList
+        role="menu"
+        surface="floating"
+        style={{
+          position: "absolute",
+          left: "24px",
+          top: "24px",
+          width: "176px",
+        }}
+      >
+        <MenuListItem onClick={() => {}}>Expand 10 up</MenuListItem>
+        <MenuListItem onClick={() => {}}>Expand 10 down</MenuListItem>
+      </MenuList>
+    </div>
+  ),
+};

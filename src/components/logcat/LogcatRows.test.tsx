@@ -1,4 +1,4 @@
-import { render, screen } from "@solidjs/testing-library";
+import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { describe, expect, it } from "vitest";
 import type { LogcatEntry } from "@/lib/tauri-api";
 import { LogcatVirtualRow } from "./LogcatRows";
@@ -32,7 +32,9 @@ describe("LogcatRows", () => {
         getEnd={() => null}
         getDetailEntry={() => null}
         getJsonEntry={() => null}
+        expandedContext={false}
         onRowClick={() => {}}
+        onContextMenu={() => {}}
         onJsonClick={() => {}}
       />
     ));
@@ -42,5 +44,31 @@ describe("LogcatRows", () => {
     expect(row.classList.contains(styles.row)).toBe(true);
     expect(row.style.background).not.toBe("");
     expect(row.style.borderLeft).toBe("2px solid transparent");
+  });
+
+  it("restores expanded context background after hovering crash rows", () => {
+    render(() => (
+      <LogcatVirtualRow
+        entry={{ ...ENTRY, isCrash: true }}
+        getIndex={() => 0}
+        getSelectionRange={() => null}
+        getAnchor={() => null}
+        getEnd={() => null}
+        getDetailEntry={() => null}
+        getJsonEntry={() => null}
+        expandedContext
+        onRowClick={() => {}}
+        onContextMenu={() => {}}
+        onJsonClick={() => {}}
+      />
+    ));
+
+    const row = screen.getByTitle("Click to copy · Shift+click to select range");
+    const initialBackground = row.style.background;
+
+    fireEvent.mouseEnter(row);
+    fireEvent.mouseLeave(row);
+
+    expect(row.style.background).toBe(initialBackground);
   });
 });
