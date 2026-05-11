@@ -7,6 +7,17 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.26] — 2026-05-11
+
+### Added
+- expand log (#73)
+- apply ds (#72)
+- design system (#71)
+- refactor logcat (#70)
+- fix and improvements (#69)
+
+---
+
 ## [0.1.25] — 2026-05-08
 
 ### Added

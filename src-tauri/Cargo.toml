@@ -1,6 +1,6 @@
 [package]
 name = "keynobi"
-version = "0.1.25"
+version = "0.1.26"
 description = "Keynobi - AI-First Android Companion App"
 authors = []
 edition = "2021"
