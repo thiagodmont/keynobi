@@ -437,6 +437,18 @@ export async function getLogcatEntries(opts?: {
   });
 }
 
+export async function getLogcatContextEntries(opts: {
+  anchorId: bigint;
+  direction: "before" | "after";
+  count?: number;
+}): Promise<ProcessedEntry[]> {
+  return invoke<ProcessedEntry[]>("get_logcat_context_entries", {
+    anchorId: opts.anchorId,
+    direction: opts.direction,
+    count: opts.count ?? null,
+  });
+}
+
 export async function getLogcatStatus(): Promise<boolean> {
   return invoke<boolean>("get_logcat_status");
 }

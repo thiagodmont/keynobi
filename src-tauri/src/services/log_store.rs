@@ -170,6 +170,33 @@ impl LogStore {
         result
     }
 
+    /// Return up to `limit` entries immediately before `anchor_id`, in chronological order.
+    pub fn context_before(&self, anchor_id: u64, limit: usize) -> Vec<ProcessedEntry> {
+        let Some(anchor_index) = self.entries.iter().position(|entry| entry.id == anchor_id) else {
+            return Vec::new();
+        };
+        let start = anchor_index.saturating_sub(limit);
+        self.entries
+            .iter()
+            .skip(start)
+            .take(anchor_index - start)
+            .cloned()
+            .collect()
+    }
+
+    /// Return up to `limit` entries immediately after `anchor_id`, in chronological order.
+    pub fn context_after(&self, anchor_id: u64, limit: usize) -> Vec<ProcessedEntry> {
+        let Some(anchor_index) = self.entries.iter().position(|entry| entry.id == anchor_id) else {
+            return Vec::new();
+        };
+        self.entries
+            .iter()
+            .skip(anchor_index + 1)
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+
     /// Return all crash entry IDs in ascending order.
     pub fn crash_ids(&self) -> &VecDeque<u64> {
         &self.crash_ids
@@ -362,6 +389,49 @@ mod tests {
 
         let ids: Vec<u64> = store.query(&filter, 10).into_iter().map(|e| e.id).collect();
         assert_eq!(ids, vec![1]);
+    }
+
+    #[test]
+    fn context_before_returns_adjacent_older_entries_in_chronological_order() {
+        let mut store = LogStore::with_capacity(10_000);
+        for id in 1..=8 {
+            store.push(make_entry(id, 0));
+        }
+
+        let ids: Vec<u64> = store
+            .context_before(6, 3)
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect();
+
+        assert_eq!(ids, vec![3, 4, 5]);
+    }
+
+    #[test]
+    fn context_after_returns_adjacent_newer_entries_in_chronological_order() {
+        let mut store = LogStore::with_capacity(10_000);
+        for id in 1..=8 {
+            store.push(make_entry(id, 0));
+        }
+
+        let ids: Vec<u64> = store
+            .context_after(4, 10)
+            .into_iter()
+            .map(|entry| entry.id)
+            .collect();
+
+        assert_eq!(ids, vec![5, 6, 7, 8]);
+    }
+
+    #[test]
+    fn context_returns_empty_when_anchor_is_not_in_buffer() {
+        let mut store = LogStore::with_capacity(10_000);
+        for id in 1..=3 {
+            store.push(make_entry(id, 0));
+        }
+
+        assert!(store.context_before(99, 10).is_empty());
+        assert!(store.context_after(99, 10).is_empty());
     }
 
     #[test]

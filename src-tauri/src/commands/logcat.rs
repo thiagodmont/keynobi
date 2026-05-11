@@ -84,6 +84,23 @@ pub async fn get_logcat_entries(
     Ok(state.store.query(&filter, limit))
 }
 
+/// Return unfiltered entries adjacent to an anchor entry in the ring buffer.
+#[tauri::command]
+pub async fn get_logcat_context_entries(
+    anchor_id: u64,
+    direction: String,
+    count: Option<usize>,
+    logcat_state: State<'_, LogcatState>,
+) -> Result<Vec<ProcessedEntry>, String> {
+    let state = logcat_state.lock().await;
+    let limit = count.unwrap_or(10).min(state.store.capacity());
+    match direction.as_str() {
+        "before" => Ok(state.store.context_before(anchor_id, limit)),
+        "after" => Ok(state.store.context_after(anchor_id, limit)),
+        other => Err(format!("Invalid logcat context direction: {other}")),
+    }
+}
+
 /// Return whether logcat is currently streaming.
 #[tauri::command]
 pub async fn get_logcat_status(logcat_state: State<'_, LogcatState>) -> Result<bool, String> {
