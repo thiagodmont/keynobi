@@ -2,6 +2,13 @@
   padding: 4px 0;
 }
 
+.floatingSurface {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
 .item {
   align-items: center;
   color: var(--text-primary);

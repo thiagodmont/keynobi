@@ -7,6 +7,7 @@ export interface MenuListProps {
   style?: JSX.CSSProperties;
   role?: JSX.HTMLAttributes<HTMLDivElement>["role"];
   listRef?: (el: HTMLDivElement) => void;
+  surface?: "floating";
 }
 
 export interface MenuListItemProps {
@@ -34,7 +35,9 @@ export function MenuList(props: MenuListProps): JSX.Element {
     <div
       ref={props.listRef}
       role={props.role}
-      class={[styles.root, props.class].filter(Boolean).join(" ")}
+      class={[styles.root, props.surface === "floating" ? styles.floatingSurface : "", props.class]
+        .filter(Boolean)
+        .join(" ")}
       style={props.style}
     >
       {props.children}

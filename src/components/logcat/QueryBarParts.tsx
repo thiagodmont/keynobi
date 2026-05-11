@@ -201,7 +201,7 @@ export function QueryBarSuggestions(props: {
   onHover: (idx: number) => void;
 }): JSX.Element {
   return (
-    <MenuList style={suggestionMenuStyle()}>
+    <MenuList surface="floating" style={suggestionMenuStyle()}>
       <For each={props.suggestions}>
         {(suggestion, i) => {
           const isSelected = () => i() === props.selectedIdx;

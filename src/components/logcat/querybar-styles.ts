@@ -254,10 +254,6 @@ export function suggestionMenuStyle(): Record<string, string> {
     "max-width": "360px",
     "max-height": "260px",
     "overflow-y": "auto",
-    background: "var(--bg-secondary)",
-    border: "1px solid var(--border)",
-    "border-radius": "4px",
-    "box-shadow": "0 6px 20px rgba(0,0,0,0.45)",
     "z-index": "600",
   };
 }
