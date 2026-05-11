@@ -1,0 +1,42 @@
+src/components/logcat/LogcatRows.tsx
+  s_eab9c2a820d818::t_54540fc98267f0 26,28,54,56,62-66,74,77-78,146,148,171,180,183,188-190,203-204
+src/components/logcat/LogcatRows.module.css
+  s_eab9c2a820d818::t_54540fc98267f0 50-54
+src/components/logcat/LogcatRows.test.tsx
+  s_eab9c2a820d818::t_790f11f348352e 35,37
+src/components/logcat/LogcatPanel.click-filter.test.tsx
+  s_eab9c2a820d818::t_790f11f348352e 78-97,110-111
+  s_eab9c2a820d818::t_1c024cba24d29b 430-431
+  s_eab9c2a820d818::t_730bd762d9c643 404-408,410-420,422-429,433-436,440-442
+  s_eab9c2a820d818::t_7ebb110dbe70f6 409,432,437
+  s_eab9c2a820d818::t_5a3e984b1957a3 439
+  s_eab9c2a820d818::t_8e8bae72de3986 421,438
+src/components/logcat/LogcatPanel.tsx
+  s_eab9c2a820d818::t_b203f773b4a9d0 1045
+  s_eab9c2a820d818::t_c3838b9a9a8e28 146-149
+  s_eab9c2a820d818::t_54540fc98267f0 15,30,86-92,110-117,163-167,241-249,251,258,264-320,463,609,669-687,714,889,1014-1020,1031,1033,1041-1044,1046-1065
+src/components/logcat/logcat-context-expansion.test.ts
+  s_eab9c2a820d818::t_730bd762d9c643 1-50
+e2e/smoke/logcat-regressions.spec.ts
+  s_eab9c2a820d818::t_01192b1d3e2c37 160-180,182-207
+  s_eab9c2a820d818::t_e0fb87f2221537 181
+  s_eab9c2a820d818::t_1e3ddeda7cdadf 143-159
+src/components/logcat/logcat-context-expansion.ts
+  s_eab9c2a820d818::t_54540fc98267f0 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "c61668e3aab70367fb653fbb8c53354d5a991832",
+  "prompts": {},
+  "sessions": {
+    "s_eab9c2a820d818": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e173c-e2d1-7170-8c2f-248d531c9ae0",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
