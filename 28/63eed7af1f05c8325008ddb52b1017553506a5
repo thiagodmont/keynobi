@@ -1,0 +1,21 @@
+docs/DOMAIN_PATTERNS.md
+  s_eab9c2a820d818::t_99ae60e9004a89 87-88
+docs/USER_MANUAL.md
+  s_eab9c2a820d818::t_9a6e1af3a9e7c3 156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.4.4",
+  "base_commit_sha": "2863eed7af1f05c8325008ddb52b1017553506a5",
+  "prompts": {},
+  "sessions": {
+    "s_eab9c2a820d818": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e173c-e2d1-7170-8c2f-248d531c9ae0",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
