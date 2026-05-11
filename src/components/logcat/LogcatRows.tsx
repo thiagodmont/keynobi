@@ -23,7 +23,9 @@ export function LogcatVirtualRow(props: {
   getEnd: () => number | null;
   getDetailEntry: () => LogcatEntry | null;
   getJsonEntry: () => LogcatEntry | null;
+  expandedContext: boolean;
   onRowClick: (e: MouseEvent) => void;
+  onContextMenu: (e: MouseEvent) => void;
   onJsonClick: (e: MouseEvent) => void;
 }): JSX.Element {
   const index = createMemo(() => props.getIndex());
@@ -49,13 +51,19 @@ export function LogcatVirtualRow(props: {
       inSelectionRange={inSelectionRange()}
       focusMarked={focusMarked()}
       jsonSelected={jsonSelected()}
+      expandedContext={props.expandedContext}
       onClick={props.onRowClick}
+      onContextMenu={props.onContextMenu}
       onJsonClick={props.onJsonClick}
     />
   );
 }
 
-export function SeparatorRow(props: { entry: LogcatEntry }): JSX.Element {
+export function SeparatorRow(props: {
+  entry: LogcatEntry;
+  expandedContext?: boolean;
+  onContextMenu?: (e: MouseEvent) => void;
+}): JSX.Element {
   const isDied = () => props.entry.kind === "processDied";
   const pkg = () => props.entry.package ?? props.entry.tag;
   const label = () => (isDied() ? `${pkg()} PROCESS DIED` : `${pkg()} PROCESS RESTARTED`);
@@ -63,8 +71,11 @@ export function SeparatorRow(props: { entry: LogcatEntry }): JSX.Element {
   return (
     <div
       class={[styles.separatorRow, isDied() ? styles.separatorDied : styles.separatorRestarted]
+        .concat(props.expandedContext ? styles.expandedContext : [])
         .filter(Boolean)
         .join(" ")}
+      data-expanded-context={props.expandedContext ? "true" : undefined}
+      onContextMenu={(e) => props.onContextMenu?.(e)}
     >
       <span class={styles.separatorRule} />
       <span class={styles.separatorLabel}>
@@ -132,7 +143,9 @@ function LogcatRow(props: {
   inSelectionRange: boolean;
   focusMarked: boolean;
   jsonSelected: boolean;
+  expandedContext: boolean;
   onClick: (e: MouseEvent) => void;
+  onContextMenu: (e: MouseEvent) => void;
   onJsonClick: (e: MouseEvent) => void;
 }): JSX.Element {
   const cfg = () =>
@@ -155,6 +168,7 @@ function LogcatRow(props: {
     if (props.focusMarked) return ACCENT_FOCUS_BG;
     if (props.inSelectionRange) return ACCENT_RANGE_BG;
     if (props.jsonSelected) return "color-mix(in srgb, var(--info) 12%, transparent)";
+    if (props.expandedContext) return "color-mix(in srgb, var(--success) 10%, transparent)";
     if (props.entry.isCrash) return "color-mix(in srgb, var(--error) 12%, transparent)";
     if (hasAnr()) return "color-mix(in srgb, var(--warning) 8%, transparent)";
     return cfg().bg;
@@ -163,13 +177,17 @@ function LogcatRow(props: {
   return (
     <div
       onClick={(e) => props.onClick(e)}
+      onContextMenu={(e) => props.onContextMenu(e)}
       title="Click to copy · Shift+click to select range"
       class={styles.row}
+      data-expanded-context={props.expandedContext ? "true" : undefined}
       style={{
         background: defaultRowBackground(),
         "border-left": props.focusMarked
           ? "4px solid var(--accent)"
-          : `2px solid ${semanticBorderColor()}`,
+          : props.expandedContext
+            ? "4px solid var(--success)"
+            : `2px solid ${semanticBorderColor()}`,
       }}
       onMouseEnter={(e) => {
         if (!props.focusMarked && !props.inSelectionRange && !props.jsonSelected) {
@@ -182,7 +200,9 @@ function LogcatRow(props: {
             ? "color-mix(in srgb, var(--error) 12%, transparent)"
             : hasAnr()
               ? "color-mix(in srgb, var(--warning) 8%, transparent)"
-              : cfg().bg;
+              : props.expandedContext
+                ? "color-mix(in srgb, var(--success) 10%, transparent)"
+                : cfg().bg;
         } else {
           (e.currentTarget as HTMLElement).style.background = defaultRowBackground();
         }

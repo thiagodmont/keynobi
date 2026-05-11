@@ -32,7 +32,9 @@ describe("LogcatRows", () => {
         getEnd={() => null}
         getDetailEntry={() => null}
         getJsonEntry={() => null}
+        expandedContext={false}
         onRowClick={() => {}}
+        onContextMenu={() => {}}
         onJsonClick={() => {}}
       />
     ));

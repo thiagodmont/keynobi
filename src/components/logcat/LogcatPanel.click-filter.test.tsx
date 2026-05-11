@@ -75,6 +75,26 @@ function filterEntries(entries: ProcessedEntry[], spec: LogcatFilterSpec): Proce
   });
 }
 
+function contextEntries(entries: ProcessedEntry[], args: unknown): ProcessedEntry[] {
+  const opts = (args ?? {}) as {
+    anchorId?: bigint | number | string | null;
+    direction?: string | null;
+    count?: number | null;
+  };
+  if (opts.anchorId === null || opts.anchorId === undefined) return [];
+  const anchorId = BigInt(opts.anchorId);
+  const anchorIndex = entries.findIndex((entry) => entry.id === anchorId);
+  if (anchorIndex < 0) return [];
+  const count = Math.max(0, Math.floor(opts.count ?? 10));
+  if (opts.direction === "before") {
+    return entries.slice(Math.max(0, anchorIndex - count), anchorIndex);
+  }
+  if (opts.direction === "after") {
+    return entries.slice(anchorIndex + 1, anchorIndex + 1 + count);
+  }
+  return [];
+}
+
 function installLogcatPanelMocks(entries: ProcessedEntry[]): {
   emitLogcatEntries: (entries: ProcessedEntry[]) => void;
   setFilterCalls: () => LogcatFilterSpec[];
@@ -87,6 +107,8 @@ function installLogcatPanelMocks(entries: ProcessedEntry[]): {
     switch (command) {
       case "get_logcat_entries":
         return filterEntries(entries, activeFilter);
+      case "get_logcat_context_entries":
+        return contextEntries(entries, args);
       case "get_logcat_status":
         return false;
       case "get_logcat_stats":
@@ -377,6 +399,45 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
     await waitFor(() => expect(screen.getByText("Beta only saved-filter row")).not.toBeNull());
     expect(screen.getByText("Alpha beta saved-filter row")).not.toBeNull();
     expect(screen.queryByText("Alpha only saved-filter row")).toBeNull();
+  });
+
+  it("expands unfiltered context above a filtered row from the row context menu", async () => {
+    const beforeEntry = {
+      ...BASE_ENTRY,
+      id: 60n,
+      tag: "Before",
+      message: "Raw row before target",
+    } satisfies ProcessedEntry;
+    const targetEntry = {
+      ...BASE_ENTRY,
+      id: 61n,
+      tag: "Target",
+      message: "Filtered target row",
+    } satisfies ProcessedEntry;
+    const afterEntry = {
+      ...BASE_ENTRY,
+      id: 62n,
+      tag: "After",
+      message: "Raw row after target",
+    } satisfies ProcessedEntry;
+    installLogcatPanelMocks([beforeEntry, targetEntry, afterEntry]);
+    render(() => <LogcatPanel />);
+
+    const input = screen.getByRole("textbox");
+    fireEvent.input(input, { target: { value: "message:Filtered" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(() => expect(screen.getAllByTitle(ROW_TITLE)).toHaveLength(1));
+    expect(screen.getByText("Filtered target row")).not.toBeNull();
+    expect(screen.queryByText("Raw row before target")).toBeNull();
+
+    fireEvent.contextMenu(screen.getByText("Filtered target row"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Expand 10 up" }));
+
+    expect(await screen.findByText("Raw row before target")).not.toBeNull();
+    expect(screen.queryByText("Raw row after target")).toBeNull();
+    const row = screen.getByText("Raw row before target").closest(`div[title="${ROW_TITLE}"]`);
+    expect(row?.getAttribute("data-expanded-context")).toBe("true");
   });
 
   it("debounces backend filter sync while editing variable values", async () => {
