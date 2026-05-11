@@ -195,17 +195,7 @@ function LogcatRow(props: {
         }
       }}
       onMouseLeave={(e) => {
-        if (!props.focusMarked && !props.inSelectionRange && !props.jsonSelected) {
-          (e.currentTarget as HTMLElement).style.background = props.entry.isCrash
-            ? "color-mix(in srgb, var(--error) 12%, transparent)"
-            : hasAnr()
-              ? "color-mix(in srgb, var(--warning) 8%, transparent)"
-              : props.expandedContext
-                ? "color-mix(in srgb, var(--success) 10%, transparent)"
-                : cfg().bg;
-        } else {
-          (e.currentTarget as HTMLElement).style.background = defaultRowBackground();
-        }
+        (e.currentTarget as HTMLElement).style.background = defaultRowBackground();
       }}
     >
       <span class={styles.timestamp}>{props.entry.timestamp}</span>
