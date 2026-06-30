@@ -1,0 +1,99 @@
+src/components/ui/Tooltip/Tooltip.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/VirtualList/VirtualList.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 20
+src/components/ui/DockedPanel/DockedPanel.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/Resizable/Resizable.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/Toast/Toast.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/MenuList/MenuList.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 21
+src/components/ui/Separator/Separator.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/Button/Button.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 20
+src/components/ui/Toggle/Toggle.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/IconButton/IconButton.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 21
+src/components/ui/Kbd/Kbd.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 12
+src/components/ui/DesignSystemActions.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 28
+src/components/ui/Dropdown/Dropdown.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/FilterChip/FilterChip.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 21
+src/components/ui/FormField/FormField.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/Popover/Popover.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 14
+src/components/ui/Spinner/Spinner.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 12
+src/components/ui/ControlStrip/ControlStrip.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/DesignSystemSurfaces.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 37
+src/components/ui/Badge/Badge.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 20
+src/components/ui/Dialog/Dialog.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/Checkbox/Checkbox.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/StatusDot/StatusDot.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 12
+src/components/ui/CommandPalette/CommandPalette.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 23
+src/components/ui/DesignSystemFeedback.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 19
+src/components/ui/TagInput/TagInput.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/Toolbar/Toolbar.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 12
+src/components/ui/ProgressBar/ProgressBar.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 12
+src/components/ui/CopyableText/CopyableText.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 12
+src/components/ui/Input/Input.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 21
+src/components/ui/Tabs/Tabs.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/Alert/Alert.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/DesignSystemFoundations.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 20
+src/components/ui/Panel/Panel.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/Icon/Icon.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/ScrollArea/ScrollArea.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 14
+src/components/ui/MetadataGrid/MetadataGrid.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/Textarea/Textarea.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 12
+src/components/ui/EmptyState/EmptyState.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/Select/Select.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 13
+src/components/ui/DesignSystemForms.stories.tsx
+  s_dc96c5a5e033d5::t_48ff11f3b00596 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "e529d1ceb39f34593ffe27294fc4a30ff5ad00f6",
+  "prompts": {},
+  "sessions": {
+    "s_dc96c5a5e033d5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f163c-f653-7103-9f7f-9dcb2d8f6ec9",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
