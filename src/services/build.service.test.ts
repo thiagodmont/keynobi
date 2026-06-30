@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { cancelBuild } from "@/services/build.service";
+import { cancelBuild, runBuild } from "@/services/build.service";
 import { buildState, resetBuildState, startBuild } from "@/stores/build.store";
 
 // The global setup in src/test/setup.ts already mocks @tauri-apps/api/core.
@@ -55,5 +55,22 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
 
     expect(cancelCalls).toHaveLength(1);
     expect(finalizeCalls).toHaveLength(0);
+  });
+
+  it("rejects a second build while the first build is still running", async () => {
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      if (cmd === "cancel_build") return Promise.resolve(undefined);
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    const first = runBuild();
+    expect(buildState.phase).toBe("running");
+
+    await expect(runBuild()).rejects.toThrow("A build is already running.");
+
+    await cancelBuild();
+    await first;
   });
 });

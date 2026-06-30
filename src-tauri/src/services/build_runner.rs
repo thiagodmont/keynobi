@@ -63,6 +63,8 @@ pub const MAX_BUILD_LOG: usize = 5_000;
 pub struct BuildStateInner {
     /// Process ID of the currently running Gradle process, if any.
     pub current_build: Option<ProcessId>,
+    /// True after a build request reserves the slot and before the process ID is known.
+    pub starting: bool,
     /// Current build status.
     pub status: BuildStatus,
     /// Ring-buffer of past build records.
@@ -85,6 +87,7 @@ impl BuildStateInner {
         let next_id = history.iter().map(|r| r.id).max().unwrap_or(0) + 1;
         Self {
             current_build: None,
+            starting: false,
             status: BuildStatus::Idle,
             history,
             current_errors: vec![],
@@ -409,30 +412,32 @@ pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf
 
 /// Cancel the currently running build. Returns `true` if a build was running, `false` otherwise.
 pub async fn cancel_build(build_state: &BuildState, process_manager: &ProcessManager) -> bool {
-    let id = {
+    let (id, was_running) = {
         let from_sync = build_state.take_active_process_id();
         if let Some(id) = from_sync {
             let mut bs = build_state.inner.lock().await;
             if bs.current_build == Some(id) {
                 bs.current_build = None;
             }
+            bs.starting = false;
             bs.status = BuildStatus::Cancelled;
-            Some(id)
+            (Some(id), true)
         } else {
             let mut bs = build_state.inner.lock().await;
             let pid = bs.current_build.take();
-            if pid.is_some() {
+            let was_running =
+                pid.is_some() || bs.starting || matches!(bs.status, BuildStatus::Running { .. });
+            if was_running {
+                bs.starting = false;
                 bs.status = BuildStatus::Cancelled;
             }
-            pid
+            (pid, was_running)
         }
     };
     if let Some(id) = id {
         process_manager::cancel(&process_manager.0, id).await;
-        true
-    } else {
-        false
     }
+    was_running
 }
 
 /// Clear all build history from memory and disk.
@@ -471,6 +476,7 @@ pub async fn record_build_result(
         } else {
             BuildStatus::Failed(result.clone())
         };
+        bs.starting = false;
         bs.current_errors = errors.clone();
         bs.current_build = None;
 
@@ -956,6 +962,28 @@ mod tests {
             !was_running,
             "cancel_build should return false when no build is running"
         );
+    }
+
+    #[tokio::test]
+    async fn cancel_build_returns_true_while_build_is_starting() {
+        let state = BuildState::new();
+        let pm = ProcessManager::new();
+
+        {
+            let mut inner = state.inner.lock().await;
+            inner.starting = true;
+            inner.status = BuildStatus::Running {
+                task: "assembleDebug".into(),
+                started_at: "2024-01-01T00:00:00Z".into(),
+            };
+        }
+
+        let was_running = cancel_build(&state, &pm).await;
+        let inner = state.inner.lock().await;
+
+        assert!(was_running, "starting builds should be cancellable");
+        assert!(!inner.starting, "starting flag must be cleared on cancel");
+        assert!(matches!(inner.status, BuildStatus::Cancelled));
     }
 
     #[tokio::test]

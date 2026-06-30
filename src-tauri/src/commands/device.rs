@@ -6,7 +6,8 @@ use crate::services::adb_manager::{
     create_avd, delete_avd, download_system_image, enrich_device_props, get_adb_path,
     get_avdmanager_path, get_emulator_path, get_sdkmanager_path, install_apk, launch_app,
     launch_emulator, list_available_system_images, list_avds, list_device_definitions,
-    list_devices, list_system_images, stop_app, stop_emulator, wipe_avd_data, DeviceState,
+    list_devices, list_system_images, stop_app, stop_emulator, validate_avd_name,
+    validate_device_profile_id, validate_system_image_id, wipe_avd_data, DeviceState,
 };
 use crate::services::settings_manager;
 use crate::FsState;
@@ -21,6 +22,14 @@ use tauri::{AppHandle, Emitter, State};
 #[serde(rename_all = "camelCase")]
 pub struct DeviceListChangedEvent {
     pub devices: Vec<Device>,
+}
+
+fn record_polled_devices(
+    state: &mut crate::services::adb_manager::DeviceStateInner,
+    devices: Vec<Device>,
+) -> DeviceListChangedEvent {
+    state.devices = devices.clone();
+    DeviceListChangedEvent { devices }
 }
 
 // ── Validation helpers ─────────────────────────────────────────────────────────
@@ -195,6 +204,8 @@ pub async fn launch_avd(
     app_handle: AppHandle,
     device_state: State<'_, DeviceState>,
 ) -> Result<String, String> {
+    validate_avd_name(&avd_name)?;
+
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     let emulator = get_emulator_path(&settings);
@@ -269,10 +280,11 @@ pub async fn start_device_polling(
                     enrich_device_props(&adb, d).await;
                 }
                 last_serials = current_serials;
-                let _ = app.emit(
-                    "device:list_changed",
-                    DeviceListChangedEvent { devices: current },
-                );
+                let event = {
+                    let mut state = device_state_bg.lock().await;
+                    record_polled_devices(&mut state, current)
+                };
+                let _ = app.emit("device:list_changed", event);
             }
         }
     });
@@ -314,6 +326,12 @@ pub async fn create_avd_device(
     system_image: String,
     device: Option<String>,
 ) -> Result<Vec<AvdInfo>, String> {
+    validate_avd_name(&name)?;
+    validate_system_image_id(&system_image)?;
+    if let Some(device_id) = device.as_deref() {
+        validate_device_profile_id(device_id)?;
+    }
+
     let (settings, _) = settings_manager::load_settings();
     let avdmanager = get_avdmanager_path(&settings);
     create_avd(&avdmanager, &name, &system_image, device.as_deref()).await?;
@@ -323,6 +341,8 @@ pub async fn create_avd_device(
 /// Delete an existing AVD using avdmanager.
 #[tauri::command]
 pub async fn delete_avd_device(name: String) -> Result<Vec<AvdInfo>, String> {
+    validate_avd_name(&name)?;
+
     let (settings, _) = settings_manager::load_settings();
     let avdmanager = get_avdmanager_path(&settings);
     delete_avd(&avdmanager, &name).await?;
@@ -332,6 +352,8 @@ pub async fn delete_avd_device(name: String) -> Result<Vec<AvdInfo>, String> {
 /// Wipe an AVD's user data by relaunching it with -wipe-data.
 #[tauri::command]
 pub async fn wipe_avd_data_cmd(name: String) -> Result<(), String> {
+    validate_avd_name(&name)?;
+
     let (settings, _) = settings_manager::load_settings();
     let emulator = get_emulator_path(&settings);
     let adb = get_adb_path(&settings);
@@ -353,6 +375,8 @@ pub async fn download_system_image_cmd(
     sdk_id: String,
     on_progress: Channel<SdkDownloadProgress>,
 ) -> Result<(), String> {
+    validate_system_image_id(&sdk_id)?;
+
     let (settings, _) = settings_manager::load_settings();
     let sdkmanager = get_sdkmanager_path(&settings);
 
@@ -380,6 +404,8 @@ pub async fn download_system_image_cmd(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::device::{DeviceConnectionState, DeviceKind};
+    use crate::services::adb_manager::DeviceStateInner;
 
     #[test]
     fn valid_serials_pass() {
@@ -413,6 +439,31 @@ mod tests {
     #[test]
     fn serial_carriage_return_is_rejected() {
         assert!(validate_device_serial("emulator\r5554").is_err());
+    }
+
+    #[test]
+    fn record_polled_devices_updates_state_and_event_payload() {
+        let device = Device {
+            serial: "emulator-5554".to_string(),
+            name: "Pixel".to_string(),
+            model: None,
+            device_kind: DeviceKind::Emulator,
+            connection_state: DeviceConnectionState::Online,
+            api_level: Some(35),
+            android_version: Some("15".to_string()),
+        };
+        let mut state = DeviceStateInner {
+            devices: vec![],
+            selected_serial: None,
+            polling: true,
+        };
+
+        let event = record_polled_devices(&mut state, vec![device.clone()]);
+
+        assert_eq!(state.devices.len(), 1);
+        assert_eq!(state.devices[0].serial, "emulator-5554");
+        assert_eq!(event.devices.len(), 1);
+        assert_eq!(event.devices[0].serial, device.serial);
     }
 
     #[test]

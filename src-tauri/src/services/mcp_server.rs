@@ -2461,6 +2461,8 @@ impl AndroidMcpServer {
         &self,
         Parameters(p): Parameters<LaunchAvdParams>,
     ) -> Result<CallToolResult, McpError> {
+        adb_manager::validate_avd_name(&p.name).map_err(|e| McpError::invalid_params(e, None))?;
+
         let (settings, _) = settings_manager::load_settings();
         let emulator = adb_manager::get_emulator_path(&settings);
         let adb = adb_manager::get_adb_path(&settings);
