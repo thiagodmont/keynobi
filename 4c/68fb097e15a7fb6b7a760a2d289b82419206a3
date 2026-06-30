@@ -1,0 +1,27 @@
+.github/workflows/release.yml
+  s_db19f417b1bf53::t_b302f49e129ef2 78
+.github/workflows/ci.yml
+  s_db19f417b1bf53::t_b302f49e129ef2 52
+rust-toolchain.toml
+  s_db19f417b1bf53::t_b302f49e129ef2 1-3
+src-tauri/Cargo.toml
+  s_db19f417b1bf53::t_b302f49e129ef2 54
+src-tauri/Cargo.lock
+  s_db19f417b1bf53::t_a54b2eb46a1300 2868-2878,4686,4688,4695
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "4c68fb097e15a7fb6b7a760a2d289b82419206a3",
+  "prompts": {},
+  "sessions": {
+    "s_db19f417b1bf53": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1615-56db-7183-98d9-db49b1d0b6fc",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
