@@ -1,0 +1,34 @@
+src-tauri/src/commands/file_system.rs
+  s_f9ac9648b31930::t_7fa4cf6bcf2c30 399,402,509
+src-tauri/src/commands/build.rs
+  s_f9ac9648b31930::t_284c21f4f7504a 29-41,294,520-547
+  s_f9ac9648b31930::t_16522a3fc3a79e 548
+src/services/build.service.test.ts
+  s_f9ac9648b31930::t_31e4c90a612229 3,5-12,21-22,24,87-104
+  s_f9ac9648b31930::t_8c7620c9e15006 105
+src-tauri/src/services/adb_manager.rs
+  s_f9ac9648b31930::t_d1f5f73794a0c9 642,1422-1445
+  s_f9ac9648b31930::t_7c9567d833fc69 1446-1447
+src/components/projects/ProjectInfoEditor.test.ts
+  s_f9ac9648b31930::t_0d75cde67a5369 25-34
+src/services/build.service.ts
+  s_f9ac9648b31930::t_28fd3f37c798bf 35-39,95-98,114,232
+src/components/projects/ProjectInfoEditor.tsx
+  s_f9ac9648b31930::t_49af09aa9e49c9 39,42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "82b9810618a0534a11953a740853929695ef19a3",
+  "prompts": {},
+  "sessions": {
+    "s_f9ac9648b31930": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f18dc-343c-73b2-a07b-80e438e88a20",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
