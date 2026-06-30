@@ -55,7 +55,11 @@ fn request(cmd: &str, body: Value) -> InvokeRequest {
         cmd: cmd.into(),
         callback: CallbackFn(0),
         error: CallbackFn(1),
-        url: "http://tauri.localhost"
+        url: if cfg!(any(windows, target_os = "android")) {
+            "http://tauri.localhost"
+        } else {
+            "tauri://localhost"
+        }
             .parse()
             .expect("valid Tauri test URL"),
         body: InvokeBody::Json(body),
