@@ -1,0 +1,19 @@
+src/components/projects/ProjectInfoEditor.test.ts
+  s_f9ac9648b31930::t_cf0b2b8667915e 1-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "a9381635bac4206d3f59d5b18b8f8b972c47b99d",
+  "prompts": {},
+  "sessions": {
+    "s_f9ac9648b31930": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f18dc-343c-73b2-a07b-80e438e88a20",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
