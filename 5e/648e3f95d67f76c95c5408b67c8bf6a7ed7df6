@@ -1,0 +1,27 @@
+src-tauri/src/services/process_manager.rs
+  s_6078e8274bedec::t_243a496537431f 206
+  s_6078e8274bedec::t_fd211664be205d 418-504
+src/stores/device.store.test.ts
+  s_6078e8274bedec::t_b0a22625bd8941 2,145
+  s_6078e8274bedec::t_10824c1995467e 53-60,138-144,148-152,154
+  s_6078e8274bedec::t_112296c0e1d235 146-147
+  s_6078e8274bedec::t_31852fc49b7cb7 153
+src/stores/device.store.ts
+  s_6078e8274bedec::t_37011d1c5cc646 141,158,164,167-171,176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "5e648e3f95d67f76c95c5408b67c8bf6a7ed7df6",
+  "prompts": {},
+  "sessions": {
+    "s_6078e8274bedec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f164a-6cdd-7c43-a96c-0dadf8d46109",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
