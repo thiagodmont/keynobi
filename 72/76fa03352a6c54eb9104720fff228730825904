@@ -1,0 +1,57 @@
+src-tauri/src/services/build_runner.rs
+  s_f9ac9648b31930::t_ce6f0a93e7ffb6 968-988
+  s_f9ac9648b31930::t_caf3ef58a39a75 66-67,90,415,422,424,428-431,434,440,479
+  s_f9ac9648b31930::t_5dd7ac6d8ecee7 967
+src-tauri/src/commands/device.rs
+  s_f9ac9648b31930::t_6bce2ee3946f18 9-10,27-34,207-208,283-287,329-334,344-345,355-356,378-379,467
+  s_f9ac9648b31930::t_c715e4ec2123a7 407-408,444-466
+  s_f9ac9648b31930::t_475d7859190c2b 468
+src-tauri/src/services/mcp_server.rs
+  s_f9ac9648b31930::t_bf73df9cb403ac 2465
+  s_f9ac9648b31930::t_2bda4903627406 2464
+src/services/build.service.test.ts
+  s_f9ac9648b31930::t_9b9719075a98b7 3,59-74
+  s_f9ac9648b31930::t_584faded18d315 75
+src/components/logcat/LogcatPanel.tsx
+  s_f9ac9648b31930::t_f581f2619380b3 711-720,943-945
+src/components/projects/ProjectInfoEditor.tsx
+  s_f9ac9648b31930::t_e502a2f8e552e5 76-80
+  s_f9ac9648b31930::t_f71298323eb31b 15-16,29-54,90-92,98
+  s_f9ac9648b31930::t_2afadd9b864406 55-56
+src-tauri/src/commands/file_system.rs
+  s_f9ac9648b31930::t_6654e12953d86c 414,479,503-535
+  s_f9ac9648b31930::t_73a3aae264b1b2 323-325,393-413
+  s_f9ac9648b31930::t_c268fa87b3aad5 415
+src/test/setup.ts
+  s_f9ac9648b31930::t_a142ebec6bbae5 12-14
+src/components/logcat/LogcatPanel.click-filter.test.tsx
+  s_f9ac9648b31930::t_afa1e210561f2d 103,110,112,117,123,145,284-309
+  s_f9ac9648b31930::t_ccde48f990f852 310-311
+src-tauri/src/services/adb_manager.rs
+  s_f9ac9648b31930::t_eff00e203617b3 615-616,630-631,639-656
+  s_f9ac9648b31930::t_c5c9b331a96985 1320-1335,1386-1438
+  s_f9ac9648b31930::t_2da2c7f6233f71 12-88,657
+  s_f9ac9648b31930::t_c5f4233dadeea7 658
+src-tauri/src/commands/build.rs
+  s_f9ac9648b31930::t_16aca5e6d0c8d5 149-150,155-166,183,275-291,297,301-311,313-318
+  s_f9ac9648b31930::t_2bda4903627406 151-154
+src/services/build.service.ts
+  s_f9ac9648b31930::t_e502a2f8e552e5 191-196
+  s_f9ac9648b31930::t_3c7b4f2b4bf4d9 32-33,91-106,197,200-201,204-218,286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "7276fa03352a6c54eb9104720fff228730825904",
+  "prompts": {},
+  "sessions": {
+    "s_f9ac9648b31930": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f18dc-343c-73b2-a07b-80e438e88a20",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
