@@ -2,6 +2,7 @@ use crate::models::logcat::{LogStats, LogcatFilterSpec, ProcessedEntry};
 use crate::services::logcat::{self, LogcatFilter, LogcatState, LogcatStateInner};
 use crate::services::settings_manager;
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{AppHandle, State};
 use tokio::sync::Mutex;
 
@@ -28,11 +29,27 @@ pub async fn start_logcat(
     }
 
     let state_clone = logcat_state.inner().clone();
+    let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
     tokio::spawn(async move {
-        logcat::start_logcat_stream(adb_bin, device_serial, state_clone, Some(app_handle)).await;
+        logcat::start_logcat_stream(
+            adb_bin,
+            device_serial,
+            state_clone,
+            Some(app_handle),
+            Some(startup_tx),
+        )
+        .await;
     });
 
-    Ok(())
+    match tokio::time::timeout(Duration::from_secs(5), startup_rx).await {
+        Ok(Ok(Ok(()))) => Ok(()),
+        Ok(Ok(Err(e))) => Err(e),
+        Ok(Err(_)) => Err("Logcat startup task exited before reporting status".to_string()),
+        Err(_) => {
+            logcat_state.lock().await.streaming = false;
+            Err("Timed out waiting for logcat to start".to_string())
+        }
+    }
 }
 
 /// Stop the logcat stream.

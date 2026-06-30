@@ -1,5 +1,6 @@
 use crate::models::settings::AppSettings;
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex as StdMutex};
 
 const KNOWN_SETTINGS_FIELDS: &[&str] = &[
     "appearance",
@@ -16,6 +17,8 @@ const KNOWN_SETTINGS_FIELDS: &[&str] = &[
     "recentProjects",
     "lastActiveProject",
 ];
+
+static SETTINGS_MUTATION_LOCK: LazyLock<StdMutex<()>> = LazyLock::new(|| StdMutex::new(()));
 
 /// Log a warning for each top-level key in the JSON that isn't a known settings field.
 /// This catches typos early (e.g. "fontSizee" silently ignored by serde(default)).
@@ -87,6 +90,25 @@ pub fn load_settings() -> (AppSettings, bool) {
 /// Save settings to disk atomically (temp file + rename).
 pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
     let dir = settings_dir();
+    let path = settings_file();
+    let _guard = SETTINGS_MUTATION_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    save_settings_to_path(&path, settings, Some(&dir))
+}
+
+fn save_settings_to_path(
+    path: &std::path::Path,
+    settings: &AppSettings,
+    dir_override: Option<&std::path::Path>,
+) -> Result<(), String> {
+    let dir = match dir_override {
+        Some(dir) => dir.to_path_buf(),
+        None => path
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from(".")),
+    };
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create settings directory: {e}"))?;
 
@@ -96,13 +118,45 @@ pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
     let json = serde_json::to_string_pretty(&normalized)
         .map_err(|e| format!("Failed to serialize settings: {e}"))?;
 
-    let path = settings_file();
     let tmp = path.with_extension("json.tmp");
 
     std::fs::write(&tmp, &json).map_err(|e| format!("Failed to write settings: {e}"))?;
-    std::fs::rename(&tmp, &path).map_err(|e| format!("Failed to save settings: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| format!("Failed to save settings: {e}"))?;
 
     Ok(())
+}
+
+pub fn mutate_settings_at_path(
+    settings_path: &std::path::Path,
+    mutate: impl FnOnce(&mut AppSettings),
+) -> Result<(), String> {
+    mutate_settings_at_path_with_result(settings_path, |settings| {
+        mutate(settings);
+        Ok(())
+    })
+}
+
+pub fn mutate_settings_at_path_with_result<R>(
+    settings_path: &std::path::Path,
+    mutate: impl FnOnce(&mut AppSettings) -> Result<R, String>,
+) -> Result<R, String> {
+    let _guard = SETTINGS_MUTATION_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (mut settings, _) = load_settings_from_path(settings_path);
+    let result = mutate(&mut settings)?;
+    save_settings_to_path(settings_path, &settings, None)?;
+    Ok(result)
+}
+
+pub fn mutate_settings(mutate: impl FnOnce(&mut AppSettings)) -> Result<(), String> {
+    mutate_settings_at_path(&settings_file(), mutate)
+}
+
+pub fn mutate_settings_with_result<R>(
+    mutate: impl FnOnce(&mut AppSettings) -> Result<R, String>,
+) -> Result<R, String> {
+    mutate_settings_at_path_with_result(&settings_file(), mutate)
 }
 
 /// Read `last_build_variant` for the given project path from a specific settings file.
@@ -127,19 +181,15 @@ pub fn set_active_variant_for_project_path(
     project_path: &str,
     variant: &str,
 ) -> Result<(), String> {
-    let (mut settings, _) = load_settings_from_path(settings_path);
-    if let Some(entry) = settings
-        .recent_projects
-        .iter_mut()
-        .find(|e| e.path == project_path || e.gradle_root.as_deref() == Some(project_path))
-    {
-        entry.last_build_variant = Some(variant.to_string());
-        let json = serde_json::to_string_pretty(&settings)
-            .map_err(|e| format!("Failed to serialize settings: {e}"))?;
-        std::fs::write(settings_path, json)
-            .map_err(|e| format!("Failed to write settings: {e}"))?;
-    }
-    Ok(())
+    mutate_settings_at_path(settings_path, |settings| {
+        if let Some(entry) = settings
+            .recent_projects
+            .iter_mut()
+            .find(|e| e.path == project_path || e.gradle_root.as_deref() == Some(project_path))
+        {
+            entry.last_build_variant = Some(variant.to_string());
+        }
+    })
 }
 
 /// Production wrapper: get active variant from the default settings file.
@@ -511,5 +561,61 @@ mod variant_tests {
         write_settings(&settings_path, "{}");
         let result = set_active_variant_for_project_path(&settings_path, "/proj/unknown", "debug");
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn settings_mutations_are_serialized() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let dir = tempfile::tempdir().unwrap();
+        let settings_path = dir.path().join("settings.json");
+        write_settings(&settings_path, "{}");
+
+        let first_path = settings_path.clone();
+        let second_path = settings_path.clone();
+        let (entered_tx, entered_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let (second_entered_tx, second_entered_rx) = mpsc::channel();
+
+        let first = std::thread::spawn(move || {
+            mutate_settings_at_path(&first_path, |settings| {
+                settings.onboarding_completed = true;
+                entered_tx.send(()).unwrap();
+                release_rx.recv().unwrap();
+            })
+            .unwrap();
+        });
+
+        entered_rx.recv().unwrap();
+
+        let second = std::thread::spawn(move || {
+            mutate_settings_at_path(&second_path, |settings| {
+                settings.last_active_project = Some("/proj/second".to_string());
+                second_entered_tx.send(()).unwrap();
+            })
+            .unwrap();
+        });
+
+        assert!(
+            second_entered_rx
+                .recv_timeout(Duration::from_millis(50))
+                .is_err(),
+            "second mutation must wait for the first mutation to finish"
+        );
+
+        release_tx.send(()).unwrap();
+        second_entered_rx
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap();
+        first.join().unwrap();
+        second.join().unwrap();
+
+        let (settings, _) = load_settings_from_path(&settings_path);
+        assert!(settings.onboarding_completed);
+        assert_eq!(
+            settings.last_active_project.as_deref(),
+            Some("/proj/second")
+        );
     }
 }

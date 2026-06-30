@@ -117,6 +117,20 @@ impl BuildState {
             active_process_id: Arc::new(StdMutex::new(None)),
         }
     }
+
+    pub fn take_active_process_id(&self) -> Option<ProcessId> {
+        match self.active_process_id.lock() {
+            Ok(mut guard) => guard.take(),
+            Err(poisoned) => poisoned.into_inner().take(),
+        }
+    }
+
+    pub fn set_active_process_id(&self, pid: Option<ProcessId>) {
+        match self.active_process_id.lock() {
+            Ok(mut guard) => *guard = pid,
+            Err(poisoned) => *poisoned.into_inner() = pid,
+        }
+    }
 }
 
 impl Clone for BuildState {
@@ -396,7 +410,7 @@ pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf
 /// Cancel the currently running build. Returns `true` if a build was running, `false` otherwise.
 pub async fn cancel_build(build_state: &BuildState, process_manager: &ProcessManager) -> bool {
     let id = {
-        let from_sync = build_state.active_process_id.lock().unwrap().take();
+        let from_sync = build_state.take_active_process_id();
         if let Some(id) = from_sync {
             let mut bs = build_state.inner.lock().await;
             if bs.current_build == Some(id) {
@@ -448,7 +462,7 @@ pub async fn record_build_result(
         .map(|g| g.clone())
         .unwrap_or_default();
 
-    let _ = build_state.active_process_id.lock().unwrap().take();
+    let _ = build_state.take_active_process_id();
 
     let (record_id, history_snapshot) = {
         let mut bs = build_state.inner.lock().await;
@@ -641,7 +655,7 @@ pub async fn run_task(
     .await
     .map_err(|e| format!("Failed to spawn Gradle: {e}"))?;
 
-    *build_state.active_process_id.lock().unwrap() = Some(pid);
+    build_state.set_active_process_id(Some(pid));
     {
         let mut bs = build_state.inner.lock().await;
         if matches!(bs.status, BuildStatus::Cancelled) {
@@ -1263,6 +1277,20 @@ mod tests {
         assert!(
             !dir_path.join("build-99.jsonl").exists(),
             "id=99 (orphan) must be deleted"
+        );
+    }
+
+    #[test]
+    fn production_code_does_not_unwrap_active_process_mutex() {
+        let source = include_str!("build_runner.rs");
+        let production_source = source
+            .split("#[cfg(test)]")
+            .next()
+            .expect("production section");
+
+        assert!(
+            !production_source.contains("active_process_id.lock().unwrap()"),
+            "active_process_id mutex must handle poisoning without unwrap()"
         );
     }
 }

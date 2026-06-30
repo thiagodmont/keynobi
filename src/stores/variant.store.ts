@@ -85,8 +85,8 @@ function resolveActive(list: VariantList, currentActive: string | null): string 
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
-/** Coalesces concurrent callers (e.g. project restore + status bar mount) onto one Gradle run. */
-let loadVariantsPending: Promise<void> | null = null;
+/** Coalesces concurrent callers for the same project root onto one Gradle run. */
+const loadVariantsPending = new Map<string, Promise<void>>();
 
 /**
  * Load variants using a two-phase approach:
@@ -104,30 +104,40 @@ let loadVariantsPending: Promise<void> | null = null;
  * Pass `{ force: true }` to bypass the cache (e.g. the Refresh button).
  */
 export function loadVariants(opts?: { force?: boolean }): Promise<void> {
+  const root = projectState.projectRoot;
   if (opts?.force) {
-    const root = projectState.projectRoot;
     if (root !== null) variantCache.delete(root);
   }
-  if (!loadVariantsPending) {
-    loadVariantsPending = runLoadVariants().finally(() => {
-      loadVariantsPending = null;
-    });
-  }
-  return loadVariantsPending;
+  const pendingKey = root ?? "__no_project__";
+  const pending = loadVariantsPending.get(pendingKey);
+  if (pending) return pending;
+
+  const next = runLoadVariants(root).finally(() => {
+    loadVariantsPending.delete(pendingKey);
+  });
+  loadVariantsPending.set(pendingKey, next);
+  return next;
 }
 
-async function runLoadVariants(): Promise<void> {
-  setVariantState({
-    loading: true,
-    gradleLoading: true,
-    error: null,
-    gradleError: null,
-    fromGradle: false,
-  });
+function isCurrentProject(root: string | null): boolean {
+  return projectState.projectRoot === root;
+}
+
+async function runLoadVariants(rootAtStart: string | null): Promise<void> {
+  if (isCurrentProject(rootAtStart)) {
+    setVariantState({
+      loading: true,
+      gradleLoading: true,
+      error: null,
+      gradleError: null,
+      fromGradle: false,
+    });
+  }
 
   // ── Phase 1: instant preview from static parse ─────────────────────────────
   try {
     const preview = await getVariantsPreview();
+    if (!isCurrentProject(rootAtStart)) return;
     if (preview.variants.length > 0) {
       setVariantState({
         variants: preview.variants,
@@ -139,14 +149,17 @@ async function runLoadVariants(): Promise<void> {
     }
   } catch {
     // Preview failure is non-fatal — Gradle query will still run.
-    setVariantState({ loading: false });
+    if (isCurrentProject(rootAtStart)) {
+      setVariantState({ loading: false });
+    }
   }
 
   // ── Phase 2: authoritative list from Gradle (or session cache) ───────────────
-  const cacheKey = projectState.projectRoot;
+  const cacheKey = rootAtStart;
   const cached = cacheKey !== null ? variantCache.get(cacheKey) : undefined;
 
   if (cached) {
+    if (!isCurrentProject(rootAtStart)) return;
     setVariantState({
       variants: cached.variants,
       activeVariant: resolveActive(
@@ -167,6 +180,7 @@ async function runLoadVariants(): Promise<void> {
 
   try {
     const full = await getVariantsFromGradle();
+    if (!isCurrentProject(rootAtStart)) return;
     if (cacheKey !== null) {
       variantCache.set(cacheKey, {
         variants: full.variants,
@@ -182,6 +196,7 @@ async function runLoadVariants(): Promise<void> {
       error: null,
     });
   } catch (e) {
+    if (!isCurrentProject(rootAtStart)) return;
     const msg = typeof e === "string" ? e : ((e as Error).message ?? String(e));
     setVariantState({
       gradleLoading: false,

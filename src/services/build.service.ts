@@ -1,7 +1,6 @@
 import {
   runGradleTask,
   cancelBuild as cancelBuildApi,
-  finalizeBuild,
   findApkPath,
   getPackageNameFromApk,
   installApkOnDevice,
@@ -52,8 +51,13 @@ export async function initBuildService(): Promise<void> {
       });
     }
     // Resolve the pending build promise if there is one.
-    // History reload happens AFTER finalizeBuild in runBuild/cancelBuild so the
-    // new record is already persisted when we fetch.
+    // Rust records history before emitting build:complete, so this fetch sees
+    // the completed record without a frontend finalize step.
+    getBuildHistory()
+      .then(setBuildHistory)
+      .catch((err) => {
+        console.error("[build] Failed to reload build history:", err);
+      });
     _resolveBuildComplete?.({ success: e.success, durationMs: e.durationMs });
     _resolveBuildComplete = null;
   });
@@ -97,9 +101,6 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
 
   logBuildHeader(effectiveTask);
 
-  const startedAt = new Date().toISOString();
-  const accumulatedErrors: BuildError[] = [];
-
   // Create a promise that resolves when the build:complete event fires.
   // A 5-minute timeout prevents the deploy from hanging forever if
   // something goes wrong in the Rust on_exit callback.
@@ -119,16 +120,6 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
   try {
     await runGradleTask(effectiveTask, (line: BuildLine) => {
       addBuildLine(line);
-
-      if (line.kind === "error" || line.kind === "warning") {
-        accumulatedErrors.push({
-          message: line.content,
-          file: line.file ?? null,
-          line: line.line ?? null,
-          col: line.col ?? null,
-          severity: line.kind === "error" ? "error" : "warning",
-        });
-      }
     });
   } catch (e) {
     // Process-level spawn failure (e.g. gradlew not found).
@@ -146,9 +137,8 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
   }
 
   // runGradleTask resolves right after spawn; wait for the actual completion event.
-  let result: { success: boolean; durationMs: number };
   try {
-    result = await buildComplete;
+    await buildComplete;
   } catch (e) {
     // Timeout or unexpected rejection.
     const msg = formatError(e);
@@ -163,21 +153,8 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
     throw e;
   }
 
-  // cancelBuild() already called finalizeBuild — don't duplicate.
+  // Rust already recorded the build result before emitting build:complete.
   if (buildState.phase === "cancelled") return;
-
-  // Persist finalized result + history to the backend, then refresh the
-  // history store so the new record is visible in the side panel.
-  await finalizeBuild({
-    success: result.success,
-    durationMs: result.durationMs,
-    errors: accumulatedErrors,
-    task: effectiveTask,
-    startedAt,
-    projectRoot: projectState.projectRoot ?? null,
-  }).catch((err) => {
-    console.error("[build] Failed to finalize build:", err);
-  });
 
   getBuildHistory()
     .then(setBuildHistory)
@@ -290,32 +267,8 @@ export async function cancelBuild(): Promise<void> {
   // Flush any buffered log lines before finalising state.
   flushPendingLines();
 
-  const task = buildState.currentTask ?? "unknown";
-  const startedAtMs = buildState.startedAt ?? Date.now();
-  const startedAt = new Date(startedAtMs).toISOString();
-  const errors = buildState.errors.slice(); // snapshot before state is mutated
-  const durationMs = Date.now() - startedAtMs;
-
   cancelBuildState();
   await cancelBuildApi();
-
-  // Persist the cancelled build to history so it appears in the side panel.
-  await finalizeBuild({
-    success: false,
-    durationMs,
-    errors,
-    task,
-    startedAt,
-    projectRoot: projectState.projectRoot ?? null,
-  }).catch((err) => {
-    console.error("[build] Failed to finalize cancelled build:", err);
-  });
-
-  getBuildHistory()
-    .then(setBuildHistory)
-    .catch((err) => {
-      console.error("[build] Failed to reload build history after cancel:", err);
-    });
 
   // Unblock runBuild immediately so it doesn't hang until timeout.
   resolve?.({ success: false, durationMs: 0 });

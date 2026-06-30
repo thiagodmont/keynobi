@@ -10,7 +10,12 @@ vi.mock("@/lib/tauri-api", () => ({
   setActiveVariant: vi.fn(),
 }));
 
-import { loadVariants, resetVariantState, clearVariantCache, variantState } from "@/stores/variant.store";
+import {
+  loadVariants,
+  resetVariantState,
+  clearVariantCache,
+  variantState,
+} from "@/stores/variant.store";
 import { setProject, setProjectState } from "@/stores/project.store";
 
 const sampleVariant: BuildVariant = {
@@ -26,6 +31,32 @@ const sampleList: VariantList = {
   active: "debug",
   defaultVariant: null,
 };
+
+function variantNamed(name: string): BuildVariant {
+  return {
+    name,
+    buildType: "debug",
+    flavors: [],
+    assembleTask: `assemble${name.charAt(0).toUpperCase()}${name.slice(1)}`,
+    installTask: `install${name.charAt(0).toUpperCase()}${name.slice(1)}`,
+  };
+}
+
+function listFor(name: string): VariantList {
+  return {
+    variants: [variantNamed(name)],
+    active: name,
+    defaultVariant: null,
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
 
 function resetProjectState() {
   setProjectState({ projectRoot: null, gradleRoot: null, projectName: null, loading: false });
@@ -43,7 +74,7 @@ describe("loadVariants coalescing", () => {
       () =>
         new Promise<VariantList>((resolve) => {
           setTimeout(() => resolve(sampleList), 15);
-        }),
+        })
     );
   });
 
@@ -135,6 +166,37 @@ describe("loadVariants cache", () => {
     expect(variantState.variants[0].name).toBe("debug");
     expect(variantState.fromGradle).toBe(true);
     expect(variantState.gradleLoading).toBe(false);
+  });
+
+  it("does not apply stale variants when project changes during an in-flight load", async () => {
+    const projectA = listFor("projectADebug");
+    const projectB = listFor("projectBDebug");
+    const aPreview = deferred<VariantList>();
+    const aGradle = deferred<VariantList>();
+    const emptyList: VariantList = { variants: [], active: null, defaultVariant: null };
+
+    mockPreview
+      .mockImplementationOnce(() => aPreview.promise)
+      .mockImplementationOnce(() => Promise.resolve(emptyList));
+    mockGradle
+      .mockImplementationOnce(() => aGradle.promise)
+      .mockImplementationOnce(() => Promise.resolve(projectB));
+
+    setProject("/projects/project-a", "project-a");
+    const loadA = loadVariants();
+    aPreview.resolve(emptyList);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(mockGradle).toHaveBeenCalledTimes(1);
+
+    setProject("/projects/project-b", "project-b");
+    resetVariantState();
+    const loadB = loadVariants();
+
+    aGradle.resolve(projectA);
+    await Promise.all([loadA, loadB]);
+
+    expect(mockGradle).toHaveBeenCalledTimes(2);
+    expect(variantState.activeVariant).toBe("projectBDebug");
   });
 });
 

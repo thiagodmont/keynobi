@@ -137,15 +137,21 @@ export function onDeviceChange(cb: (serial: string) => void): void {
   _onDeviceChange = cb;
 }
 
+let deviceListUnlisten: (() => void) | null = null;
+let deviceListListenerGeneration = 0;
+
 export function setLaunchingAvd(avdName: string | null): void {
   setDeviceState("launchingAvd", avdName);
 }
 
 export async function initDevices(): Promise<void> {
+  const initGeneration = deviceListListenerGeneration;
   const [devices, avds] = await Promise.all([
     refreshDevices().catch(() => [] as Device[]),
     listAvdDevices().catch(() => [] as AvdInfo[]),
   ]);
+  if (initGeneration !== deviceListListenerGeneration) return;
+
   setDevices(devices);
   setAvds(avds);
 
@@ -157,13 +163,21 @@ export async function initDevices(): Promise<void> {
       showToast(`Device polling failed: ${err}`, "error");
     });
     // eslint-disable-next-line solid/reactivity
-    await listenDeviceListChanged((newDevices) => {
+    const unlisten = await listenDeviceListChanged((newDevices) => {
       setDevices(newDevices);
     });
+    if (initGeneration !== deviceListListenerGeneration || !deviceState.polling) {
+      unlisten();
+      return;
+    }
+    deviceListUnlisten = unlisten;
   }
 }
 
 export function resetDeviceState(): void {
+  deviceListListenerGeneration += 1;
+  deviceListUnlisten?.();
+  deviceListUnlisten = null;
   setDeviceState({
     devices: [],
     avds: [],

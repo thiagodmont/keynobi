@@ -807,10 +807,33 @@ impl AndroidMcpServer {
         let logcat_state = self.logcat_state.clone();
         let app_handle = self.app_handle.clone();
 
+        let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
-            crate::services::logcat::start_logcat_stream(adb_bin, serial, logcat_state, app_handle)
-                .await;
+            crate::services::logcat::start_logcat_stream(
+                adb_bin,
+                serial,
+                logcat_state,
+                app_handle,
+                Some(startup_tx),
+            )
+            .await;
         });
+
+        match tokio::time::timeout(std::time::Duration::from_secs(5), startup_rx).await {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(e))) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            Ok(Err(_)) => {
+                return Ok(CallToolResult::error(vec![Content::text(
+                    "Logcat startup task exited before reporting status.",
+                )]))
+            }
+            Err(_) => {
+                self.logcat_state.lock().await.streaming = false;
+                return Ok(CallToolResult::error(vec![Content::text(
+                    "Timed out waiting for logcat to start.",
+                )]));
+            }
+        }
 
         Ok(CallToolResult::success(vec![Content::text(
             "Logcat streaming started. Use get_logcat_entries to read entries.",

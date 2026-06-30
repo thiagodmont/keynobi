@@ -55,6 +55,43 @@ pub fn validate_within_root(root: &Path, untrusted: &str) -> Result<PathBuf, App
     Ok(canonical_file)
 }
 
+/// Validate that an APK path resolves inside `{root}/app/build/outputs`.
+///
+/// Unlike [`validate_within_root`], this accepts absolute paths because APK
+/// paths returned by build discovery are absolute. Canonicalization still
+/// enforces the project/build-output boundary and catches symlink escapes.
+pub fn validate_apk_within_build_outputs(
+    root: &Path,
+    untrusted: impl AsRef<Path>,
+) -> Result<PathBuf, AppError> {
+    let canonical_root = root
+        .canonicalize()
+        .map_err(|e| AppError::io(root.display(), e))?;
+    let build_outputs = canonical_root.join("app").join("build").join("outputs");
+    let canonical_outputs = build_outputs
+        .canonicalize()
+        .map_err(|_| AppError::NotFound("Build outputs directory not found".to_string()))?;
+
+    let untrusted = untrusted.as_ref();
+    let canonical_apk = untrusted
+        .canonicalize()
+        .map_err(|_| AppError::NotFound(format!("APK path not found: {}", untrusted.display())))?;
+
+    if !canonical_apk.starts_with(&canonical_outputs) {
+        return Err(AppError::PermissionDenied(
+            "APK path must be within app/build/outputs".to_string(),
+        ));
+    }
+
+    if canonical_apk.extension().and_then(|e| e.to_str()) != Some("apk") {
+        return Err(AppError::InvalidInput(
+            "Path must point to a .apk file".to_string(),
+        ));
+    }
+
+    Ok(canonical_apk)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -98,5 +135,59 @@ mod tests {
         std::fs::write(tmp.path().join("src/main/Foo.kt"), b"// test").unwrap();
         let result = validate_within_root(tmp.path(), "src/main/Foo.kt");
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn apk_validation_accepts_apk_inside_build_outputs() {
+        let tmp = TempDir::new().unwrap();
+        let apk = tmp.path().join("app/build/outputs/apk/debug/app-debug.apk");
+        std::fs::create_dir_all(apk.parent().unwrap()).unwrap();
+        std::fs::write(&apk, b"apk").unwrap();
+
+        let result = validate_apk_within_build_outputs(tmp.path(), &apk).unwrap();
+
+        assert_eq!(result, apk.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn apk_validation_rejects_path_outside_build_outputs() {
+        let tmp = TempDir::new().unwrap();
+        let apk = tmp.path().join("outside.apk");
+        std::fs::write(&apk, b"apk").unwrap();
+        std::fs::create_dir_all(tmp.path().join("app/build/outputs")).unwrap();
+
+        let result = validate_apk_within_build_outputs(tmp.path(), &apk);
+
+        assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    }
+
+    #[test]
+    fn apk_validation_rejects_non_apk_extension() {
+        let tmp = TempDir::new().unwrap();
+        let file = tmp.path().join("app/build/outputs/apk/debug/app-debug.txt");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, b"not apk").unwrap();
+
+        let result = validate_apk_within_build_outputs(tmp.path(), &file);
+
+        assert!(matches!(result, Err(AppError::InvalidInput(_))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apk_validation_rejects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = TempDir::new().unwrap();
+        let outside_dir = TempDir::new().unwrap();
+        let outside_apk = outside_dir.path().join("outside.apk");
+        std::fs::write(&outside_apk, b"apk").unwrap();
+        let link = tmp.path().join("app/build/outputs/apk/debug/link.apk");
+        std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+        symlink(&outside_apk, &link).unwrap();
+
+        let result = validate_apk_within_build_outputs(tmp.path(), &link);
+
+        assert!(matches!(result, Err(AppError::PermissionDenied(_))));
     }
 }
