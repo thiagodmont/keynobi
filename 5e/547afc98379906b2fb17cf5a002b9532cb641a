@@ -1,0 +1,23 @@
+src-tauri/Cargo.toml
+  s_db19f417b1bf53::t_adea916ff1fdc5 54
+src-tauri/tests/ipc/tauri_commands.rs
+  s_db19f417b1bf53::t_74a0b4be32d5cb 58-62
+src-tauri/Cargo.lock
+  s_db19f417b1bf53::t_9d329de3d44e67 4675,4677
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "5e547afc98379906b2fb17cf5a002b9532cb641a",
+  "prompts": {},
+  "sessions": {
+    "s_db19f417b1bf53": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f1615-56db-7183-98d9-db49b1d0b6fc",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
