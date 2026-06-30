@@ -340,7 +340,9 @@ pub async fn start_logcat_stream(
     device_serial: Option<String>,
     logcat_state: LogcatState,
     app_handle: Option<tauri::AppHandle>,
+    startup_status: Option<tokio::sync::oneshot::Sender<Result<(), String>>>,
 ) {
+    let mut startup_status = startup_status;
     'reconnect: loop {
         // Check whether a graceful stop was requested before (re)connecting.
         {
@@ -363,6 +365,11 @@ pub async fn start_logcat_stream(
             Ok(c) => c,
             Err(e) => {
                 error!("Failed to start logcat: {}", e);
+                if let Some(tx) = startup_status.take() {
+                    let msg = format!("Failed to start logcat: {e}");
+                    let _ = tx.send(Err(msg));
+                    break 'reconnect;
+                }
                 // Retry if streaming is still requested; otherwise give up.
                 let still_streaming = logcat_state.lock().await.streaming;
                 if still_streaming {
@@ -382,9 +389,16 @@ pub async fn start_logcat_stream(
             Some(s) => s,
             None => {
                 error!("logcat process has no stdout");
+                if let Some(tx) = startup_status.take() {
+                    let _ = tx.send(Err("logcat process has no stdout".to_string()));
+                }
                 break 'reconnect;
             }
         };
+
+        if let Some(tx) = startup_status.take() {
+            let _ = tx.send(Ok(()));
+        }
 
         // Channel: reader → pipeline+batcher
         let (tx, mut rx) = mpsc::channel::<RawLogLine>(RAW_LOG_LINE_CHANNEL_CAPACITY);
@@ -1263,7 +1277,14 @@ mod reconnect_tests {
     #[tokio::test]
     async fn exits_immediately_when_not_streaming() {
         let state = make_state(false);
-        start_logcat_stream(PathBuf::from("/nonexistent/adb"), None, state.clone(), None).await;
+        start_logcat_stream(
+            PathBuf::from("/nonexistent/adb"),
+            None,
+            state.clone(),
+            None,
+            None,
+        )
+        .await;
         assert!(
             !state.lock().await.streaming,
             "streaming must be false when function returns"
@@ -1288,6 +1309,7 @@ mod reconnect_tests {
                 None,
                 state.clone(),
                 None,
+                None,
             ),
         )
         .await
@@ -1296,6 +1318,32 @@ mod reconnect_tests {
         assert!(
             !state.lock().await.streaming,
             "streaming must be false when function returns"
+        );
+    }
+
+    #[tokio::test]
+    async fn reports_initial_spawn_failure_and_stops_streaming() {
+        let state = make_state(true);
+        let (tx, rx) = tokio::sync::oneshot::channel();
+
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            start_logcat_stream(
+                PathBuf::from("/definitely/does/not/exist/adb"),
+                None,
+                state.clone(),
+                None,
+                Some(tx),
+            ),
+        )
+        .await
+        .expect("start_logcat_stream must return after initial spawn failure");
+
+        let startup = rx.await.expect("startup status must be sent");
+        assert!(startup.is_err());
+        assert!(
+            !state.lock().await.streaming,
+            "initial spawn failure must clear streaming"
         );
     }
 
@@ -1312,7 +1360,7 @@ mod reconnect_tests {
 
         tokio::time::timeout(
             Duration::from_secs(5),
-            start_logcat_stream(instant_exit_bin(), None, state.clone(), None),
+            start_logcat_stream(instant_exit_bin(), None, state.clone(), None, None),
         )
         .await
         .expect("start_logcat_stream must return within 5 s");
@@ -1356,7 +1404,7 @@ mod reconnect_tests {
 
         tokio::time::timeout(
             Duration::from_secs(5),
-            start_logcat_stream(instant_exit_bin(), None, state.clone(), None),
+            start_logcat_stream(instant_exit_bin(), None, state.clone(), None, None),
         )
         .await
         .expect("start_logcat_stream must return within 5 s");
@@ -1392,7 +1440,7 @@ mod reconnect_tests {
 
         tokio::time::timeout(
             Duration::from_secs(5),
-            start_logcat_stream(instant_exit_bin(), None, state.clone(), None),
+            start_logcat_stream(instant_exit_bin(), None, state.clone(), None, None),
         )
         .await
         .expect("start_logcat_stream must return within 5 s after stop during reconnect sleep");

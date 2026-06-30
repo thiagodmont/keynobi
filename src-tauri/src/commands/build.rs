@@ -52,6 +52,57 @@ fn validate_gradle_task(task: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+pub(crate) struct BuildFinalization {
+    task: String,
+    started_at: String,
+    project_root: Option<String>,
+    success: bool,
+    cancelled: bool,
+    duration_ms: u64,
+    errors: Vec<BuildError>,
+}
+
+pub(crate) async fn finalize_completed_build(
+    build_state: &BuildState,
+    finalization: BuildFinalization,
+) -> BuildCompleteEvent {
+    let error_count = finalization
+        .errors
+        .iter()
+        .filter(|e| e.severity == BuildErrorSeverity::Error)
+        .count() as u32;
+    let warn_count = finalization
+        .errors
+        .iter()
+        .filter(|e| e.severity == BuildErrorSeverity::Warning)
+        .count() as u32;
+    let result = BuildResult {
+        success: finalization.success,
+        duration_ms: finalization.duration_ms,
+        error_count,
+        warning_count: warn_count,
+    };
+
+    build_runner::record_build_result(
+        build_state,
+        finalization.task.clone(),
+        finalization.started_at,
+        result,
+        finalization.errors,
+        finalization.project_root,
+    )
+    .await;
+
+    BuildCompleteEvent {
+        success: finalization.success,
+        cancelled: finalization.cancelled,
+        duration_ms: finalization.duration_ms,
+        error_count,
+        warning_count: warn_count,
+        task: finalization.task,
+    }
+}
+
 // ── Build commands ─────────────────────────────────────────────────────────────
 
 /// Run a Gradle task, streaming output via a Tauri Channel.
@@ -70,13 +121,19 @@ pub async fn run_gradle_task(
 ) -> Result<u32, AppError> {
     validate_gradle_task(&task)?;
 
-    let gradle_root: PathBuf = {
+    let (gradle_root, project_root_for_history): (PathBuf, Option<String>) = {
         let fs = fs_state.0.lock().await;
-        fs.gradle_root
+        let root = fs
+            .gradle_root
             .as_ref()
             .or(fs.project_root.as_ref())
             .cloned()
-            .ok_or_else(|| AppError::NotFound("No project is open".into()))?
+            .ok_or_else(|| AppError::NotFound("No project is open".into()))?;
+        let project_root = fs
+            .project_root
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned());
+        (root, project_root)
     };
 
     let (settings, _) = settings_manager::load_settings();
@@ -97,6 +154,7 @@ pub async fn run_gradle_task(
     let success_flag: Arc<StdMutex<bool>> = Arc::new(StdMutex::new(false));
     // Share the BuildLog Arc so the on_line callback can push lines directly.
     let build_log = build_state.build_log.clone();
+    let build_state_for_exit = build_state.inner().clone();
 
     let args_strs: Vec<String> = args;
     let args_refs: Vec<&str> = args_strs.iter().map(|s| s.as_str()).collect();
@@ -158,6 +216,9 @@ pub async fn run_gradle_task(
             on_exit: Box::new({
                 let app = app_handle.clone();
                 let task_name = task.clone();
+                let started_at = started_at.clone();
+                let project_root = project_root_for_history.clone();
+                let build_state = build_state_for_exit.clone();
                 move |_pid, termination| {
                     // std::sync::Mutex::lock() — safe to call from any context.
                     let errs = errors_buf.lock().map(|g| g.clone()).unwrap_or_default();
@@ -168,26 +229,27 @@ pub async fn run_gradle_task(
                     let success = !cancelled
                         && (flag || matches!(termination, ProcessTermination::ExitCode(0)));
 
-                    let error_count = errs
-                        .iter()
-                        .filter(|e| e.severity == BuildErrorSeverity::Error)
-                        .count() as u32;
-                    let warn_count = errs
-                        .iter()
-                        .filter(|e| e.severity == BuildErrorSeverity::Warning)
-                        .count() as u32;
-
-                    let _ = app.emit(
-                        "build:complete",
-                        BuildCompleteEvent {
-                            success,
-                            cancelled,
-                            duration_ms: dur,
-                            error_count,
-                            warning_count: warn_count,
-                            task: task_name.clone(),
-                        },
-                    );
+                    let app = app.clone();
+                    let task_name = task_name.clone();
+                    let started_at = started_at.clone();
+                    let project_root = project_root.clone();
+                    let build_state = build_state.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let event = finalize_completed_build(
+                            &build_state,
+                            BuildFinalization {
+                                task: task_name,
+                                started_at,
+                                project_root,
+                                success,
+                                cancelled,
+                                duration_ms: dur,
+                                errors: errs,
+                            },
+                        )
+                        .await;
+                        let _ = app.emit("build:complete", event);
+                    });
                 }
             }),
         },
@@ -196,7 +258,7 @@ pub async fn run_gradle_task(
     .map_err(AppError::ProcessFailed)?;
 
     // Register immediately (sync, no `.await` before this) so cancel always has a ProcessId.
-    *build_state.active_process_id.lock().unwrap() = Some(id);
+    build_state.set_active_process_id(Some(id));
 
     // Mark build as running in the managed state and clear the log for this run.
     {
@@ -334,7 +396,19 @@ pub async fn get_build_log_entries(id: u32) -> Result<Vec<BuildLine>, String> {
 /// including any `applicationIdSuffix` added by the build variant. Use this
 /// after `find_apk_path` to pass the correct package to `launch_app_on_device`.
 #[tauri::command]
-pub async fn get_package_name_from_apk(apk_path: String) -> Result<String, AppError> {
+pub async fn get_package_name_from_apk(
+    apk_path: String,
+    fs_state: State<'_, FsState>,
+) -> Result<String, AppError> {
+    let root = {
+        let fs = fs_state.0.lock().await;
+        fs.gradle_root
+            .as_ref()
+            .or(fs.project_root.as_ref())
+            .cloned()
+            .ok_or_else(|| AppError::NotFound("No project is open".into()))?
+    };
+
     let (settings, _) = settings_manager::load_settings();
 
     let aapt2 = crate::services::adb_manager::find_aapt2(&settings).ok_or_else(|| {
@@ -343,10 +417,7 @@ pub async fn get_package_name_from_apk(apk_path: String) -> Result<String, AppEr
         )
     })?;
 
-    let apk = PathBuf::from(&apk_path);
-    if !apk.is_file() {
-        return Err(AppError::NotFound(format!("APK not found: {apk_path}")));
-    }
+    let apk = crate::utils::path::validate_apk_within_build_outputs(&root, &apk_path)?;
 
     crate::services::adb_manager::get_package_name_from_apk(&aapt2, &apk)
         .await
@@ -395,5 +466,42 @@ mod tests {
         assert!(validate_gradle_task("assemble$(evil)").is_err());
         assert!(validate_gradle_task("assemble\necho pwned").is_err());
         assert!(validate_gradle_task(&"a".repeat(257)).is_err());
+    }
+
+    #[tokio::test]
+    async fn process_exit_finalization_records_backend_history() {
+        let build_state = BuildState::new();
+        let errors = vec![BuildError {
+            message: "compile failed".to_string(),
+            file: Some("Main.kt".to_string()),
+            line: Some(7),
+            col: Some(3),
+            severity: BuildErrorSeverity::Error,
+        }];
+
+        let event = finalize_completed_build(
+            &build_state,
+            BuildFinalization {
+                task: "assembleDebug".to_string(),
+                started_at: "2026-01-01T00:00:00Z".to_string(),
+                project_root: Some("/tmp/project".to_string()),
+                success: false,
+                cancelled: false,
+                duration_ms: 1234,
+                errors,
+            },
+        )
+        .await;
+
+        assert!(!event.success);
+        assert!(!event.cancelled);
+        assert_eq!(event.error_count, 1);
+
+        let state = build_state.inner.lock().await;
+        assert!(matches!(state.status, BuildStatus::Failed(_)));
+        assert_eq!(
+            state.history.back().map(|r| r.task.as_str()),
+            Some("assembleDebug")
+        );
     }
 }

@@ -60,8 +60,8 @@ fn request(cmd: &str, body: Value) -> InvokeRequest {
         } else {
             "tauri://localhost"
         }
-            .parse()
-            .expect("valid Tauri test URL"),
+        .parse()
+        .expect("valid Tauri test URL"),
         body: InvokeBody::Json(body),
         headers: Default::default(),
         invoke_key: INVOKE_KEY.to_string(),

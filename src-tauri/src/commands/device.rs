@@ -9,6 +9,7 @@ use crate::services::adb_manager::{
     list_devices, list_system_images, stop_app, stop_emulator, wipe_avd_data, DeviceState,
 };
 use crate::services::settings_manager;
+use crate::FsState;
 use serde::Serialize;
 use std::time::Duration;
 use tauri::ipc::Channel;
@@ -43,6 +44,40 @@ pub(crate) fn validate_device_serial(serial: &str) -> Result<(), AppError> {
     {
         return Err(AppError::InvalidInput(format!(
             "Invalid device serial '{serial}': only alphanumeric, ':', '.', '-', '_' are allowed"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_package_name(package: &str) -> Result<(), AppError> {
+    if package.is_empty() {
+        return Err(AppError::InvalidInput(
+            "Package name cannot be empty".to_string(),
+        ));
+    }
+    let valid = package
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_'));
+    if !valid || !package.contains('.') {
+        return Err(AppError::InvalidInput(format!(
+            "Invalid package name '{package}'. Expected format: com.example.app"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_activity_name(activity: &str) -> Result<(), AppError> {
+    if activity.is_empty() {
+        return Err(AppError::InvalidInput(
+            "Activity name cannot be empty".to_string(),
+        ));
+    }
+    let valid = activity
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_' | '$'));
+    if !valid {
+        return Err(AppError::InvalidInput(format!(
+            "Invalid activity name '{activity}'"
         )));
     }
     Ok(())
@@ -91,13 +126,22 @@ pub async fn get_selected_device(
 
 /// Install an APK on the given device.
 #[tauri::command]
-pub async fn install_apk_on_device(serial: String, apk_path: String) -> Result<String, AppError> {
+pub async fn install_apk_on_device(
+    serial: String,
+    apk_path: String,
+    fs_state: State<'_, FsState>,
+) -> Result<String, AppError> {
     validate_device_serial(&serial)?;
-    if !std::path::Path::new(&apk_path).exists() {
-        return Err(AppError::NotFound(format!(
-            "APK file not found: {apk_path}"
-        )));
-    }
+    let root = {
+        let fs = fs_state.0.lock().await;
+        fs.gradle_root
+            .as_ref()
+            .or(fs.project_root.as_ref())
+            .cloned()
+            .ok_or_else(|| AppError::NotFound("No project is open".into()))?
+    };
+    let apk = crate::utils::path::validate_apk_within_build_outputs(&root, &apk_path)?;
+    let apk_path = apk.to_string_lossy().into_owned();
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     install_apk(&adb, &serial, &apk_path)
@@ -113,6 +157,10 @@ pub async fn launch_app_on_device(
     activity: Option<String>,
 ) -> Result<String, AppError> {
     validate_device_serial(&serial)?;
+    validate_package_name(&package)?;
+    if let Some(ref activity_name) = activity {
+        validate_activity_name(activity_name)?;
+    }
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     launch_app(&adb, &serial, &package, activity.as_deref())
@@ -124,6 +172,7 @@ pub async fn launch_app_on_device(
 #[tauri::command]
 pub async fn stop_app_on_device(serial: String, package: String) -> Result<(), AppError> {
     validate_device_serial(&serial)?;
+    validate_package_name(&package)?;
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     stop_app(&adb, &serial, &package)
@@ -364,5 +413,35 @@ mod tests {
     #[test]
     fn serial_carriage_return_is_rejected() {
         assert!(validate_device_serial("emulator\r5554").is_err());
+    }
+
+    #[test]
+    fn valid_package_names_pass() {
+        assert!(validate_package_name("com.example.app").is_ok());
+        assert!(validate_package_name("com.example.my_app").is_ok());
+    }
+
+    #[test]
+    fn invalid_package_names_are_rejected() {
+        assert!(validate_package_name("").is_err());
+        assert!(validate_package_name("notapackage").is_err());
+        assert!(validate_package_name("com.example; rm -rf").is_err());
+        assert!(validate_package_name("com.example app").is_err());
+        assert!(validate_package_name("com.example\napp").is_err());
+    }
+
+    #[test]
+    fn valid_activity_names_pass() {
+        assert!(validate_activity_name(".MainActivity").is_ok());
+        assert!(validate_activity_name("com.example.app.MainActivity").is_ok());
+        assert!(validate_activity_name("com.example.app.MainActivity$Inner").is_ok());
+    }
+
+    #[test]
+    fn invalid_activity_names_are_rejected() {
+        assert!(validate_activity_name("").is_err());
+        assert!(validate_activity_name("Main Activity").is_err());
+        assert!(validate_activity_name(".MainActivity; rm -rf").is_err());
+        assert!(validate_activity_name(".MainActivity\nOther").is_err());
     }
 }

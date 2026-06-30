@@ -97,7 +97,7 @@ impl Default for ProcessManager {
 /// # Errors
 /// Returns an error string if the process fails to start.
 pub async fn spawn(
-    manager: &Mutex<ProcessManagerInner>,
+    manager: &Arc<Mutex<ProcessManagerInner>>,
     cmd: &str,
     args: &[&str],
     cwd: PathBuf,
@@ -105,6 +105,11 @@ pub async fn spawn(
     options: SpawnOptions,
 ) -> Result<ProcessId, String> {
     let id = NEXT_PROCESS_ID.fetch_add(1, Ordering::SeqCst);
+
+    let mut inner = manager.lock().await;
+    if inner.processes.len() >= 10 {
+        return Err("Maximum concurrent processes (10) reached".into());
+    }
 
     let mut command = Command::new(cmd);
     command
@@ -136,6 +141,7 @@ pub async fn spawn(
         let on_line = on_line.clone();
         let on_exit = on_exit.clone();
         let cancelled_flag = cancelled.clone();
+        let manager_for_cleanup = manager.clone();
 
         tokio::spawn(async move {
             let stdout_reader = BufReader::new(stdout);
@@ -197,6 +203,7 @@ pub async fn spawn(
                 termination
             };
             on_exit(id, final_termination);
+            manager_for_cleanup.lock().await.processes.remove(&id);
         })
     };
 
@@ -206,11 +213,6 @@ pub async fn spawn(
         cancelled,
     };
 
-    let mut inner = manager.lock().await;
-    // Enforce max 10 concurrent processes (bounded collection rule).
-    if inner.processes.len() >= 10 {
-        return Err("Maximum concurrent processes (10) reached".into());
-    }
     inner.processes.insert(id, record);
 
     Ok(id)
@@ -361,5 +363,143 @@ mod tests {
 
         // Give the reader task time to observe the flag and call on_exit.
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    }
+
+    #[tokio::test]
+    async fn completed_processes_are_removed_from_tracking() {
+        let manager = ProcessManager::new();
+        let exited = Arc::new(std::sync::atomic::AtomicU32::new(0));
+
+        for _ in 0..10 {
+            let exited_clone = exited.clone();
+            spawn(
+                &manager.0,
+                "echo",
+                &["done"],
+                std::env::temp_dir(),
+                vec![],
+                SpawnOptions {
+                    on_line: Box::new(|_| {}),
+                    on_exit: Box::new(move |_, _| {
+                        exited_clone.fetch_add(1, Ordering::SeqCst);
+                    }),
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        for _ in 0..20 {
+            if exited.load(Ordering::SeqCst) == 10 {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+
+        assert_eq!(exited.load(Ordering::SeqCst), 10);
+        assert_eq!(manager.0.lock().await.processes.len(), 0);
+
+        let id = spawn(
+            &manager.0,
+            "echo",
+            &["after cleanup"],
+            std::env::temp_dir(),
+            vec![],
+            SpawnOptions {
+                on_line: Box::new(|_| {}),
+                on_exit: Box::new(|_, _| {}),
+            },
+        )
+        .await
+        .unwrap();
+        cancel(&manager.0, id).await;
+    }
+
+    #[tokio::test]
+    async fn capacity_is_checked_before_spawning_child() {
+        let manager = ProcessManager::new();
+        {
+            let mut inner = manager.0.lock().await;
+            for id in 1..=10 {
+                inner.processes.insert(
+                    id,
+                    ProcessRecord {
+                        os_pid: None,
+                        _reader_task: tokio::spawn(async {}),
+                        cancelled: Arc::new(AtomicBool::new(false)),
+                    },
+                );
+            }
+        }
+
+        let err = spawn(
+            &manager.0,
+            "definitely-not-a-real-keynobi-command",
+            &[],
+            std::env::temp_dir(),
+            vec![],
+            SpawnOptions {
+                on_line: Box::new(|_| {}),
+                on_exit: Box::new(|_, _| {}),
+            },
+        )
+        .await
+        .unwrap_err();
+
+        assert_eq!(err, "Maximum concurrent processes (10) reached");
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
+    async fn concurrent_spawns_cannot_exceed_capacity() {
+        let manager = ProcessManager::new();
+        {
+            let mut inner = manager.0.lock().await;
+            for id in 100_000..100_009 {
+                inner.processes.insert(
+                    id,
+                    ProcessRecord {
+                        os_pid: None,
+                        _reader_task: tokio::spawn(async {}),
+                        cancelled: Arc::new(AtomicBool::new(false)),
+                    },
+                );
+            }
+        }
+
+        let mut tasks = tokio::task::JoinSet::new();
+        for _ in 0..50 {
+            let manager = manager.clone();
+            tasks.spawn(async move {
+                spawn(
+                    &manager.0,
+                    "sleep",
+                    &["2"],
+                    std::env::temp_dir(),
+                    vec![],
+                    SpawnOptions {
+                        on_line: Box::new(|_| {}),
+                        on_exit: Box::new(|_, _| {}),
+                    },
+                )
+                .await
+            });
+        }
+
+        let mut spawned = Vec::new();
+        while let Some(result) = tasks.join_next().await {
+            if let Ok(Ok(id)) = result {
+                spawned.push(id);
+            }
+        }
+
+        assert_eq!(spawned.len(), 1, "only one slot should be available");
+        assert!(
+            manager.0.lock().await.processes.len() <= 10,
+            "tracked processes must remain capped"
+        );
+
+        for id in spawned {
+            cancel(&manager.0, id).await;
+        }
     }
 }

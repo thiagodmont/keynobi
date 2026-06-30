@@ -20,8 +20,6 @@ fn project_id(path: &std::path::Path) -> String {
 /// Upsert a `ProjectEntry` into `settings.recent_projects` and persist.
 /// Evicts the oldest non-pinned entry when the list exceeds `MAX_RECENT_PROJECTS`.
 fn upsert_project(path: &std::path::Path, gradle_root: Option<&std::path::Path>) {
-    let (mut settings, _) = settings_manager::load_settings();
-
     let id = project_id(path);
     let name = path
         .file_name()
@@ -31,44 +29,44 @@ fn upsert_project(path: &std::path::Path, gradle_root: Option<&std::path::Path>)
     let gradle_root_str = gradle_root.map(|p| p.to_string_lossy().to_string());
     let now = chrono::Utc::now().to_rfc3339();
 
-    // Update existing entry or insert new one.
-    if let Some(entry) = settings.recent_projects.iter_mut().find(|e| e.id == id) {
-        entry.last_opened = now;
-        entry.gradle_root = gradle_root_str;
-        entry.name = name;
-    } else {
-        settings.recent_projects.push(ProjectEntry {
-            id,
-            path: path_str.clone(),
-            name,
-            gradle_root: gradle_root_str,
-            last_opened: now,
-            pinned: false,
-            last_build_variant: None,
-            last_device: None,
-        });
+    if let Err(e) = settings_manager::mutate_settings(|settings| {
+        // Update existing entry or insert new one.
+        if let Some(entry) = settings.recent_projects.iter_mut().find(|e| e.id == id) {
+            entry.last_opened = now;
+            entry.gradle_root = gradle_root_str;
+            entry.name = name;
+        } else {
+            settings.recent_projects.push(ProjectEntry {
+                id,
+                path: path_str.clone(),
+                name,
+                gradle_root: gradle_root_str,
+                last_opened: now,
+                pinned: false,
+                last_build_variant: None,
+                last_device: None,
+            });
 
-        // Evict oldest non-pinned entries when over the cap.
-        while settings.recent_projects.len() > MAX_RECENT_PROJECTS {
-            // Find the index of the oldest non-pinned entry.
-            let evict_idx = settings
-                .recent_projects
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| !e.pinned)
-                .min_by_key(|(_, e)| e.last_opened.clone())
-                .map(|(i, _)| i);
-            if let Some(idx) = evict_idx {
-                settings.recent_projects.remove(idx);
-            } else {
-                break; // All are pinned — keep them all.
+            // Evict oldest non-pinned entries when over the cap.
+            while settings.recent_projects.len() > MAX_RECENT_PROJECTS {
+                // Find the index of the oldest non-pinned entry.
+                let evict_idx = settings
+                    .recent_projects
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| !e.pinned)
+                    .min_by_key(|(_, e)| e.last_opened.clone())
+                    .map(|(i, _)| i);
+                if let Some(idx) = evict_idx {
+                    settings.recent_projects.remove(idx);
+                } else {
+                    break; // All are pinned — keep them all.
+                }
             }
         }
-    }
 
-    settings.last_active_project = Some(path_str);
-
-    if let Err(e) = settings_manager::save_settings(&settings) {
+        settings.last_active_project = Some(path_str);
+    }) {
         tracing::warn!("Failed to persist project registry: {e}");
     }
 }
@@ -226,39 +224,35 @@ pub async fn list_projects() -> Result<Vec<ProjectEntry>, String> {
 /// Does *not* delete the project from disk.
 #[tauri::command]
 pub async fn remove_project(id: String) -> Result<(), String> {
-    let (mut settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
-        .await
-        .map_err(|e| format!("Failed to load settings: {e}"))?;
+    tokio::task::spawn_blocking(move || {
+        settings_manager::mutate_settings(|settings| {
+            settings.recent_projects.retain(|e| e.id != id);
 
-    settings.recent_projects.retain(|e| e.id != id);
-
-    // Clear last_active_project if it was the removed one.
-    if let Some(ref last) = settings.last_active_project.clone() {
-        let still_exists = settings.recent_projects.iter().any(|e| &e.path == last);
-        if !still_exists {
-            settings.last_active_project = None;
-        }
-    }
-
-    tokio::task::spawn_blocking(move || settings_manager::save_settings(&settings))
-        .await
-        .map_err(|e| format!("Failed to save settings: {e}"))?
+            // Clear last_active_project if it was the removed one.
+            if let Some(ref last) = settings.last_active_project.clone() {
+                let still_exists = settings.recent_projects.iter().any(|e| &e.path == last);
+                if !still_exists {
+                    settings.last_active_project = None;
+                }
+            }
+        })
+    })
+    .await
+    .map_err(|e| format!("Failed to save settings: {e}"))?
 }
 
 /// Toggle the `pinned` flag for a project entry.
 #[tauri::command]
 pub async fn pin_project(id: String, pinned: bool) -> Result<(), String> {
-    let (mut settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
-        .await
-        .map_err(|e| format!("Failed to load settings: {e}"))?;
-
-    if let Some(entry) = settings.recent_projects.iter_mut().find(|e| e.id == id) {
-        entry.pinned = pinned;
-    }
-
-    tokio::task::spawn_blocking(move || settings_manager::save_settings(&settings))
-        .await
-        .map_err(|e| format!("Failed to save settings: {e}"))?
+    tokio::task::spawn_blocking(move || {
+        settings_manager::mutate_settings(|settings| {
+            if let Some(entry) = settings.recent_projects.iter_mut().find(|e| e.id == id) {
+                entry.pinned = pinned;
+            }
+        })
+    })
+    .await
+    .map_err(|e| format!("Failed to save settings: {e}"))?
 }
 
 /// Return the path of the last-active project (used on startup to restore the session).
@@ -419,18 +413,16 @@ pub async fn update_project_meta(
     last_build_variant: Option<String>,
     last_device: Option<String>,
 ) -> Result<(), String> {
-    let (mut settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
-        .await
-        .map_err(|e| format!("Failed to load settings: {e}"))?;
-
-    if let Some(entry) = settings.recent_projects.iter_mut().find(|e| e.id == id) {
-        entry.last_build_variant = last_build_variant;
-        entry.last_device = last_device;
-    }
-
-    tokio::task::spawn_blocking(move || settings_manager::save_settings(&settings))
-        .await
-        .map_err(|e| format!("Failed to save settings: {e}"))?
+    tokio::task::spawn_blocking(move || {
+        settings_manager::mutate_settings(|settings| {
+            if let Some(entry) = settings.recent_projects.iter_mut().find(|e| e.id == id) {
+                entry.last_build_variant = last_build_variant;
+                entry.last_device = last_device;
+            }
+        })
+    })
+    .await
+    .map_err(|e| format!("Failed to save settings: {e}"))?
 }
 
 /// Rename the display name of a project in the registry.
@@ -442,19 +434,18 @@ pub async fn rename_project(id: String, new_name: String) -> Result<(), String> 
         return Err("Project name cannot be empty".to_string());
     }
 
-    let (mut settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
-        .await
-        .map_err(|e| format!("Failed to load settings: {e}"))?;
-
-    if let Some(entry) = settings.recent_projects.iter_mut().find(|e| e.id == id) {
-        entry.name = new_name;
-    } else {
-        return Err(format!("Project with id '{id}' not found"));
-    }
-
-    tokio::task::spawn_blocking(move || settings_manager::save_settings(&settings))
-        .await
-        .map_err(|e| format!("Failed to save settings: {e}"))?
+    tokio::task::spawn_blocking(move || {
+        settings_manager::mutate_settings_with_result(|settings| {
+            if let Some(entry) = settings.recent_projects.iter_mut().find(|e| e.id == id) {
+                entry.name = new_name;
+                Ok(())
+            } else {
+                Err(format!("Project with id '{id}' not found"))
+            }
+        })
+    })
+    .await
+    .map_err(|e| format!("Failed to save settings: {e}"))?
 }
 
 #[cfg(test)]

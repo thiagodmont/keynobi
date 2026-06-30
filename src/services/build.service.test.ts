@@ -23,9 +23,7 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
 
     await cancelBuild();
 
-    const finalizeCalls = mockInvoke.mock.calls.filter(
-      ([cmd]) => cmd === "finalize_build"
-    );
+    const finalizeCalls = mockInvoke.mock.calls.filter(([cmd]) => cmd === "finalize_build");
     expect(finalizeCalls).toHaveLength(0);
   });
 
@@ -40,27 +38,22 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
 
     await cancelBuild();
 
-    const finalizeCalls = mockInvoke.mock.calls.filter(
-      ([cmd]) => cmd === "finalize_build"
-    );
+    const finalizeCalls = mockInvoke.mock.calls.filter(([cmd]) => cmd === "finalize_build");
     expect(finalizeCalls).toHaveLength(0);
   });
 
-  it("calls cancel_build and finalize_build when a build is actually running", async () => {
+  it("calls cancel_build without frontend finalization when a build is actually running", async () => {
     startBuild("assembleDebug");
     expect(buildState.phase).toBe("running");
 
-    // cancelBuild will try to cancel and finalize — resolve all IPC calls.
+    // Rust records the final build result from process exit; the frontend only
+    // requests cancellation and updates local state immediately.
     await cancelBuild();
 
     const cancelCalls = mockInvoke.mock.calls.filter(([cmd]) => cmd === "cancel_build");
     const finalizeCalls = mockInvoke.mock.calls.filter(([cmd]) => cmd === "finalize_build");
 
     expect(cancelCalls).toHaveLength(1);
-    expect(finalizeCalls).toHaveLength(1);
-
-    // The finalize call must carry the correct task name (not "unknown").
-    const [, finalizeArgs] = finalizeCalls[0] as [string, Record<string, unknown>];
-    expect(finalizeArgs?.task).toBe("assembleDebug");
+    expect(finalizeCalls).toHaveLength(0);
   });
 });

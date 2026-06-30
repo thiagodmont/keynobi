@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   deviceState,
   setDevices,
@@ -8,6 +10,7 @@ import {
   onlineDevices,
   selectedDevice,
   resetDeviceState,
+  initDevices,
 } from "@/stores/device.store";
 import type { Device, AvdInfo } from "@/bindings";
 
@@ -43,9 +46,20 @@ const mockAvds: AvdInfo[] = [
   },
 ];
 
+const mockInvoke = vi.mocked(invoke);
+const mockListen = vi.mocked(listen);
+
 describe("device.store", () => {
   beforeEach(() => {
     resetDeviceState();
+    vi.clearAllMocks();
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "refresh_devices") return Promise.resolve([]);
+      if (cmd === "list_avd_devices") return Promise.resolve([]);
+      if (cmd === "start_device_polling") return Promise.resolve(undefined);
+      if (cmd === "select_device") return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
   });
 
   it("starts with empty device list", () => {
@@ -100,6 +114,17 @@ describe("device.store", () => {
     expect(deviceState.devices).toHaveLength(0);
     expect(deviceState.avds).toHaveLength(0);
     expect(deviceState.selectedSerial).toBeNull();
+  });
+
+  it("resetDeviceState disposes the device list listener", async () => {
+    const unlisten = vi.fn();
+    mockListen.mockResolvedValueOnce(unlisten);
+
+    await initDevices();
+    expect(mockListen).toHaveBeenCalledTimes(1);
+
+    resetDeviceState();
+    expect(unlisten).toHaveBeenCalledTimes(1);
   });
 });
 
