@@ -1,0 +1,23 @@
+src/services/build.service.ts
+  s_f9ac9648b31930::t_e9aa99b17e53c3 95-103
+  s_f9ac9648b31930::t_dc159c8ba01605 237-243
+src/services/build.service.test.ts
+  s_f9ac9648b31930::t_779ab0a64060db 1,106-110
+  s_f9ac9648b31930::t_cb56e3ff885cd2 111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "cd3eabad7a6b3ca149cd184bc9a2f9835e9b7103",
+  "prompts": {},
+  "sessions": {
+    "s_f9ac9648b31930": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f18dc-343c-73b2-a07b-80e438e88a20",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
