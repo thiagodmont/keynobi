@@ -1,0 +1,21 @@
+src/stores/device.store.test.ts
+  s_6078e8274bedec::t_d2452b9f7a2b75 155-178
+src/stores/device.store.ts
+  s_6078e8274bedec::t_45e89b44afc168 148,153-154,169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.5",
+  "base_commit_sha": "9bf1cc72f73dc890f41ae66c7f51413da277ad3f",
+  "prompts": {},
+  "sessions": {
+    "s_6078e8274bedec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f164a-6cdd-7c43-a96c-0dadf8d46109",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
