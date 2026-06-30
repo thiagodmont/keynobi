@@ -10,7 +10,7 @@ const meta = {
 } satisfies Meta<typeof ToastContainer>;
 
 export default meta;
-type Story = StoryObj<typeof meta>;
+type Story = StoryObj;
 
 export const Host: Story = {
   render: () => (

@@ -18,7 +18,7 @@ const meta = {
 } satisfies Meta<typeof MenuList>;
 
 export default meta;
-type Story = StoryObj<typeof meta>;
+type Story = StoryObj;
 
 export const SavedFilters: Story = {
   render: () => (
