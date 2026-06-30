@@ -1,0 +1,29 @@
+package.json
+  s_eab9c2a820d818::t_06deb29c3f9ad8 28-29
+playwright.visual.config.ts
+  s_eab9c2a820d818::t_06deb29c3f9ad8 1-43
+src/components/logcat/QueryBarParts.tsx
+  s_eab9c2a820d818::t_acb9d3f410f7df 204
+playwright.config.ts
+  s_eab9c2a820d818::t_06deb29c3f9ad8 13
+docs/CODE_PATTERN.md
+  s_eab9c2a820d818::t_ec1233eb4fe912 225-232
+e2e/visual/logcat-menus.visual.spec.ts
+  s_eab9c2a820d818::t_2c88543d9cc31e 1-102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "70f77b525f77b3eee0dd5527d828a0a671e8b4f7",
+  "prompts": {},
+  "sessions": {
+    "s_eab9c2a820d818": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019e173c-e2d1-7170-8c2f-248d531c9ae0",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
