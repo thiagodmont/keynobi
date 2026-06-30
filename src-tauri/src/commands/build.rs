@@ -26,6 +26,19 @@ pub struct BuildCompleteEvent {
     pub task: String,
 }
 
+fn mark_build_spawn_failed(bs: &mut build_runner::BuildStateInner) {
+    bs.starting = false;
+    bs.current_build = None;
+    if !matches!(bs.status, BuildStatus::Cancelled) {
+        bs.status = BuildStatus::Failed(BuildResult {
+            success: false,
+            duration_ms: 0,
+            error_count: 1,
+            warning_count: 0,
+        });
+    }
+}
+
 // ── Validation helpers ─────────────────────────────────────────────────────────
 
 /// Validate a Gradle task name against an allowlist.
@@ -278,14 +291,7 @@ pub async fn run_gradle_task(
         Ok(id) => id,
         Err(e) => {
             let mut bs = build_state.inner.lock().await;
-            bs.starting = false;
-            bs.current_build = None;
-            bs.status = BuildStatus::Failed(BuildResult {
-                success: false,
-                duration_ms: 0,
-                error_count: 1,
-                warning_count: 0,
-            });
+            mark_build_spawn_failed(&mut bs);
             return Err(AppError::ProcessFailed(e));
         }
     };
@@ -509,6 +515,35 @@ mod tests {
         assert!(validate_gradle_task("assemble$(evil)").is_err());
         assert!(validate_gradle_task("assemble\necho pwned").is_err());
         assert!(validate_gradle_task(&"a".repeat(257)).is_err());
+    }
+
+    #[test]
+    fn spawn_failure_preserves_cancelled_status() {
+        let mut state = build_runner::BuildStateInner::new();
+        state.starting = true;
+        state.status = BuildStatus::Cancelled;
+
+        mark_build_spawn_failed(&mut state);
+
+        assert!(!state.starting);
+        assert!(state.current_build.is_none());
+        assert!(matches!(state.status, BuildStatus::Cancelled));
+    }
+
+    #[test]
+    fn spawn_failure_marks_non_cancelled_build_failed() {
+        let mut state = build_runner::BuildStateInner::new();
+        state.starting = true;
+        state.status = BuildStatus::Running {
+            task: "assembleDebug".to_string(),
+            started_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+
+        mark_build_spawn_failed(&mut state);
+
+        assert!(!state.starting);
+        assert!(state.current_build.is_none());
+        assert!(matches!(state.status, BuildStatus::Failed(_)));
     }
 
     #[tokio::test]

@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { cancelBuild, runBuild } from "@/services/build.service";
+import { cancelBuild, runAndDeploy, runBuild } from "@/services/build.service";
 import { buildState, resetBuildState, startBuild } from "@/stores/build.store";
+import { resetDeviceState } from "@/stores/device.store";
+import { resetVariantState, selectVariant } from "@/stores/variant.store";
+
+const devicePickerMock = vi.hoisted(() => ({
+  showDevicePicker: vi.fn<() => Promise<string | null>>(),
+}));
+
+vi.mock("@/components/device/DevicePickerDialog", () => devicePickerMock);
 
 // The global setup in src/test/setup.ts already mocks @tauri-apps/api/core.
 // We narrow it here so we can track which commands were called.
@@ -10,7 +18,10 @@ const mockInvoke = vi.mocked(invoke);
 describe("cancelBuild guard — no ghost records on project switch", () => {
   beforeEach(() => {
     resetBuildState();
+    resetDeviceState();
+    resetVariantState();
     mockInvoke.mockResolvedValue(undefined);
+    devicePickerMock.showDevicePicker.mockReset();
     vi.clearAllMocks();
   });
 
@@ -72,5 +83,24 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
 
     await cancelBuild();
     await first;
+  });
+
+  it("rejects a standalone build while deploy is resolving a device", async () => {
+    let resolvePicker: (serial: string | null) => void = () => {};
+    devicePickerMock.showDevicePicker.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePicker = resolve;
+      })
+    );
+
+    await selectVariant("debug");
+    const deploy = runAndDeploy();
+    await vi.waitFor(() => expect(devicePickerMock.showDevicePicker).toHaveBeenCalled());
+
+    expect(buildState.phase).toBe("idle");
+    await expect(runBuild()).rejects.toThrow("A build or deploy is already running.");
+
+    resolvePicker(null);
+    await deploy;
   });
 });

@@ -32,6 +32,11 @@ let buildCompleteUnlisten: (() => void) | null = null;
 let currentBuildPromise: Promise<void> | null = null;
 let deployInFlight = false;
 
+interface RunBuildOptions {
+  headerLines?: string[];
+  allowDuringDeploy?: boolean;
+}
+
 // ── Registration ──────────────────────────────────────────────────────────────
 
 /** Call once on app startup to register the build:complete event listener. */
@@ -87,7 +92,10 @@ let _resolveBuildComplete: ((result: { success: boolean; durationMs: number }) =
  * @param opts.headerLines  Lines injected at the top of the log right after it
  *                          clears — used by runAndDeploy to surface context.
  */
-export async function runBuild(task?: string, opts?: { headerLines?: string[] }): Promise<void> {
+export async function runBuild(task?: string, opts?: RunBuildOptions): Promise<void> {
+  if (deployInFlight && !opts?.allowDuringDeploy) {
+    throw new Error("A build or deploy is already running.");
+  }
   if (currentBuildPromise || buildState.phase === "running") {
     throw new Error("A build is already running.");
   }
@@ -103,7 +111,7 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
   }
 }
 
-async function runBuildInternal(task?: string, opts?: { headerLines?: string[] }): Promise<void> {
+async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<void> {
   const variant = variantState.activeVariant;
   const effectiveTask = task ?? (variant ? `assemble${capitalize(variant)}` : "assembleDebug");
 
@@ -221,6 +229,7 @@ export async function runAndDeploy(): Promise<void> {
     setDeployPhase("building");
     await runBuild(`assemble${capitalize(variant)}`, {
       headerLines: [`── Deploy: ${variant} → ${serial} ──`],
+      allowDuringDeploy: true,
     });
 
     const phase = buildState.phase;

@@ -396,10 +396,10 @@ fn validate_version_name(value: &str) -> Result<(), String> {
     }
     if value
         .chars()
-        .any(|c| matches!(c, '"' | '\\' | '\n' | '\r') || c.is_control())
+        .any(|c| matches!(c, '"' | '\\' | '$' | '\n' | '\r') || c.is_control())
     {
         return Err(
-            "Version name cannot contain quotes, backslashes, line breaks, or control characters"
+            "Version name cannot contain quotes, backslashes, '$', line breaks, or control characters"
                 .to_string(),
         );
     }
@@ -506,6 +506,7 @@ mod tests {
         assert!(validate_version_name("").is_err());
         assert!(validate_version_name("1.2\"3").is_err());
         assert!(validate_version_name("1.2\\3").is_err());
+        assert!(validate_version_name("1.$0").is_err());
         assert!(validate_version_name("1.2\n3").is_err());
     }
 

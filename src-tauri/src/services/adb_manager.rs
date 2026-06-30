@@ -639,10 +639,7 @@ pub async fn launch_emulator(
 fn newly_online_emulator_serial(before: &[Device], after: &[Device]) -> Option<String> {
     let before_serials: std::collections::HashSet<&str> = before
         .iter()
-        .filter(|d| {
-            d.device_kind == DeviceKind::Emulator
-                && d.connection_state == DeviceConnectionState::Online
-        })
+        .filter(|d| d.device_kind == DeviceKind::Emulator)
         .map(|d| d.serial.as_str())
         .collect();
 
@@ -1420,6 +1417,32 @@ emulator-5554          device product:sdk model:sdk_gphone transport_id:1\n";
         let after = before.clone();
 
         assert_eq!(newly_online_emulator_serial(&before, &after), None);
+    }
+
+    #[test]
+    fn newly_online_emulator_serial_ignores_existing_offline_emulators() {
+        let before = vec![test_device(
+            "emulator-5554",
+            DeviceKind::Emulator,
+            DeviceConnectionState::Offline,
+        )];
+        let after = vec![
+            test_device(
+                "emulator-5554",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+            test_device(
+                "emulator-5556",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+        ];
+
+        assert_eq!(
+            newly_online_emulator_serial(&before, &after),
+            Some("emulator-5556".to_string())
+        );
     }
 
     #[test]

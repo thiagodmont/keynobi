@@ -22,7 +22,16 @@ describe("validateProjectInfoInput", () => {
 
     expect(result).toEqual({
       ok: false,
-      message: "Version name cannot contain quotes, backslashes, or line breaks.",
+      message: "Version name cannot contain quotes, backslashes, '$', or line breaks.",
+    });
+  });
+
+  it("rejects version names with Gradle string interpolation syntax", () => {
+    const result = validateProjectInfoInput("1.$0", "42");
+
+    expect(result).toEqual({
+      ok: false,
+      message: "Version name cannot contain quotes, backslashes, '$', or line breaks.",
     });
   });
 });

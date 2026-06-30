@@ -36,10 +36,10 @@ export function validateProjectInfoInput(
   if (!versionName) {
     return { ok: false, message: "Version name cannot be empty." };
   }
-  if (/["\\\r\n]/.test(versionName)) {
+  if (/["\\$\r\n]/.test(versionName)) {
     return {
       ok: false,
-      message: "Version name cannot contain quotes, backslashes, or line breaks.",
+      message: "Version name cannot contain quotes, backslashes, '$', or line breaks.",
     };
   }
   if (!/^\d+$/.test(versionCodeText)) {
