@@ -9,16 +9,24 @@ const isCI = !!process.env.CI;
 delete process.env.NO_COLOR;
 
 export default defineConfig({
-  testDir: "./e2e",
-  testIgnore: ["**/storybook/**", "**/visual/**"],
-  fullyParallel: true,
+  testDir: "./e2e/visual",
+  fullyParallel: false,
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
-  workers: isCI ? 1 : undefined,
+  workers: 1,
   reporter: isCI ? [["github"], ["list"], ["html", { open: "never" }]] : "list",
+  expect: {
+    toHaveScreenshot: {
+      maxDiffPixels: 80,
+      threshold: 0.2,
+    },
+  },
   use: {
     baseURL: "http://localhost:1421",
     trace: "on-first-retry",
+    viewport: { width: 1280, height: 720 },
+    deviceScaleFactor: 1,
+    colorScheme: "dark",
   },
   projects: [
     {

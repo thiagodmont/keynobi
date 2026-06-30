@@ -222,6 +222,14 @@ Do not use bare `registerKeybinding()` for app commands unless the shortcut is i
 - Tests may call `window.__e2e__.invoke(...)` and `window.__e2e__.triggerEvent(...)` for IPC contract checks.
 - Per-test startup settings go in `window.__keynobi_e2e_settings_overrides` before `page.goto("/")`.
 
+Visual regression tests live under `e2e/visual/` and run through
+`playwright.visual.config.ts` so they do not run as part of the normal e2e
+suite. Use locator-level screenshots for critical UI surfaces instead of
+full-page screenshots when possible, and generate local baselines with
+`npm run test:e2e:visual:update` before verifying with
+`npm run test:e2e:visual`. The visual lane is local-first but structured so CI
+can add the same script later.
+
 ### Rust
 
 - Unit tests live in `#[cfg(test)]` modules near the service code.

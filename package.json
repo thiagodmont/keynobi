@@ -25,6 +25,8 @@
     "storybook:preview": "http-server storybook-static -a 127.0.0.1 -p 6106 -c-1 -s",
     "test:storybook": "playwright test --config playwright.storybook.config.ts",
     "test:e2e": "playwright test",
+    "test:e2e:visual": "playwright test --config playwright.visual.config.ts",
+    "test:e2e:visual:update": "playwright test --config playwright.visual.config.ts --update-snapshots",
     "test:e2e:ui": "playwright test --ui",
     "dev:web": "vite --mode e2e",
     "perf:collect": "node scripts/collect-metrics.mjs",
