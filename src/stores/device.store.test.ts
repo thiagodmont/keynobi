@@ -152,6 +152,30 @@ describe("device.store", () => {
 
     expect(unlisten).toHaveBeenCalledTimes(1);
   });
+
+  it("resetDeviceState prevents an in-flight initDevices from repopulating devices", async () => {
+    const refresh = deferred<Device[]>();
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "refresh_devices") return refresh.promise;
+      if (cmd === "list_avd_devices") return Promise.resolve(mockAvds);
+      if (cmd === "start_device_polling") return Promise.resolve(undefined);
+      if (cmd === "select_device") return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+
+    const init = initDevices();
+    await waitFor(() => expect(mockInvoke).toHaveBeenCalledWith("refresh_devices"));
+
+    resetDeviceState();
+    refresh.resolve(mockDevices);
+    await init;
+
+    expect(deviceState.devices).toHaveLength(0);
+    expect(deviceState.avds).toHaveLength(0);
+    expect(deviceState.polling).toBe(false);
+    expect(mockInvoke).not.toHaveBeenCalledWith("start_device_polling");
+    expect(mockListen).not.toHaveBeenCalled();
+  });
 });
 
 describe("device store error state transitions", () => {

@@ -145,17 +145,19 @@ export function setLaunchingAvd(avdName: string | null): void {
 }
 
 export async function initDevices(): Promise<void> {
+  const initGeneration = deviceListListenerGeneration;
   const [devices, avds] = await Promise.all([
     refreshDevices().catch(() => [] as Device[]),
     listAvdDevices().catch(() => [] as AvdInfo[]),
   ]);
+  if (initGeneration !== deviceListListenerGeneration) return;
+
   setDevices(devices);
   setAvds(avds);
 
   // Start polling and register event listener.
   if (!deviceState.polling) {
     setDeviceState("polling", true);
-    const listenerGeneration = deviceListListenerGeneration;
     await startDevicePolling().catch((err) => {
       console.error("[device] Failed to start device polling:", err);
       showToast(`Device polling failed: ${err}`, "error");
@@ -164,7 +166,7 @@ export async function initDevices(): Promise<void> {
     const unlisten = await listenDeviceListChanged((newDevices) => {
       setDevices(newDevices);
     });
-    if (listenerGeneration !== deviceListListenerGeneration || !deviceState.polling) {
+    if (initGeneration !== deviceListListenerGeneration || !deviceState.polling) {
       unlisten();
       return;
     }
