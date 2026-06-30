@@ -202,8 +202,8 @@ pub async fn spawn(
             } else {
                 termination
             };
-            on_exit(id, final_termination);
             manager_for_cleanup.lock().await.processes.remove(&id);
+            on_exit(id, final_termination);
         })
     };
 
@@ -413,6 +413,93 @@ mod tests {
         .await
         .unwrap();
         cancel(&manager.0, id).await;
+    }
+
+    #[tokio::test]
+    async fn completed_process_is_removed_before_on_exit_callback() {
+        let manager = ProcessManager::new();
+        {
+            let mut inner = manager.0.lock().await;
+            for id in 100_000..100_009 {
+                inner.processes.insert(
+                    id,
+                    ProcessRecord {
+                        os_pid: None,
+                        _reader_task: tokio::spawn(async {}),
+                        cancelled: Arc::new(AtomicBool::new(false)),
+                    },
+                );
+            }
+        }
+
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let tx = std::sync::Mutex::new(Some(tx));
+        let manager_for_callback = manager.clone();
+        spawn(
+            &manager.0,
+            "echo",
+            &["done"],
+            std::env::temp_dir(),
+            vec![],
+            SpawnOptions {
+                on_line: Box::new(|_| {}),
+                on_exit: Box::new(move |_, _| {
+                    let len = manager_for_callback
+                        .0
+                        .try_lock()
+                        .map(|inner| inner.processes.len())
+                        .unwrap_or(usize::MAX);
+                    if let Some(tx) = tx.lock().unwrap().take() {
+                        let _ = tx.send(len);
+                    }
+                }),
+            },
+        )
+        .await
+        .unwrap();
+
+        let len_during_callback = tokio::time::timeout(std::time::Duration::from_secs(1), rx)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            len_during_callback, 9,
+            "completed process should be removed before on_exit runs"
+        );
+    }
+
+    #[tokio::test]
+    async fn completed_process_is_removed_even_if_on_exit_panics() {
+        let manager = ProcessManager::new();
+        let previous_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|_| {}));
+
+        spawn(
+            &manager.0,
+            "echo",
+            &["done"],
+            std::env::temp_dir(),
+            vec![],
+            SpawnOptions {
+                on_line: Box::new(|_| {}),
+                on_exit: Box::new(|_, _| {
+                    panic!("on_exit panic should not leak process record");
+                }),
+            },
+        )
+        .await
+        .unwrap();
+
+        for _ in 0..20 {
+            if manager.0.lock().await.processes.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        std::panic::set_hook(previous_hook);
+
+        assert_eq!(manager.0.lock().await.processes.len(), 0);
     }
 
     #[tokio::test]

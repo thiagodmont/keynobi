@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { waitFor } from "@solidjs/testing-library";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -48,6 +49,14 @@ const mockAvds: AvdInfo[] = [
 
 const mockInvoke = vi.mocked(invoke);
 const mockListen = vi.mocked(listen);
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
 
 describe("device.store", () => {
   beforeEach(() => {
@@ -124,6 +133,23 @@ describe("device.store", () => {
     expect(mockListen).toHaveBeenCalledTimes(1);
 
     resetDeviceState();
+    expect(unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it("resetDeviceState disposes a device list listener that resolves after reset", async () => {
+    const unlisten = vi.fn();
+    const listener = deferred<() => void>();
+    mockListen.mockReturnValueOnce(listener.promise);
+
+    const init = initDevices();
+    await waitFor(() => expect(mockListen).toHaveBeenCalledTimes(1));
+
+    resetDeviceState();
+    expect(unlisten).not.toHaveBeenCalled();
+
+    listener.resolve(unlisten);
+    await init;
+
     expect(unlisten).toHaveBeenCalledTimes(1);
   });
 });
