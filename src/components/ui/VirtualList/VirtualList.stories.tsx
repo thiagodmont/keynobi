@@ -17,7 +17,7 @@ const meta = {
 } satisfies Meta<typeof VirtualList>;
 
 export default meta;
-type Story = StoryObj<typeof meta>;
+type Story = StoryObj;
 
 const rows = Array.from({ length: 1000 }, (_, index) => ({
   id: index + 1,

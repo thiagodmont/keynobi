@@ -10,7 +10,7 @@ const meta = {
 } satisfies Meta<typeof DockedPanel>;
 
 export default meta;
-type Story = StoryObj<typeof meta>;
+type Story = StoryObj;
 
 export const LogEntryDetail: Story = {
   render: () => (

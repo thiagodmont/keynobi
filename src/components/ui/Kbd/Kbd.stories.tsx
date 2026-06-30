@@ -9,7 +9,7 @@ const meta = {
 } satisfies Meta<typeof Kbd>;
 
 export default meta;
-type Story = StoryObj<typeof meta>;
+type Story = StoryObj;
 
 export const Shortcut: Story = {
   render: () => (
