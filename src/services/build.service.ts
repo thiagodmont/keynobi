@@ -34,7 +34,6 @@ let deployInFlight = false;
 
 interface RunBuildOptions {
   headerLines?: string[];
-  allowDuringDeploy?: boolean;
 }
 
 // ── Registration ──────────────────────────────────────────────────────────────
@@ -93,7 +92,15 @@ let _resolveBuildComplete: ((result: { success: boolean; durationMs: number }) =
  *                          clears — used by runAndDeploy to surface context.
  */
 export async function runBuild(task?: string, opts?: RunBuildOptions): Promise<void> {
-  if (deployInFlight && !opts?.allowDuringDeploy) {
+  return runBuildGuarded(task, opts, false);
+}
+
+async function runBuildGuarded(
+  task: string | undefined,
+  opts: RunBuildOptions | undefined,
+  allowDuringDeploy: boolean
+): Promise<void> {
+  if (deployInFlight && !allowDuringDeploy) {
     throw new Error("A build or deploy is already running.");
   }
   if (currentBuildPromise || buildState.phase === "running") {
@@ -227,10 +234,13 @@ export async function runAndDeploy(): Promise<void> {
     // 1. Build. startBuild() inside runBuild() clears the log, so we add a
     //    context header as the very first callback line from the Gradle channel.
     setDeployPhase("building");
-    await runBuild(`assemble${capitalize(variant)}`, {
-      headerLines: [`── Deploy: ${variant} → ${serial} ──`],
-      allowDuringDeploy: true,
-    });
+    await runBuildGuarded(
+      `assemble${capitalize(variant)}`,
+      {
+        headerLines: [`── Deploy: ${variant} → ${serial} ──`],
+      },
+      true
+    );
 
     const phase = buildState.phase;
     if (phase !== "success") {

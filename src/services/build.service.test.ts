@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi, expectTypeOf } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { cancelBuild, runAndDeploy, runBuild } from "@/services/build.service";
 import { buildState, resetBuildState, startBuild } from "@/stores/build.store";
@@ -102,5 +102,11 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
 
     resolvePicker(null);
     await deploy;
+  });
+
+  it("does not expose the deploy bypass in public runBuild options", () => {
+    type PublicOptions = NonNullable<Parameters<typeof runBuild>[1]>;
+
+    expectTypeOf<PublicOptions>().toEqualTypeOf<{ headerLines?: string[] }>();
   });
 });
