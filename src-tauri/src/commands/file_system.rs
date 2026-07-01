@@ -320,6 +320,9 @@ pub async fn save_project_app_info(
     version_code: i64,
     state: State<'_, FsState>,
 ) -> Result<(), String> {
+    validate_version_name(&version_name)?;
+    validate_version_code(version_code)?;
+
     let guard = state.0.lock().await;
     let root = guard
         .gradle_root
@@ -387,6 +390,29 @@ fn extract_version_code(content: &str) -> Option<i64> {
     caps.get(1)?.as_str().parse().ok()
 }
 
+fn validate_version_name(value: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err("Version name cannot be empty".to_string());
+    }
+    if value
+        .chars()
+        .any(|c| matches!(c, '"' | '\\' | '$' | '\n' | '\r') || c.is_control())
+    {
+        return Err(
+            "Version name cannot contain quotes, backslashes, '$', line breaks, or control characters"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn validate_version_code(value: i64) -> Result<(), String> {
+    if value < 0 {
+        return Err("Version code must be a non-negative integer".to_string());
+    }
+    Ok(())
+}
+
 fn replace_version_name(content: &str, new_value: &str) -> String {
     RE_VERSION_NAME
         .replace(content, |caps: &regex::Captures| {
@@ -450,6 +476,7 @@ pub async fn rename_project(id: String, new_name: String) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use std::path::PathBuf;
     use tempfile::TempDir;
 
@@ -472,5 +499,39 @@ mod tests {
         let path = tmp.path();
         assert!(path.exists(), "tempdir must exist");
         assert!(path.is_dir(), "tempdir must be a directory");
+    }
+
+    #[test]
+    fn version_name_validation_rejects_gradle_string_breakers() {
+        assert!(validate_version_name("").is_err());
+        assert!(validate_version_name("1.2\"3").is_err());
+        assert!(validate_version_name("1.2\\3").is_err());
+        assert!(validate_version_name("1.$0").is_err());
+        assert!(validate_version_name("1.2\n3").is_err());
+    }
+
+    #[test]
+    fn version_code_validation_rejects_negative_values() {
+        assert!(validate_version_code(-1).is_err());
+        assert!(validate_version_code(0).is_ok());
+        assert!(validate_version_code(42).is_ok());
+    }
+
+    #[test]
+    fn replace_version_info_preserves_gradle_syntax_for_valid_values() {
+        let content = r#"
+android {
+    defaultConfig {
+        versionName = "1.0"
+        versionCode = 1
+    }
+}
+"#;
+
+        let updated = replace_version_name(content, "2.0.1");
+        let updated = replace_version_code(&updated, 12);
+
+        assert!(updated.contains(r#"versionName = "2.0.1""#));
+        assert!(updated.contains("versionCode = 12"));
     }
 }

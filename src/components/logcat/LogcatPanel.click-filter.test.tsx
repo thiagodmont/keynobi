@@ -100,26 +100,27 @@ function installLogcatPanelMocks(entries: ProcessedEntry[]): {
   setFilterCalls: () => LogcatFilterSpec[];
 } {
   let activeFilter = emptyFilter();
+  let storedEntries = [...entries];
   const setFilterCalls: LogcatFilterSpec[] = [];
   const listeners = new Map<string, (event: { payload: unknown }) => void>();
 
   vi.mocked(invoke).mockImplementation(async (command: string, args?: unknown) => {
     switch (command) {
       case "get_logcat_entries":
-        return filterEntries(entries, activeFilter);
+        return filterEntries(storedEntries, activeFilter);
       case "get_logcat_context_entries":
-        return contextEntries(entries, args);
+        return contextEntries(storedEntries, args);
       case "get_logcat_status":
         return false;
       case "get_logcat_stats":
         return {
-          totalIngested: BigInt(entries.length),
+          totalIngested: BigInt(storedEntries.length),
           countsByLevel: [0n, 0n, 0n, 0n, 0n, 0n, 0n],
           crashCount: 0n,
           jsonCount: 0n,
           packagesSeen: 1,
           bufferUsagePct: 0,
-          bufferEntryCount: BigInt(entries.length),
+          bufferEntryCount: BigInt(storedEntries.length),
         } satisfies LogStats;
       case "set_logcat_filter": {
         const payload = args as { filterSpec?: LogcatFilterSpec };
@@ -141,6 +142,7 @@ function installLogcatPanelMocks(entries: ProcessedEntry[]): {
 
   return {
     emitLogcatEntries(nextEntries: ProcessedEntry[]) {
+      storedEntries = [...storedEntries, ...nextEntries];
       listeners.get("logcat:entries")?.({ payload: filterEntries(nextEntries, activeFilter) });
     },
     setFilterCalls() {
@@ -277,6 +279,34 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
     fireEvent.click(screen.getByTitle("1 new log available - Jump to end"));
 
     expect(await screen.findByText("Incoming row should wait")).not.toBeNull();
+  });
+
+  it("backfills log entries that arrived while paused when resuming", async () => {
+    const visibleEntry = {
+      ...BASE_ENTRY,
+      id: 25n,
+      tag: "VisibleTag",
+      message: "visible before pause",
+    } satisfies ProcessedEntry;
+    const pausedEntry = {
+      ...BASE_ENTRY,
+      id: 26n,
+      tag: "PausedTag",
+      message: "arrived while paused",
+    } satisfies ProcessedEntry;
+    const { emitLogcatEntries } = installLogcatPanelMocks([visibleEntry]);
+    render(() => <LogcatPanel />);
+
+    expect(await screen.findByText("visible before pause")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("Pause new entries"));
+    emitLogcatEntries([pausedEntry]);
+
+    expect(screen.queryByText("arrived while paused")).toBeNull();
+
+    fireEvent.click(screen.getByTitle("Resume"));
+
+    expect(await screen.findByText("arrived while paused")).not.toBeNull();
   });
 
   it("hides and restores buffered lifecycle and process entries from the quick filter", async () => {

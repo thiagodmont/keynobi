@@ -9,6 +9,9 @@
 // Mock @tauri-apps/api/core
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue(undefined),
+  Channel: class MockChannel<T = unknown> {
+    onmessage: ((message: T) => void) | null = null;
+  },
 }));
 
 // Mock @tauri-apps/api/event

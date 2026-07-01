@@ -9,6 +9,83 @@ use std::time::Duration;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 
+// ── External tool argument validation ─────────────────────────────────────────
+
+/// Validate an Android Virtual Device name before passing it to emulator/avdmanager.
+pub fn validate_avd_name(name: &str) -> Result<(), String> {
+    if name.is_empty() {
+        return Err("AVD name must not be empty".to_string());
+    }
+    if name.len() > 128 {
+        return Err("AVD name is too long (max 128 characters)".to_string());
+    }
+    if name.starts_with('-') {
+        return Err("AVD name must not start with '-'".to_string());
+    }
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.' | ' '))
+    {
+        return Err(
+            "AVD name may only contain letters, numbers, spaces, '_', '-', and '.'".to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// Validate an avdmanager hardware profile id.
+pub fn validate_device_profile_id(device_id: &str) -> Result<(), String> {
+    if device_id.is_empty() {
+        return Err("Device profile id must not be empty".to_string());
+    }
+    if device_id.len() > 128 {
+        return Err("Device profile id is too long (max 128 characters)".to_string());
+    }
+    if device_id.starts_with('-') {
+        return Err("Device profile id must not start with '-'".to_string());
+    }
+    if !device_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+    {
+        return Err(
+            "Device profile id may only contain letters, numbers, '_', '-', and '.'".to_string(),
+        );
+    }
+    Ok(())
+}
+
+/// Validate a sdkmanager system image package id.
+pub fn validate_system_image_id(sdk_id: &str) -> Result<(), String> {
+    let parts: Vec<&str> = sdk_id.split(';').collect();
+    if parts.len() != 4 || parts[0] != "system-images" {
+        return Err(
+            "System image id must look like system-images;android-35;google_apis;x86_64"
+                .to_string(),
+        );
+    }
+    if !parts[1]
+        .strip_prefix("android-")
+        .is_some_and(|api| !api.is_empty() && api.chars().all(|c| c.is_ascii_digit()))
+    {
+        return Err("System image id must include an android API target".to_string());
+    }
+    for part in &parts[2..] {
+        if part.is_empty()
+            || part.starts_with('-')
+            || !part
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+        {
+            return Err(
+                "System image id components may only contain letters, numbers, '_', '-', and '.'"
+                    .to_string(),
+            );
+        }
+    }
+    Ok(())
+}
+
 // ── ADB path resolution ────────────────────────────────────────────────────────
 
 /// Resolve the `adb` binary path from settings or fall back to PATH.
@@ -535,6 +612,8 @@ pub async fn launch_emulator(
     adb: &Path,
     avd_name: &str,
 ) -> Result<String, String> {
+    let before = list_devices(adb).await;
+
     // Spawn detached — we don't wait for the emulator process to exit.
     tokio::process::Command::new(emulator_bin)
         .args([&format!("@{avd_name}"), "-no-boot-anim", "-gpu", "auto"])
@@ -548,16 +627,30 @@ pub async fn launch_emulator(
     while std::time::Instant::now() < deadline {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let devices = list_devices(adb).await;
-        if let Some(d) = devices.iter().find(|d| {
-            d.device_kind == DeviceKind::Emulator
-                && d.connection_state == DeviceConnectionState::Online
-        }) {
-            return Ok(d.serial.clone());
+        if let Some(serial) = newly_online_emulator_serial(&before, &devices) {
+            return Ok(serial);
         }
     }
     Err(format!(
         "Emulator '{avd_name}' did not come online within 60 seconds"
     ))
+}
+
+fn newly_online_emulator_serial(before: &[Device], after: &[Device]) -> Option<String> {
+    let before_serials: std::collections::HashSet<&str> = before
+        .iter()
+        .filter(|d| d.device_kind == DeviceKind::Emulator)
+        .map(|d| d.serial.as_str())
+        .collect();
+
+    after
+        .iter()
+        .find(|d| {
+            d.device_kind == DeviceKind::Emulator
+                && d.connection_state == DeviceConnectionState::Online
+                && !before_serials.contains(d.serial.as_str())
+        })
+        .map(|d| d.serial.clone())
 }
 
 /// Kill an emulator via `adb -s <serial> emu kill`.
@@ -1221,6 +1314,22 @@ pub async fn resolve_device_serial(
 mod tests {
     use super::*;
 
+    fn test_device(
+        serial: &str,
+        device_kind: DeviceKind,
+        connection_state: DeviceConnectionState,
+    ) -> Device {
+        Device {
+            serial: serial.to_string(),
+            name: serial.to_string(),
+            model: None,
+            device_kind,
+            connection_state,
+            api_level: None,
+            android_version: None,
+        }
+    }
+
     #[test]
     fn parses_online_physical_device() {
         let output = "List of devices attached\n\
@@ -1270,5 +1379,84 @@ emulator-5554          device product:sdk model:sdk_gphone transport_id:1\n";
     fn parse_ini_value_finds_key() {
         let content = "path=/home/user/.android/avd/Pixel_7.avd\ntarget=android-34\n";
         assert_eq!(parse_ini_value(content, "target"), Some("android-34"));
+    }
+
+    #[test]
+    fn newly_online_emulator_serial_ignores_existing_emulators() {
+        let before = vec![test_device(
+            "emulator-5554",
+            DeviceKind::Emulator,
+            DeviceConnectionState::Online,
+        )];
+        let after = vec![
+            test_device(
+                "emulator-5554",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+            test_device(
+                "emulator-5556",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+        ];
+
+        assert_eq!(
+            newly_online_emulator_serial(&before, &after),
+            Some("emulator-5556".to_string())
+        );
+    }
+
+    #[test]
+    fn newly_online_emulator_serial_returns_none_for_only_existing_emulators() {
+        let before = vec![test_device(
+            "emulator-5554",
+            DeviceKind::Emulator,
+            DeviceConnectionState::Online,
+        )];
+        let after = before.clone();
+
+        assert_eq!(newly_online_emulator_serial(&before, &after), None);
+    }
+
+    #[test]
+    fn newly_online_emulator_serial_ignores_existing_offline_emulators() {
+        let before = vec![test_device(
+            "emulator-5554",
+            DeviceKind::Emulator,
+            DeviceConnectionState::Offline,
+        )];
+        let after = vec![
+            test_device(
+                "emulator-5554",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+            test_device(
+                "emulator-5556",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+        ];
+
+        assert_eq!(
+            newly_online_emulator_serial(&before, &after),
+            Some("emulator-5556".to_string())
+        );
+    }
+
+    #[test]
+    fn avd_argument_validators_accept_sdk_tool_ids() {
+        assert!(validate_avd_name("Pixel 8_API_35").is_ok());
+        assert!(validate_device_profile_id("pixel_8").is_ok());
+        assert!(validate_system_image_id("system-images;android-35;google_apis;x86_64").is_ok());
+    }
+
+    #[test]
+    fn avd_argument_validators_reject_shell_sensitive_input() {
+        assert!(validate_avd_name("bad;rm").is_err());
+        assert!(validate_avd_name("-bad").is_err());
+        assert!(validate_device_profile_id("pixel 8").is_err());
+        assert!(validate_system_image_id("system-images;android-35;google_apis;$(bad)").is_err());
     }
 }

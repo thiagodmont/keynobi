@@ -708,6 +708,16 @@ export function LogcatPanel(): JSX.Element {
     }
   }
 
+  async function handleTogglePaused() {
+    if (!paused()) {
+      setPaused(true);
+      return;
+    }
+
+    setPaused(false);
+    await syncBackendFilter(parseFilterGroups(effectiveDebouncedQuery()));
+  }
+
   async function handleClear() {
     try {
       await clearLogcat();
@@ -930,7 +940,9 @@ export function LogcatPanel(): JSX.Element {
         toolbarCount={toolbarCount()}
         onStart={handleStart}
         onStop={handleStop}
-        onTogglePaused={() => setPaused((v) => !v)}
+        onTogglePaused={() => {
+          void handleTogglePaused();
+        }}
         onRestart={handleRestart}
         onClear={handleClear}
         onJumpToLastCrash={jumpToLastCrash}

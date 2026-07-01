@@ -29,6 +29,12 @@ import { settingsState } from "@/stores/settings.store";
 import type { BuildError } from "@/bindings";
 
 let buildCompleteUnlisten: (() => void) | null = null;
+let currentBuildPromise: Promise<void> | null = null;
+let deployInFlight = false;
+
+interface RunBuildOptions {
+  headerLines?: string[];
+}
 
 // ── Registration ──────────────────────────────────────────────────────────────
 
@@ -85,7 +91,34 @@ let _resolveBuildComplete: ((result: { success: boolean; durationMs: number }) =
  * @param opts.headerLines  Lines injected at the top of the log right after it
  *                          clears — used by runAndDeploy to surface context.
  */
-export async function runBuild(task?: string, opts?: { headerLines?: string[] }): Promise<void> {
+export async function runBuild(task?: string, opts?: RunBuildOptions): Promise<void> {
+  return runBuildGuarded(task, opts, false);
+}
+
+async function runBuildGuarded(
+  task: string | undefined,
+  opts: RunBuildOptions | undefined,
+  allowDuringDeploy: boolean
+): Promise<void> {
+  if (deployInFlight && !allowDuringDeploy) {
+    throw new Error("A build or deploy is already running.");
+  }
+  if (currentBuildPromise || buildState.phase === "running") {
+    throw new Error("A build is already running.");
+  }
+
+  const promise = runBuildInternal(task, opts);
+  currentBuildPromise = promise;
+  try {
+    await promise;
+  } finally {
+    if (currentBuildPromise === promise) {
+      currentBuildPromise = null;
+    }
+  }
+}
+
+async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<void> {
   const variant = variantState.activeVariant;
   const effectiveTask = task ?? (variant ? `assemble${capitalize(variant)}` : "assembleDebug");
 
@@ -170,29 +203,44 @@ export async function runBuild(task?: string, opts?: { headerLines?: string[] })
  * After a successful build the APK is installed and the app launched.
  */
 export async function runAndDeploy(): Promise<void> {
-  const variant = variantState.activeVariant;
-  if (!variant) {
-    throw new Error("No build variant selected. Open Build → Select Variant.");
+  if (
+    deployInFlight ||
+    currentBuildPromise ||
+    buildState.phase === "running" ||
+    buildState.deployPhase
+  ) {
+    throw new Error("A build or deploy is already running.");
   }
 
-  // Resolve a device before the build so we can bail early.
-  // We log this BEFORE startBuild clears the log — that's intentional; users
-  // will see the context when the build panel opens.
-  logStep("Resolving target device…");
-  const serial = await resolveDevice();
-  if (!serial) {
-    logStep("No device selected — run cancelled.");
-    return;
-  }
-  logStep(`Target device: ${serial}`);
+  deployInFlight = true;
+  const variant = variantState.activeVariant;
 
   try {
+    if (!variant) {
+      throw new Error("No build variant selected. Open Build → Select Variant.");
+    }
+
+    // Resolve a device before the build so we can bail early.
+    // We log this BEFORE startBuild clears the log — that's intentional; users
+    // will see the context when the build panel opens.
+    logStep("Resolving target device…");
+    const serial = await resolveDevice();
+    if (!serial) {
+      logStep("No device selected — run cancelled.");
+      return;
+    }
+    logStep(`Target device: ${serial}`);
+
     // 1. Build. startBuild() inside runBuild() clears the log, so we add a
     //    context header as the very first callback line from the Gradle channel.
     setDeployPhase("building");
-    await runBuild(`assemble${capitalize(variant)}`, {
-      headerLines: [`── Deploy: ${variant} → ${serial} ──`],
-    });
+    await runBuildGuarded(
+      `assemble${capitalize(variant)}`,
+      {
+        headerLines: [`── Deploy: ${variant} → ${serial} ──`],
+      },
+      true
+    );
 
     const phase = buildState.phase;
     if (phase !== "success") {
@@ -254,6 +302,7 @@ export async function runAndDeploy(): Promise<void> {
     throw e;
   } finally {
     setDeployPhase(null);
+    deployInFlight = false;
   }
 }
 

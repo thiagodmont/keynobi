@@ -26,6 +26,19 @@ pub struct BuildCompleteEvent {
     pub task: String,
 }
 
+fn mark_build_spawn_failed(bs: &mut build_runner::BuildStateInner) {
+    bs.starting = false;
+    bs.current_build = None;
+    if !matches!(bs.status, BuildStatus::Cancelled) {
+        bs.status = BuildStatus::Failed(BuildResult {
+            success: false,
+            duration_ms: 0,
+            error_count: 1,
+            warning_count: 0,
+        });
+    }
+}
+
 // ── Validation helpers ─────────────────────────────────────────────────────────
 
 /// Validate a Gradle task name against an allowlist.
@@ -146,6 +159,24 @@ pub async fn run_gradle_task(
     let env = build_env_vars(&settings, &gradle_root);
     let started_at = Utc::now().to_rfc3339();
 
+    {
+        let mut bs = build_state.inner.lock().await;
+        if bs.starting
+            || bs.current_build.is_some()
+            || matches!(bs.status, BuildStatus::Running { .. })
+        {
+            return Err(AppError::InvalidInput(
+                "A Gradle build is already running".to_string(),
+            ));
+        }
+        bs.starting = true;
+        bs.status = BuildStatus::Running {
+            task: task.clone(),
+            started_at: started_at.clone(),
+        };
+        bs.current_errors.clear();
+    }
+
     // Use std::sync::Mutex (not tokio) for these accumulators — they are
     // accessed only from sync callbacks (on_line / on_exit) and must never
     // use blocking_lock on a tokio mutex inside an async task.
@@ -162,7 +193,7 @@ pub async fn run_gradle_task(
     // Clear the log for this run BEFORE spawning so no early lines can be clobbered.
     build_runner::clear_build_log(&build_state.build_log);
 
-    let id = process_manager::spawn(
+    let spawn_result = process_manager::spawn(
         &process_manager.0,
         gradlew.to_str().unwrap_or("./gradlew"),
         &args_refs,
@@ -254,25 +285,43 @@ pub async fn run_gradle_task(
             }),
         },
     )
-    .await
-    .map_err(AppError::ProcessFailed)?;
+    .await;
+
+    let id = match spawn_result {
+        Ok(id) => id,
+        Err(e) => {
+            let mut bs = build_state.inner.lock().await;
+            mark_build_spawn_failed(&mut bs);
+            return Err(AppError::ProcessFailed(e));
+        }
+    };
 
     // Register immediately (sync, no `.await` before this) so cancel always has a ProcessId.
     build_state.set_active_process_id(Some(id));
 
     // Mark build as running in the managed state and clear the log for this run.
-    {
+    let cancel_after_spawn = {
         let mut bs = build_state.inner.lock().await;
         if matches!(bs.status, BuildStatus::Cancelled) {
             // User cancelled in the window after spawn but before this lock — Gradle may already be gone.
-            return Ok(id);
+            bs.starting = false;
+            true
+        } else {
+            bs.starting = false;
+            bs.status = BuildStatus::Running {
+                task: task.clone(),
+                started_at: started_at.clone(),
+            };
+            bs.current_build = Some(id);
+            bs.current_errors.clear();
+            false
         }
-        bs.status = BuildStatus::Running {
-            task: task.clone(),
-            started_at: started_at.clone(),
-        };
-        bs.current_build = Some(id);
-        bs.current_errors.clear();
+    };
+
+    if cancel_after_spawn {
+        let _ = build_state.take_active_process_id();
+        process_manager::cancel(&process_manager.0, id).await;
+        return Ok(id);
     }
 
     Ok(id)
@@ -466,6 +515,35 @@ mod tests {
         assert!(validate_gradle_task("assemble$(evil)").is_err());
         assert!(validate_gradle_task("assemble\necho pwned").is_err());
         assert!(validate_gradle_task(&"a".repeat(257)).is_err());
+    }
+
+    #[test]
+    fn spawn_failure_preserves_cancelled_status() {
+        let mut state = build_runner::BuildStateInner::new();
+        state.starting = true;
+        state.status = BuildStatus::Cancelled;
+
+        mark_build_spawn_failed(&mut state);
+
+        assert!(!state.starting);
+        assert!(state.current_build.is_none());
+        assert!(matches!(state.status, BuildStatus::Cancelled));
+    }
+
+    #[test]
+    fn spawn_failure_marks_non_cancelled_build_failed() {
+        let mut state = build_runner::BuildStateInner::new();
+        state.starting = true;
+        state.status = BuildStatus::Running {
+            task: "assembleDebug".to_string(),
+            started_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+
+        mark_build_spawn_failed(&mut state);
+
+        assert!(!state.starting);
+        assert!(state.current_build.is_none());
+        assert!(matches!(state.status, BuildStatus::Failed(_)));
     }
 
     #[tokio::test]

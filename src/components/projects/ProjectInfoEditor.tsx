@@ -12,6 +12,8 @@ import { projectState } from "@/stores/project.store";
 import { showToast } from "@/components/ui";
 import type { ProjectAppInfo } from "@/bindings";
 
+const MAX_I64 = 9223372036854775807n;
+
 // ── Module-level open/close signal ────────────────────────────────────────────
 
 const [open, setOpen] = createSignal(false);
@@ -22,6 +24,34 @@ export function openProjectInfoEditor(): void {
 
 export function closeProjectInfoEditor(): void {
   setOpen(false);
+}
+
+export function validateProjectInfoInput(
+  rawVersionName: string,
+  rawVersionCode: string
+): { ok: true; versionName: string; versionCode: bigint } | { ok: false; message: string } {
+  const versionName = rawVersionName.trim();
+  const versionCodeText = rawVersionCode.trim();
+
+  if (!versionName) {
+    return { ok: false, message: "Version name cannot be empty." };
+  }
+  if (/["\\$\r\n]/.test(versionName)) {
+    return {
+      ok: false,
+      message: "Version name cannot contain quotes, backslashes, '$', or line breaks.",
+    };
+  }
+  if (!/^\d+$/.test(versionCodeText)) {
+    return { ok: false, message: "Version code must be a non-negative integer." };
+  }
+
+  const versionCode = BigInt(versionCodeText);
+  if (versionCode > MAX_I64) {
+    return { ok: false, message: "Version code is too large." };
+  }
+
+  return { ok: true, versionName, versionCode };
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -43,7 +73,11 @@ export function ProjectInfoEditor(): JSX.Element {
       .then((data) => {
         setInfo(data);
         setVersionName(data.versionName ?? "");
-        setVersionCode(data.versionCode !== null && data.versionCode !== undefined ? String(data.versionCode) : "");
+        setVersionCode(
+          data.versionCode !== null && data.versionCode !== undefined
+            ? String(data.versionCode)
+            : ""
+        );
       })
       .catch((err) => {
         showToast(`Failed to read app info: ${formatError(err)}`, "error");
@@ -53,21 +87,15 @@ export function ProjectInfoEditor(): JSX.Element {
   });
 
   async function handleSave() {
-    const name = versionName().trim();
-    const codeStr = versionCode().trim();
-    if (!name) {
-      showToast("Version name cannot be empty.", "error");
-      return;
-    }
-    const code = parseInt(codeStr, 10);
-    if (isNaN(code) || code < 0) {
-      showToast("Version code must be a non-negative integer.", "error");
+    const validation = validateProjectInfoInput(versionName(), versionCode());
+    if (!validation.ok) {
+      showToast(validation.message, "error");
       return;
     }
 
     setSaving(true);
     try {
-      await saveProjectAppInfo(name, BigInt(code));
+      await saveProjectAppInfo(validation.versionName, validation.versionCode);
       showToast("App info saved successfully.", "success");
       setOpen(false);
     } catch (err) {

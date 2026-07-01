@@ -1,7 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi, expectTypeOf } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { cancelBuild } from "@/services/build.service";
+import { cancelBuild, runAndDeploy, runBuild } from "@/services/build.service";
 import { buildState, resetBuildState, startBuild } from "@/stores/build.store";
+import { resetDeviceState } from "@/stores/device.store";
+import { resetVariantState, selectVariant } from "@/stores/variant.store";
+
+const devicePickerMock = vi.hoisted(() => ({
+  showDevicePicker: vi.fn<() => Promise<string | null>>(),
+}));
+
+vi.mock("@/components/device/DevicePickerDialog", () => devicePickerMock);
 
 // The global setup in src/test/setup.ts already mocks @tauri-apps/api/core.
 // We narrow it here so we can track which commands were called.
@@ -10,7 +18,10 @@ const mockInvoke = vi.mocked(invoke);
 describe("cancelBuild guard — no ghost records on project switch", () => {
   beforeEach(() => {
     resetBuildState();
+    resetDeviceState();
+    resetVariantState();
     mockInvoke.mockResolvedValue(undefined);
+    devicePickerMock.showDevicePicker.mockReset();
     vi.clearAllMocks();
   });
 
@@ -55,5 +66,47 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
 
     expect(cancelCalls).toHaveLength(1);
     expect(finalizeCalls).toHaveLength(0);
+  });
+
+  it("rejects a second build while the first build is still running", async () => {
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      if (cmd === "cancel_build") return Promise.resolve(undefined);
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    const first = runBuild();
+    expect(buildState.phase).toBe("running");
+
+    await expect(runBuild()).rejects.toThrow("A build is already running.");
+
+    await cancelBuild();
+    await first;
+  });
+
+  it("rejects a standalone build while deploy is resolving a device", async () => {
+    let resolvePicker: (serial: string | null) => void = () => {};
+    devicePickerMock.showDevicePicker.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePicker = resolve;
+      })
+    );
+
+    await selectVariant("debug");
+    const deploy = runAndDeploy();
+    await vi.waitFor(() => expect(devicePickerMock.showDevicePicker).toHaveBeenCalled());
+
+    expect(buildState.phase).toBe("idle");
+    await expect(runBuild()).rejects.toThrow("A build or deploy is already running.");
+
+    resolvePicker(null);
+    await deploy;
+  });
+
+  it("does not expose the deploy bypass in public runBuild options", () => {
+    type PublicOptions = NonNullable<Parameters<typeof runBuild>[1]>;
+
+    expectTypeOf<PublicOptions>().toEqualTypeOf<{ headerLines?: string[] }>();
   });
 });
