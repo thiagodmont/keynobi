@@ -1,6 +1,6 @@
 {
   "name": "keynobi",
-  "version": "0.1.26",
+  "version": "0.1.27",
   "description": "Keynobi - AI-First Android Companion App",
   "type": "module",
   "scripts": {
