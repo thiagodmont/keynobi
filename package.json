@@ -68,7 +68,7 @@
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "lint-staged": "^17.0.8",
-    "prettier": "^3.8.4",
+    "prettier": "^3.9.5",
     "storybook": "^10.4.6",
     "storybook-solidjs-vite": "^10.5.2",
     "typescript": "~6.0.3",
