@@ -67,7 +67,7 @@
     "http-server": "^14.1.1",
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
-    "lint-staged": "^17.0.8",
+    "lint-staged": "^17.1.0",
     "prettier": "^3.8.4",
     "storybook": "^10.4.6",
     "storybook-solidjs-vite": "^10.5.2",
