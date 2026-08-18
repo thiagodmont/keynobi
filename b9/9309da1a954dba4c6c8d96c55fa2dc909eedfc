@@ -1,0 +1,19 @@
+src-tauri/src/services/telemetry_sentry.rs
+  s_506c98591880e3::t_2a8f09ac070a6d 3,193-213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "b99309da1a954dba4c6c8d96c55fa2dc909eedfc",
+  "prompts": {},
+  "sessions": {
+    "s_506c98591880e3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2fdd100d-347d-4b3f-95b4-74461125a396",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
