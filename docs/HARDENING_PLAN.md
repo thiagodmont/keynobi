@@ -1,11 +1,11 @@
 # Hardening Plan — Solidity, Testability, Reliability
 
-**Status:** COMPLETE (2026-08-18) — all phases landed, see commits 77c0a02..HEAD
+**Status:** COMPLETE (2026-08-18) — all phases landed, see commits 884a8be..HEAD
 **Created:** 2026-08-18
 **Scope:** all 27 findings + 7 test-coverage gaps from the repo review, plus 2 items found while
 writing this plan (6.3a module-side-effect listener in `monitor.store.ts`, 6.3b dead
 `buildLogOutput` export). No new features.
-**Baseline commit:** `7266133`
+**Baseline commit:** `0386fba` (rebased onto 14 dependency bumps on 2026-08-18)
 
 > **Completed.** All 27 findings, the 7 coverage gaps, and the 2 items found while
 > writing the plan are addressed across 9 commits. Two additional bugs were found
@@ -1095,14 +1095,14 @@ The automated suite can't reach these. Run against a real device or emulator:
 
 | Commit    | Phase   | Scope                                                                                |
 | --------- | ------- | ------------------------------------------------------------------------------------ |
-| `77c0a02` | 3       | Delayed-SIGKILL guard against recycled PIDs (H5)                                     |
-| `60e7d5a` | 0, 1    | Logcat generation lifecycle, bounded reconnect, drop counter (C1, H4, M14, M15, M18) |
-| `0d5243f` | 2       | Unified build path (H2, H3, H6, M8, M17, L19, L20)                                   |
-| `83fcd32` | 0, 4    | Frontend listeners, selection rollback, project-switch guard (M9–M12, L24, L25)      |
-| `9b52704` | 5       | Shared validators, settings cache, stable project ids (M7, M13, M16, L21–L23)        |
+| `884a8be` | 3       | Delayed-SIGKILL guard against recycled PIDs (H5)                                     |
+| `d4baf45` | 0, 1    | Logcat generation lifecycle, bounded reconnect, drop counter (C1, H4, M14, M15, M18) |
+| `a5fecab` | 2       | Unified build path (H2, H3, H6, M8, M17, L19, L20)                                   |
+| `11c95fd` | 0, 4    | Frontend listeners, selection rollback, project-switch guard (M9–M12, L24, L25)      |
+| `34f0ab6` | 5       | Shared validators, settings cache, stable project ids (M7, M13, M16, L21–L23)        |
 | `b7ab2f4` | 6.1     | Pre-existing clippy lints cleared                                                    |
-| `b79a159` | 6.1     | Repo-wide prettier (formatting only)                                                 |
-| `66ce5e6` | 6.2–6.5 | IPC contract guard, MCP + store tests, coverage, CI widening                         |
+| `7736dae` | 6.1     | Repo-wide prettier (formatting only)                                                 |
+| `f89c45d` | 6.2–6.5 | IPC contract guard, MCP + store tests, coverage, CI widening                         |
 
 **Test totals:** Rust 386 → 451 (lib+tests). Frontend 1121 → 1165.
 
@@ -1164,6 +1164,25 @@ is not a function`, then a genuine double registration.
   the hole; holding the `Child` handle and using `child.kill()` would be
   structurally safer but needs an ownership refactor.
 - **Splitting `mcp_server.rs` into modules** remains out of scope.
+
+### Self-review findings (commit `6329fa9`)
+
+Re-reading the full diff surfaced **6 defects introduced by the hardening work
+itself**, one critical. This is the strongest argument for the manual gate below:
+the automated suite was fully green while all six were present.
+
+| Severity | Defect                                                                                                                                      |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| CRITICAL | `run_task` reserved the build slot then returned via `?` on spawn failure — `starting` stayed true, wedging every later build until restart |
+| HIGH     | `consecutive_failures` never reset, so a long session died after 10 _cumulative_ ADB restarts that each recovered fine                      |
+| MEDIUM   | drop counter was task-local: reset on reconnect, and `clear` let the pre-clear value reappear one tick later                                |
+| MEDIUM   | settings cache went stale across processes (headless `--mcp` is a separate process) and broke hand-edited settings.json                     |
+| LOW      | `spawn_blocking` result discarded — build-history persistence could fail completely silently                                                |
+| LOW      | `give_up` was inserted between `start_logcat_stream`'s doc block and the function, reattaching the docs to the wrong item                   |
+
+Three were verified to fail without their fix. One test (the reconnect budget)
+initially passed _with and without_ the fix because its window was too short —
+caught only by revert-verifying. Tests that cannot fail are worse than no tests.
 
 ### Manual verification still outstanding
 
