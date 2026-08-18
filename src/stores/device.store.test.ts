@@ -12,6 +12,7 @@ import {
   selectedDevice,
   resetDeviceState,
   initDevices,
+  onDeviceChange,
 } from "@/stores/device.store";
 import type { Device, AvdInfo } from "@/bindings";
 
@@ -211,12 +212,13 @@ describe("device store error state transitions", () => {
         androidVersion: "15",
       },
     ];
-    // setDevices does NOT auto-select when selectedSerial is already set,
-    // so selectedSerial remains "emulator-5554" while that device is gone.
+    // The previously selected device is gone from a non-empty list, so the
+    // stale selection is dropped and the new online device is auto-selected.
+    // Previously selectedSerial stayed "emulator-5554" forever, which blocked
+    // auto-select and forced the device picker on every build.
     setDevices(differentDevice);
-    // selectedDevice() resolves against the current device list — serial not found → null.
-    expect(selectedDevice()).toBeNull();
-    expect(deviceState.selectedSerial).toBe("emulator-5554");
+    expect(deviceState.selectedSerial).toBe("new-device-001");
+    expect(selectedDevice()?.serial).toBe("new-device-001");
   });
 
   it("onlineDevices returns empty list when all devices go offline", () => {
@@ -235,7 +237,9 @@ describe("device store error state transitions", () => {
     expect(deviceState.selectedSerial).toBe("emulator-5554");
     setDevices([]);
     expect(deviceState.devices).toHaveLength(0);
-    // selectedSerial is NOT cleared — the store does not auto-clear on empty list.
+    // selectedSerial is deliberately preserved on an EMPTY list: ADB reports
+    // zero devices during a server restart, and losing the user's choice over
+    // a transient blip is worse than holding a briefly-stale serial.
     expect(deviceState.selectedSerial).toBe("emulator-5554");
     // selectedDevice() returns null because the serial is not in the (empty) list.
     expect(selectedDevice()).toBeNull();
@@ -251,5 +255,80 @@ describe("device store error state transitions", () => {
     }));
     setDevices(offlineDevices);
     expect(deviceState.selectedSerial).toBeNull();
+  });
+});
+
+describe("device selection stays in sync with the backend", () => {
+  beforeEach(() => {
+    resetDeviceState();
+    vi.clearAllMocks();
+  });
+
+  it("auto-selects a replacement after the selected device disconnects", async () => {
+    setDevices(mockDevices);
+    const original = deviceState.selectedSerial;
+    expect(original).not.toBeNull();
+
+    const replacement: Device[] = [
+      {
+        serial: "replacement-001",
+        name: "Pixel 9",
+        model: "Pixel 9",
+        deviceKind: "physical",
+        connectionState: "online",
+        apiLevel: 36,
+        androidVersion: "16",
+      },
+    ];
+    setDevices(replacement);
+
+    expect(deviceState.selectedSerial).toBe("replacement-001");
+  });
+
+  it("keeps the selection when the device is still online", () => {
+    setDevices(mockDevices);
+    const selected = deviceState.selectedSerial;
+    setDevices([...mockDevices]);
+    expect(deviceState.selectedSerial).toBe(selected);
+  });
+
+  it("clears the selection when the device is present but offline", () => {
+    setDevices(mockDevices);
+    const selected = deviceState.selectedSerial;
+    const offline = mockDevices.map((d) =>
+      d.serial === selected ? { ...d, connectionState: "offline" as const } : d
+    );
+    setDevices(offline);
+    expect(deviceState.selectedSerial).not.toBe(selected);
+  });
+
+  it("does not notify the project service from a device-list refresh", () => {
+    const onChange = vi.fn();
+    onDeviceChange(onChange);
+    setDevices(mockDevices);
+    // Only an explicit pickDevice persists per-project meta; auto-select must not.
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("rolls back and toasts when the backend rejects the selection", async () => {
+    setDevices(mockDevices);
+    const before = deviceState.selectedSerial;
+    const target = mockDevices.find((d) => d.serial !== before)!.serial;
+
+    vi.mocked(invoke).mockRejectedValueOnce(new Error("device gone"));
+    await pickDevice(target);
+
+    expect(deviceState.selectedSerial).toBe(before);
+  });
+
+  it("keeps the new selection when the backend accepts it", async () => {
+    setDevices(mockDevices);
+    const before = deviceState.selectedSerial;
+    const target = mockDevices.find((d) => d.serial !== before)!.serial;
+
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    await pickDevice(target);
+
+    expect(deviceState.selectedSerial).toBe(target);
   });
 });

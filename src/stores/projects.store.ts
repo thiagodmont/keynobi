@@ -30,6 +30,14 @@ export function setProjectsLoading(loading: boolean): void {
   setProjectsState("loading", loading);
 }
 
+/** Sort order for the sidebar: pinned first, then most-recently-opened. */
+function sortProjects(list: ProjectEntry[]): void {
+  list.sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    return b.lastOpened.localeCompare(a.lastOpened);
+  });
+}
+
 /** Upsert a project into the in-memory list after opening / switching. */
 export function upsertProject(entry: ProjectEntry): void {
   setProjectsState(
@@ -38,8 +46,11 @@ export function upsertProject(entry: ProjectEntry): void {
       if (idx >= 0) {
         s.projects[idx] = entry;
       } else {
-        s.projects.unshift(entry);
+        s.projects.push(entry);
       }
+      // Re-sort rather than unshifting: an unshifted unpinned project would sit
+      // above pinned ones until the next setPinned call.
+      sortProjects(s.projects);
     })
   );
 }
@@ -59,11 +70,7 @@ export function setPinned(id: string, pinned: boolean): void {
     produce((s) => {
       const entry = s.projects.find((p) => p.id === id);
       if (entry) entry.pinned = pinned;
-      // Re-sort: pinned first, then by lastOpened desc.
-      s.projects.sort((a, b) => {
-        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-        return b.lastOpened.localeCompare(a.lastOpened);
-      });
+      sortProjects(s.projects);
     })
   );
 }

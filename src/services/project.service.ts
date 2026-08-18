@@ -72,16 +72,31 @@ export interface OpenProjectResult {
 
 // ── Core open logic (shared by openProjectFolder and switchProject) ────────────
 
+// Guards against interleaved project opens. Two rapid sidebar clicks each run
+// several awaited IPC calls; without this the store ends up mixing one
+// project's root with another's applicationId. variant.store uses the same
+// pattern via isCurrentProject().
+let openGeneration = 0;
+
 async function doOpenProject(path: string): Promise<OpenProjectResult | null> {
+  const generation = ++openGeneration;
+  const isCurrent = (): boolean => generation === openGeneration;
+
   setLoading(true);
   try {
     const projectName = await openProject(path);
+    if (!isCurrent()) return null;
+
     const canonicalRoot = (await getProjectRoot().catch(() => null)) ?? path;
+    if (!isCurrent()) return null;
+
     const gradleRoot = await getGradleRoot().catch(() => null);
+    if (!isCurrent()) return null;
     setProject(canonicalRoot, projectName, gradleRoot);
 
     // Resolve applicationId for `package:mine` filter.
     const appId = await getApplicationId().catch(() => null);
+    if (!isCurrent()) return null;
     setApplicationId(appId);
     setMinePackage(appId);
 
@@ -96,10 +111,11 @@ async function doOpenProject(path: string): Promise<OpenProjectResult | null> {
 
     return { root: canonicalRoot, projectName };
   } catch (err) {
+    if (!isCurrent()) return null;
     showToast(`Failed to open project: ${formatError(err)}`, "error");
     return null;
   } finally {
-    setLoading(false);
+    if (isCurrent()) setLoading(false);
   }
 }
 

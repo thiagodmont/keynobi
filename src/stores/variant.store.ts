@@ -1,6 +1,12 @@
 import { createStore } from "solid-js/store";
 import type { BuildVariant, VariantList } from "@/bindings";
-import { getVariantsPreview, getVariantsFromGradle, setActiveVariant } from "@/lib/tauri-api";
+import {
+  getVariantsPreview,
+  getVariantsFromGradle,
+  setActiveVariant,
+  formatError,
+} from "@/lib/tauri-api";
+import { showToast } from "@/components/ui";
 import { projectState } from "@/stores/project.store";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -208,11 +214,17 @@ async function runLoadVariants(rootAtStart: string | null): Promise<void> {
 }
 
 export async function selectVariant(name: string): Promise<void> {
+  const previous = variantState.activeVariant;
   setVariantState("activeVariant", name);
   try {
     await setActiveVariant(name);
-  } catch {
-    // Non-fatal — the in-memory selection is still updated.
+  } catch (err) {
+    // Same reasoning as pickDevice: the backend's active variant drives
+    // find_apk_path and the MCP tools, so a silent divergence is worse than a
+    // visible failure.
+    setVariantState("activeVariant", previous);
+    showToast(`Failed to select variant: ${formatError(err)}`, "error");
+    return;
   }
   // Notify the project service so it can persist per-project meta.
   _onVariantChange?.(name);

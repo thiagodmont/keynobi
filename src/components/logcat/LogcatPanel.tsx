@@ -198,6 +198,10 @@ export function LogcatPanel(): JSX.Element {
   let unlistenCleared: (() => void) | undefined;
   let unlistenDevices: (() => void) | undefined;
   let unlistenReconnecting: (() => void) | undefined;
+  // Set by onCleanup. The listener registrations below are awaited, so an
+  // unmount can land before they resolve — without this the assignment happens
+  // after cleanup ran and the listener leaks.
+  let disposed = false;
   let unlistenStopped: (() => void) | undefined;
   let nowTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -591,7 +595,7 @@ export function LogcatPanel(): JSX.Element {
     }
 
     // eslint-disable-next-line solid/reactivity
-    unlistenEntries = await listenLogcatEntries((newEntries) => {
+    const _unlistenEntries = await listenLogcatEntries((newEntries) => {
       if (paused()) return;
       const dropped = appendLogcatEntries(newEntries, maxUiLinesCap());
       if (readMode()) {
@@ -607,8 +611,10 @@ export function LogcatPanel(): JSX.Element {
       suggestions.ingest(newEntries);
       suggestions.flush();
     });
+    if (disposed) _unlistenEntries();
+    else unlistenEntries = _unlistenEntries;
 
-    unlistenCleared = await listenLogcatCleared(() => {
+    const _unlistenCleared = await listenLogcatCleared(() => {
       exitReadMode();
       clearExpandedContext();
       clearLogcatEntries();
@@ -617,9 +623,11 @@ export function LogcatPanel(): JSX.Element {
       virtualListRef?.scrollToBottom();
       void refreshLogcatRingStats();
     });
+    if (disposed) _unlistenCleared();
+    else unlistenCleared = _unlistenCleared;
 
     // Auto-start on device connect
-    unlistenDevices = await listenDeviceListChanged((devices) => {
+    const _unlistenDevices = await listenDeviceListChanged((devices) => {
       if (logcatState.streaming) return;
       const hasAutoStart = settingsState.logcat?.autoStart !== false;
       if (!hasAutoStart) return;
@@ -630,22 +638,28 @@ export function LogcatPanel(): JSX.Element {
           .catch((err) => showToast(`Failed to auto-start logcat: ${formatError(err)}`, "error"));
       }
     });
+    if (disposed) _unlistenDevices();
+    else unlistenDevices = _unlistenDevices;
 
     // Keep streaming status in sync when the backend reconnects after an
     // unexpected ADB server restart (e.g. Android Studio opening Logcat).
     // The backend never sets streaming=false in this case, so the UI stays
     // consistent; this listener is purely for future indicator use.
 
-    unlistenReconnecting = await listenLogcatReconnecting(() => {
+    const _unlistenReconnecting = await listenLogcatReconnecting(() => {
       setLogcatStreaming(true);
     });
+    if (disposed) _unlistenReconnecting();
+    else unlistenReconnecting = _unlistenReconnecting;
 
     // Terminal stop — the backend gave up reconnecting, so the UI must not keep
     // showing a live indicator.
-    unlistenStopped = await listenLogcatStopped((reason) => {
+    const _unlistenStopped = await listenLogcatStopped((reason) => {
       setLogcatStreaming(false);
       showToast(`Logcat stopped: ${reason}`, "error");
     });
+    if (disposed) _unlistenStopped();
+    else unlistenStopped = _unlistenStopped;
 
     nowTimer = setInterval(() => setNow(Date.now()), 5_000);
     void refreshLogcatRingStats();
@@ -667,6 +681,7 @@ export function LogcatPanel(): JSX.Element {
   });
 
   onCleanup(() => {
+    disposed = true;
     unlistenEntries?.();
     unlistenCleared?.();
     unlistenDevices?.();

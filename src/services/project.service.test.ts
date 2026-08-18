@@ -79,4 +79,65 @@ describe("project.service", () => {
     expect(projectState.projectRoot).toBe(canonicalPath);
     expect(projectsState.activeProjectId).toBe("project-1");
   });
+  it("does not let a superseded project open write to the store", async () => {
+    const slow = "/projects/slow";
+    const fast = "/projects/fast";
+    const entryFor = (path: string, id: string): ProjectEntry => ({
+      id,
+      path,
+      name: id,
+      gradleRoot: path,
+      lastOpened: "2026-01-01T00:00:00Z",
+      pinned: false,
+      lastBuildVariant: null,
+      lastDevice: null,
+    });
+
+    let releaseSlow: (v: string) => void = () => {};
+    const slowOpen = new Promise<string>((r) => {
+      releaseSlow = r;
+    });
+    let openCalls = 0;
+
+    mockInvoke.mockImplementation((command, args) => {
+      switch (command) {
+        case "open_project": {
+          openCalls += 1;
+          // First caller (slow project) blocks; second resolves immediately.
+          return openCalls === 1 ? slowOpen : Promise.resolve("fast");
+        }
+        case "get_project_root":
+          return Promise.resolve(openCalls === 1 ? slow : fast);
+        case "get_gradle_root":
+          return Promise.resolve(fast);
+        case "get_application_id":
+          return Promise.resolve(null);
+        case "list_projects":
+          return Promise.resolve([entryFor(fast, "fast-id")]);
+        case "get_build_history":
+          return Promise.resolve([]);
+        case "refresh_devices":
+        case "list_avd_devices":
+          return Promise.resolve([]);
+        case "get_variants_preview":
+        case "get_variants_from_gradle":
+          return Promise.resolve({ variants: [], active: null, defaultVariant: null });
+        default:
+          void args;
+          return Promise.resolve(undefined);
+      }
+    });
+
+    mockOpen.mockResolvedValueOnce(slow);
+    const firstOpen = openProjectFolder();
+
+    mockOpen.mockResolvedValueOnce(fast);
+    await openProjectFolder();
+
+    // The slow open finishes last but must not clobber the winner.
+    releaseSlow("slow");
+    await firstOpen;
+
+    expect(projectState.projectRoot).toBe(fast);
+  });
 });

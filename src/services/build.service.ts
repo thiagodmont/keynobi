@@ -29,6 +29,10 @@ import { settingsState } from "@/stores/settings.store";
 import type { BuildError } from "@/bindings";
 
 let buildCompleteUnlisten: (() => void) | null = null;
+// Held so concurrent callers await the SAME registration. A plain
+// `if (unlisten) return` guard is checked before the await, so two interleaved
+// calls both register and the second orphans the first's unlisten.
+let buildListenerInit: Promise<void> | null = null;
 let currentBuildPromise: Promise<void> | null = null;
 let deployInFlight = false;
 
@@ -39,9 +43,26 @@ interface RunBuildOptions {
 // ── Registration ──────────────────────────────────────────────────────────────
 
 /** Call once on app startup to register the build:complete event listener. */
-export async function initBuildService(): Promise<void> {
-  if (buildCompleteUnlisten) return;
-  buildCompleteUnlisten = await listenBuildComplete((e) => {
+export function initBuildService(): Promise<void> {
+  if (buildListenerInit) return buildListenerInit;
+
+  buildListenerInit = registerBuildCompleteListener().catch((err) => {
+    // Allow a later retry rather than wedging the service permanently.
+    buildListenerInit = null;
+    throw err;
+  });
+  return buildListenerInit;
+}
+
+/** Test-only teardown, mirroring resetMcpListenersForTests. */
+export function resetBuildServiceForTests(): void {
+  buildCompleteUnlisten?.();
+  buildCompleteUnlisten = null;
+  buildListenerInit = null;
+}
+
+async function registerBuildCompleteListener(): Promise<void> {
+  const unlisten = await listenBuildComplete((e) => {
     // Flush any lines still in the 50ms buffer before updating phase.
     flushPendingLines();
 
@@ -63,6 +84,13 @@ export async function initBuildService(): Promise<void> {
     _resolveBuildComplete?.({ success: e.success, durationMs: e.durationMs });
     _resolveBuildComplete = null;
   });
+
+  if (buildCompleteUnlisten) {
+    // A reset landed while we were awaiting — drop this registration.
+    unlisten();
+    return;
+  }
+  buildCompleteUnlisten = unlisten;
 
   // Load persisted history on startup so previous sessions are visible immediately.
   getBuildHistory()

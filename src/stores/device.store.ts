@@ -8,6 +8,7 @@ import {
   startDevicePolling,
 } from "@/lib/tauri-api";
 import { showToast } from "@/components/ui";
+import { formatError } from "@/lib/tauri-api";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -95,6 +96,23 @@ export function serialForAvd(avdName: string): string | null {
 
 export function setDevices(devices: Device[]): void {
   setDeviceState("devices", devices);
+
+  // Drop a selection whose device is gone. Without this the stale serial stays
+  // truthy forever, so auto-select never fires again and every build falls
+  // through to the device picker.
+  //
+  // An EMPTY list is deliberately excluded: ADB briefly reports zero devices
+  // when its server restarts, and dropping the selection there would discard
+  // the user's choice over a transient blip.
+  const current = deviceState.selectedSerial;
+  if (
+    current !== null &&
+    devices.length > 0 &&
+    !devices.some((d) => d.serial === current && d.connectionState === "online")
+  ) {
+    setDeviceState("selectedSerial", null);
+  }
+
   // Auto-select the first online device if none is selected.
   if (!deviceState.selectedSerial) {
     const first = devices.find((d) => d.connectionState === "online");
@@ -121,11 +139,17 @@ export function setCreating(v: boolean): void {
 }
 
 export async function pickDevice(serial: string): Promise<void> {
+  const previous = deviceState.selectedSerial;
   setDeviceState("selectedSerial", serial);
   try {
     await selectDeviceApi(serial);
-  } catch {
-    // Non-fatal — in-memory selection is still valid.
+  } catch (err) {
+    // The backend's selection is what MCP tools and every command that resolves
+    // a `None` serial use. Silently keeping a local-only selection makes the UI
+    // and the agent target different devices, so roll back and say so.
+    setDeviceState("selectedSerial", previous);
+    showToast(`Failed to select device: ${formatError(err)}`, "error");
+    return;
   }
   // Notify the project service so it can persist per-project meta.
   _onDeviceChange?.(serial);

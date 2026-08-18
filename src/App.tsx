@@ -91,6 +91,8 @@ function registerKeyAndAction(opts: {
 
 export function App(): JSX.Element {
   let unlistenClose: (() => void) | undefined;
+  // onMount is async, so an unmount can land before the awaits below resolve.
+  let disposed = false;
 
   // Start/stop browser Sentry only when Anonymous crash reporting is on (after settings are known).
   createEffect(() => {
@@ -411,13 +413,15 @@ export function App(): JSX.Element {
       const unlisten = await appWindow.onCloseRequested(async (_event) => {
         // No dirty files to check — allow close immediately.
       });
-      unlistenClose = unlisten;
+      if (disposed) unlisten();
+      else unlistenClose = unlisten;
     } catch {
       // Not running inside Tauri — skip.
     }
   });
 
   onCleanup(() => {
+    disposed = true;
     unlistenClose?.();
   });
 
