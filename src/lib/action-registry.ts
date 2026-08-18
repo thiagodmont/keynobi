@@ -1,13 +1,5 @@
 export type ActionCategory =
-  | "File"
-  | "Edit"
-  | "View"
-  | "Navigate"
-  | "Search"
-  | "Build"
-  | "Debug"
-  | "LSP"
-  | "General";
+  "File" | "Edit" | "View" | "Navigate" | "Search" | "Build" | "Debug" | "LSP" | "General";
 
 export interface Action {
   id: string;

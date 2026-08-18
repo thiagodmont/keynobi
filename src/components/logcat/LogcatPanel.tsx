@@ -384,8 +384,7 @@ export function LogcatPanel(): JSX.Element {
 
   const activeAge = createMemo(() => {
     const t = parsedTokens().find((t) => t.type === "age") as
-      | { type: "age"; seconds: number }
-      | undefined;
+      { type: "age"; seconds: number } | undefined;
     if (!t) return null;
     for (const p of LOGCAT_AGE_PILLS) {
       if (p.value && parseAge(p.value) === t.seconds) return p.value;

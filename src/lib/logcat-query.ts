@@ -528,13 +528,7 @@ export function setPackageInQuery(query: string, pkg: string | null): string {
 }
 
 export type LogEntryDetailFilterField =
-  | "tag"
-  | "package"
-  | "level"
-  | "pid"
-  | "tid"
-  | "time"
-  | "message";
+  "tag" | "package" | "level" | "pid" | "tid" | "time" | "message";
 
 export type LogEntryDetailFilterMode = "and" | "or";
 
