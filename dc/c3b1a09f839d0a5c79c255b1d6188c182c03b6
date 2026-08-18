@@ -1,0 +1,25 @@
+.github/workflows/ci.yml
+  s_506c98591880e3::t_f3e6a225efbdd8 53
+.github/workflows/release.yml
+  s_506c98591880e3::t_5c2c8c1d16676f 88
+rust-toolchain.toml
+  s_506c98591880e3::t_98496ab8787f16 2
+src-tauri/src/services/telemetry_sentry.rs
+  s_506c98591880e3::t_efa80166b8d2db 119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "dcc3b1a09f839d0a5c79c255b1d6188c182c03b6",
+  "prompts": {},
+  "sessions": {
+    "s_506c98591880e3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2fdd100d-347d-4b3f-95b4-74461125a396",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
