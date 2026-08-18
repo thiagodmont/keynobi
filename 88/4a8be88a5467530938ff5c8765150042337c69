@@ -1,0 +1,22 @@
+src-tauri/src/services/process_manager.rs
+  s_3f8480e90aeb51::t_17d56d33fe8234 140,149,211-213,223,252-255,258-260
+  s_3f8480e90aeb51::t_0c3b91495ab319 612-719
+  s_3f8480e90aeb51::t_24189423d4f57b 42-45
+  s_3f8480e90aeb51::t_f0d472835e5a36 447,535,570
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "884a8be88a5467530938ff5c8765150042337c69",
+  "prompts": {},
+  "sessions": {
+    "s_3f8480e90aeb51": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b7777723-4d55-474d-b2aa-c003b8ab47bc",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
