@@ -28,7 +28,12 @@ runBuild()
   -> wait for build:complete
 ```
 
-`run_gradle_task` owns backend result persistence before emitting `build:complete`. `runAndDeploy()` builds first, then installs and launches against the resolved online device. Always clear `deployPhase` in `finally`.
+There is exactly **one** build execution path. Both front doors — the Tauri
+command `run_gradle_task` (UI) and `build_runner::run_task` (MCP) — reserve the
+same slot via `try_reserve_build_slot` and finalize through
+`build_runner::emit_build_complete`. `runAndDeploy()` builds first, then installs
+and launches against the resolved online device. Always clear `deployPhase` in
+`finally`.
 
 ### Invariants
 
@@ -37,6 +42,13 @@ runBuild()
 - `runBuild()` resolves only after completion/cancellation state is known.
 - Cancellation must clear pending build-completion waiters and process IDs.
 - Parsed build errors are persisted by backend process-exit finalization before `build:complete` is emitted.
+- **Only one build at a time, across both front doors.** Every path that spawns
+  Gradle must call `try_reserve_build_slot` first.
+- **Success requires exit code 0 AND a `BUILD SUCCESSFUL` summary line.** The
+  exit code is authoritative; the summary line alone is not sufficient.
+- **Every build emits `build:complete` when a GUI is attached**, including
+  builds an MCP client started — otherwise the Build panel goes stale.
+- A cancelled or timed-out build still records a history entry.
 
 ---
 
@@ -78,6 +90,29 @@ adb logcat
 ```
 
 Backend processing owns package resolution, crash detection, JSON detection, category classification, stats, and ring-buffer storage.
+
+### Stream Lifecycle
+
+The stream is owned by a **generation token**, not by the `streaming` bool.
+`LogcatStateInner.stream_generation` is bumped by every start _and_ every stop; a
+running stream task exits as soon as it no longer owns the current generation.
+
+- A bool alone cannot express this: `stop` then `start` flips it back to `true`
+  before the old task's 100 ms tick observes the `false`, leaving two live `adb
+logcat` processes feeding the same store.
+- Starting with a **different** serial supersedes the running stream rather than
+  returning `Ok(())` and silently streaming the old device.
+- A stream task clears `streaming` on return **only** if it still owns its
+  generation, so a dying task cannot clobber its replacement.
+- The reader task selects against a shutdown channel — otherwise it parks in
+  `next_line().await` and the child survives `stop_logcat` on an idle device.
+- Reconnect is bounded: exponential backoff capped at 30 s, giving up after 10
+  consecutive failures with a terminal `logcat:stopped` event.
+- Lines dropped on a saturated ingest channel are counted in
+  `LogStats.dropped_lines` and surfaced in the toolbar. Never drop silently.
+
+Both `commands/logcat.rs` and the MCP tools must apply identical start/stop/clear
+handling — including the `clear_epoch` bump and the `logcat:cleared` event.
 
 ### Filtering
 

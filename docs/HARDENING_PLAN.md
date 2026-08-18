@@ -1,11 +1,17 @@
 # Hardening Plan — Solidity, Testability, Reliability
 
-**Status:** approved, not started
+**Status:** COMPLETE (2026-08-18) — all phases landed, see commits 77c0a02..HEAD
 **Created:** 2026-08-18
 **Scope:** all 27 findings + 7 test-coverage gaps from the repo review, plus 2 items found while
 writing this plan (6.3a module-side-effect listener in `monitor.store.ts`, 6.3b dead
 `buildLogOutput` export). No new features.
 **Baseline commit:** `7266133`
+
+> **Completed.** All 27 findings, the 7 coverage gaps, and the 2 items found while
+> writing the plan are addressed across 9 commits. Two additional bugs were found
+> _during_ execution and fixed: MCP `clear_logcat` neither bumped `clear_epoch`
+> nor emitted `logcat:cleared`, and three pre-existing clippy lints were blocking
+> `--all-targets`. Remaining follow-ups are listed at the end of this document.
 
 ---
 
@@ -33,16 +39,16 @@ Note: `cargo clippy --lib --tests` currently fails on two **pre-existing** lints
 
 ### Risk profile of the files being touched
 
-| File | Hotspot | Risk type | Note |
-|---|---|---|---|
-| `services/mcp_server.rs` | 99% | churn-heavy | 3330 lines, 8 tests |
-| `services/build_runner.rs` | 98% | bug-prone | 26 co-change partners |
-| `services/settings_manager.rs` | 96% | churn-heavy | 67 downstream callers |
-| `commands/build.rs` | 96% | bug-prone | |
-| `services/logcat.rs` | 95% | churn-heavy | |
-| `src/services/build.service.ts` | 95% | bug-prone | |
-| `src/stores/device.store.ts` | 86% | bug-prone | |
-| `services/process_manager.rs` | 84% | bug-prone | |
+| File                            | Hotspot | Risk type   | Note                  |
+| ------------------------------- | ------- | ----------- | --------------------- |
+| `services/mcp_server.rs`        | 99%     | churn-heavy | 3330 lines, 8 tests   |
+| `services/build_runner.rs`      | 98%     | bug-prone   | 26 co-change partners |
+| `services/settings_manager.rs`  | 96%     | churn-heavy | 67 downstream callers |
+| `commands/build.rs`             | 96%     | bug-prone   |                       |
+| `services/logcat.rs`            | 95%     | churn-heavy |                       |
+| `src/services/build.service.ts` | 95%     | bug-prone   |                       |
+| `src/stores/device.store.ts`    | 86%     | bug-prone   |                       |
+| `services/process_manager.rs`   | 84%     | bug-prone   |                       |
 
 `lib.rs`, `App.tsx`, and `tauri-api.ts` are the three highest-churn files in the repo — touch
 them only for the exact lines required, never reformat.
@@ -129,6 +135,7 @@ Fixes **C1**, **H4**, **M14**, **M15**, **M18**.
 ### 1.1 — Stream generation token (C1, H4, M18)
 
 **Files:**
+
 - `src-tauri/src/services/logcat.rs`
 - `src-tauri/src/commands/logcat.rs`
 - `src-tauri/src/services/mcp_server.rs` (`start_logcat` / `stop_logcat` tools)
@@ -136,29 +143,34 @@ Fixes **C1**, **H4**, **M14**, **M15**, **M18**.
 **Change:**
 
 1. Add to `LogcatStateInner` (`services/logcat.rs:149`):
+
    ```rust
    /// Incremented on every start/stop request. A running stream task exits as
    /// soon as this no longer matches the generation it was started with, so a
    /// stop→start sequence can never leave two streams feeding the same store.
    pub stream_generation: u64,
    ```
+
    Initialize to `0` in `LogcatStateInner::new()`.
 
 2. Change the signature of `start_logcat_stream` to take `generation: u64`.
 
 3. Replace **every** `if !state.streaming { break }` / `if !state.streaming { ... }` check in
    `start_logcat_stream` with a combined check:
+
    ```rust
    fn is_current(state: &LogcatStateInner, generation: u64) -> bool {
        state.streaming && state.stream_generation == generation
    }
    ```
+
    Sites: the `'reconnect` loop head (~line 344), the spawn-failure retry (~line 377), the
    pipeline tick (~line 470), and the post-drain `still_streaming` check (~line 528).
 
 4. **Do not** set `state.streaming = false` unconditionally at the end of
    `start_logcat_stream` (currently line 559-560). Only do so if this task still owns the
    generation — otherwise a dying old task clobbers the new stream's flag:
+
    ```rust
    let mut state = logcat_state.lock().await;
    if state.stream_generation == generation {
@@ -169,17 +181,20 @@ Fixes **C1**, **H4**, **M14**, **M15**, **M18**.
 5. Add an explicit shutdown path so the child dies even on an idle device (**H4**). Give the
    reader task a `tokio::sync::watch` or `CancellationToken` receiver and `select!` it against
    `reader.next_line()`:
+
    ```rust
    tokio::select! {
        line = reader.next_line() => { /* existing match */ }
        _ = shutdown.changed() => break,
    }
    ```
+
    The pipeline task signals shutdown when `is_current()` goes false. After
    `reader_handle.await`, call `let _ = child.kill().await;` explicitly rather than relying on
    `kill_on_drop`.
 
 6. `commands/logcat.rs::start_logcat` (line 14):
+
    ```rust
    let generation = {
        let mut state = logcat_state.lock().await;
@@ -193,11 +208,13 @@ Fixes **C1**, **H4**, **M14**, **M15**, **M18**.
        state.stream_generation
    };
    ```
+
    Pass `generation` into `start_logcat_stream`.
 
 7. `commands/logcat.rs::stop_logcat` (line 57): bump the generation as well as clearing
    `streaming`, so any in-flight task exits even if `streaming` is flipped back on before its
    next tick:
+
    ```rust
    state.streaming = false;
    state.stream_generation = state.stream_generation.wrapping_add(1);
@@ -208,6 +225,7 @@ Fixes **C1**, **H4**, **M14**, **M15**, **M18**.
    `// KEEP IN SYNC WITH commands/logcat.rs` comment on both.)
 
 **Tests:** the two Phase 0.2 tests must now pass. Add:
+
 - `start_with_different_serial_supersedes_running_stream`
 - `stop_bumps_generation_so_stale_task_exits`
 
@@ -233,8 +251,11 @@ async function handleRestart() {
     const device = selectedDevice();
     await startLogcat(device?.serial ?? undefined);
     setLogcatStreaming(true);
-  } catch (e) { /* unchanged */ }
-  finally { setRestarting(false); }
+  } catch (e) {
+    /* unchanged */
+  } finally {
+    setRestarting(false);
+  }
 }
 ```
 
@@ -266,6 +287,7 @@ alongside `unlistenReconnecting` (line 635) that calls `setLogcatStreaming(false
 toast with the reason. Add the wrapper to `src/lib/tauri-api.ts` next to `listenLogcatReconnecting`.
 
 **Tests:**
+
 - `reconnect_backoff_grows_and_caps`
 - `gives_up_after_max_attempts_and_sets_streaming_false`
 
@@ -335,6 +357,7 @@ Call it from **both** `commands/build.rs::run_gradle_task` (replacing the inline
 `build_runner::run_task` (which currently has no guard at all — this is H2).
 
 **Tests:**
+
 - `try_reserve_build_slot_rejects_when_running`
 - `try_reserve_build_slot_rejects_when_starting`
 - `mcp_run_task_refuses_while_ui_build_is_running` (integration-style, using `BuildState` directly)
@@ -380,6 +403,7 @@ Delete the duplicated closure bodies from both call sites.
 **File:** `src-tauri/src/commands/build.rs:257-259`
 
 **Change:**
+
 ```rust
 let success = !cancelled
     && matches!(termination, ProcessTermination::ExitCode(0))
@@ -392,13 +416,14 @@ Making both conditions required is the safe direction. Apply the same rule to
 `ProcessTermination` out of `on_exit` (via a `oneshot` payload instead of `()`).
 
 **Tests:**
+
 - `success_requires_zero_exit_and_summary_line`
 - `nonzero_exit_with_success_text_is_not_success`
 - `zero_exit_without_summary_line_is_not_success` (documents the stricter rule)
 
 > **Decision to record:** this tightens the rule. If a Gradle task legitimately exits 0 without
 > printing a summary line (`clean` may), it will now report failure. **Mitigation:** treat a
-> missing summary line as success only when the exit code is 0 *and* no errors were parsed.
+> missing summary line as success only when the exit code is 0 _and_ no errors were parsed.
 > Encode whichever variant you pick as a decision record (see Phase 6.5).
 
 ### 2.4 — Cancel-during-spawn kills the process (H6)
@@ -433,6 +458,7 @@ let timeout_err = BuildError {
     severity: BuildErrorSeverity::Error,
 };
 ```
+
 Set `bs.status = BuildStatus::Failed(...)` rather than leaving the `Cancelled` that
 `cancel_build` set.
 
@@ -459,6 +485,7 @@ Moving it puts all build finalization in one module and lets `commands/build.rs`
 `mcp_server.rs:807`) — pass `self.app_handle.as_ref()`.
 
 **Tests:**
+
 - `run_task_emits_build_complete_when_app_handle_present`
 - `run_task_succeeds_without_app_handle` (headless mode must still work)
 
@@ -489,6 +516,7 @@ Fixes **H5**.
 **Change:**
 
 1. Add to `ProcessRecord`, and clone it into the reader task:
+
    ```rust
    /// Set by the reader task immediately before `on_exit`. The delayed SIGKILL
    /// checks this so we never signal a PID the OS may have recycled.
@@ -496,6 +524,7 @@ Fixes **H5**.
    ```
 
 2. In the reader task, right before `manager_for_cleanup.lock().await.processes.remove(&id);`:
+
    ```rust
    exited_flag.store(true, Ordering::SeqCst);
    ```
@@ -541,11 +570,16 @@ let buildListenerInit: Promise<void> | null = null;
 export function initBuildService(): Promise<void> {
   if (buildListenerInit) return buildListenerInit;
   buildListenerInit = (async () => {
-    const unlisten = await listenBuildComplete((e) => { /* unchanged */ });
-    if (buildCompleteUnlisten) { unlisten(); return; }  // superseded by a reset
+    const unlisten = await listenBuildComplete((e) => {
+      /* unchanged */
+    });
+    if (buildCompleteUnlisten) {
+      unlisten();
+      return;
+    } // superseded by a reset
     buildCompleteUnlisten = unlisten;
   })().catch((err) => {
-    buildListenerInit = null;  // allow retry after failure
+    buildListenerInit = null; // allow retry after failure
     throw err;
   });
   return buildListenerInit;
@@ -570,8 +604,7 @@ export function setDevices(devices: Device[]): void {
   setDeviceState("devices", devices);
   const current = deviceState.selectedSerial;
   const stillOnline =
-    current !== null &&
-    devices.some((d) => d.serial === current && d.connectionState === "online");
+    current !== null && devices.some((d) => d.serial === current && d.connectionState === "online");
   if (current !== null && !stillOnline) {
     setDeviceState("selectedSerial", null);
   }
@@ -583,6 +616,7 @@ export function setDevices(devices: Device[]): void {
 ```
 
 **Tests** (`src/stores/device.store.test.ts`):
+
 - `clears selection when the selected device goes offline`
 - `auto-selects a newly connected device after the previous one disconnects`
 - `keeps the selection when the device is still online`
@@ -606,9 +640,9 @@ export async function pickDevice(serial: string): Promise<void> {
   try {
     await selectDeviceApi(serial);
   } catch (err) {
-    setDeviceState("selectedSerial", previous);   // roll back
+    setDeviceState("selectedSerial", previous); // roll back
     showToast(`Failed to select device: ${formatError(err)}`, "error");
-    return;                                        // do not persist a failed selection
+    return; // do not persist a failed selection
   }
   _onDeviceChange?.(serial);
 }
@@ -649,14 +683,16 @@ async function doOpenProject(path: string): Promise<OpenProjectResult | null> {
     setMinePackage(appId);
     // … unchanged …
     return { root: canonicalRoot, projectName };
-  } catch (err) { /* unchanged */ }
-  finally {
+  } catch (err) {
+    /* unchanged */
+  } finally {
     if (isCurrent()) setLoading(false);
   }
 }
 ```
 
 **Tests** (`src/services/project.service.test.ts`):
+
 - `a superseded project open does not write to the store`
 - `the winning open sets projectRoot and activeProjectId`
 
@@ -670,11 +706,16 @@ unmount) but it's a landmine and it blocks component-level testing.
 
 ```ts
 let disposed = false;
-onCleanup(() => { disposed = true; /* existing unlisten calls */ });
+onCleanup(() => {
+  disposed = true; /* existing unlisten calls */
+});
 
 onMount(async () => {
   const un = await listenLogcatEntries(/* … */);
-  if (disposed) { un(); return; }
+  if (disposed) {
+    un();
+    return;
+  }
   unlistenEntries = un;
 });
 ```
@@ -723,6 +764,7 @@ pub fn validate_package_name(package: &str) -> Result<(), String>
 ```
 
 Then:
+
 - `commands/build.rs:46`, `commands/device.rs:39,61` → delete the bodies, keep thin wrappers that
   map `String` → `AppError::InvalidInput`.
 - `services/mcp_server.rs:2939,2955,2974` → delete the bodies, map to
@@ -786,6 +828,7 @@ tokio::task::spawn_blocking(move || {
 ```
 
 **Tests:**
+
 - `load_settings_uses_cache_on_second_call` (assert via a temp file mutated behind the cache)
 - `mutate_settings_invalidates_cache`
 - `record_build_result_does_not_hold_lock_during_disk_io` — assert a concurrent
@@ -886,7 +929,7 @@ Fixes **L26**, **L27**, and the seven coverage gaps.
 4. CI `frontend` job: add `npx prettier --check "src/**/*.{ts,tsx,css}"`.
 
 **⚠ Blocker:** step 4 fails immediately — **57 files** currently have prettier drift. Run
-`npm run format` as its own commit *first* (a pure-formatting commit, no logic), then enable the
+`npm run format` as its own commit _first_ (a pure-formatting commit, no logic), then enable the
 check. Do not mix that reformat into any other commit.
 
 ### 6.2 — IPC contract drift guard
@@ -911,12 +954,12 @@ caller.
 
 ### 6.3 — Tests for the four untested stores
 
-| File | Cover |
-|---|---|
-| `src/stores/projects.store.test.ts` | upsert ordering (L25), remove, rename, pin re-sort, meta update |
-| `src/stores/health.store.test.ts` | `refreshHealthChecks` concurrency guard, error path clears `isRunning`, `healthChecks()` status matrix for sdk/adb permutations |
-| `src/stores/log.store.test.ts` | `createLogStore` cap/eviction, `pushEntries` batching, `clearEntries` |
-| `src/stores/monitor.store.test.ts` | signal updates from a `monitor://stats` payload — **needs 6.3a first** |
+| File                                | Cover                                                                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `src/stores/projects.store.test.ts` | upsert ordering (L25), remove, rename, pin re-sort, meta update                                                                 |
+| `src/stores/health.store.test.ts`   | `refreshHealthChecks` concurrency guard, error path clears `isRunning`, `healthChecks()` status matrix for sdk/adb permutations |
+| `src/stores/log.store.test.ts`      | `createLogStore` cap/eviction, `pushEntries` batching, `clearEntries`                                                           |
+| `src/stores/monitor.store.test.ts`  | signal updates from a `monitor://stats` payload — **needs 6.3a first**                                                          |
 
 **6.3a — `monitor.store.ts` registers a listener as a module side effect.**
 `src/stores/monitor.store.ts:27-33` calls `listen("monitor://stats", …)` at import time, guarded
@@ -929,8 +972,12 @@ Refactor to an explicit init, matching `initMcpListeners`:
 let monitorUnlisten: UnlistenFn | null = null;
 let monitorInit: Promise<void> | null = null;
 
-export function initMonitorListeners(): Promise<void> { /* same shape as 4.1 */ }
-export function resetMonitorListenersForTests(): void { /* … */ }
+export function initMonitorListeners(): Promise<void> {
+  /* same shape as 4.1 */
+}
+export function resetMonitorListenersForTests(): void {
+  /* … */
+}
 ```
 
 Call `initMonitorListeners()` from `App.tsx`'s `onMount`, next to the existing
@@ -994,18 +1041,18 @@ Per CLAUDE.md, after the code changes:
 
 ## Commit sequence
 
-| # | Commit | Phase |
-|---|---|---|
-| 1 | `test: add characterization tests for logcat, build, and process lifecycles` | 0 |
-| 2 | `fix(logcat): generation-scoped stream lifecycle, bounded reconnect, drop counter` | 1 |
-| 3 | `refactor(build): unify UI and MCP build paths behind shared runner` | 2 |
-| 4 | `fix(process): guard delayed SIGKILL against recycled PIDs` | 3 |
-| 5 | `fix(frontend): idempotent listeners, selection rollback, project-switch guard` | 4 |
-| 6 | `refactor(backend): shared validators, settings cache, stable project ids` | 5 |
-| 7 | `style: apply prettier to all source files` | 6.1 (pure formatting, no logic) |
-| 8 | `ci: widen clippy to all targets, add fmt and prettier checks` | 6.1 |
-| 9 | `test: add IPC contract guard, store tests, and coverage reporting` | 6.2–6.5 |
-| 10 | `docs: record build and logcat lifecycle decisions` | 6.6 |
+| #   | Commit                                                                             | Phase                           |
+| --- | ---------------------------------------------------------------------------------- | ------------------------------- |
+| 1   | `test: add characterization tests for logcat, build, and process lifecycles`       | 0                               |
+| 2   | `fix(logcat): generation-scoped stream lifecycle, bounded reconnect, drop counter` | 1                               |
+| 3   | `refactor(build): unify UI and MCP build paths behind shared runner`               | 2                               |
+| 4   | `fix(process): guard delayed SIGKILL against recycled PIDs`                        | 3                               |
+| 5   | `fix(frontend): idempotent listeners, selection rollback, project-switch guard`    | 4                               |
+| 6   | `refactor(backend): shared validators, settings cache, stable project ids`         | 5                               |
+| 7   | `style: apply prettier to all source files`                                        | 6.1 (pure formatting, no logic) |
+| 8   | `ci: widen clippy to all targets, add fmt and prettier checks`                     | 6.1                             |
+| 9   | `test: add IPC contract guard, store tests, and coverage reporting`                | 6.2–6.5                         |
+| 10  | `docs: record build and logcat lifecycle decisions`                                | 6.6                             |
 
 Commit 3 is the big one — consider splitting it along the 2.1–2.7 sub-item boundaries if the
 diff exceeds ~400 lines.
@@ -1041,3 +1088,84 @@ The automated suite can't reach these. Run against a real device or emulator:
 - Comprehensive `mcp_server.rs` test coverage beyond the ~6 state-mutating tools (6.4).
 - Any UI/UX change. Findings that surface new information to the user (dropped-line counter,
   selection-failure toast, logcat give-up notice) reuse existing surfaces.
+
+---
+
+## Execution record (2026-08-18)
+
+| Commit    | Phase   | Scope                                                                                |
+| --------- | ------- | ------------------------------------------------------------------------------------ |
+| `77c0a02` | 3       | Delayed-SIGKILL guard against recycled PIDs (H5)                                     |
+| `60e7d5a` | 0, 1    | Logcat generation lifecycle, bounded reconnect, drop counter (C1, H4, M14, M15, M18) |
+| `0d5243f` | 2       | Unified build path (H2, H3, H6, M8, M17, L19, L20)                                   |
+| `83fcd32` | 0, 4    | Frontend listeners, selection rollback, project-switch guard (M9–M12, L24, L25)      |
+| `9b52704` | 5       | Shared validators, settings cache, stable project ids (M7, M13, M16, L21–L23)        |
+| `b7ab2f4` | 6.1     | Pre-existing clippy lints cleared                                                    |
+| `b79a159` | 6.1     | Repo-wide prettier (formatting only)                                                 |
+| `66ce5e6` | 6.2–6.5 | IPC contract guard, MCP + store tests, coverage, CI widening                         |
+
+**Test totals:** Rust 386 → 451 (lib+tests). Frontend 1121 → 1165.
+
+### Verified-red-first
+
+Four tests were confirmed to fail before their fix, and three were re-verified by
+temporarily reverting the fix afterwards:
+
+- `stop_then_start_does_not_leave_two_streams` — measured **4** live adb
+  processes; **2** with the generation guard removed; passes with it.
+- `stop_on_idle_device_terminates_child` — hung past a 3 s timeout; still fails
+  if the reader's shutdown select arm is removed.
+- `delayed_sigkill_does_not_fire_after_natural_exit` — did not compile (the
+  `exited` guard it asserts on did not exist).
+- `initBuildService registers exactly one listener…` — `resetBuildServiceForTests
+is not a function`, then a genuine double registration.
+- IPC contract guard — verified by deleting a `generate_handler!` entry; the test
+  fails and names the calling file.
+
+### Found during execution (not in the original review)
+
+1. **MCP `clear_logcat` diverged from the command version** — it neither bumped
+   `clear_epoch` (so buffered lines reappeared right after an agent's clear) nor
+   emitted `logcat:cleared` (so the UI kept rendering cleared entries). Caught by
+   the new MCP state-mutation tests. Same class as H3.
+2. **Three pre-existing clippy lints** blocked `cargo clippy --all-targets`,
+   which is why CI only ran clippy on default targets and test-code lints went
+   unenforced. Cleared in `b7ab2f4`; CI now runs `--all-targets`.
+
+### Deliberate deviations from the plan
+
+- **1.2 skipped as planned.** `handleRestart`'s three-call sequence was left
+  alone: the race is closed backend-side, and adding a `restart_logcat` command
+  would violate "can this be done with existing commands?"
+- **M10 narrowed.** The plan cleared a stale `selectedSerial` whenever the device
+  was absent. Implemented as "absent from a **non-empty** list" — ADB reports zero
+  devices during a server restart, and dropping the user's choice over a transient
+  blip is worse than briefly holding a stale serial. Two existing tests that
+  documented the old behavior were updated with this reasoning.
+- **IPC contract test lives in `scripts/`, not `src/test/`.** `src/` has no node
+  type definitions (`types: ["vitest/globals"]`), and adding `@types/node`
+  repo-wide for one test was the larger change. `scripts/**/*.test.mjs` is an
+  existing, already-included convention.
+- **Validator tests left in `mcp_server.rs`.** The plan moved them wholesale; the
+  originals now exercise the error-type mapping of the thin wrappers, which is
+  worth keeping, and deleting them would add churn to a 99th-percentile hotspot.
+- **No coverage thresholds set**, as planned — reporting only.
+
+### Remaining follow-ups
+
+- **`mcp_server.rs` coverage is still thin** (14 tests / 3330 lines). The ~6
+  state-mutating tools are now covered; the UI-automation and device tools are
+  not. A dedicated pass is warranted.
+- **Start/stop/clear logic is still duplicated** between `commands/logcat.rs` and
+  `mcp_server.rs`, now with `KEEP IN SYNC` comments on both. Extracting
+  `services::logcat::{request_start, request_stop, request_clear}` would close it
+  for good — deferred to keep this change reviewable.
+- **`process_manager::cancel` still signals a raw PID.** The `exited` flag closes
+  the hole; holding the `Child` handle and using `child.kill()` would be
+  structurally safer but needs an ownership refactor.
+- **Splitting `mcp_server.rs` into modules** remains out of scope.
+
+### Manual verification still outstanding
+
+The 7 device-dependent checks listed above have **not** been run — they need a
+real device or emulator. The automated suite cannot reach them.
