@@ -2946,58 +2946,21 @@ impl AndroidMcpServer {
 
 // ── Validation helpers ────────────────────────────────────────────────────────
 
+/// Thin wrappers over the shared validators (see utils::validation), so the MCP
+/// tools and the Tauri commands can never drift apart again.
 fn validate_gradle_task(task: &str) -> Result<(), McpError> {
-    if task.is_empty() {
-        return Err(McpError::invalid_params("Task name cannot be empty", None));
-    }
-    let valid = task
-        .chars()
-        .all(|c| c.is_alphanumeric() || matches!(c, ':' | '-' | '_' | '.'));
-    if !valid {
-        return Err(McpError::invalid_params(
-            format!("Invalid task name '{task}'. Use alphanumeric, ':', '-', '_', '.' only."),
-            None,
-        ));
-    }
-    Ok(())
+    crate::utils::validation::validate_gradle_task(task)
+        .map_err(|e| McpError::invalid_params(e, None))
 }
 
 fn validate_package_name(package: &str) -> Result<(), McpError> {
-    if package.is_empty() {
-        return Err(McpError::invalid_params(
-            "Package name cannot be empty",
-            None,
-        ));
-    }
-    let valid = package
-        .chars()
-        .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_'));
-    if !valid || !package.contains('.') {
-        return Err(McpError::invalid_params(
-            format!("Invalid package name '{package}'. Expected format: com.example.app"),
-            None,
-        ));
-    }
-    Ok(())
+    crate::utils::validation::validate_package_name(package)
+        .map_err(|e| McpError::invalid_params(e, None))
 }
 
 fn validate_device_serial(serial: &str) -> Result<(), McpError> {
-    if serial.is_empty() {
-        return Err(McpError::invalid_params(
-            "Device serial cannot be empty",
-            None,
-        ));
-    }
-    let valid = serial
-        .chars()
-        .all(|c| c.is_alphanumeric() || matches!(c, '-' | ':' | '.' | '_'));
-    if !valid {
-        return Err(McpError::invalid_params(
-            format!("Invalid device serial '{serial}'"),
-            None,
-        ));
-    }
-    Ok(())
+    crate::utils::validation::validate_device_serial(serial)
+        .map_err(|e| McpError::invalid_params(e, None))
 }
 
 fn capitalize_first(s: &str) -> String {

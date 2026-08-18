@@ -609,21 +609,29 @@ pub async fn record_build_result(
         while bs.history.len() > MAX_HISTORY {
             bs.history.pop_front();
         }
-        save_build_history(&bs.history);
         let history_snapshot = bs.history.clone();
         (record_id, history_snapshot)
+        // Lock dropped here — all disk I/O happens below, off the critical
+        // section. save_build_history() used to run while holding it, blocking
+        // every other build-state reader for the duration of a file write.
     };
 
-    // Best-effort disk I/O — outside the lock.
-    save_build_log(record_id, &raw_lines);
-    let (settings, _) = crate::services::settings_manager::load_settings();
-    let build_log_dir = data_dir().join("build-logs");
-    rotate_build_logs(
-        &build_log_dir,
-        settings.build.build_log_retention_days,
-        settings.build.build_log_max_folder_mb,
-        &history_snapshot,
-    );
+    // Best-effort disk I/O, moved off the async runtime so a slow or large
+    // write cannot stall a tokio worker.
+    let history_for_io = history_snapshot.clone();
+    let _ = tokio::task::spawn_blocking(move || {
+        save_build_history(&history_for_io);
+        save_build_log(record_id, &raw_lines);
+        let (settings, _) = crate::services::settings_manager::load_settings();
+        let build_log_dir = data_dir().join("build-logs");
+        rotate_build_logs(
+            &build_log_dir,
+            settings.build.build_log_retention_days,
+            settings.build.build_log_max_folder_mb,
+            &history_snapshot,
+        );
+    })
+    .await;
 }
 
 /// Build environment variables for a Gradle process, and ensure `gradlew` is executable.

@@ -20,6 +20,38 @@ const KNOWN_SETTINGS_FIELDS: &[&str] = &[
 
 static SETTINGS_MUTATION_LOCK: LazyLock<StdMutex<()>> = LazyLock::new(|| StdMutex::new(()));
 
+/// Process-wide cache for the default settings file.
+///
+/// `load_settings()` has ~67 call sites, several on hot async paths
+/// (`run_gradle_task`, `start_logcat`, `record_build_result`), and each one was
+/// doing a synchronous read + full JSON parse on a tokio worker thread. Every
+/// mutation path invalidates this.
+static SETTINGS_CACHE: LazyLock<std::sync::RwLock<Option<AppSettings>>> =
+    LazyLock::new(|| std::sync::RwLock::new(None));
+
+/// Drop the cached settings so the next `load_settings()` re-reads from disk.
+/// Must be called by every path that writes the default settings file.
+pub fn invalidate_settings_cache() {
+    match SETTINGS_CACHE.write() {
+        Ok(mut g) => *g = None,
+        Err(poisoned) => *poisoned.into_inner() = None,
+    }
+}
+
+fn cached_settings() -> Option<AppSettings> {
+    match SETTINGS_CACHE.read() {
+        Ok(g) => g.clone(),
+        Err(poisoned) => poisoned.into_inner().clone(),
+    }
+}
+
+fn store_settings_in_cache(settings: &AppSettings) {
+    match SETTINGS_CACHE.write() {
+        Ok(mut g) => *g = Some(settings.clone()),
+        Err(poisoned) => *poisoned.into_inner() = Some(settings.clone()),
+    }
+}
+
 /// Log a warning for each top-level key in the JSON that isn't a known settings field.
 /// This catches typos early (e.g. "fontSizee" silently ignored by serde(default)).
 fn log_unknown_settings_fields(value: &serde_json::Value) {
@@ -59,6 +91,7 @@ fn repair_corrupt_settings_file(path: &std::path::Path, defaults: &AppSettings) 
     if let Err(e) = save_settings_to_path(path, defaults, None) {
         tracing::warn!("Failed to write default settings after corruption: {e}");
     }
+    invalidate_settings_cache();
 }
 
 fn load_settings_from_path(path: &std::path::Path) -> (AppSettings, bool) {
@@ -96,7 +129,15 @@ fn load_settings_from_path(path: &std::path::Path) -> (AppSettings, bool) {
 /// `was_corrupted` is true when the file existed but failed to parse —
 /// the user's settings were lost and replaced with defaults.
 pub fn load_settings() -> (AppSettings, bool) {
-    load_settings_from_path(&settings_file())
+    // `was_corrupted` is deliberately NOT cached: it is a one-shot startup
+    // signal, and a corrupt file is repaired on the first load, so subsequent
+    // reads are legitimately "not corrupted".
+    if let Some(settings) = cached_settings() {
+        return (settings, false);
+    }
+    let (settings, corrupted) = load_settings_from_path(&settings_file());
+    store_settings_in_cache(&settings);
+    (settings, corrupted)
 }
 
 /// Save settings to disk atomically (temp file + rename).
@@ -106,7 +147,9 @@ pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
     let _guard = SETTINGS_MUTATION_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    save_settings_to_path(&path, settings, Some(&dir))
+    let result = save_settings_to_path(&path, settings, Some(&dir));
+    invalidate_settings_cache();
+    result
 }
 
 fn save_settings_to_path(
@@ -158,6 +201,9 @@ pub fn mutate_settings_at_path_with_result<R>(
     let (mut settings, _) = load_settings_from_path(settings_path);
     let result = mutate(&mut settings)?;
     save_settings_to_path(settings_path, &settings, None)?;
+    // Invalidate unconditionally: this helper is also used with explicit paths
+    // in tests, and over-invalidating only costs one re-read.
+    invalidate_settings_cache();
     Ok(result)
 }
 
@@ -220,6 +266,7 @@ pub fn reset_settings() -> Result<AppSettings, String> {
     if path.exists() {
         std::fs::remove_file(&path).map_err(|e| format!("Failed to delete settings file: {e}"))?;
     }
+    invalidate_settings_cache();
     Ok(AppSettings::default())
 }
 
@@ -551,6 +598,7 @@ mod tests {
 mod variant_tests {
     use super::*;
     use std::fs;
+    use tempfile::TempDir;
 
     fn write_settings(path: &std::path::Path, content: &str) {
         fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -652,6 +700,68 @@ mod variant_tests {
         assert_eq!(
             settings.last_active_project.as_deref(),
             Some("/proj/second")
+        );
+    }
+
+    // ── Settings cache (M13) ─────────────────────────────────────────────────
+
+    #[test]
+    fn invalidate_settings_cache_forces_a_reread() {
+        // The cache keys off the default settings file, so exercise it through
+        // the public API and assert the invalidation contract directly.
+        invalidate_settings_cache();
+        assert!(
+            cached_settings().is_none(),
+            "cache must be empty after invalidation"
+        );
+
+        let sample = AppSettings::default();
+        store_settings_in_cache(&sample);
+        assert!(
+            cached_settings().is_some(),
+            "cache must hold the stored value"
+        );
+
+        invalidate_settings_cache();
+        assert!(
+            cached_settings().is_none(),
+            "every mutation path must clear the cache"
+        );
+    }
+
+    #[test]
+    fn mutate_settings_at_path_invalidates_the_cache() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("settings.json");
+
+        store_settings_in_cache(&AppSettings::default());
+        mutate_settings_at_path(&path, |s| {
+            s.onboarding_completed = true;
+        })
+        .unwrap();
+
+        assert!(
+            cached_settings().is_none(),
+            "a mutation must not leave a stale cached copy behind"
+        );
+    }
+
+    #[test]
+    fn load_settings_from_path_is_unaffected_by_the_cache() {
+        // Explicit-path loads must always hit disk — tests and the corruption
+        // repair path depend on it.
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("settings.json");
+        let mut written = AppSettings::default();
+        written.onboarding_completed = true;
+        save_settings_to_path(&path, &written, None).unwrap();
+
+        store_settings_in_cache(&AppSettings::default());
+
+        let (loaded, _) = load_settings_from_path(&path);
+        assert!(
+            loaded.onboarding_completed,
+            "load_settings_from_path must read the file, not the cache"
         );
     }
 }

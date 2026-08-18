@@ -2,8 +2,6 @@ use crate::models::error::AppError;
 use crate::models::settings::{ProjectAppInfo, ProjectEntry, MAX_RECENT_PROJECTS};
 use crate::services::{fs_manager, settings_manager};
 use crate::FsState;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use tauri::State;
@@ -11,10 +9,18 @@ use tauri::State;
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Generate a short deterministic hex ID from an absolute path.
+/// Stable identifier for a project path.
+///
+/// MUST stay implementation-stable: these ids are persisted in settings.json and
+/// used to match `activeProjectId`, pins, and per-project meta. `DefaultHasher`
+/// (used previously) is explicitly not guaranteed stable across Rust releases,
+/// so a toolchain bump would silently orphan every stored entry.
 fn project_id(path: &std::path::Path) -> String {
-    let mut hasher = DefaultHasher::new();
-    path.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(path.to_string_lossy().as_bytes());
+    let mut head = [0u8; 8];
+    head.copy_from_slice(&digest[..8]);
+    format!("{:016x}", u64::from_be_bytes(head))
 }
 
 /// Upsert a `ProjectEntry` into `settings.recent_projects` and persist.
@@ -30,6 +36,12 @@ fn upsert_project(path: &std::path::Path, gradle_root: Option<&std::path::Path>)
     let now = chrono::Utc::now().to_rfc3339();
 
     if let Err(e) = settings_manager::mutate_settings(|settings| {
+        // Heal entries written with the old unstable hash: same path, stale id.
+        for entry in settings.recent_projects.iter_mut() {
+            if entry.path == path_str && entry.id != id {
+                entry.id = id.clone();
+            }
+        }
         // Update existing entry or insert new one.
         if let Some(entry) = settings.recent_projects.iter_mut().find(|e| e.id == id) {
             entry.last_opened = now;
@@ -261,6 +273,19 @@ pub async fn get_last_active_project() -> Result<Option<String>, String> {
     let (settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
         .await
         .map_err(|e| format!("Failed to load settings: {e}"))?;
+
+    // A deleted or renamed folder otherwise produces a "Failed to open project"
+    // toast on every launch, forever — the stale value was never cleared.
+    if let Some(ref path) = settings.last_active_project {
+        if !std::path::Path::new(path).exists() {
+            tracing::info!("Clearing last_active_project — path no longer exists: {path}");
+            let _ = tokio::task::spawn_blocking(|| {
+                settings_manager::mutate_settings(|s| s.last_active_project = None)
+            })
+            .await;
+            return Ok(None);
+        }
+    }
     Ok(settings.last_active_project)
 }
 
@@ -533,5 +558,30 @@ android {
 
         assert!(updated.contains(r#"versionName = "2.0.1""#));
         assert!(updated.contains("versionCode = 12"));
+    }
+
+    // ── Stable project ids (M16) ─────────────────────────────────────────────
+
+    /// These ids are persisted in settings.json. If this expectation ever needs
+    /// updating, every stored project entry is being orphaned — which is
+    /// exactly what this test exists to catch.
+    #[test]
+    fn project_id_is_stable_for_a_known_path() {
+        let id = project_id(std::path::Path::new("/Users/dev/projects/my-app"));
+        assert_eq!(id.len(), 16, "id width must stay 16 hex chars");
+        assert_eq!(
+            id,
+            project_id(std::path::Path::new("/Users/dev/projects/my-app")),
+            "same path must always hash to the same id"
+        );
+        // Pin the actual value so an implementation swap is loud, not silent.
+        assert_eq!(id, "c361c9fa33e7adb3");
+    }
+
+    #[test]
+    fn project_id_differs_between_paths() {
+        let a = project_id(std::path::Path::new("/projects/a"));
+        let b = project_id(std::path::Path::new("/projects/b"));
+        assert_ne!(a, b);
     }
 }

@@ -170,9 +170,20 @@ impl LogStore {
         result
     }
 
+    /// Locate an entry by id.
+    ///
+    /// Ids are assigned monotonically and the ring is append-ordered, so a
+    /// binary search applies — a linear scan cost O(n) over up to 200k entries
+    /// on every context expansion.
+    fn index_of(&self, anchor_id: u64) -> Option<usize> {
+        self.entries
+            .binary_search_by_key(&anchor_id, |entry| entry.id)
+            .ok()
+    }
+
     /// Return up to `limit` entries immediately before `anchor_id`, in chronological order.
     pub fn context_before(&self, anchor_id: u64, limit: usize) -> Vec<ProcessedEntry> {
-        let Some(anchor_index) = self.entries.iter().position(|entry| entry.id == anchor_id) else {
+        let Some(anchor_index) = self.index_of(anchor_id) else {
             return Vec::new();
         };
         let start = anchor_index.saturating_sub(limit);
@@ -186,7 +197,7 @@ impl LogStore {
 
     /// Return up to `limit` entries immediately after `anchor_id`, in chronological order.
     pub fn context_after(&self, anchor_id: u64, limit: usize) -> Vec<ProcessedEntry> {
-        let Some(anchor_index) = self.entries.iter().position(|entry| entry.id == anchor_id) else {
+        let Some(anchor_index) = self.index_of(anchor_id) else {
             return Vec::new();
         };
         self.entries

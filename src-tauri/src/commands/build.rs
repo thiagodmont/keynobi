@@ -33,28 +33,9 @@ fn mark_build_spawn_failed(bs: &mut build_runner::BuildStateInner) {
 
 // ── Validation helpers ─────────────────────────────────────────────────────────
 
-/// Validate a Gradle task name against an allowlist.
-/// Allowed: alphanumeric, colon, hyphen, underscore, dot. Max 256 chars.
+/// Thin wrapper over the shared validator (see utils::validation).
 fn validate_gradle_task(task: &str) -> Result<(), AppError> {
-    if task.is_empty() {
-        return Err(AppError::InvalidInput(
-            "Gradle task name must not be empty".to_string(),
-        ));
-    }
-    if task.len() > 256 {
-        return Err(AppError::InvalidInput(
-            "Gradle task name is too long (max 256 characters)".to_string(),
-        ));
-    }
-    if !task
-        .chars()
-        .all(|c| c.is_alphanumeric() || matches!(c, ':' | '-' | '_' | '.'))
-    {
-        return Err(AppError::InvalidInput(format!(
-            "Invalid Gradle task name '{task}': only alphanumeric, ':', '-', '_', '.' are allowed"
-        )));
-    }
-    Ok(())
+    crate::utils::validation::validate_gradle_task(task).map_err(AppError::InvalidInput)
 }
 
 // ── Build commands ─────────────────────────────────────────────────────────────

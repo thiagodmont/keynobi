@@ -34,45 +34,13 @@ fn record_polled_devices(
 
 // ── Validation helpers ─────────────────────────────────────────────────────────
 
-/// Validate an ADB device serial against an allowlist.
-/// Allowed: alphanumeric, colon, dot, hyphen, underscore. Max 64 chars.
+/// Thin wrappers over the shared validators (see utils::validation).
 pub(crate) fn validate_device_serial(serial: &str) -> Result<(), AppError> {
-    if serial.is_empty() {
-        return Err(AppError::InvalidInput(
-            "Device serial must not be empty".to_string(),
-        ));
-    }
-    if serial.len() > 64 {
-        return Err(AppError::InvalidInput(
-            "Device serial is too long (max 64 characters)".to_string(),
-        ));
-    }
-    if !serial
-        .chars()
-        .all(|c| c.is_alphanumeric() || matches!(c, ':' | '.' | '-' | '_'))
-    {
-        return Err(AppError::InvalidInput(format!(
-            "Invalid device serial '{serial}': only alphanumeric, ':', '.', '-', '_' are allowed"
-        )));
-    }
-    Ok(())
+    crate::utils::validation::validate_device_serial(serial).map_err(AppError::InvalidInput)
 }
 
 fn validate_package_name(package: &str) -> Result<(), AppError> {
-    if package.is_empty() {
-        return Err(AppError::InvalidInput(
-            "Package name cannot be empty".to_string(),
-        ));
-    }
-    let valid = package
-        .chars()
-        .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_'));
-    if !valid || !package.contains('.') {
-        return Err(AppError::InvalidInput(format!(
-            "Invalid package name '{package}'. Expected format: com.example.app"
-        )));
-    }
-    Ok(())
+    crate::utils::validation::validate_package_name(package).map_err(AppError::InvalidInput)
 }
 
 fn validate_activity_name(activity: &str) -> Result<(), AppError> {
