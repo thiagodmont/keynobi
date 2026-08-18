@@ -1,0 +1,19 @@
+.github/dependabot.yml
+  s_506c98591880e3::t_b7e10da1afadd3 8-16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "fa84e85ba9e01511ba54997531f448853dc00032",
+  "prompts": {},
+  "sessions": {
+    "s_506c98591880e3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2fdd100d-347d-4b3f-95b4-74461125a396",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
