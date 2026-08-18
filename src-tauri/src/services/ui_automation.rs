@@ -1921,8 +1921,8 @@ mod tests {
         let m = find_ui_elements(&snap, &q, 10);
         assert_eq!(m.len(), 1);
         assert_eq!(m[0].center_x, (800 + 1032) / 2);
-        assert_eq!(m[0].clickable, true);
-        assert!(m[0].tree_path.len() > 0);
+        assert!(m[0].clickable);
+        assert!(!m[0].tree_path.is_empty());
     }
 
     #[test]

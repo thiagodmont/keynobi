@@ -1,10 +1,11 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 /// File-system micro-benchmarks.
 ///
 /// Run with:
 ///   cd src-tauri && cargo bench --bench fs_benchmarks
 use keynobi_lib::services::fs_manager::find_gradle_root;
 use std::fs;
+use std::hint::black_box;
 
 fn make_temp_project() -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("create tempdir");

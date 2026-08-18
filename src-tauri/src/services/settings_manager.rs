@@ -752,8 +752,10 @@ mod variant_tests {
         // repair path depend on it.
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("settings.json");
-        let mut written = AppSettings::default();
-        written.onboarding_completed = true;
+        let written = AppSettings {
+            onboarding_completed: true,
+            ..AppSettings::default()
+        };
         save_settings_to_path(&path, &written, None).unwrap();
 
         store_settings_in_cache(&AppSettings::default());
