@@ -1,0 +1,25 @@
+rust-toolchain.toml
+  s_5034d19400d537::t_91c75f31e3bb47 3
+src/lib/action-registry.ts
+  s_5034d19400d537::t_df16a0356a4e35 2
+src/lib/logcat-query.ts
+  s_5034d19400d537::t_df16a0356a4e35 531
+src/components/logcat/LogcatPanel.tsx
+  s_5034d19400d537::t_df16a0356a4e35 387
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "8a0f090d4f1992f956ae15f01509faf8295c2c7b",
+  "prompts": {},
+  "sessions": {
+    "s_5034d19400d537": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3aac00bb-e00c-4f08-9d6a-265b10177a38",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
