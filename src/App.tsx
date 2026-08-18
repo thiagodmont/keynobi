@@ -137,6 +137,11 @@ export function App(): JSX.Element {
         console.warn("[updates] release check failed", err);
       });
 
+    // Background monitor stats feed the StatusBar memory/log-size indicators.
+    import("@/stores/monitor.store").then(({ initMonitorListeners }) => {
+      void initMonitorListeners();
+    });
+
     // Initialize MCP lifecycle event listeners.
     import("@/stores/mcp.store").then(({ initMcpListeners, loadMcpActivity }) => {
       initMcpListeners();

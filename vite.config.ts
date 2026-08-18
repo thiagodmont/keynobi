@@ -73,6 +73,15 @@ export default defineConfig(async ({ mode }) => {
     alias: {
       "@": resolve(__dirname, "./src"),
     },
+    // Reporting only — no thresholds yet. Set them once the real numbers are
+    // known; a threshold picked blind either breaks CI on day one or is set so
+    // low it means nothing.
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html"],
+      include: ["src/stores/**", "src/services/**", "src/lib/**"],
+      exclude: ["**/*.test.ts", "**/*.test.tsx"],
+    },
   },
 
   clearScreen: false,

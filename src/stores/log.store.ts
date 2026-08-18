@@ -57,6 +57,3 @@ export function createLogStore(options: LogStoreOptions = {}): LogStore {
 
   return { entries, pushEntry, pushEntries, clearEntries };
 }
-
-/** Shared log store for build output logging (used as output panel). */
-export const buildLogOutput = createLogStore({ maxEntries: 2000 });

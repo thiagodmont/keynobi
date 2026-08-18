@@ -21,6 +21,7 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run lint
+      - run: npm run format:check
       - run: npm run typescript:check
       - run: npm run test
 
@@ -67,8 +68,10 @@ jobs:
           cargo check --features telemetry
           cargo clippy --features telemetry -- -D warnings
           cargo test --lib --tests --features telemetry
+      - name: Rustfmt
+        run: cd src-tauri && cargo fmt --check
       - name: Clippy
-        run: cd src-tauri && cargo clippy -- -D warnings
+        run: cd src-tauri && cargo clippy --all-targets -- -D warnings
 
   e2e:
     name: E2E Tests

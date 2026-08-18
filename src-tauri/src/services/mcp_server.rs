@@ -955,9 +955,18 @@ impl AndroidMcpServer {
         description = "Clear the in-memory logcat buffer. New entries will appear after logcat continues streaming."
     )]
     async fn clear_logcat(&self) -> Result<CallToolResult, McpError> {
-        let mut state = self.logcat_state.lock().await;
-        state.store.clear();
-        state.known_packages.clear();
+        // KEEP IN SYNC WITH commands/logcat.rs::clear_logcat.
+        {
+            let mut state = self.logcat_state.lock().await;
+            state.store.clear();
+            state.known_packages.clear();
+            // Without the epoch bump the pipeline keeps lines that were already
+            // buffered, so they reappear right after the clear.
+            state.clear_epoch = state.clear_epoch.wrapping_add(1);
+        }
+        // And without the event the UI keeps rendering the entries an agent
+        // just cleared.
+        self.emit_event("logcat:cleared", ());
         Ok(CallToolResult::success(vec![Content::text(
             "Logcat buffer cleared.",
         )]))
@@ -3299,5 +3308,127 @@ mod tests {
         // Guard should be false at startup (or after test isolation).
         // We just check the type; actual state depends on test order.
         let _ = MCP_STDIO_RUNNING.load(Ordering::SeqCst);
+    }
+
+    // ── State-mutating tools ─────────────────────────────────────────────────
+    //
+    // These tools share BuildState and LogcatState with the GUI, so a bug here
+    // corrupts the app's view of the world. Constructed headless (app_handle
+    // None) so no Tauri runtime is needed.
+
+    fn headless_server() -> AndroidMcpServer {
+        AndroidMcpServer::new_headless(
+            BuildState::new(),
+            DeviceState::new(),
+            crate::commands::logcat::new_logcat_state(),
+            FsState::new(),
+            ProcessManager::new(),
+        )
+    }
+
+    /// The UI and the MCP server share one build slot. Previously run_task had
+    /// no guard at all, so an agent could start a second Gradle process against
+    /// the same project and orphan the first.
+    #[tokio::test]
+    async fn mcp_build_is_refused_while_a_ui_build_is_running() {
+        let server = headless_server();
+
+        crate::services::build_runner::try_reserve_build_slot(
+            &server.build_state,
+            "assembleDebug",
+            "2026-01-01T00:00:00Z",
+        )
+        .await
+        .expect("first reservation succeeds");
+
+        let second = crate::services::build_runner::try_reserve_build_slot(
+            &server.build_state,
+            "assembleRelease",
+            "2026-01-01T00:00:01Z",
+        )
+        .await;
+
+        assert!(
+            second.is_err(),
+            "an MCP build must not start while another build holds the slot"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_build_status_reflects_the_shared_build_state() {
+        let server = headless_server();
+        crate::services::build_runner::try_reserve_build_slot(
+            &server.build_state,
+            "assembleDebug",
+            "2026-01-01T00:00:00Z",
+        )
+        .await
+        .unwrap();
+
+        let result = server.get_build_status().await.unwrap();
+        let text = format!("{:?}", result);
+        assert!(
+            text.contains("running"),
+            "status must surface the shared state, got: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_logcat_bumps_the_stream_generation() {
+        let server = headless_server();
+
+        let before = {
+            let mut s = server.logcat_state.lock().await;
+            s.streaming = true;
+            s.stream_generation
+        };
+
+        server.stop_logcat().await.unwrap();
+
+        let after = server.logcat_state.lock().await;
+        assert!(!after.streaming);
+        assert_ne!(
+            after.stream_generation, before,
+            "stop must bump the generation so an in-flight stream task exits"
+        );
+    }
+
+    #[tokio::test]
+    async fn clear_logcat_bumps_the_clear_epoch_and_empties_the_store() {
+        let server = headless_server();
+        {
+            let mut s = server.logcat_state.lock().await;
+            s.known_packages.insert("com.example.app".to_string());
+        }
+        let before = server.logcat_state.lock().await.clear_epoch;
+
+        server.clear_logcat().await.unwrap();
+
+        let after = server.logcat_state.lock().await;
+        assert_ne!(after.clear_epoch, before);
+        assert!(after.known_packages.is_empty());
+        assert_eq!(after.store.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn cancel_build_reports_when_nothing_is_running() {
+        let server = headless_server();
+        let result = server.cancel_build().await.unwrap();
+        // Must not panic or wedge state when idle.
+        assert!(!format!("{:?}", result).is_empty());
+        let bs = server.build_state.inner.lock().await;
+        assert!(bs.current_build.is_none());
+    }
+
+    #[tokio::test]
+    async fn run_gradle_task_rejects_an_invalid_task_name() {
+        let server = headless_server();
+        let err = server
+            .run_gradle_task(Parameters(RunGradleTaskParams {
+                task: "assembleDebug; rm -rf /".to_string(),
+                variant: None,
+            }))
+            .await;
+        assert!(err.is_err(), "shell metacharacters must be rejected");
     }
 }
