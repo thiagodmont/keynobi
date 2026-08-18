@@ -54,7 +54,6 @@ export function buildHandlers(): Record<string, (args: unknown) => unknown> {
 
       return id;
     },
-    finalize_build: () => undefined,
     cancel_build: () => {
       buildStatus = { state: "cancelled" };
     },

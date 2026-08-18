@@ -26,10 +26,9 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
   });
 
   // Regression: when no build is running (e.g. during a project switch),
-  // cancelBuild must return early without calling finalize_build.
-  // Before the fix, cancelBuild always called finalizeBuild with task="unknown",
-  // which wrote a ghost record to the build history.
-  it("does not call finalize_build when no build is running (idle phase)", async () => {
+  // cancelBuild must return early without invoking the removed legacy
+  // finalize_build command, which used to write ghost history records.
+  it("does not call legacy finalize_build when no build is running (idle phase)", async () => {
     expect(buildState.phase).toBe("idle");
 
     await cancelBuild();
@@ -38,7 +37,7 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
     expect(finalizeCalls).toHaveLength(0);
   });
 
-  it("does not call finalize_build when previous build already succeeded", async () => {
+  it("does not call legacy finalize_build when previous build already succeeded", async () => {
     startBuild("assembleDebug");
     // Simulate a completed build by directly transitioning to success phase.
     // (We can't call setBuildResult here without mocking the tick, so we use
@@ -83,6 +82,28 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
 
     await cancelBuild();
     await first;
+  });
+
+  it("clears the build completion timeout when cancelling an active build", async () => {
+    vi.useFakeTimers();
+    try {
+      mockInvoke.mockImplementation((cmd) => {
+        if (cmd === "run_gradle_task") return Promise.resolve(1);
+        if (cmd === "cancel_build") return Promise.resolve(undefined);
+        if (cmd === "get_build_history") return Promise.resolve([]);
+        return Promise.resolve(undefined);
+      });
+
+      const first = runBuild();
+      expect(buildState.phase).toBe("running");
+
+      await cancelBuild();
+      await first;
+
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects a standalone build while deploy is resolving a device", async () => {

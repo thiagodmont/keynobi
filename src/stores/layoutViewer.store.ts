@@ -1,6 +1,7 @@
 import { createStore } from "solid-js/store";
 import type { UiHierarchySnapshot } from "@/bindings";
 import { dumpUiHierarchy, formatError } from "@/lib/tauri-api";
+import { selectedDevice } from "@/stores/device.store";
 
 export interface LayoutViewerState {
   snapshot: UiHierarchySnapshot | null;
@@ -63,22 +64,35 @@ export function setSearchMatchIndex(i: number): void {
   setLayoutViewerState("searchMatchIndex", i);
 }
 
+let refreshRequestId = 0;
+
 /** Refresh hierarchy from the selected device (or pass a specific serial). */
 export async function refreshLayoutHierarchy(deviceSerial?: string | null): Promise<void> {
+  const requestId = ++refreshRequestId;
+  const explicitSerial = deviceSerial !== undefined && deviceSerial !== null;
+  const selectedSerialAtStart = selectedDevice()?.serial ?? null;
+  const serial = explicitSerial ? deviceSerial : selectedSerialAtStart;
+
   setLayoutViewerState("loading", true);
   setLayoutViewerState("error", null);
   try {
-    const snap = await dumpUiHierarchy(deviceSerial ?? null);
+    const snap = await dumpUiHierarchy(serial ?? null);
+    if (requestId !== refreshRequestId) return;
+    if (!explicitSerial && selectedDevice()?.serial !== selectedSerialAtStart) return;
     setLayoutViewerState("snapshot", snap);
     setLayoutViewerState("selectedLayoutPath", null);
     setLayoutViewerState("searchMatchPaths", []);
     setLayoutViewerState("searchMatchIndex", 0);
   } catch (e) {
+    if (requestId !== refreshRequestId) return;
+    if (!explicitSerial && selectedDevice()?.serial !== selectedSerialAtStart) return;
     setLayoutViewerState("error", formatError(e));
     // Keep previous snapshot visible — user can still inspect the last capture
     setLayoutViewerState("selectedLayoutPath", null);
     setLayoutViewerState("searchMatchPaths", []);
   } finally {
-    setLayoutViewerState("loading", false);
+    if (requestId === refreshRequestId) {
+      setLayoutViewerState("loading", false);
+    }
   }
 }

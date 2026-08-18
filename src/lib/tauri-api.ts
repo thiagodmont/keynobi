@@ -167,25 +167,6 @@ export async function runGradleTask(
   return invoke<number>("run_gradle_task", { task, onLine: channel });
 }
 
-/** Persist the final build result into history after the Channel closes. */
-export async function finalizeBuild(opts: {
-  success: boolean;
-  durationMs: number;
-  errors: BuildError[];
-  task: string;
-  startedAt: string;
-  projectRoot: string | null;
-}): Promise<void> {
-  return invoke<void>("finalize_build", {
-    success: opts.success,
-    durationMs: opts.durationMs,
-    errors: opts.errors,
-    task: opts.task,
-    startedAt: opts.startedAt,
-    projectRoot: opts.projectRoot,
-  });
-}
-
 export async function cancelBuild(): Promise<void> {
   return invoke<void>("cancel_build");
 }

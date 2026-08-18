@@ -26,10 +26,9 @@ Key caps:
 runBuild()
   -> runGradleTask
   -> wait for build:complete
-  -> finalizeBuild
 ```
 
-`runAndDeploy()` builds first, then installs and launches against the resolved online device. Always clear `deployPhase` in `finally`.
+`run_gradle_task` owns backend result persistence before emitting `build:complete`. `runAndDeploy()` builds first, then installs and launches against the resolved online device. Always clear `deployPhase` in `finally`.
 
 ### Invariants
 
@@ -37,7 +36,7 @@ runBuild()
 - Build lifecycle completion uses events.
 - `runBuild()` resolves only after completion/cancellation state is known.
 - Cancellation must clear pending build-completion waiters and process IDs.
-- Parsed build errors are persisted through `finalizeBuild`.
+- Parsed build errors are persisted by backend process-exit finalization before `build:complete` is emitted.
 
 ---
 

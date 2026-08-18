@@ -6,12 +6,8 @@
  * Used by StatusBar, McpPanel, and HealthPanel.
  */
 import { createStore, produce } from "solid-js/store";
-import { listen } from "@tauri-apps/api/event";
-import {
-  type McpActivityEntry,
-  getMcpActivity,
-  getMcpServerStatus,
-} from "@/lib/tauri-api";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { type McpActivityEntry, getMcpActivity, getMcpServerStatus } from "@/lib/tauri-api";
 import { showToast } from "@/components/ui";
 
 export type { McpActivityEntry };
@@ -46,37 +42,70 @@ export { mcpState };
 
 // ── Event listeners ───────────────────────────────────────────────────────────
 
-export function initMcpListeners() {
-  listen<{ transport: string }>("mcp:started", (event) => {
-    setMcpState({
-      running: true,
-      transport: (event.payload.transport as "stdio" | "http") ?? "stdio",
-      clientName: null,
-      connectedAt: null,
-    });
-  });
+let mcpLifecycleUnlisteners: UnlistenFn[] | null = null;
 
-  listen<{ clientName: string; connectedAt: string }>(
-    "mcp:client_connected",
-    (event) => {
+function trackMcpListener(registration: Promise<UnlistenFn>): void {
+  registration
+    .then((unlisten) => {
+      if (mcpLifecycleUnlisteners) {
+        mcpLifecycleUnlisteners.push(unlisten);
+      } else {
+        unlisten();
+      }
+    })
+    .catch((err) => {
+      console.error("[mcp] Failed to register lifecycle listener:", err);
+    });
+}
+
+export function initMcpListeners(): void {
+  if (mcpLifecycleUnlisteners) return;
+
+  mcpLifecycleUnlisteners = [];
+
+  trackMcpListener(
+    listen<{ transport: string }>("mcp:started", (event) => {
+      setMcpState({
+        running: true,
+        transport: (event.payload.transport as "stdio" | "http") ?? "stdio",
+        clientName: null,
+        connectedAt: null,
+      });
+    })
+  );
+
+  trackMcpListener(
+    listen<{ clientName: string; connectedAt: string }>("mcp:client_connected", (event) => {
       setMcpState({
         clientName: event.payload.clientName,
         connectedAt: event.payload.connectedAt,
       });
       // Refresh activity log when a client connects.
       loadMcpActivity();
-    }
+    })
   );
 
-  listen("mcp:stopped", () => {
-    setMcpState({
-      running: false,
-      clientName: null,
-      connectedAt: null,
-      transport: null,
-    });
-    loadMcpActivity();
-  });
+  trackMcpListener(
+    listen("mcp:stopped", () => {
+      setMcpState({
+        running: false,
+        clientName: null,
+        connectedAt: null,
+        transport: null,
+      });
+      loadMcpActivity();
+    })
+  );
+}
+
+export function resetMcpListenersForTests(): void {
+  const unlisteners = mcpLifecycleUnlisteners;
+  mcpLifecycleUnlisteners = null;
+  if (!unlisteners) return;
+
+  for (const unlisten of unlisteners) {
+    unlisten();
+  }
 }
 
 // ── Activity + status loader ──────────────────────────────────────────────────
@@ -85,10 +114,7 @@ export function initMcpListeners() {
 export async function loadMcpActivity(limit = 200): Promise<void> {
   setMcpState("activityLoading", true);
   try {
-    const [entries, status] = await Promise.all([
-      getMcpActivity(limit),
-      getMcpServerStatus(),
-    ]);
+    const [entries, status] = await Promise.all([getMcpActivity(limit), getMcpServerStatus()]);
     setMcpState(
       produce((s) => {
         s.activityLog = entries;

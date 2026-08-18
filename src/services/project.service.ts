@@ -9,6 +9,7 @@
 import {
   openFolderDialog,
   openProject,
+  getProjectRoot,
   formatError,
   getGradleRoot,
   getApplicationId,
@@ -75,8 +76,9 @@ async function doOpenProject(path: string): Promise<OpenProjectResult | null> {
   setLoading(true);
   try {
     const projectName = await openProject(path);
+    const canonicalRoot = (await getProjectRoot().catch(() => null)) ?? path;
     const gradleRoot = await getGradleRoot().catch(() => null);
-    setProject(path, projectName, gradleRoot);
+    setProject(canonicalRoot, projectName, gradleRoot);
 
     // Resolve applicationId for `package:mine` filter.
     const appId = await getApplicationId().catch(() => null);
@@ -92,7 +94,7 @@ async function doOpenProject(path: string): Promise<OpenProjectResult | null> {
     // project wasn't loaded yet.
     refreshHealthChecks().catch(console.error);
 
-    return { root: path, projectName };
+    return { root: canonicalRoot, projectName };
   } catch (err) {
     showToast(`Failed to open project: ${formatError(err)}`, "error");
     return null;
@@ -142,7 +144,7 @@ export async function openProjectFolder(): Promise<OpenProjectResult | null> {
     await refreshProjectsList().catch(console.error);
     // Mark this project as active in the registry store.
     const projects = (await listProjects().catch(() => [])) as ProjectEntry[];
-    const entry = projects.find((p) => p.path === path);
+    const entry = projects.find((p) => p.path === result.root);
     if (entry) {
       upsertProject(entry);
       setActiveProjectId(entry.id);

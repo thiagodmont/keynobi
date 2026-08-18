@@ -4,9 +4,8 @@ pub mod services;
 pub mod utils;
 
 use commands::build::{
-    cancel_build, clear_build_history, finalize_build, find_apk_path, get_build_errors,
-    get_build_history, get_build_log_entries, get_build_status, get_package_name_from_apk,
-    run_gradle_task,
+    cancel_build, clear_build_history, find_apk_path, get_build_errors, get_build_history,
+    get_build_log_entries, get_build_status, get_package_name_from_apk, run_gradle_task,
 };
 use commands::device::{
     create_avd_device, delete_avd_device, download_system_image_cmd, get_selected_device,
@@ -318,7 +317,6 @@ pub fn run() {
             // Build
             run_gradle_task,
             cancel_build,
-            finalize_build,
             get_build_status,
             get_build_errors,
             get_build_history,

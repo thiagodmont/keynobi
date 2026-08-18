@@ -121,8 +121,8 @@ pub(crate) async fn finalize_completed_build(
 /// Run a Gradle task, streaming output via a Tauri Channel.
 ///
 /// Lines are emitted via `on_line` as they arrive. When the process exits,
-/// a `build:complete` event is emitted on the AppHandle so the frontend can
-/// call `finalize_build` to persist the result in history.
+/// the backend records history and emits a `build:complete` event on the
+/// AppHandle so the frontend can update completion state.
 #[tauri::command]
 pub async fn run_gradle_task(
     task: String,
@@ -325,38 +325,6 @@ pub async fn run_gradle_task(
     }
 
     Ok(id)
-}
-
-/// Persist the final build result into state and history.
-///
-/// The frontend calls this after receiving the `build:complete` event.
-#[tauri::command]
-pub async fn finalize_build(
-    success: bool,
-    duration_ms: u64,
-    errors: Vec<BuildError>,
-    task: String,
-    started_at: String,
-    project_root: Option<String>,
-    build_state: State<'_, BuildState>,
-) -> Result<(), String> {
-    let error_count = errors
-        .iter()
-        .filter(|e| e.severity == BuildErrorSeverity::Error)
-        .count() as u32;
-    let warn_count = errors
-        .iter()
-        .filter(|e| e.severity == BuildErrorSeverity::Warning)
-        .count() as u32;
-    let result = BuildResult {
-        success,
-        duration_ms,
-        error_count,
-        warning_count: warn_count,
-    };
-    build_runner::record_build_result(&build_state, task, started_at, result, errors, project_root)
-        .await;
-    Ok(())
 }
 
 /// Cancel the currently running build.

@@ -51,6 +51,16 @@ fn settings_file() -> PathBuf {
     settings_dir().join("settings.json")
 }
 
+fn repair_corrupt_settings_file(path: &std::path::Path, defaults: &AppSettings) {
+    let backup = path.with_extension("json.corrupt");
+    if let Err(e) = std::fs::rename(path, &backup) {
+        tracing::warn!("Failed to move corrupted settings file aside: {e}");
+    }
+    if let Err(e) = save_settings_to_path(path, defaults, None) {
+        tracing::warn!("Failed to write default settings after corruption: {e}");
+    }
+}
+
 fn load_settings_from_path(path: &std::path::Path) -> (AppSettings, bool) {
     if !path.exists() {
         return (AppSettings::default(), false);
@@ -69,7 +79,9 @@ fn load_settings_from_path(path: &std::path::Path) -> (AppSettings, bool) {
                 }
                 Err(e) => {
                     tracing::warn!("Settings file is corrupted (using defaults): {e}");
-                    (AppSettings::default(), true)
+                    let defaults = AppSettings::default();
+                    repair_corrupt_settings_file(path, &defaults);
+                    (defaults, true)
                 }
             }
         }
@@ -372,6 +384,30 @@ mod tests {
             settings,
             AppSettings::default(),
             "should return defaults on corruption"
+        );
+    }
+
+    #[test]
+    fn load_settings_from_path_repairs_corrupt_file() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("settings.json");
+        std::fs::write(&path, "{ not valid json !!!").unwrap();
+
+        let (_, corrupted) = load_settings_from_path(&path);
+
+        assert!(corrupted, "first load should report corruption");
+        assert!(
+            path.with_extension("json.corrupt").exists(),
+            "corrupt settings file should be moved aside"
+        );
+        let repaired: AppSettings =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(repaired, AppSettings::default());
+
+        let (_, corrupted_again) = load_settings_from_path(&path);
+        assert!(
+            !corrupted_again,
+            "repaired settings file should load cleanly next time"
         );
     }
 

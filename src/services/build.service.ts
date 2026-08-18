@@ -64,6 +64,7 @@ export async function initBuildService(): Promise<void> {
       .catch((err) => {
         console.error("[build] Failed to reload build history:", err);
       });
+    clearBuildCompleteTimer();
     _resolveBuildComplete?.({ success: e.success, durationMs: e.durationMs });
     _resolveBuildComplete = null;
   });
@@ -79,6 +80,14 @@ export async function initBuildService(): Promise<void> {
 // One-shot resolver for the current build. Set before a build starts, cleared on completion.
 let _resolveBuildComplete: ((result: { success: boolean; durationMs: number }) => void) | null =
   null;
+let _buildCompleteTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearBuildCompleteTimer(): void {
+  if (_buildCompleteTimer !== null) {
+    clearTimeout(_buildCompleteTimer);
+    _buildCompleteTimer = null;
+  }
+}
 
 // ── Build actions ─────────────────────────────────────────────────────────────
 
@@ -139,10 +148,11 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   // something goes wrong in the Rust on_exit callback.
   const buildComplete = new Promise<{ success: boolean; durationMs: number }>((resolve, reject) => {
     _resolveBuildComplete = resolve;
-    setTimeout(
+    _buildCompleteTimer = setTimeout(
       () => {
         if (_resolveBuildComplete === resolve) {
           _resolveBuildComplete = null;
+          _buildCompleteTimer = null;
           reject(new Error("Build timed out waiting for build:complete event after 5 minutes."));
         }
       },
@@ -157,6 +167,7 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   } catch (e) {
     // Process-level spawn failure (e.g. gradlew not found).
     _resolveBuildComplete = null;
+    clearBuildCompleteTimer();
     const msg = formatError(e);
     addBuildLine({
       kind: "error",
@@ -173,6 +184,7 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   try {
     await buildComplete;
   } catch (e) {
+    clearBuildCompleteTimer();
     // Timeout or unexpected rejection.
     const msg = formatError(e);
     addBuildLine({
@@ -312,6 +324,7 @@ export async function cancelBuild(): Promise<void> {
 
   const resolve = _resolveBuildComplete;
   _resolveBuildComplete = null;
+  clearBuildCompleteTimer();
 
   // Flush any buffered log lines before finalising state.
   flushPendingLines();
