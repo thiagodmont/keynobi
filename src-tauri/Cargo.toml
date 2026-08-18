@@ -47,7 +47,7 @@ sha2 = "0.11"
 rmcp = { version = "1.7.0", features = ["server", "macros", "transport-io", "schemars"] }
 # JSON Schema generation for MCP tool input schemas
 schemars = "1.2.1"
-base64 = "0.22.1"
+base64 = "0.23.1"
 # Recursive directory walking for source file lookup
 walkdir = "2"
 # Process memory monitoring (RSS) for the status bar monitor
