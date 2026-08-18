@@ -1,6 +1,6 @@
 //! Opt-in crash and error reporting via Sentry (Rust side only).
 //!
-//! Uses the [`sentry`](https://crates.io/crates/sentry) crate **0.47** ([release notes](https://github.com/getsentry/sentry-rust/releases/tag/0.47.0)).
+//! Uses the [`sentry`](https://crates.io/crates/sentry) crate **0.49** ([release notes](https://github.com/getsentry/sentry-rust/releases/tag/0.49.0)).
 //! Upgrade major/minor versions together and re-run `cargo test --features telemetry`.
 //!
 //! **Privacy invariant:** we never intentionally send user-owned data: no project paths,
@@ -20,7 +20,6 @@
 //! Do **not** commit a DSN or enable `send_default_pii` in source; keep the DSN in env / CI secrets.
 
 use std::borrow::Cow;
-use std::sync::Arc;
 
 use crate::models::AppSettings;
 use sentry::protocol::{Context, Event, Exception, Frame, Stacktrace, TemplateInfo, Thread};
@@ -190,31 +189,28 @@ pub fn init_if_enabled(settings: &AppSettings) -> Option<sentry::ClientInitGuard
     }
     let dsn = option_env!("SENTRY_DSN")?;
     let home = dirs::home_dir().map(|p| p.to_string_lossy().into_owned());
-    let before_send =
-        Arc::new(move |event: Event<'static>| Some(scrub_event(event, home.as_deref())));
-    let before_breadcrumb = Arc::new(|_breadcrumb: sentry::protocol::Breadcrumb| {
-        Option::<sentry::protocol::Breadcrumb>::None
-    });
 
-    Some(sentry::init((
-        dsn,
-        ClientOptions {
-            release: sentry::release_name!(),
-            environment: Some(Cow::Borrowed(if cfg!(debug_assertions) {
-                "development"
-            } else {
-                "production"
-            })),
-            send_default_pii: false,
-            sample_rate: 1.0,
-            traces_sample_rate: 0.0,
-            max_breadcrumbs: 0,
-            attach_stacktrace: false,
-            before_send: Some(before_send),
-            before_breadcrumb: Some(before_breadcrumb),
-            ..Default::default()
-        },
-    )))
+    // 0.49 made `ClientOptions` `#[non_exhaustive]`; it is now built through the consuming
+    // builder instead of a struct literal. `traces_sample_rate(0.0)` keeps tracing disabled.
+    let options = ClientOptions::new()
+        .dsn(dsn)
+        .maybe_release(sentry::release_name!())
+        .environment(if cfg!(debug_assertions) {
+            "development"
+        } else {
+            "production"
+        })
+        .send_default_pii(false)
+        .sample_rate(1.0)
+        .traces_sample_rate(0.0)
+        .max_breadcrumbs(0)
+        .attach_stacktrace(false)
+        .before_send(move |event: Event<'static>| Some(scrub_event(event, home.as_deref())))
+        .before_breadcrumb(|_breadcrumb: sentry::protocol::Breadcrumb| {
+            Option::<sentry::protocol::Breadcrumb>::None
+        });
+
+    Some(sentry::init(options))
 }
 
 /// Capture a handled internal error (sanitized). Call only for invariant / unexpected failures
