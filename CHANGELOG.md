@@ -7,6 +7,22 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.28] — 2026-08-18
+
+### Fixed
+- close production defects found in self-review of the hardening work
+- clear pre-existing clippy lints blocking --all-targets
+- idempotent listeners, selection rollback, project-switch guard
+- generation-scoped stream lifecycle, bounded reconnect, drop counter
+- guard delayed SIGKILL against recycled PIDs
+- harden build finalization, listener, and project-root lifecycles
+
+### Changed
+- shared validators, settings cache, stable project ids
+- unify UI and MCP build paths behind shared runner
+
+---
+
 ## [0.1.27] — 2026-07-01
 
 ### Fixed
