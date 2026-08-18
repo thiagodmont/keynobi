@@ -6,6 +6,8 @@ interface LogcatStore {
   streaming: boolean;
   crashIndicesFull: number[];
   ringBufferTotal: number | null;
+  /** Lines the backend discarded because its ingest channel saturated. */
+  droppedLines: number;
 }
 
 export const [logcatState, setLogcatState] = createStore<LogcatStore>({
@@ -13,6 +15,7 @@ export const [logcatState, setLogcatState] = createStore<LogcatStore>({
   streaming: false,
   crashIndicesFull: [],
   ringBufferTotal: null,
+  droppedLines: 0,
 });
 
 export function computeCrashIndices(entries: LogcatEntry[]): number[] {
@@ -82,4 +85,8 @@ export function setLogcatStreaming(streaming: boolean): void {
 
 export function setLogcatRingBufferTotal(total: number | null): void {
   setLogcatState("ringBufferTotal", total);
+}
+
+export function setLogcatDroppedLines(dropped: number): void {
+  setLogcatState("droppedLines", dropped);
 }

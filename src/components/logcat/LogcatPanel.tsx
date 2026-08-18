@@ -19,6 +19,7 @@ import {
   listenLogcatEntries,
   listenLogcatCleared,
   listenLogcatReconnecting,
+  listenLogcatStopped,
   listenDeviceListChanged,
   formatError,
   type LogcatEntry,
@@ -68,6 +69,7 @@ import {
   logcatState,
   replaceLogcatEntries,
   setLogcatRingBufferTotal,
+  setLogcatDroppedLines,
   setLogcatStreaming,
 } from "@/stores/logcat.store";
 import { createLatestOnlyGuard } from "@/services/logcat.service";
@@ -196,6 +198,7 @@ export function LogcatPanel(): JSX.Element {
   let unlistenCleared: (() => void) | undefined;
   let unlistenDevices: (() => void) | undefined;
   let unlistenReconnecting: (() => void) | undefined;
+  let unlistenStopped: (() => void) | undefined;
   let nowTimer: ReturnType<typeof setInterval> | undefined;
 
   // ── Parsed query (debounced — avoids re-parsing on every keystroke)
@@ -401,6 +404,7 @@ export function LogcatPanel(): JSX.Element {
     try {
       const s = await getLogcatStats();
       setLogcatRingBufferTotal(Number(s.bufferEntryCount));
+      setLogcatDroppedLines(Number(s.droppedLines));
     } catch {
       setLogcatRingBufferTotal(null);
     }
@@ -636,6 +640,13 @@ export function LogcatPanel(): JSX.Element {
       setLogcatStreaming(true);
     });
 
+    // Terminal stop — the backend gave up reconnecting, so the UI must not keep
+    // showing a live indicator.
+    unlistenStopped = await listenLogcatStopped((reason) => {
+      setLogcatStreaming(false);
+      showToast(`Logcat stopped: ${reason}`, "error");
+    });
+
     nowTimer = setInterval(() => setNow(Date.now()), 5_000);
     void refreshLogcatRingStats();
   });
@@ -660,6 +671,7 @@ export function LogcatPanel(): JSX.Element {
     unlistenCleared?.();
     unlistenDevices?.();
     unlistenReconnecting?.();
+    unlistenStopped?.();
     clearInterval(nowTimer);
     filterSyncGuard.invalidate();
     // Clear backend filter on unmount so it doesn't persist
@@ -908,6 +920,7 @@ export function LogcatPanel(): JSX.Element {
       queryActive: isFiltered(),
       visible: displayedEntries().length,
       ringTotal: logcatState.ringBufferTotal,
+      droppedLines: logcatState.droppedLines,
     })
   );
   const crashes = () => crashIndices().length;

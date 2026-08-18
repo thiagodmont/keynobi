@@ -160,6 +160,12 @@ pub struct LogcatStateInner {
     /// watches this and flushes any buffered-but-unprocessed lines when it
     /// changes, preventing stale entries from reappearing after a clear.
     pub clear_epoch: u64,
+    /// Incremented on every start/stop request. A running stream task exits as
+    /// soon as this no longer matches the generation it was started with, so a
+    /// stop→start sequence can never leave two streams feeding the same store.
+    /// A plain `streaming` bool cannot do this: it can be flipped back to true
+    /// before the old task observes the false, leaving two live streams.
+    pub stream_generation: u64,
 }
 
 impl LogcatStateInner {
@@ -171,6 +177,7 @@ impl LogcatStateInner {
             device_serial: None,
             known_packages: HashSet::new(),
             clear_epoch: 0,
+            stream_generation: 0,
         }
     }
 
@@ -224,6 +231,25 @@ const RECONNECT_DELAY_MS: u64 = 30;
 const SPAWN_RETRY_DELAY_MS: u64 = 2000;
 #[cfg(test)]
 const SPAWN_RETRY_DELAY_MS: u64 = 30;
+
+/// Upper bound for the exponential reconnect backoff.
+#[cfg(not(test))]
+const RECONNECT_BACKOFF_MAX_MS: u64 = 30_000;
+#[cfg(test)]
+const RECONNECT_BACKOFF_MAX_MS: u64 = 200;
+
+/// Consecutive failed attempts before the stream gives up entirely. Without a
+/// cap, a permanently-gone device makes the loop respawn `adb` every couple of
+/// seconds for the lifetime of the app.
+const RECONNECT_MAX_ATTEMPTS: u32 = 10;
+
+/// Exponential backoff for reconnect attempt `n` (0-based), capped.
+fn reconnect_delay_ms(base_ms: u64, consecutive_failures: u32) -> u64 {
+    let shift = consecutive_failures.min(16);
+    base_ms
+        .saturating_mul(1u64 << shift)
+        .min(RECONNECT_BACKOFF_MAX_MS)
+}
 
 /// Query `adb shell ps -A` to build an initial PID → package name map for all
 /// currently-running processes.  This seeds the pipeline context so that apps
@@ -335,19 +361,59 @@ fn emit_entry_batches(app_handle: Option<&tauri::AppHandle>, entries: &[Processe
 ///   loop detects that `state.streaming` is still `true` and automatically
 ///   reconnects after a 1.5 s delay.  A `logcat:reconnecting` event is emitted
 ///   so the frontend can show a status indicator.
+/// Stop streaming for good and tell the frontend why. Only acts if this task
+/// still owns the stream.
+async fn give_up(
+    logcat_state: &LogcatState,
+    generation: u64,
+    app_handle: Option<&tauri::AppHandle>,
+    reason: &str,
+) {
+    error!("{reason}");
+    {
+        let mut state = logcat_state.lock().await;
+        if state.stream_generation == generation {
+            state.streaming = false;
+        }
+    }
+    if let Some(handle) = app_handle {
+        let _ = handle.emit("logcat:stopped", reason.to_string());
+    }
+}
+
+/// Fires the reader-shutdown signal when the pipeline task ends, however it ends.
+struct ShutdownOnDrop(tokio::sync::watch::Sender<bool>);
+
+impl Drop for ShutdownOnDrop {
+    fn drop(&mut self) {
+        let _ = self.0.send(true);
+    }
+}
+
+/// True while this stream task still owns the stream: streaming was requested
+/// AND no newer start/stop has superseded us.
+fn owns_stream(state: &LogcatStateInner, generation: u64) -> bool {
+    state.streaming && state.stream_generation == generation
+}
+
 pub async fn start_logcat_stream(
     adb_bin: PathBuf,
     device_serial: Option<String>,
     logcat_state: LogcatState,
     app_handle: Option<tauri::AppHandle>,
     startup_status: Option<tokio::sync::oneshot::Sender<Result<(), String>>>,
+    generation: u64,
 ) {
     let mut startup_status = startup_status;
+    // Consecutive attempts that produced no output. Reset whenever a connection
+    // actually streams something, so a long-lived stream never inherits an old
+    // backoff.
+    let mut consecutive_failures: u32 = 0;
     'reconnect: loop {
         // Check whether a graceful stop was requested before (re)connecting.
         {
             let state = logcat_state.lock().await;
-            if !state.streaming {
+            if !owns_stream(&state, generation) {
                 break 'reconnect;
             }
         }
@@ -371,14 +437,19 @@ pub async fn start_logcat_stream(
                     break 'reconnect;
                 }
                 // Retry if streaming is still requested; otherwise give up.
-                let still_streaming = logcat_state.lock().await.streaming;
+                let still_streaming = owns_stream(&*logcat_state.lock().await, generation);
                 if still_streaming {
-                    warn!(
-                        "logcat failed to start, retrying in {}ms…",
-                        SPAWN_RETRY_DELAY_MS
-                    );
-                    tokio::time::sleep(tokio::time::Duration::from_millis(SPAWN_RETRY_DELAY_MS))
+                    consecutive_failures += 1;
+                    if consecutive_failures >= RECONNECT_MAX_ATTEMPTS {
+                        give_up(&logcat_state, generation, app_handle.as_ref(), &format!(
+                            "logcat could not be started after {RECONNECT_MAX_ATTEMPTS} attempts: {e}"
+                        ))
                         .await;
+                        break 'reconnect;
+                    }
+                    let delay = reconnect_delay_ms(SPAWN_RETRY_DELAY_MS, consecutive_failures - 1);
+                    warn!("logcat failed to start, retrying in {delay}ms…");
+                    tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
                     continue 'reconnect;
                 }
                 break 'reconnect;
@@ -403,18 +474,39 @@ pub async fn start_logcat_stream(
         // Channel: reader → pipeline+batcher
         let (tx, mut rx) = mpsc::channel::<RawLogLine>(RAW_LOG_LINE_CHANNEL_CAPACITY);
 
+        // Shutdown signal: the pipeline task flips this when it stops owning the
+        // stream. Without it the reader blocks in `next_line().await` and only
+        // notices the closed channel when the *next* line arrives — so on an
+        // idle device the adb child would survive stop_logcat indefinitely.
+        let (shutdown_tx, mut shutdown_rx) = tokio::sync::watch::channel(false);
+
+        // Lines the reader had to discard because the pipeline channel was
+        // full. The reader holds no lock, so it reports through an atomic that
+        // the pipeline folds into LogStats on each tick.
+        let dropped_lines = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let dropped_lines_reader = dropped_lines.clone();
+
         // ── Reader task ──────────────────────────────────────────────────────────
         // Parses raw lines only — zero state access, zero mutex.
         // Uses a 64 KB read buffer to batch syscalls at high log rates.
         let reader_handle = tokio::spawn(async move {
             let mut reader = BufReader::with_capacity(64 * 1024, stdout).lines();
             loop {
-                match reader.next_line().await {
+                let next = tokio::select! {
+                    line = reader.next_line() => line,
+                    _ = shutdown_rx.changed() => {
+                        debug!("logcat reader shutting down on request");
+                        break;
+                    }
+                };
+                match next {
                     Ok(Some(line)) => {
                         if let Some(raw) = parse_logcat_line(&line) {
                             match tx.try_send(raw) {
                                 Ok(()) => {}
                                 Err(TrySendError::Full(_)) => {
+                                    dropped_lines_reader
+                                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                                     debug!(
                                         "dropping logcat line because processing channel is full"
                                     );
@@ -449,6 +541,8 @@ pub async fn start_logcat_stream(
         let logcat_state_pipeline = logcat_state.clone();
         let app_handle_pipeline = app_handle.clone();
         let pipeline_handle = tokio::spawn(async move {
+            // Signals the reader to stop when this task exits, for any reason.
+            let _shutdown_guard = ShutdownOnDrop(shutdown_tx);
             let logcat_state = logcat_state_pipeline;
             let app_handle = app_handle_pipeline;
             let pipeline = LogPipeline::default_pipeline();
@@ -468,7 +562,7 @@ pub async fn start_logcat_stream(
                 // Also check whether a clear happened since the last tick.
                 {
                     let state = logcat_state.lock().await;
-                    if !state.streaming {
+                    if !owns_stream(&state, generation) {
                         debug!("Logcat pipeline stopped");
                         break;
                     }
@@ -480,6 +574,16 @@ pub async fn start_logcat_stream(
                         my_epoch = state.clear_epoch;
                         ctx = PipelineContext::new();
                         continue;
+                    }
+                }
+
+                // Publish the reader's drop count so the UI can show that the
+                // view is incomplete.
+                {
+                    let dropped = dropped_lines.load(std::sync::atomic::Ordering::Relaxed);
+                    let mut state = logcat_state.lock().await;
+                    if state.store.stats.dropped_lines != dropped {
+                        state.store.stats.dropped_lines = dropped;
                     }
                 }
 
@@ -527,12 +631,16 @@ pub async fn start_logcat_stream(
         let _ = reader_handle.await;
         let _ = pipeline_handle.await;
 
+        // Reap explicitly rather than relying on `kill_on_drop` — the child may
+        // still be alive if we shut down while it had nothing to say.
+        let _ = child.kill().await;
+
         // Determine whether the stream ended because stop_logcat() was called
         // (streaming == false) or because the ADB server was restarted by an
         // external tool such as Android Studio opening its Logcat window.
         let still_streaming = {
             let state = logcat_state.lock().await;
-            state.streaming
+            owns_stream(&state, generation)
         };
 
         if !still_streaming {
@@ -542,18 +650,36 @@ pub async fn start_logcat_stream(
         // Unexpected disconnect — ADB server likely restarted.  Notify the
         // frontend and wait briefly before reconnecting so the new ADB server
         // has time to finish initialising.
+        consecutive_failures += 1;
+        if consecutive_failures >= RECONNECT_MAX_ATTEMPTS {
+            give_up(
+                &logcat_state,
+                generation,
+                app_handle.as_ref(),
+                &format!(
+                    "logcat reconnected {RECONNECT_MAX_ATTEMPTS} times without recovering — \
+                     is the device still connected?"
+                ),
+            )
+            .await;
+            break 'reconnect;
+        }
+        let delay = reconnect_delay_ms(RECONNECT_DELAY_MS, consecutive_failures - 1);
         warn!(
-            "logcat stream disconnected unexpectedly (ADB server restart?), reconnecting in {}ms…",
-            RECONNECT_DELAY_MS
+            "logcat stream disconnected unexpectedly (ADB server restart?), reconnecting in {delay}ms…"
         );
         if let Some(ref handle) = app_handle {
             let _ = handle.emit("logcat:reconnecting", ());
         }
-        tokio::time::sleep(tokio::time::Duration::from_millis(RECONNECT_DELAY_MS)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
     }
 
+    // Only clear the flag if we still own the stream — a superseded task must
+    // never clobber the flag of the stream that replaced it.
     let mut state = logcat_state.lock().await;
-    state.streaming = false;
+    if state.stream_generation == generation {
+        state.streaming = false;
+    }
 }
 
 // ── Filter compat helpers ─────────────────────────────────────────────────────
@@ -1283,6 +1409,7 @@ mod reconnect_tests {
             state.clone(),
             None,
             None,
+            0,
         )
         .await;
         assert!(
@@ -1310,6 +1437,7 @@ mod reconnect_tests {
                 state.clone(),
                 None,
                 None,
+                0,
             ),
         )
         .await
@@ -1334,6 +1462,7 @@ mod reconnect_tests {
                 state.clone(),
                 None,
                 Some(tx),
+                0,
             ),
         )
         .await
@@ -1360,7 +1489,7 @@ mod reconnect_tests {
 
         tokio::time::timeout(
             Duration::from_secs(5),
-            start_logcat_stream(instant_exit_bin(), None, state.clone(), None, None),
+            start_logcat_stream(instant_exit_bin(), None, state.clone(), None, None, 0),
         )
         .await
         .expect("start_logcat_stream must return within 5 s");
@@ -1404,7 +1533,7 @@ mod reconnect_tests {
 
         tokio::time::timeout(
             Duration::from_secs(5),
-            start_logcat_stream(instant_exit_bin(), None, state.clone(), None, None),
+            start_logcat_stream(instant_exit_bin(), None, state.clone(), None, None, 0),
         )
         .await
         .expect("start_logcat_stream must return within 5 s");
@@ -1440,7 +1569,7 @@ mod reconnect_tests {
 
         tokio::time::timeout(
             Duration::from_secs(5),
-            start_logcat_stream(instant_exit_bin(), None, state.clone(), None, None),
+            start_logcat_stream(instant_exit_bin(), None, state.clone(), None, None, 0),
         )
         .await
         .expect("start_logcat_stream must return within 5 s after stop during reconnect sleep");
@@ -1448,6 +1577,209 @@ mod reconnect_tests {
         assert!(
             !state.lock().await.streaming,
             "streaming must be false after stop during reconnect delay"
+        );
+    }
+
+    // ── Phase 0 characterization: stream lifecycle ownership ─────────────────
+    //
+    // These two tests describe behaviour the stream MUST have. They fail on the
+    // pre-generation-token implementation (see docs/HARDENING_PLAN.md C1 / H4).
+
+    /// Writes a fake `adb` that emits `line_count` logcat lines then sleeps
+    /// forever, simulating a live device that has gone quiet.
+    fn streaming_adb_bin(dir: &std::path::Path, line_count: usize) -> PathBuf {
+        use std::io::Write;
+        let bin = dir.join("adb");
+        let mut f = std::fs::File::create(&bin).unwrap();
+        writeln!(f, "#!/bin/sh").unwrap();
+        // The stream also calls `adb shell ps` to seed the PID→package map.
+        // That invocation must return immediately — only `logcat` streams.
+        writeln!(f, "for a in \"$@\"; do").unwrap();
+        writeln!(f, "  if [ \"$a\" = logcat ]; then").unwrap();
+        for i in 0..line_count {
+            // threadtime format: MM-DD HH:MM:SS.mmm PID TID LEVEL TAG: message
+            writeln!(
+                f,
+                "    echo '01-01 00:00:0{}.000  1000  1001 I FakeTag: line {}'",
+                i % 10,
+                i
+            )
+            .unwrap();
+        }
+        // NOT `exec` — exec would replace the process image and hide the
+        // script path from `ps`, which is how the test counts live children.
+        writeln!(f, "    sleep 300").unwrap();
+        writeln!(f, "    exit 0").unwrap();
+        writeln!(f, "  fi").unwrap();
+        writeln!(f, "done").unwrap();
+        writeln!(f, "exit 0").unwrap();
+        drop(f);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&bin, perms).unwrap();
+        }
+        bin
+    }
+
+    /// Count live child processes spawned from our fake adb script.
+    fn live_fake_adb_count(marker: &str) -> usize {
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!(
+                "ps -eo command | grep -c '[{}]{}'",
+                &marker[..1],
+                &marker[1..]
+            ))
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse()
+            .unwrap_or(0)
+    }
+
+    /// Mirrors `commands/logcat.rs::start_logcat`'s state transition.
+    async fn request_start(state: &LogcatState, serial: Option<String>) -> u64 {
+        let mut s = state.lock().await;
+        s.stream_generation = s.stream_generation.wrapping_add(1);
+        s.streaming = true;
+        s.device_serial = serial;
+        s.stream_generation
+    }
+
+    /// Mirrors `commands/logcat.rs::stop_logcat`.
+    async fn request_stop(state: &LogcatState) {
+        let mut s = state.lock().await;
+        s.streaming = false;
+        s.stream_generation = s.stream_generation.wrapping_add(1);
+    }
+
+    /// C1: `stop_logcat()` followed immediately by `start_logcat()` must not
+    /// leave the previous stream task alive. The old task observes
+    /// `streaming == true` again on its next tick and keeps feeding the shared
+    /// store, producing duplicated entries from two concurrent adb processes.
+    #[tokio::test]
+    async fn stop_then_start_does_not_leave_two_streams() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = streaming_adb_bin(dir.path(), 3);
+
+        let state = make_state(false);
+
+        // Stream #1.
+        let g1 = request_start(&state, None).await;
+        let s1 = state.clone();
+        let a1 = adb.clone();
+        let h1 = tokio::spawn(async move {
+            start_logcat_stream(a1, None, s1, None, None, g1).await;
+        });
+
+        // Let it get going and ingest its lines.
+        tokio::time::sleep(Duration::from_millis(250)).await;
+
+        // stop_logcat() — sets the flag only, does not wait for teardown.
+        request_stop(&state).await;
+
+        // start_logcat() races back in before the old task's 100 ms tick.
+        let g2 = request_start(&state, None).await;
+        let s2 = state.clone();
+        let a2 = adb.clone();
+        let h2 = tokio::spawn(async move {
+            start_logcat_stream(a2, None, s2, None, None, g2).await;
+        });
+
+        tokio::time::sleep(Duration::from_millis(600)).await;
+
+        let live = live_fake_adb_count(dir.path().join("adb").to_str().unwrap());
+
+        // Tear down whatever is still running so the test cannot leak.
+        request_stop(&state).await;
+        let _ = tokio::time::timeout(Duration::from_secs(3), h1).await;
+        let _ = tokio::time::timeout(Duration::from_secs(3), h2).await;
+
+        assert!(
+            live <= 1,
+            "stop→start must leave at most one live adb logcat process, found {live}"
+        );
+    }
+
+    /// H4: `stop_logcat()` on a device that has gone quiet must still terminate
+    /// the adb child. The reader task blocks in `next_line().await` and only
+    /// notices the closed channel when a new line arrives, so on an idle device
+    /// the process survives the stop indefinitely.
+    #[tokio::test]
+    async fn stop_on_idle_device_terminates_child() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = streaming_adb_bin(dir.path(), 1);
+
+        let state = make_state(false);
+        let generation = request_start(&state, None).await;
+        let s = state.clone();
+        let a = adb.clone();
+        let handle = tokio::spawn(async move {
+            start_logcat_stream(a, None, s, None, None, generation).await;
+        });
+
+        // Let the single line flow through, then the fake adb goes quiet.
+        tokio::time::sleep(Duration::from_millis(300)).await;
+
+        request_stop(&state).await;
+
+        let exited = tokio::time::timeout(Duration::from_secs(3), handle).await;
+
+        assert!(
+            exited.is_ok(),
+            "start_logcat_stream must return within 3 s of stop on an idle device"
+        );
+
+        let live = live_fake_adb_count(dir.path().join("adb").to_str().unwrap());
+        assert_eq!(
+            live, 0,
+            "adb child must be terminated after stop, found {live}"
+        );
+    }
+
+    // ── Bounded reconnect (M14) ──────────────────────────────────────────────
+
+    #[test]
+    fn reconnect_backoff_grows_and_caps() {
+        // Use a base well under the cap so the doubling is observable.
+        let base = 10;
+        assert_eq!(reconnect_delay_ms(base, 0), 10);
+        assert_eq!(reconnect_delay_ms(base, 1), 20);
+        assert_eq!(reconnect_delay_ms(base, 2), 40);
+        assert_eq!(reconnect_delay_ms(base, 3), 80);
+        // Growth is capped at RECONNECT_BACKOFF_MAX_MS.
+        assert_eq!(reconnect_delay_ms(base, 20), RECONNECT_BACKOFF_MAX_MS);
+        // Never overflows, however large the failure count.
+        assert_eq!(reconnect_delay_ms(base, u32::MAX), RECONNECT_BACKOFF_MAX_MS);
+    }
+
+    /// A device that never comes back must not respawn adb forever.
+    #[tokio::test]
+    async fn gives_up_after_max_attempts_and_sets_streaming_false() {
+        let state = make_state(false);
+        let generation = request_start(&state, None).await;
+
+        tokio::time::timeout(
+            Duration::from_secs(10),
+            start_logcat_stream(
+                PathBuf::from("/definitely/does/not/exist/adb"),
+                None,
+                state.clone(),
+                None,
+                None,
+                generation,
+            ),
+        )
+        .await
+        .expect("stream must give up rather than retry forever");
+
+        assert!(
+            !state.lock().await.streaming,
+            "giving up must clear the streaming flag"
         );
     }
 }

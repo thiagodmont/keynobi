@@ -205,6 +205,7 @@ export function logcatHandlers(): Record<string, (args: unknown) => unknown> {
       packagesSeen: 1,
       bufferUsagePct: 0.006,
       bufferEntryCount: BigInt(storedEntries.length),
+      droppedLines: 0n,
     }),
   };
 }

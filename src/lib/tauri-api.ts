@@ -470,6 +470,15 @@ export function listenLogcatReconnecting(cb: () => void): Promise<UnlistenFn> {
   return listen("logcat:reconnecting", () => cb());
 }
 
+/**
+ * Emitted when the backend gives up on a logcat stream after repeated failed
+ * reconnects. Unlike `logcat:reconnecting`, this is terminal — the stream will
+ * NOT resume on its own.
+ */
+export function listenLogcatStopped(cb: (reason: string) => void): Promise<UnlistenFn> {
+  return listen<string>("logcat:stopped", (event) => cb(event.payload));
+}
+
 // ── MCP Server ─────────────────────────────────────────────────────────────────
 
 import type {

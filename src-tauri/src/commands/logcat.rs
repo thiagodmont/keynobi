@@ -19,14 +19,20 @@ pub async fn start_logcat(
     let (settings, _) = settings_manager::load_settings();
     let adb_bin = logcat::find_adb_binary(settings.android.sdk_path.as_deref());
 
-    {
+    // KEEP IN SYNC WITH services/mcp_server.rs::start_logcat.
+    let generation = {
         let mut state = logcat_state.lock().await;
-        if state.streaming {
-            return Ok(()); // already running
+        // Already streaming the same device — nothing to do. A *different*
+        // device must supersede the running stream, otherwise the user sees the
+        // old device's logs with no indication anything went wrong.
+        if state.streaming && state.device_serial == device_serial {
+            return Ok(());
         }
+        state.stream_generation = state.stream_generation.wrapping_add(1);
         state.streaming = true;
         state.device_serial = device_serial.clone();
-    }
+        state.stream_generation
+    };
 
     let state_clone = logcat_state.inner().clone();
     let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
@@ -37,6 +43,7 @@ pub async fn start_logcat(
             state_clone,
             Some(app_handle),
             Some(startup_tx),
+            generation,
         )
         .await;
     });
@@ -57,6 +64,9 @@ pub async fn start_logcat(
 pub async fn stop_logcat(logcat_state: State<'_, LogcatState>) -> Result<(), String> {
     let mut state = logcat_state.lock().await;
     state.streaming = false;
+    // Bump the generation so an in-flight task exits even if `streaming` is
+    // flipped back to true before it observes the false (stop→start restart).
+    state.stream_generation = state.stream_generation.wrapping_add(1);
     Ok(())
 }
 

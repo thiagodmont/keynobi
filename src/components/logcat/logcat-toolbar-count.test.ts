@@ -49,3 +49,37 @@ describe("formatLogcatToolbarCount", () => {
     expect(r.text).toBe("100 / 100");
   });
 });
+
+describe("dropped-line indicator", () => {
+  it("appends a dropped-line warning when the backend discarded lines", () => {
+    const r = formatLogcatToolbarCount({
+      queryActive: false,
+      visible: 100,
+      ringTotal: 500,
+      droppedLines: 42,
+    });
+    expect(r.text).toContain("⚠ 42 dropped");
+    expect(r.title).toContain("incomplete");
+  });
+
+  it("stays silent when nothing was dropped", () => {
+    const r = formatLogcatToolbarCount({
+      queryActive: false,
+      visible: 100,
+      ringTotal: 500,
+      droppedLines: 0,
+    });
+    expect(r.text).not.toContain("dropped");
+    expect(r.title).not.toContain("incomplete");
+  });
+
+  it("shows the warning even when list and ring counts match", () => {
+    const r = formatLogcatToolbarCount({
+      queryActive: false,
+      visible: 500,
+      ringTotal: 500,
+      droppedLines: 7,
+    });
+    expect(r.text).toContain("⚠ 7 dropped");
+  });
+});

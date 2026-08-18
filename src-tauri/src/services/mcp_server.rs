@@ -790,16 +790,19 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
 
-        {
+        // KEEP IN SYNC WITH commands/logcat.rs::start_logcat.
+        let generation = {
             let mut state = self.logcat_state.lock().await;
-            if state.streaming {
+            if state.streaming && state.device_serial == serial {
                 return Ok(CallToolResult::success(vec![Content::text(
                     "Logcat is already streaming.",
                 )]));
             }
+            state.stream_generation = state.stream_generation.wrapping_add(1);
             state.streaming = true;
             state.device_serial = serial.clone();
-        }
+            state.stream_generation
+        };
 
         let (settings, _) = settings_manager::load_settings();
         let adb_bin =
@@ -815,6 +818,7 @@ impl AndroidMcpServer {
                 logcat_state,
                 app_handle,
                 Some(startup_tx),
+                generation,
             )
             .await;
         });
@@ -845,6 +849,9 @@ impl AndroidMcpServer {
     async fn stop_logcat(&self) -> Result<CallToolResult, McpError> {
         let mut state = self.logcat_state.lock().await;
         state.streaming = false;
+        // See commands/logcat.rs::stop_logcat — the generation bump is what
+        // guarantees an in-flight stream task actually exits.
+        state.stream_generation = state.stream_generation.wrapping_add(1);
         Ok(CallToolResult::success(vec![Content::text(
             "Logcat stream stopped.",
         )]))

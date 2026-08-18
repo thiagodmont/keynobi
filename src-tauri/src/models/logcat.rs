@@ -145,6 +145,10 @@ pub struct LogStats {
     /// Current number of entries in the in-memory ring buffer (all lines stored;
     /// independent of the active stream filter used for IPC).
     pub buffer_entry_count: u64,
+    /// Lines discarded because the reader→pipeline channel was saturated.
+    /// Non-zero means the view is incomplete, so the UI must surface it rather
+    /// than silently showing a gap.
+    pub dropped_lines: u64,
 }
 
 // ── LogcatFilterSpec ──────────────────────────────────────────────────────────
