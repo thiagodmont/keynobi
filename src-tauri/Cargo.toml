@@ -54,7 +54,7 @@ walkdir = "2"
 sysinfo = "0.39"
 # Optional Sentry crash reporting (enabled via --features telemetry)
 # `transport` is required for HTTPS submission; without it the client is inert.
-sentry = { version = "0.48", optional = true, default-features = false, features = ["backtrace", "contexts", "panic", "transport"] }
+sentry = { version = "0.49", optional = true, default-features = false, features = ["backtrace", "contexts", "panic", "transport"] }
 
 [features]
 telemetry = ["sentry"]
