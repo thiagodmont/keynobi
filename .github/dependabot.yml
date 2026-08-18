@@ -5,6 +5,15 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    ignore:
+      # TypeScript 7 (the native port) is not supported by typescript-eslint:
+      # even its canary pins `typescript: >=4.8.4 <6.1.0` and throws on load,
+      # so `npm run lint` dies before linting a file. TS 7 itself typechecks
+      # this repo clean — the block is entirely on the lint side. Drop this
+      # ignore once typescript-eslint ships TS 7 support. Minor and patch
+      # updates on the 6.x line keep flowing.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "cargo"
     directory: "/src-tauri"
