@@ -26,8 +26,25 @@ static SETTINGS_MUTATION_LOCK: LazyLock<StdMutex<()>> = LazyLock::new(|| StdMute
 /// (`run_gradle_task`, `start_logcat`, `record_build_result`), and each one was
 /// doing a synchronous read + full JSON parse on a tokio worker thread. Every
 /// mutation path invalidates this.
-static SETTINGS_CACHE: LazyLock<std::sync::RwLock<Option<AppSettings>>> =
+/// Cached settings plus the file modification time they were read from.
+///
+/// The mtime is validated on every read. Invalidation-on-write alone is not
+/// enough: headless `--mcp` mode runs in a SEPARATE process from the GUI, so a
+/// settings change made in the app would never reach a running MCP session.
+/// Hand-editing settings.json is also a supported workflow (the loader warns
+/// about unknown keys), and that bypasses every in-process write path.
+///
+/// `stat` is orders of magnitude cheaper than read + JSON parse, so this keeps
+/// essentially all of the benefit while staying correct.
+type CachedSettings = (AppSettings, Option<std::time::SystemTime>);
+
+static SETTINGS_CACHE: LazyLock<std::sync::RwLock<Option<CachedSettings>>> =
     LazyLock::new(|| std::sync::RwLock::new(None));
+
+/// Modification time of `path`, or `None` if it cannot be read.
+fn file_mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
 
 /// Drop the cached settings so the next `load_settings()` re-reads from disk.
 /// Must be called by every path that writes the default settings file.
@@ -38,17 +55,18 @@ pub fn invalidate_settings_cache() {
     }
 }
 
-fn cached_settings() -> Option<AppSettings> {
+fn cached_settings() -> Option<CachedSettings> {
     match SETTINGS_CACHE.read() {
         Ok(g) => g.clone(),
         Err(poisoned) => poisoned.into_inner().clone(),
     }
 }
 
-fn store_settings_in_cache(settings: &AppSettings) {
+fn store_settings_in_cache(settings: &AppSettings, mtime: Option<std::time::SystemTime>) {
+    let entry = Some((settings.clone(), mtime));
     match SETTINGS_CACHE.write() {
-        Ok(mut g) => *g = Some(settings.clone()),
-        Err(poisoned) => *poisoned.into_inner() = Some(settings.clone()),
+        Ok(mut g) => *g = entry,
+        Err(poisoned) => *poisoned.into_inner() = entry,
     }
 }
 
@@ -125,6 +143,12 @@ fn load_settings_from_path(path: &std::path::Path) -> (AppSettings, bool) {
     }
 }
 
+/// Test-only: read settings from an explicit path, bypassing the cache.
+#[cfg(test)]
+pub fn load_settings_from_path_for_tests(path: &std::path::Path) -> AppSettings {
+    load_settings_from_path(path).0
+}
+
 /// Returns `(settings, was_corrupted)`.
 /// `was_corrupted` is true when the file existed but failed to parse —
 /// the user's settings were lost and replaced with defaults.
@@ -132,11 +156,19 @@ pub fn load_settings() -> (AppSettings, bool) {
     // `was_corrupted` is deliberately NOT cached: it is a one-shot startup
     // signal, and a corrupt file is repaired on the first load, so subsequent
     // reads are legitimately "not corrupted".
-    if let Some(settings) = cached_settings() {
-        return (settings, false);
+    let path = settings_file();
+    let mtime = file_mtime(&path);
+    if let Some((settings, cached_mtime)) = cached_settings() {
+        // Serve the cache only when the file is demonstrably unchanged. A
+        // missing mtime on either side means "cannot prove it's current" — fall
+        // through and re-read rather than risk stale settings.
+        if mtime.is_some() && cached_mtime == mtime {
+            return (settings, false);
+        }
     }
-    let (settings, corrupted) = load_settings_from_path(&settings_file());
-    store_settings_in_cache(&settings);
+    let (settings, corrupted) = load_settings_from_path(&path);
+    // Re-stat after the read: the repair path may have rewritten the file.
+    store_settings_in_cache(&settings, file_mtime(&path));
     (settings, corrupted)
 }
 
@@ -716,7 +748,7 @@ mod variant_tests {
         );
 
         let sample = AppSettings::default();
-        store_settings_in_cache(&sample);
+        store_settings_in_cache(&sample, None);
         assert!(
             cached_settings().is_some(),
             "cache must hold the stored value"
@@ -734,7 +766,7 @@ mod variant_tests {
         let tmp = TempDir::new().unwrap();
         let path = tmp.path().join("settings.json");
 
-        store_settings_in_cache(&AppSettings::default());
+        store_settings_in_cache(&AppSettings::default(), None);
         mutate_settings_at_path(&path, |s| {
             s.onboarding_completed = true;
         })
@@ -758,12 +790,47 @@ mod variant_tests {
         };
         save_settings_to_path(&path, &written, None).unwrap();
 
-        store_settings_in_cache(&AppSettings::default());
+        store_settings_in_cache(&AppSettings::default(), None);
 
         let (loaded, _) = load_settings_from_path(&path);
         assert!(
             loaded.onboarding_completed,
             "load_settings_from_path must read the file, not the cache"
         );
+    }
+
+    /// Regression: an invalidate-on-write-only cache goes stale when the file
+    /// changes outside this process — headless `--mcp` runs in a separate
+    /// process from the GUI, and hand-editing settings.json is supported.
+    #[test]
+    fn cache_entry_is_rejected_when_the_file_mtime_moves() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("settings.json");
+        save_settings_to_path(&path, &AppSettings::default(), None).unwrap();
+
+        let first = file_mtime(&path);
+        assert!(first.is_some(), "a written file must report an mtime");
+
+        // Rewrite with a different mtime, the way an external editor would.
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let changed = AppSettings {
+            onboarding_completed: true,
+            ..AppSettings::default()
+        };
+        save_settings_to_path(&path, &changed, None).unwrap();
+
+        let second = file_mtime(&path);
+        assert_ne!(
+            first, second,
+            "an external rewrite must be visible as an mtime change"
+        );
+    }
+
+    #[test]
+    fn file_mtime_is_none_for_a_missing_file() {
+        let tmp = TempDir::new().unwrap();
+        // A None mtime means "cannot prove the cache is current", so load_settings
+        // falls through to a real read rather than serving a stale entry.
+        assert!(file_mtime(&tmp.path().join("nope.json")).is_none());
     }
 }

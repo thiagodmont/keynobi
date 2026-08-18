@@ -496,6 +496,25 @@ pub async fn finalize_completed_build(
     }
 }
 
+/// Release the build slot after a failed spawn.
+///
+/// MUST be called on every early return between `try_reserve_build_slot` and the
+/// point where finalization takes over — otherwise `starting` stays true and
+/// every subsequent build, from either front door, is refused for the lifetime
+/// of the process.
+pub fn mark_build_spawn_failed(bs: &mut BuildStateInner) {
+    bs.starting = false;
+    bs.current_build = None;
+    if !matches!(bs.status, BuildStatus::Cancelled) {
+        bs.status = BuildStatus::Failed(BuildResult {
+            success: false,
+            duration_ms: 0,
+            error_count: 1,
+            warning_count: 0,
+        });
+    }
+}
+
 /// Reserve the single build slot, marking the build as starting.
 ///
 /// Every code path that spawns Gradle MUST call this first. Previously only the
@@ -619,7 +638,7 @@ pub async fn record_build_result(
     // Best-effort disk I/O, moved off the async runtime so a slow or large
     // write cannot stall a tokio worker.
     let history_for_io = history_snapshot.clone();
-    let _ = tokio::task::spawn_blocking(move || {
+    let persisted = tokio::task::spawn_blocking(move || {
         save_build_history(&history_for_io);
         save_build_log(record_id, &raw_lines);
         let (settings, _) = crate::services::settings_manager::load_settings();
@@ -632,6 +651,13 @@ pub async fn record_build_result(
         );
     })
     .await;
+
+    // A panic here means build history stopped persisting. It is best-effort by
+    // design, but failing completely silently leaves the user with a history
+    // panel that quietly stops updating and no way to find out why.
+    if let Err(e) = persisted {
+        tracing::warn!("Failed to persist build artifacts for build {record_id}: {e}");
+    }
 }
 
 /// Build environment variables for a Gradle process, and ensure `gradlew` is executable.
@@ -774,8 +800,17 @@ pub async fn run_task(
             }),
         },
     )
-    .await
-    .map_err(|e| format!("Failed to spawn Gradle: {e}"))?;
+    .await;
+
+    let pid = match pid {
+        Ok(pid) => pid,
+        Err(e) => {
+            // Release the slot we reserved above; without this `starting` stays
+            // true and every later build is refused until the app restarts.
+            mark_build_spawn_failed(&mut *build_state.inner.lock().await);
+            return Err(format!("Failed to spawn Gradle: {e}"));
+        }
+    };
 
     build_state.set_active_process_id(Some(pid));
     let cancelled_during_spawn = {
@@ -1631,5 +1666,79 @@ mod tests {
 
         assert!(event.cancelled);
         assert!(!event.success);
+    }
+
+    // ── Slot release on failure paths ────────────────────────────────────────
+
+    /// Regression: run_task reserved the slot and then returned early via `?`
+    /// when the spawn failed, leaving `starting = true` forever. Every later
+    /// build from either front door was refused until the app restarted.
+    #[tokio::test]
+    async fn run_task_releases_the_slot_when_the_spawn_fails() {
+        let build_state = BuildState::new();
+        let pm = crate::services::process_manager::ProcessManager::new();
+        let dir = tempfile::tempdir().unwrap();
+        let missing_gradlew = dir.path().join("gradlew-does-not-exist");
+
+        let result = run_task(
+            "assembleDebug",
+            &[],
+            dir.path(),
+            &missing_gradlew,
+            30,
+            vec![],
+            &build_state,
+            &pm,
+            None,
+        )
+        .await;
+
+        assert!(result.is_err(), "a missing gradlew must fail the run");
+
+        {
+            let bs = build_state.inner.lock().await;
+            assert!(
+                !bs.starting,
+                "the slot must not stay reserved after a failed spawn"
+            );
+            assert!(bs.current_build.is_none());
+        }
+
+        // The decisive assertion: a subsequent build can still start.
+        try_reserve_build_slot(&build_state, "assembleDebug", "2026-01-01T00:00:00Z")
+            .await
+            .expect("slot must be free after a failed spawn");
+    }
+
+    #[test]
+    fn mark_build_spawn_failed_preserves_a_cancelled_status() {
+        let mut state = BuildStateInner::new();
+        state.starting = true;
+        state.status = BuildStatus::Cancelled;
+
+        mark_build_spawn_failed(&mut state);
+
+        assert!(!state.starting);
+        assert!(
+            matches!(state.status, BuildStatus::Cancelled),
+            "an explicit cancellation must not be relabelled as a failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn mark_build_spawn_failed_frees_the_slot_for_the_next_build() {
+        let build_state = BuildState::new();
+        try_reserve_build_slot(&build_state, "assembleDebug", "2026-01-01T00:00:00Z")
+            .await
+            .unwrap();
+
+        {
+            let mut bs = build_state.inner.lock().await;
+            mark_build_spawn_failed(&mut bs);
+        }
+
+        try_reserve_build_slot(&build_state, "assembleDebug", "2026-01-01T00:00:01Z")
+            .await
+            .expect("slot must be reusable");
     }
 }

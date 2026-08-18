@@ -81,6 +81,12 @@ pub async fn clear_logcat(
     state.store.clear();
     state.known_packages.clear();
     state.clear_epoch = state.clear_epoch.wrapping_add(1);
+    // Reset the shared counter too: the pipeline publishes it into
+    // stats every tick, so clearing only the stat lets the old value
+    // reappear on the very next tick.
+    state
+        .dropped_lines
+        .store(0, std::sync::atomic::Ordering::Relaxed);
     let _ = app_handle.emit("logcat:cleared", ());
     Ok(())
 }

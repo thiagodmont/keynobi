@@ -166,6 +166,17 @@ pub struct LogcatStateInner {
     /// A plain `streaming` bool cannot do this: it can be flipped back to true
     /// before the old task observes the false, leaving two live streams.
     pub stream_generation: u64,
+    /// Lines the reader discarded because the ingest channel was saturated.
+    ///
+    /// Lives here (not in the stream task) for two reasons: it must survive a
+    /// reconnect, and `clear_logcat` must be able to reset it — otherwise the
+    /// pipeline's next tick restores the pre-clear value from a task-local
+    /// counter and the warning reappears immediately after a clear.
+    ///
+    /// An `Arc<AtomicU64>` rather than a plain field so the reader task can
+    /// increment it without taking the state lock, preserving the
+    /// "reader holds no lock" invariant.
+    pub dropped_lines: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl LogcatStateInner {
@@ -178,6 +189,7 @@ impl LogcatStateInner {
             known_packages: HashSet::new(),
             clear_epoch: 0,
             stream_generation: 0,
+            dropped_lines: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         }
     }
 
@@ -337,30 +349,6 @@ fn emit_entry_batches(app_handle: Option<&tauri::AppHandle>, entries: &[Processe
     }
 }
 
-/// Spawn an `adb logcat` process, parse lines through the processing pipeline,
-/// store them in the LogStore, and stream filtered batches to the frontend.
-///
-/// Architecture (two tasks):
-///
-///   ┌─────────────────────┐      bounded mpsc       ┌───────────────────────────┐
-///   │  reader task        │ ──── RawLogLine ────────► │  pipeline + batcher task  │
-///   │  (parse lines only) │                          │  (enrich → store → emit)  │
-///   └─────────────────────┘                          └───────────────────────────┘
-///
-/// Reader: Reads lines from adb stdout, calls `parse_logcat_line`, sends
-///   `RawLogLine` on the channel.  No state access, no mutex.
-///
-/// Pipeline+Batcher: Wakes every 100ms, drains the raw channel, runs each
-///   line through the processor chain, pushes to LogStore, then emits only
-///   the filter-matching entries in batches of ≤ MAX_BATCH_SIZE.
-///   Locking the state once per tick (not once per line) greatly reduces
-///   mutex contention at high log rates.
-///
-/// Reconnection: If the `adb` process exits unexpectedly (e.g. because Android
-///   Studio restarted the ADB server while its Logcat window was open), the
-///   loop detects that `state.streaming` is still `true` and automatically
-///   reconnects after a 1.5 s delay.  A `logcat:reconnecting` event is emitted
-///   so the frontend can show a status indicator.
 /// Stop streaming for good and tell the frontend why. Only acts if this task
 /// still owns the stream.
 async fn give_up(
@@ -396,6 +384,35 @@ fn owns_stream(state: &LogcatStateInner, generation: u64) -> bool {
     state.streaming && state.stream_generation == generation
 }
 
+/// Spawn an `adb logcat` process, parse lines through the processing pipeline,
+/// store them in the LogStore, and stream filtered batches to the frontend.
+///
+/// Architecture (two tasks):
+///
+///   ┌─────────────────────┐      bounded mpsc       ┌───────────────────────────┐
+///   │  reader task        │ ──── RawLogLine ────────► │  pipeline + batcher task  │
+///   │  (parse lines only) │                          │  (enrich → store → emit)  │
+///   └─────────────────────┘                          └───────────────────────────┘
+///
+/// Reader: Reads lines from adb stdout, calls `parse_logcat_line`, sends
+///   `RawLogLine` on the channel.  No state access, no mutex.
+///
+/// Pipeline+Batcher: Wakes every 100ms, drains the raw channel, runs each
+///   line through the processor chain, pushes to LogStore, then emits only
+///   the filter-matching entries in batches of ≤ MAX_BATCH_SIZE.
+///   Locking the state once per tick (not once per line) greatly reduces
+///   mutex contention at high log rates.
+///
+/// Reconnection: If the `adb` process exits unexpectedly (e.g. because Android
+///   Studio restarted the ADB server while its Logcat window was open), the
+///   loop detects that it still owns the stream and reconnects with exponential
+///   backoff (capped at `RECONNECT_BACKOFF_MAX_MS`).  A `logcat:reconnecting`
+///   event is emitted so the frontend can show a status indicator.  After
+///   `RECONNECT_MAX_ATTEMPTS` consecutive attempts that produce no output, the
+///   stream gives up and emits `logcat:stopped` with a reason.
+///
+/// Ownership: `generation` is captured at spawn.  The task exits as soon as a
+///   newer start/stop supersedes it — see `owns_stream`.
 pub async fn start_logcat_stream(
     adb_bin: PathBuf,
     device_serial: Option<String>,
@@ -483,8 +500,14 @@ pub async fn start_logcat_stream(
         // Lines the reader had to discard because the pipeline channel was
         // full. The reader holds no lock, so it reports through an atomic that
         // the pipeline folds into LogStats on each tick.
-        let dropped_lines = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let dropped_lines = logcat_state.lock().await.dropped_lines.clone();
         let dropped_lines_reader = dropped_lines.clone();
+
+        // Lines this connection actually delivered. Used to distinguish a
+        // working stream that got interrupted (reset the backoff) from a device
+        // that is simply gone (keep escalating toward give-up).
+        let lines_read = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let lines_read_reader = lines_read.clone();
 
         // ── Reader task ──────────────────────────────────────────────────────────
         // Parses raw lines only — zero state access, zero mutex.
@@ -501,6 +524,7 @@ pub async fn start_logcat_stream(
                 };
                 match next {
                     Ok(Some(line)) => {
+                        lines_read_reader.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         if let Some(raw) = parse_logcat_line(&line) {
                             match tx.try_send(raw) {
                                 Ok(()) => {}
@@ -650,6 +674,14 @@ pub async fn start_logcat_stream(
         // Unexpected disconnect — ADB server likely restarted.  Notify the
         // frontend and wait briefly before reconnecting so the new ADB server
         // has time to finish initialising.
+        // A connection that delivered output was working; only a run that
+        // produced nothing counts toward the give-up budget. Without this reset
+        // a long session dies after 10 *cumulative* ADB restarts, each of which
+        // recovered fine.
+        if lines_read.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+            consecutive_failures = 0;
+        }
+
         consecutive_failures += 1;
         if consecutive_failures >= RECONNECT_MAX_ATTEMPTS {
             give_up(
@@ -1780,6 +1812,133 @@ mod reconnect_tests {
         assert!(
             !state.lock().await.streaming,
             "giving up must clear the streaming flag"
+        );
+    }
+
+    // ── Reconnect budget accounting (regression) ─────────────────────────────
+
+    /// A stream that delivers output and then gets interrupted must NOT consume
+    /// the give-up budget. Without the reset a long session dies after 10
+    /// cumulative ADB-server restarts, each of which recovered fine — silently
+    /// regressing the auto-reconnect behaviour the budget was meant to protect.
+    #[tokio::test]
+    async fn a_connection_that_streamed_output_resets_the_reconnect_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        // Emits lines then exits immediately, so every reconnect "works" and
+        // then disconnects — far more times than RECONNECT_MAX_ATTEMPTS.
+        let adb = exiting_adb_bin(dir.path(), 2);
+
+        let state = make_state(false);
+        let generation = request_start(&state, None).await;
+
+        let s = state.clone();
+        let handle = tokio::spawn(async move {
+            start_logcat_stream(adb, None, s, None, None, generation).await;
+        });
+
+        // Must comfortably exceed the time RECONNECT_MAX_ATTEMPTS worth of
+        // backoff would take (~2.6s with the test constants), so that a missing
+        // reset would definitely have tripped the give-up.
+        tokio::time::sleep(Duration::from_millis(4000)).await;
+
+        assert!(
+            state.lock().await.streaming,
+            "a stream that keeps delivering output must not hit the give-up cap"
+        );
+
+        request_stop(&state).await;
+        let _ = tokio::time::timeout(Duration::from_secs(3), handle).await;
+    }
+
+    /// Writes a fake adb that prints `line_count` logcat lines and exits 0.
+    fn exiting_adb_bin(dir: &std::path::Path, line_count: usize) -> PathBuf {
+        use std::io::Write;
+        let bin = dir.join("adb");
+        let mut f = std::fs::File::create(&bin).unwrap();
+        writeln!(f, "#!/bin/sh").unwrap();
+        writeln!(f, "for a in \"$@\"; do").unwrap();
+        writeln!(f, "  if [ \"$a\" = logcat ]; then").unwrap();
+        for i in 0..line_count {
+            writeln!(
+                f,
+                "    echo '01-01 00:00:0{}.000  1000  1001 I FakeTag: line {}'",
+                i % 10,
+                i
+            )
+            .unwrap();
+        }
+        writeln!(f, "    exit 0").unwrap();
+        writeln!(f, "  fi").unwrap();
+        writeln!(f, "done").unwrap();
+        writeln!(f, "exit 0").unwrap();
+        drop(f);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&bin).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&bin, perms).unwrap();
+        }
+        bin
+    }
+
+    // ── Dropped-line counter lifecycle ───────────────────────────────────────
+
+    /// The counter lives on the state, not in the stream task, so a reconnect
+    /// cannot silently reset the reported total.
+    #[tokio::test]
+    async fn dropped_line_counter_survives_across_stream_restarts() {
+        let state = make_state(false);
+        state
+            .lock()
+            .await
+            .dropped_lines
+            .store(7, std::sync::atomic::Ordering::Relaxed);
+
+        // Simulate a stop→start cycle; nothing in the lifecycle should reset it.
+        request_stop(&state).await;
+        let _ = request_start(&state, None).await;
+
+        assert_eq!(
+            state
+                .lock()
+                .await
+                .dropped_lines
+                .load(std::sync::atomic::Ordering::Relaxed),
+            7,
+            "a reconnect must not lose the accumulated drop count"
+        );
+    }
+
+    /// Regression: clearing reset `stats.dropped_lines` but not the shared
+    /// atomic, so the pipeline's next tick restored the pre-clear value and the
+    /// "N dropped" warning reappeared immediately after a clear.
+    #[tokio::test]
+    async fn clearing_resets_both_the_stat_and_the_shared_counter() {
+        let state = make_state(false);
+        {
+            let mut s = state.lock().await;
+            s.dropped_lines
+                .store(42, std::sync::atomic::Ordering::Relaxed);
+            s.store.stats.dropped_lines = 42;
+        }
+
+        // Mirror commands/logcat.rs::clear_logcat.
+        {
+            let mut s = state.lock().await;
+            s.store.clear();
+            s.known_packages.clear();
+            s.clear_epoch = s.clear_epoch.wrapping_add(1);
+            s.dropped_lines
+                .store(0, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        let s = state.lock().await;
+        assert_eq!(s.store.stats.dropped_lines, 0);
+        assert_eq!(
+            s.dropped_lines.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "the shared counter must be cleared too, or the stat is restored next tick"
         );
     }
 }

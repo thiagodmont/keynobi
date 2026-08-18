@@ -960,6 +960,12 @@ impl AndroidMcpServer {
             let mut state = self.logcat_state.lock().await;
             state.store.clear();
             state.known_packages.clear();
+            // Reset the shared counter too: the pipeline publishes it into
+            // stats every tick, so clearing only the stat lets the old value
+            // reappear on the very next tick.
+            state
+                .dropped_lines
+                .store(0, std::sync::atomic::Ordering::Relaxed);
             // Without the epoch bump the pipeline keeps lines that were already
             // buffered, so they reappear right after the clear.
             state.clear_epoch = state.clear_epoch.wrapping_add(1);

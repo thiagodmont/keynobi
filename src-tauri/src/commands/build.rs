@@ -1,5 +1,5 @@
 use crate::models::build::{
-    BuildError, BuildErrorSeverity, BuildLine, BuildLineKind, BuildRecord, BuildResult, BuildStatus,
+    BuildError, BuildErrorSeverity, BuildLine, BuildLineKind, BuildRecord, BuildStatus,
 };
 use crate::models::error::AppError;
 use crate::services::build_runner::{self, build_env_vars, find_output_apk, BuildState};
@@ -15,21 +15,8 @@ use tauri::{AppHandle, Emitter, State};
 // Build finalization lives in `build_runner` so the Tauri command layer and the
 // MCP server share one implementation. Re-exported for existing call sites.
 pub use crate::services::build_runner::{
-    finalize_completed_build, BuildCompleteEvent, BuildFinalization,
+    finalize_completed_build, mark_build_spawn_failed, BuildCompleteEvent, BuildFinalization,
 };
-
-fn mark_build_spawn_failed(bs: &mut build_runner::BuildStateInner) {
-    bs.starting = false;
-    bs.current_build = None;
-    if !matches!(bs.status, BuildStatus::Cancelled) {
-        bs.status = BuildStatus::Failed(BuildResult {
-            success: false,
-            duration_ms: 0,
-            error_count: 1,
-            warning_count: 0,
-        });
-    }
-}
 
 // ── Validation helpers ─────────────────────────────────────────────────────────
 

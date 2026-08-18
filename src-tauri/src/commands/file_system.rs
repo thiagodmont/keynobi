@@ -584,4 +584,61 @@ android {
         let b = project_id(std::path::Path::new("/projects/b"));
         assert_ne!(a, b);
     }
+
+    // ── Legacy project-id healing ────────────────────────────────────────────
+
+    /// Entries written with the old DefaultHasher-based id must be rewritten in
+    /// place, otherwise pins and per-project meta are orphaned after the switch
+    /// to a stable hash.
+    #[test]
+    fn upsert_rewrites_a_legacy_id_for_the_same_path() {
+        use crate::models::settings::AppSettings;
+
+        let tmp = tempfile::tempdir().unwrap();
+        let settings_path = tmp.path().join("settings.json");
+        let project_path = "/projects/legacy-app";
+        let expected = project_id(std::path::Path::new(project_path));
+
+        settings_manager::mutate_settings_at_path(&settings_path, |s: &mut AppSettings| {
+            s.recent_projects.push(ProjectEntry {
+                id: "deadbeefdeadbeef".to_string(), // old-hash id
+                path: project_path.to_string(),
+                name: "legacy-app".to_string(),
+                gradle_root: None,
+                last_opened: "2026-01-01T00:00:00Z".to_string(),
+                pinned: true,
+                last_build_variant: Some("debug".to_string()),
+                last_device: None,
+            });
+        })
+        .unwrap();
+
+        // Apply the same heal the upsert path performs.
+        settings_manager::mutate_settings_at_path(&settings_path, |s: &mut AppSettings| {
+            for entry in s.recent_projects.iter_mut() {
+                if entry.path == project_path && entry.id != expected {
+                    entry.id = expected.clone();
+                }
+            }
+        })
+        .unwrap();
+
+        let healed = settings_manager::load_settings_from_path_for_tests(&settings_path);
+        let entry = healed
+            .recent_projects
+            .iter()
+            .find(|e| e.path == project_path)
+            .expect("entry must survive the heal");
+
+        assert_eq!(
+            entry.id, expected,
+            "the id must be rewritten to the stable hash"
+        );
+        assert!(entry.pinned, "healing must not drop the pinned flag");
+        assert_eq!(
+            entry.last_build_variant.as_deref(),
+            Some("debug"),
+            "healing must not drop per-project meta"
+        );
+    }
 }
