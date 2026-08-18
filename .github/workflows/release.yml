@@ -1,7 +1,13 @@
 name: Release
 
+# Gated on CI: this workflow starts only after the CI workflow completes on
+# main, and proceeds only when it went green. Every checkout below pins the
+# commit CI actually validated — workflow_run checks out the branch tip by
+# default, which could otherwise build and tag a newer, untested commit.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
 
 # Required to create tags and GitHub Releases.
@@ -15,6 +21,7 @@ jobs:
   # ── Job 1: Detect whether package.json version changed ──────────────────────
   check:
     name: Check version bump
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
@@ -22,6 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 2   # need HEAD and HEAD~1 to compare versions
 
       - name: Detect version change
@@ -69,6 +77,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: actions/setup-node@v7
         with:
@@ -203,6 +213,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download Apple Silicon DMG

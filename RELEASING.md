@@ -1,7 +1,8 @@
 # How to Release
 
-Releases are automated. When a version bump is pushed to `main`, GitHub Actions
-builds Apple Silicon + Intel DMGs and publishes them to GitHub Releases (~15 min).
+Releases are automated and gated on CI. When a version bump is pushed to `main`,
+the CI workflow runs first; only if it passes does the Release workflow build
+Apple Silicon + Intel DMGs and publish them to GitHub Releases (~15 min).
 
 ---
 
@@ -31,6 +32,7 @@ git push origin main
 ### 3. Wait for CI (~15 min)
 
 The release workflow will automatically:
+- Wait for CI to finish on that commit and stop unless it passed
 - Detect the version bump
 - Code-sign and notarize Apple Silicon + Intel DMGs in parallel (requires repository secrets below)
 - Create git tag `v0.1.1`
@@ -123,6 +125,11 @@ GitHub **does not** clear secret values before your script runs; masking only hi
 
 - **Only version bumps trigger a release.** Pushing doc updates, lint fixes, or
   CI changes to `main` does not create a release.
+- **A red CI blocks the release.** Release is triggered by the CI workflow
+  completing on `main` and halts unless that run was green, so a failing build
+  can no longer ship to users. Fix the failure and re-run CI — the release
+  chains off the new green run. The DMGs are always built from the exact commit
+  CI validated, not from the branch tip.
 - **Release builds require Apple signing secrets.** Local `scripts/build-dmg.sh` may still use ad-hoc signing for developer machines; CI release builds do not.
 - **If the workflow fails:** fix the underlying issue, then re-run the failed
   job from the GitHub Actions UI (Actions → Release → Re-run failed jobs).
