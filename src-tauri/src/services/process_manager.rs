@@ -39,6 +39,10 @@ pub(crate) struct ProcessRecord {
     _reader_task: JoinHandle<()>,
     /// Set to true before sending a signal so the reader task can report Cancelled.
     pub(crate) cancelled: Arc<AtomicBool>,
+    /// Set by the reader task once the child has been reaped, before `on_exit`.
+    /// The delayed SIGKILL in `cancel` checks this so we never signal a PID the
+    /// OS may have already recycled for an unrelated process.
+    pub(crate) exited: Arc<AtomicBool>,
 }
 
 /// Per-process callbacks dispatched from the reader task.
@@ -133,6 +137,7 @@ pub async fn spawn(
     let on_exit = std::sync::Arc::new(options.on_exit);
 
     let cancelled = Arc::new(AtomicBool::new(false));
+    let exited = Arc::new(AtomicBool::new(false));
 
     // Spawn the reader task that merges stdout and stderr.
     // We move `child` into this task so we can call child.wait() after both
@@ -141,6 +146,7 @@ pub async fn spawn(
         let on_line = on_line.clone();
         let on_exit = on_exit.clone();
         let cancelled_flag = cancelled.clone();
+        let exited_flag = exited.clone();
         let manager_for_cleanup = manager.clone();
 
         tokio::spawn(async move {
@@ -202,6 +208,9 @@ pub async fn spawn(
             } else {
                 termination
             };
+            // Publish before the map removal so a concurrent `cancel` that
+            // captured the record still observes the exit.
+            exited_flag.store(true, Ordering::SeqCst);
             manager_for_cleanup.lock().await.processes.remove(&id);
             on_exit(id, final_termination);
         })
@@ -211,6 +220,7 @@ pub async fn spawn(
         os_pid,
         _reader_task: reader_task,
         cancelled,
+        exited,
     };
 
     inner.processes.insert(id, record);
@@ -239,8 +249,15 @@ pub async fn cancel(manager: &Mutex<ProcessManagerInner>, id: ProcessId) {
             };
 
             // Spawn a background task to force-kill if it doesn't die in 5s.
+            // Skip the kill if the child was already reaped — the OS may have
+            // recycled its PID by now, and signalling it would hit an unrelated
+            // process.
+            let exited = record.exited.clone();
             tokio::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                if exited.load(Ordering::SeqCst) {
+                    return;
+                }
                 #[cfg(unix)]
                 unsafe {
                     libc::kill(os_pid as libc::pid_t, libc::SIGKILL)
@@ -427,6 +444,7 @@ mod tests {
                         os_pid: None,
                         _reader_task: tokio::spawn(async {}),
                         cancelled: Arc::new(AtomicBool::new(false)),
+                        exited: Arc::new(AtomicBool::new(false)),
                     },
                 );
             }
@@ -514,6 +532,7 @@ mod tests {
                         os_pid: None,
                         _reader_task: tokio::spawn(async {}),
                         cancelled: Arc::new(AtomicBool::new(false)),
+                        exited: Arc::new(AtomicBool::new(false)),
                     },
                 );
             }
@@ -548,6 +567,7 @@ mod tests {
                         os_pid: None,
                         _reader_task: tokio::spawn(async {}),
                         cancelled: Arc::new(AtomicBool::new(false)),
+                        exited: Arc::new(AtomicBool::new(false)),
                     },
                 );
             }
@@ -588,5 +608,113 @@ mod tests {
         for id in spawned {
             cancel(&manager.0, id).await;
         }
+    }
+
+    // ── Phase 0 characterization: cancellation safety ────────────────────────
+
+    /// `cancel()` must actually terminate a running process and report the
+    /// termination as `Cancelled` (not as a raw signal) to `on_exit`.
+    #[tokio::test]
+    async fn cancel_terminates_running_process() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let manager = ProcessManager::new();
+        let saw_cancelled = Arc::new(AtomicBool::new(false));
+        let exited = Arc::new(AtomicBool::new(false));
+        let saw_cancelled_cb = saw_cancelled.clone();
+        let exited_cb = exited.clone();
+
+        let id = spawn(
+            &manager.0,
+            "sleep",
+            &["30"],
+            std::env::temp_dir(),
+            vec![],
+            SpawnOptions {
+                on_line: Box::new(|_| {}),
+                on_exit: Box::new(move |_, termination| {
+                    if termination == ProcessTermination::Cancelled {
+                        saw_cancelled_cb.store(true, Ordering::SeqCst);
+                    }
+                    exited_cb.store(true, Ordering::SeqCst);
+                }),
+            },
+        )
+        .await
+        .unwrap();
+
+        cancel(&manager.0, id).await;
+
+        // SIGTERM should land well inside a second.
+        for _ in 0..40 {
+            if exited.load(Ordering::SeqCst) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+
+        assert!(
+            exited.load(Ordering::SeqCst),
+            "on_exit must fire after cancel terminates the process"
+        );
+        assert!(
+            saw_cancelled.load(Ordering::SeqCst),
+            "termination must be reported as Cancelled, not as a raw signal"
+        );
+    }
+
+    /// H5: the delayed SIGKILL in `cancel()` fires 5 s later against a raw OS
+    /// PID with no liveness check. If the process already exited (the normal
+    /// case — SIGTERM works) the OS may have recycled that PID, and we would
+    /// signal an unrelated process.
+    ///
+    /// This asserts the guard exists: once the reader task has observed the
+    /// exit, the delayed kill must be suppressed.
+    #[tokio::test]
+    async fn delayed_sigkill_does_not_fire_after_natural_exit() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let manager = ProcessManager::new();
+        let exited = Arc::new(AtomicBool::new(false));
+        let exited_cb = exited.clone();
+
+        let id = spawn(
+            &manager.0,
+            "sleep",
+            &["30"],
+            std::env::temp_dir(),
+            vec![],
+            SpawnOptions {
+                on_line: Box::new(|_| {}),
+                on_exit: Box::new(move |_, _| exited_cb.store(true, Ordering::SeqCst)),
+            },
+        )
+        .await
+        .unwrap();
+
+        // Grab the record's exit flag before cancel removes it from the map.
+        let exit_flag = {
+            let inner = manager.0.lock().await;
+            inner.processes[&id].exited.clone()
+        };
+
+        cancel(&manager.0, id).await;
+
+        for _ in 0..40 {
+            if exited.load(Ordering::SeqCst) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+
+        assert!(
+            exited.load(Ordering::SeqCst),
+            "process must have exited from SIGTERM"
+        );
+        assert!(
+            exit_flag.load(Ordering::SeqCst),
+            "reader task must publish an `exited` flag so the delayed SIGKILL \
+             can tell a reaped PID from a live one"
+        );
     }
 }
