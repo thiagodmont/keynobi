@@ -338,7 +338,7 @@ impl AndroidMcpServer {
         .map_err(|e| McpError::internal_error(e, None))?;
 
         if result.timed_out {
-            return Ok(CallToolResult::error(vec![Content::text(format!(
+            return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                 "Build timed out after {}s — task '{}'. Build has been cancelled.",
                 settings.mcp.build_timeout_sec, p.task
             ))]));
@@ -361,7 +361,7 @@ impl AndroidMcpServer {
                     issue_lines.join("\n")
                 )
             };
-            Ok(CallToolResult::success(vec![Content::text(msg)]))
+            Ok(CallToolResult::success(vec![ContentBlock::text(msg)]))
         } else {
             let msg = format!(
                 "BUILD FAILED — task '{}'\n{} issue(s):\n{}",
@@ -373,7 +373,7 @@ impl AndroidMcpServer {
                     issue_lines.join("\n")
                 }
             );
-            Ok(CallToolResult::error(vec![Content::text(msg)]))
+            Ok(CallToolResult::error(vec![ContentBlock::text(msg)]))
         }
     }
 
@@ -476,7 +476,7 @@ impl AndroidMcpServer {
             .lock()
             .map_err(|_| McpError::internal_error("Lock poisoned", None))?;
         if log.is_empty() {
-            return Ok(CallToolResult::success(vec![Content::text(
+            return Ok(CallToolResult::success(vec![ContentBlock::text(
                 "Build log is empty. Run a build first.",
             )]));
         }
@@ -488,7 +488,7 @@ impl AndroidMcpServer {
             .into_iter()
             .rev()
             .collect();
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "{} log line(s):\n{}",
             lines.len(),
             lines
@@ -511,7 +511,7 @@ impl AndroidMcpServer {
         } else {
             "No build was running."
         };
-        Ok(CallToolResult::success(vec![Content::text(msg)]))
+        Ok(CallToolResult::success(vec![ContentBlock::text(msg)]))
     }
 
     /// List available build variants.
@@ -582,12 +582,12 @@ impl AndroidMcpServer {
         if let Some(root) = self.get_gradle_root().await {
             let path = root.to_string_lossy().to_string();
             if let Err(e) = settings_manager::set_active_variant_for_project(&path, &p.variant) {
-                return Ok(CallToolResult::error(vec![Content::text(format!(
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                     "Failed to persist active variant: {e}"
                 ))]));
             }
         }
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "Active variant set to: {}",
             p.variant
         ))]))
@@ -666,7 +666,7 @@ impl AndroidMcpServer {
         let logcat = self.logcat_state.lock().await;
 
         if !logcat.streaming && logcat.store.is_empty() {
-            return Ok(CallToolResult::error(vec![Content::text(
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "Logcat not running — call start_logcat first.",
             )]));
         }
@@ -714,7 +714,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                         "No device connected. Connect a device or launch an emulator first.",
                     )]))
                 }
@@ -724,7 +724,7 @@ impl AndroidMcpServer {
 
         match app_inspector::restart_app(&adb, &serial, &p.package, cold).await {
             Ok(result) => Ok(CallToolResult::structured(json!(result))),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -774,7 +774,7 @@ impl AndroidMcpServer {
 
         match build_inspector::parse_build_config(&gradle_root, module) {
             Ok(config) => Ok(CallToolResult::structured(json!(config))),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -797,7 +797,7 @@ impl AndroidMcpServer {
         let generation = {
             let mut state = self.logcat_state.lock().await;
             if state.streaming && state.device_serial == serial {
-                return Ok(CallToolResult::success(vec![Content::text(
+                return Ok(CallToolResult::success(vec![ContentBlock::text(
                     "Logcat is already streaming.",
                 )]));
             }
@@ -828,21 +828,21 @@ impl AndroidMcpServer {
 
         match tokio::time::timeout(std::time::Duration::from_secs(5), startup_rx).await {
             Ok(Ok(Ok(()))) => {}
-            Ok(Ok(Err(e))) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            Ok(Ok(Err(e))) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
             Ok(Err(_)) => {
-                return Ok(CallToolResult::error(vec![Content::text(
+                return Ok(CallToolResult::error(vec![ContentBlock::text(
                     "Logcat startup task exited before reporting status.",
                 )]))
             }
             Err(_) => {
                 self.logcat_state.lock().await.streaming = false;
-                return Ok(CallToolResult::error(vec![Content::text(
+                return Ok(CallToolResult::error(vec![ContentBlock::text(
                     "Timed out waiting for logcat to start.",
                 )]));
             }
         }
 
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             "Logcat streaming started. Use get_logcat_entries to read entries.",
         )]))
     }
@@ -855,7 +855,7 @@ impl AndroidMcpServer {
         // See commands/logcat.rs::stop_logcat — the generation bump is what
         // guarantees an in-flight stream task actually exits.
         state.stream_generation = state.stream_generation.wrapping_add(1);
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             "Logcat stream stopped.",
         )]))
     }
@@ -973,7 +973,7 @@ impl AndroidMcpServer {
         // And without the event the UI keeps rendering the entries an agent
         // just cleared.
         self.emit_event("logcat:cleared", ());
-        Ok(CallToolResult::success(vec![Content::text(
+        Ok(CallToolResult::success(vec![ContentBlock::text(
             "Logcat buffer cleared.",
         )]))
     }
@@ -1077,7 +1077,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1085,7 +1085,7 @@ impl AndroidMcpServer {
 
         let snapshot = match ui_hierarchy::capture_ui_hierarchy_snapshot(&adb, &serial).await {
             Ok(s) => s,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         };
 
         if p.interactive_only.unwrap_or(false) {
@@ -1134,7 +1134,7 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
         if !ui_automation::find_query_has_primary_filter(&p) {
-            return Ok(CallToolResult::error(vec![Content::text(
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "find_ui_elements requires at least one primary filter: textContains, textEquals, contentDescContains, resourceIdEquals, resourceIdContains, classContains, or packageEquals (non-empty).",
             )]));
         }
@@ -1145,7 +1145,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1153,7 +1153,7 @@ impl AndroidMcpServer {
 
         let snapshot = match ui_automation::capture_ui_snapshot(&adb, &serial).await {
             Ok(s) => s,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         };
 
         let max = p
@@ -1194,7 +1194,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1202,7 +1202,7 @@ impl AndroidMcpServer {
 
         let snapshot = match ui_automation::capture_ui_snapshot(&adb, &serial).await {
             Ok(s) => s,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         };
 
         let max = p
@@ -1254,7 +1254,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1265,19 +1265,19 @@ impl AndroidMcpServer {
                 .await
             {
                 Ok(s) => s,
-                Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+                Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
             }
         } else {
             match ui_automation::capture_ui_snapshot(&adb, &serial).await {
                 Ok(s) => s,
-                Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+                Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
             }
         };
 
         let (normalized_path, parent) =
             match ui_automation::find_ui_parent_from_snapshot(&snapshot, &p.tree_path) {
                 Ok(v) => v,
-                Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+                Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
             };
 
         let parent_json = match serde_json::to_value(&parent) {
@@ -1315,14 +1315,14 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
             };
 
         if let Err(e) = ui_automation::validate_coordinates(p.x, p.y) {
-            return Ok(CallToolResult::error(vec![Content::text(e)]));
+            return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
         }
 
         if p.expect_screen_hash.is_some() {
@@ -1330,19 +1330,19 @@ impl AndroidMcpServer {
                 ui_automation::ensure_screen_hash(&adb, &serial, p.expect_screen_hash.as_deref())
                     .await
             {
-                return Ok(CallToolResult::error(vec![Content::text(e)]));
+                return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
             }
         }
 
         match ui_automation::adb_input_tap(&adb, &serial, p.x, p.y).await {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+            Ok(msg) => Ok(CallToolResult::success(vec![ContentBlock::text(
                 if msg.is_empty() {
                     format!("tap ({}, {})", p.x, p.y)
                 } else {
                     format!("tap ({}, {}): {msg}", p.x, p.y)
                 },
             )])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -1364,7 +1364,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1375,12 +1375,12 @@ impl AndroidMcpServer {
                 .await
             {
                 Ok(s) => s,
-                Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+                Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
             };
 
         let target = match ui_automation::resolve_tap_element_target(&snapshot, &p) {
             Ok(t) => t,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         };
 
         match ui_automation::adb_input_tap(&adb, &serial, target.x, target.y).await {
@@ -1389,7 +1389,7 @@ impl AndroidMcpServer {
                 "screenHash": snapshot.screen_hash,
                 "target": target,
             }))),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -1405,12 +1405,12 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
         if p.text.is_empty() {
-            return Ok(CallToolResult::error(vec![Content::text(
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "text must not be empty",
             )]));
         }
         if let Err(e) = ui_automation::validate_tap_coordinate_pair(p.tap_x, p.tap_y) {
-            return Ok(CallToolResult::error(vec![Content::text(e)]));
+            return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
         }
 
         let (settings, _) = settings_manager::load_settings();
@@ -1419,7 +1419,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1429,37 +1429,37 @@ impl AndroidMcpServer {
             if let Err(e) =
                 ui_automation::ensure_screen_hash(&adb, &serial, Some(expected.as_str())).await
             {
-                return Ok(CallToolResult::error(vec![Content::text(e)]));
+                return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
             }
         }
 
         if let (Some(x), Some(y)) = (p.tap_x, p.tap_y) {
             if let Err(e) = ui_automation::validate_coordinates(x, y) {
-                return Ok(CallToolResult::error(vec![Content::text(e)]));
+                return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
             }
             if let Err(e) = ui_automation::adb_input_tap(&adb, &serial, x, y).await {
-                return Ok(CallToolResult::error(vec![Content::text(e)]));
+                return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
 
         if p.clear_before.unwrap_or(false) {
             if let Err(e) = ui_automation::adb_clear_field(&adb, &serial).await {
-                return Ok(CallToolResult::error(vec![Content::text(format!(
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                     "clear_before failed: {e}"
                 ))]));
             }
         }
 
         match ui_automation::adb_input_text(&adb, &serial, &p.text).await {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+            Ok(msg) => Ok(CallToolResult::success(vec![ContentBlock::text(
                 if msg.is_empty() {
                     "input text sent".to_string()
                 } else {
                     msg
                 },
             )])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -1475,7 +1475,7 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
         if p.text.is_empty() {
-            return Ok(CallToolResult::error(vec![Content::text(
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "text must not be empty",
             )]));
         }
@@ -1486,7 +1486,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1497,23 +1497,23 @@ impl AndroidMcpServer {
                 .await
             {
                 Ok(s) => s,
-                Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+                Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
             };
 
         let target = match ui_automation::resolve_fill_input_target(&snapshot, &p) {
             Ok(t) => t,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         };
 
         if let Err(e) = ui_automation::adb_input_tap(&adb, &serial, target.x, target.y).await {
-            return Ok(CallToolResult::error(vec![Content::text(e)]));
+            return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
         }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
         let clear_before = p.clear_before.unwrap_or(true);
         if clear_before {
             if let Err(e) = ui_automation::adb_clear_field(&adb, &serial).await {
-                return Ok(CallToolResult::error(vec![Content::text(format!(
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                     "clear_before failed: {e}"
                 ))]));
             }
@@ -1526,7 +1526,7 @@ impl AndroidMcpServer {
                 "target": target,
                 "clearBefore": clear_before,
             }))),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -1542,7 +1542,7 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
         if let Err(e) = ui_automation::validate_tap_coordinate_pair(p.tap_x, p.tap_y) {
-            return Ok(CallToolResult::error(vec![Content::text(e)]));
+            return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
         }
 
         let (settings, _) = settings_manager::load_settings();
@@ -1551,7 +1551,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1559,19 +1559,19 @@ impl AndroidMcpServer {
 
         if let (Some(x), Some(y)) = (p.tap_x, p.tap_y) {
             if let Err(e) = ui_automation::validate_coordinates(x, y) {
-                return Ok(CallToolResult::error(vec![Content::text(e)]));
+                return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
             }
             if let Err(e) = ui_automation::adb_input_tap(&adb, &serial, x, y).await {
-                return Ok(CallToolResult::error(vec![Content::text(e)]));
+                return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
 
         match ui_automation::adb_clear_field(&adb, &serial).await {
-            Ok(()) => Ok(CallToolResult::success(vec![Content::text(
+            Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::text(
                 "field cleared",
             )])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -1587,12 +1587,12 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
         if p.text.is_empty() {
-            return Ok(CallToolResult::error(vec![Content::text(
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "text must not be empty",
             )]));
         }
         if let Err(e) = ui_automation::validate_tap_coordinate_pair(p.tap_x, p.tap_y) {
-            return Ok(CallToolResult::error(vec![Content::text(e)]));
+            return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
         }
 
         let (settings, _) = settings_manager::load_settings();
@@ -1601,7 +1601,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1609,31 +1609,31 @@ impl AndroidMcpServer {
 
         if let (Some(x), Some(y)) = (p.tap_x, p.tap_y) {
             if let Err(e) = ui_automation::validate_coordinates(x, y) {
-                return Ok(CallToolResult::error(vec![Content::text(e)]));
+                return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
             }
             if let Err(e) = ui_automation::adb_input_tap(&adb, &serial, x, y).await {
-                return Ok(CallToolResult::error(vec![Content::text(e)]));
+                return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         }
 
         if p.clear_before.unwrap_or(false) {
             if let Err(e) = ui_automation::adb_clear_field(&adb, &serial).await {
-                return Ok(CallToolResult::error(vec![Content::text(format!(
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                     "clear_before failed: {e}"
                 ))]));
             }
         }
 
         match ui_automation::adb_type_text_unicode(&adb, &serial, &p.text).await {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+            Ok(msg) => Ok(CallToolResult::success(vec![ContentBlock::text(
                 if msg.is_empty() {
                     "unicode text sent via clipboard".to_string()
                 } else {
                     msg
                 },
             )])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -1650,7 +1650,7 @@ impl AndroidMcpServer {
         }
         let code = match ui_automation::resolve_ui_key_code(&p.key) {
             Ok(c) => c,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         };
 
         let (settings, _) = settings_manager::load_settings();
@@ -1659,21 +1659,21 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
             };
 
         match ui_automation::adb_keyevent(&adb, &serial, code).await {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+            Ok(msg) => Ok(CallToolResult::success(vec![ContentBlock::text(
                 if msg.is_empty() {
                     format!("keyevent {code}")
                 } else {
                     format!("keyevent {code}: {msg}")
                 },
             )])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -1695,7 +1695,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1703,7 +1703,7 @@ impl AndroidMcpServer {
 
         match ui_automation::adb_hide_soft_keyboard(&adb, &serial, p.force.unwrap_or(false)).await {
             Ok(outcome) => Ok(CallToolResult::structured(json!(outcome))),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -1725,7 +1725,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1734,14 +1734,14 @@ impl AndroidMcpServer {
         match ui_automation::adb_input_swipe(&adb, &serial, p.x1, p.y1, p.x2, p.y2, p.duration_ms)
             .await
         {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+            Ok(msg) => Ok(CallToolResult::success(vec![ContentBlock::text(
                 if msg.is_empty() {
                     "swipe OK".to_string()
                 } else {
                     msg
                 },
             )])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -1758,7 +1758,7 @@ impl AndroidMcpServer {
         }
         let q = ui_automation::find_params_from_scroll_until(&p);
         if !ui_automation::find_query_has_primary_filter(&q) {
-            return Ok(CallToolResult::error(vec![Content::text(
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "ui_scroll_until_element requires at least one primary filter: textContains, textEquals, contentDescContains, resourceIdEquals, resourceIdContains, classContains, or packageEquals.",
             )]));
         }
@@ -1769,7 +1769,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1789,7 +1789,7 @@ impl AndroidMcpServer {
         for swipe_count in 0..=max_swipes {
             let snapshot = match ui_automation::capture_ui_snapshot(&adb, &serial).await {
                 Ok(s) => s,
-                Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+                Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
             };
             last_hash = snapshot.screen_hash.clone();
             let matches = ui_automation::find_ui_elements(&snapshot, &q, max_results);
@@ -1815,7 +1815,7 @@ impl AndroidMcpServer {
 
             let swipe = match ui_automation::resolve_scroll_swipe(&snapshot, &p) {
                 Ok(s) => s,
-                Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+                Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
             };
             if let Err(e) = ui_automation::adb_input_swipe(
                 &adb,
@@ -1828,13 +1828,13 @@ impl AndroidMcpServer {
             )
             .await
             {
-                return Ok(CallToolResult::error(vec![Content::text(e)]));
+                return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
             }
             last_swipe = Some(swipe);
             tokio::time::sleep(std::time::Duration::from_millis(u64::from(poll_ms))).await;
         }
 
-        Ok(CallToolResult::error(vec![Content::text(format!(
+        Ok(CallToolResult::error(vec![ContentBlock::text(format!(
             "ui_scroll_until_element did not find a matching element after {max_swipes} swipe(s). Last screenHash: {last_hash}"
         ))]))
     }
@@ -1852,7 +1852,7 @@ impl AndroidMcpServer {
         }
         validate_package_name(&p.package)?;
         if let Err(e) = ui_automation::validate_runtime_permission(&p.permission) {
-            return Ok(CallToolResult::error(vec![Content::text(e)]));
+            return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
         }
 
         let (settings, _) = settings_manager::load_settings();
@@ -1861,21 +1861,21 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
             };
 
         match ui_automation::adb_pm_grant(&adb, &serial, &p.package, &p.permission).await {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+            Ok(msg) => Ok(CallToolResult::success(vec![ContentBlock::text(
                 if msg.is_empty() {
                     format!("granted {} to {}", p.permission, p.package)
                 } else {
                     msg
                 },
             )])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -1892,7 +1892,7 @@ impl AndroidMcpServer {
         }
         validate_package_name(&p.package)?;
         if let Err(e) = ui_automation::validate_runtime_permission(&p.permission) {
-            return Ok(CallToolResult::error(vec![Content::text(e)]));
+            return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
         }
 
         let (settings, _) = settings_manager::load_settings();
@@ -1901,21 +1901,21 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
             };
 
         match ui_automation::adb_pm_revoke(&adb, &serial, &p.package, &p.permission).await {
-            Ok(msg) => Ok(CallToolResult::success(vec![Content::text(
+            Ok(msg) => Ok(CallToolResult::success(vec![ContentBlock::text(
                 if msg.is_empty() {
                     format!("revoked {} from {}", p.permission, p.package)
                 } else {
                     msg
                 },
             )])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -1937,7 +1937,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1958,7 +1958,7 @@ impl AndroidMcpServer {
                     "matches": matches_json,
                 })))
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -1980,7 +1980,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -1996,7 +1996,7 @@ impl AndroidMcpServer {
         loop {
             let snapshot = match ui_automation::capture_ui_snapshot(&adb, &serial).await {
                 Ok(s) => s,
-                Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+                Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
             };
             samples += 1;
             let current_hash = snapshot.screen_hash.clone();
@@ -2018,7 +2018,7 @@ impl AndroidMcpServer {
             }
 
             if std::time::Instant::now() >= deadline {
-                return Ok(CallToolResult::error(vec![Content::text(format!(
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                     "ui_wait_for_idle timed out after {} ms; last screenHash: {}",
                     cfg.timeout_ms, current_hash
                 ))]));
@@ -2049,7 +2049,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -2057,7 +2057,7 @@ impl AndroidMcpServer {
 
         let snapshot = match ui_automation::capture_ui_snapshot(&adb, &serial).await {
             Ok(s) => s,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         };
         let max = p
             .max_results
@@ -2069,7 +2069,7 @@ impl AndroidMcpServer {
                 "foregroundActivity": snapshot.foreground_activity,
                 "assertion": outcome,
             }))),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                 "{e} screenHash={}",
                 snapshot.screen_hash
             ))])),
@@ -2091,11 +2091,11 @@ impl AndroidMcpServer {
             adb_manager::get_adb_path(&s)
         };
         match device_inspector::take_screenshot(&adb, &p.device_serial).await {
-            Ok(bytes) => Ok(CallToolResult::success(vec![Content::image(
+            Ok(bytes) => Ok(CallToolResult::success(vec![ContentBlock::image(
                 BASE64.encode(&bytes),
                 "image/png",
             )])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                 "Screenshot failed: {e}"
             ))])),
         }
@@ -2117,7 +2117,7 @@ impl AndroidMcpServer {
         };
         match device_inspector::get_device_info(&adb, &p.device_serial).await {
             Ok(info) => Ok(CallToolResult::structured(json!(info))),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -2136,7 +2136,7 @@ impl AndroidMcpServer {
             validate_package_name(package)?;
         }
         if let Err(e) = ui_automation::validate_deep_link_uri(&p.uri) {
-            return Ok(CallToolResult::error(vec![Content::text(e)]));
+            return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
         }
 
         let (settings, _) = settings_manager::load_settings();
@@ -2145,7 +2145,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -2158,7 +2158,7 @@ impl AndroidMcpServer {
                 "package": p.package,
                 "output": output,
             }))),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -2181,7 +2181,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -2196,7 +2196,7 @@ impl AndroidMcpServer {
                 "panel": p.panel.unwrap_or_else(|| "appInfo".to_string()),
                 "output": output,
             }))),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -2218,7 +2218,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -2230,7 +2230,7 @@ impl AndroidMcpServer {
                 "steps": steps,
                 "success": true,
             }))),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -2252,7 +2252,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -2271,7 +2271,7 @@ impl AndroidMcpServer {
                     "hint": if success { serde_json::Value::Null } else { json!("Some Android versions restrict network toggles. Inspect failed step output and verify actual device state.") },
                 })))
             }
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -2293,7 +2293,7 @@ impl AndroidMcpServer {
             match adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await {
                 Some(s) => s,
                 None => {
-                    return Ok(CallToolResult::error(vec![Content::text(
+                    return Ok(CallToolResult::error(vec![ContentBlock::text(
                 "No device connected. Connect a device or pass device_serial from list_devices.",
             )]))
                 }
@@ -2301,7 +2301,7 @@ impl AndroidMcpServer {
 
         let snapshot = match ui_automation::capture_ui_snapshot(&adb, &serial).await {
             Ok(s) => s,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         };
 
         let changed = snapshot.screen_hash != p.baseline_screen_hash;
@@ -2355,7 +2355,7 @@ impl AndroidMcpServer {
         };
         match device_inspector::dump_app_info(&adb, &p.device_serial, &p.package).await {
             Ok(info) => Ok(CallToolResult::structured(json!(info))),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -2376,7 +2376,7 @@ impl AndroidMcpServer {
         };
         match device_inspector::get_memory_info(&adb, &p.device_serial, &p.package).await {
             Ok(info) => Ok(CallToolResult::structured(json!(info))),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
 
@@ -2398,7 +2398,7 @@ impl AndroidMcpServer {
             .await
             .map_err(|e| McpError::internal_error(format!("APK install failed: {e}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "APK installed: {result}"
         ))]))
     }
@@ -2422,7 +2422,7 @@ impl AndroidMcpServer {
                 .await
                 .map_err(|e| McpError::internal_error(format!("Launch failed: {e}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "App launched: {result}"
         ))]))
     }
@@ -2443,7 +2443,7 @@ impl AndroidMcpServer {
             .await
             .map_err(|e| McpError::internal_error(format!("Stop app failed: {e}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "App {} stopped.",
             p.package
         ))]))
@@ -2516,7 +2516,7 @@ impl AndroidMcpServer {
             .await
             .map_err(|e| McpError::internal_error(format!("Failed to stop emulator: {e}"), None))?;
 
-        Ok(CallToolResult::success(vec![Content::text(format!(
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "Emulator {} stopped.",
             p.serial
         ))]))
@@ -2655,7 +2655,7 @@ impl AndroidMcpServer {
             .unwrap_or("the connected device");
         Ok(GetPromptResult::new(vec![
                 PromptMessage::new_text(
-                    PromptMessageRole::User,
+                    Role::User,
                     format!(
                         "Diagnose the crash for app '{pkg}' on {device}. \
                          Step 1: Call get_crash_logs to see recent FATAL EXCEPTION / ANR entries. \
@@ -2684,7 +2684,7 @@ impl AndroidMcpServer {
         let task = format!("assemble{}", capitalize_first(variant));
         Ok(GetPromptResult::new(vec![
                 PromptMessage::new_text(
-                    PromptMessageRole::User,
+                    Role::User,
                     format!(
                         "Deploy the {variant} build to device '{device}'. \
                          Step 1: Call run_gradle_task with task={task} to build. \
@@ -2718,7 +2718,7 @@ impl AndroidMcpServer {
         let task = args.task.as_deref().unwrap_or("assembleDebug");
         Ok(GetPromptResult::new(vec![
                 PromptMessage::new_text(
-                    PromptMessageRole::User,
+                    Role::User,
                     format!(
                         "Run the build and fix any errors. \
                          Step 1: Call run_gradle_task with task={task}. \
@@ -2787,8 +2787,8 @@ impl ServerHandler for AndroidMcpServer {
     ) -> Result<ListResourcesResult, McpError> {
         let fs = self.fs_state.0.lock().await;
         let mut resources = vec![
-            RawResource::new("android://project-info", "Project Info").no_annotation(),
-            RawResource::new("android://health", "System Health").no_annotation(),
+            Resource::new("android://project-info", "Project Info"),
+            Resource::new("android://health", "System Health"),
         ];
 
         if let Some(ref gradle_root) = fs.gradle_root.clone().or(fs.project_root.clone()) {
@@ -2820,23 +2820,19 @@ impl ServerHandler for AndroidMcpServer {
             ];
             for (uri, path, name) in &candidates {
                 if path.is_file() {
-                    resources.push(RawResource::new(*uri, *name).no_annotation());
+                    resources.push(Resource::new(*uri, *name));
                 }
             }
         }
 
-        Ok(ListResourcesResult {
-            resources,
-            next_cursor: None,
-            meta: None,
-        })
+        Ok(ListResourcesResult::with_all_items(resources))
     }
 
     async fn read_resource(
         &self,
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, McpError> {
+    ) -> Result<ReadResourceResponse, McpError> {
         let uri = &request.uri;
         let fs = self.fs_state.0.lock().await;
         let gradle_root = fs.gradle_root.clone().or(fs.project_root.clone());
@@ -2851,10 +2847,7 @@ impl ServerHandler for AndroidMcpServer {
                     .and_then(|c| c.as_text())
                     .map(|t| t.text.clone())
                     .unwrap_or_else(|| "No project open".into());
-                Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                    text,
-                    uri.clone(),
-                )]))
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(text, uri.clone())]).into())
             }
             "android://health" => {
                 let health = self.run_health_check().await?;
@@ -2864,10 +2857,7 @@ impl ServerHandler for AndroidMcpServer {
                     .and_then(|c| c.as_text())
                     .map(|t| t.text.clone())
                     .unwrap_or_else(|| "Health check unavailable".into());
-                Ok(ReadResourceResult::new(vec![ResourceContents::text(
-                    text,
-                    uri.clone(),
-                )]))
+                Ok(ReadResourceResult::new(vec![ResourceContents::text(text, uri.clone())]).into())
             }
             other => {
                 let path = match (other, gradle_root.as_ref()) {
@@ -2897,14 +2887,15 @@ impl ServerHandler for AndroidMcpServer {
                         } else {
                             "text/plain"
                         };
-                        Ok(ReadResourceResult::new(vec![
-                            ResourceContents::TextResourceContents {
+                        Ok(
+                            ReadResourceResult::new(vec![ResourceContents::TextResourceContents {
                                 uri: uri.clone(),
                                 mime_type: Some(mime.into()),
                                 text: content,
                                 meta: None,
-                            },
-                        ]))
+                            }])
+                            .into(),
+                        )
                     }
                     _ => Err(McpError::resource_not_found(
                         format!("Resource not found or project not open: {uri}"),
@@ -3028,7 +3019,7 @@ impl ServerHandler for LoggingMcpServer {
         &self,
         request: ReadResourceRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, McpError> {
+    ) -> Result<ReadResourceResponse, McpError> {
         let start = std::time::Instant::now();
         let uri = request.uri.clone();
         let result = self.0.read_resource(request, context).await;
@@ -3047,13 +3038,16 @@ impl ServerHandler for LoggingMcpServer {
         &self,
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, McpError> {
+    ) -> Result<CallToolResponse, McpError> {
         let start = std::time::Instant::now();
         let name = request.name.clone();
         let result = self.0.call_tool(request, context).await;
         let ms = start.elapsed().as_millis() as u64;
         let (status, summary) = match &result {
-            Ok(r) => {
+            // rmcp 3 wraps tool results in the MRTR envelope. Every tool here is
+            // synchronous, so only `Complete` carries a payload worth logging; the
+            // other variants are recorded as a plain ok with no summary.
+            Ok(CallToolResponse::Complete(r)) => {
                 let is_err = r.is_error.unwrap_or(false);
                 let first_text = r.content.first().and_then(|c| c.as_text()).map(|t| {
                     let s = &t.text;
@@ -3069,6 +3063,7 @@ impl ServerHandler for LoggingMcpServer {
                     ("ok", first_text)
                 }
             }
+            Ok(_) => ("ok", None),
             Err(e) => ("error", Some(e.message.clone().to_string())),
         };
         mcp_activity::log_activity(&McpActivityEntry::tool_call(
@@ -3098,7 +3093,7 @@ impl ServerHandler for LoggingMcpServer {
         &self,
         request: GetPromptRequestParams,
         context: RequestContext<RoleServer>,
-    ) -> Result<GetPromptResult, McpError> {
+    ) -> Result<GetPromptResponse, McpError> {
         let start = std::time::Instant::now();
         let name = request.name.clone();
         let result = self.0.get_prompt(request, context).await;
