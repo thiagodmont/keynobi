@@ -1,4 +1,4 @@
-use crate::models::build::{BuildError, BuildRecord, BuildResult, BuildStatus};
+use crate::models::build::{BuildError, BuildErrorSeverity, BuildRecord, BuildResult, BuildStatus};
 use crate::services::build_parser;
 use crate::services::process_manager::{self, ProcessId, ProcessManager};
 use crate::services::settings_manager::data_dir;
@@ -410,6 +410,120 @@ pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf
     apks.into_iter().next().cloned()
 }
 
+// ── Build completion ──────────────────────────────────────────────────────────
+
+/// Finalize a build and, when running with a GUI attached, notify the frontend.
+///
+/// Headless MCP runs pass `None` and simply record history. With a handle, the
+/// UI learns about builds an AI agent started — previously the MCP path recorded
+/// state but emitted nothing, so the Build panel silently went stale.
+pub async fn emit_build_complete(
+    build_state: &BuildState,
+    app_handle: Option<&tauri::AppHandle>,
+    finalization: BuildFinalization,
+) -> BuildCompleteEvent {
+    let event = finalize_completed_build(build_state, finalization).await;
+    if let Some(handle) = app_handle {
+        use tauri::Emitter;
+        let _ = handle.emit("build:complete", event.clone());
+    }
+    event
+}
+
+/// Payload of the `build:complete` event.
+///
+/// Emitted by every path that runs a build — the Tauri command layer and the
+/// MCP server — so the UI reflects builds an AI agent started too.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildCompleteEvent {
+    pub success: bool,
+    pub cancelled: bool,
+    pub duration_ms: u64,
+    pub error_count: u32,
+    pub warning_count: u32,
+    pub task: String,
+}
+
+pub struct BuildFinalization {
+    pub task: String,
+    pub started_at: String,
+    pub project_root: Option<String>,
+    pub success: bool,
+    pub cancelled: bool,
+    pub duration_ms: u64,
+    pub errors: Vec<BuildError>,
+}
+
+pub async fn finalize_completed_build(
+    build_state: &BuildState,
+    finalization: BuildFinalization,
+) -> BuildCompleteEvent {
+    let error_count = finalization
+        .errors
+        .iter()
+        .filter(|e| e.severity == BuildErrorSeverity::Error)
+        .count() as u32;
+    let warn_count = finalization
+        .errors
+        .iter()
+        .filter(|e| e.severity == BuildErrorSeverity::Warning)
+        .count() as u32;
+    let result = BuildResult {
+        success: finalization.success,
+        duration_ms: finalization.duration_ms,
+        error_count,
+        warning_count: warn_count,
+    };
+
+    record_build_result(
+        build_state,
+        finalization.task.clone(),
+        finalization.started_at,
+        result,
+        finalization.errors,
+        finalization.project_root,
+    )
+    .await;
+
+    BuildCompleteEvent {
+        success: finalization.success,
+        cancelled: finalization.cancelled,
+        duration_ms: finalization.duration_ms,
+        error_count,
+        warning_count: warn_count,
+        task: finalization.task,
+    }
+}
+
+/// Reserve the single build slot, marking the build as starting.
+///
+/// Every code path that spawns Gradle MUST call this first. Previously only the
+/// Tauri command layer guarded, so an MCP client could start a second Gradle
+/// process against the same project — which also overwrote `active_process_id`
+/// and left the first build uncancellable.
+///
+/// # Errors
+/// Returns an error when a build is already starting or running.
+pub async fn try_reserve_build_slot(
+    build_state: &BuildState,
+    task: &str,
+    started_at: &str,
+) -> Result<(), String> {
+    let mut bs = build_state.inner.lock().await;
+    if bs.starting || bs.current_build.is_some() || matches!(bs.status, BuildStatus::Running { .. })
+    {
+        return Err("A Gradle build is already running".to_string());
+    }
+    bs.starting = true;
+    bs.status = BuildStatus::Running {
+        task: task.to_owned(),
+        started_at: started_at.to_owned(),
+    };
+    bs.current_errors.clear();
+    Ok(())
+}
+
 /// Cancel the currently running build. Returns `true` if a build was running, `false` otherwise.
 pub async fn cancel_build(build_state: &BuildState, process_manager: &ProcessManager) -> bool {
     let (id, was_running) = {
@@ -581,22 +695,16 @@ pub async fn run_task(
     env: Vec<(String, String)>,
     build_state: &BuildState,
     process_manager: &crate::services::process_manager::ProcessManager,
+    app_handle: Option<&tauri::AppHandle>,
 ) -> Result<GradleTaskResult, String> {
-    use crate::models::build::{BuildError, BuildErrorSeverity, BuildLineKind, BuildResult};
-    use crate::services::process_manager::{self as pm, SpawnOptions};
+    use crate::models::build::{BuildError, BuildErrorSeverity, BuildLineKind};
+    use crate::services::process_manager::{self as pm, ProcessTermination, SpawnOptions};
     use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
     use std::sync::Arc;
 
     let started_at = chrono::Utc::now().to_rfc3339();
 
-    {
-        let mut bs = build_state.inner.lock().await;
-        bs.status = crate::models::build::BuildStatus::Running {
-            task: task.to_owned(),
-            started_at: started_at.clone(),
-        };
-        bs.current_errors.clear();
-    }
+    try_reserve_build_slot(build_state, task, &started_at).await?;
 
     let build_log = build_state.build_log.clone();
     clear_build_log(&build_log);
@@ -607,7 +715,7 @@ pub async fn run_task(
     let errors_buf = Arc::new(std::sync::Mutex::new(Vec::<BuildError>::new()));
     let success_flag = Arc::new(AtomicBool::new(false));
     let duration_buf = Arc::new(AtomicU64::new(0));
-    let (done_tx, done_rx) = tokio::sync::oneshot::channel::<()>();
+    let (done_tx, done_rx) = tokio::sync::oneshot::channel::<ProcessTermination>();
     let done_tx = Arc::new(StdMutex::new(Some(done_tx)));
 
     let pid = pm::spawn(
@@ -649,10 +757,10 @@ pub async fn run_task(
                     }
                 }
             }),
-            on_exit: Box::new(move |_pid, _code| {
+            on_exit: Box::new(move |_pid, termination| {
                 if let Ok(mut g) = done_tx.lock() {
                     if let Some(tx) = g.take() {
-                        let _ = tx.send(());
+                        let _ = tx.send(termination);
                     }
                 }
             }),
@@ -662,58 +770,88 @@ pub async fn run_task(
     .map_err(|e| format!("Failed to spawn Gradle: {e}"))?;
 
     build_state.set_active_process_id(Some(pid));
-    {
+    let cancelled_during_spawn = {
         let mut bs = build_state.inner.lock().await;
         if matches!(bs.status, BuildStatus::Cancelled) {
-            return Ok(GradleTaskResult {
-                success: false,
-                timed_out: false,
-                duration_ms: 0,
-                errors: Vec::new(),
-            });
+            bs.starting = false;
+            true
+        } else {
+            bs.starting = false;
+            bs.current_build = Some(pid);
+            false
         }
-        bs.current_build = Some(pid);
-    }
-
-    let timed_out = tokio::time::timeout(std::time::Duration::from_secs(timeout_sec), done_rx)
-        .await
-        .is_err();
-
-    if timed_out {
-        cancel_build(build_state, process_manager).await;
+    };
+    if cancelled_during_spawn {
+        // The user cancelled between spawn and this lock. Kill the process we
+        // just started — returning here without it orphaned a live Gradle.
+        let _ = build_state.take_active_process_id();
+        process_manager::cancel(&process_manager.0, pid).await;
         return Ok(GradleTaskResult {
             success: false,
-            timed_out: true,
+            timed_out: false,
             duration_ms: 0,
             errors: Vec::new(),
         });
     }
 
-    let success = success_flag.load(Ordering::Acquire);
+    let termination =
+        tokio::time::timeout(std::time::Duration::from_secs(timeout_sec), done_rx).await;
+    let timed_out = termination.is_err();
+
+    if timed_out {
+        cancel_build(build_state, process_manager).await;
+        // A timeout is a build failure, not a user cancellation: record it so
+        // it appears in history with a reason instead of vanishing.
+        let timeout_err = BuildError {
+            message: format!("Build timed out after {timeout_sec}s and was cancelled"),
+            file: None,
+            line: None,
+            col: None,
+            severity: BuildErrorSeverity::Error,
+        };
+        let errors = vec![timeout_err];
+        emit_build_complete(
+            build_state,
+            app_handle,
+            BuildFinalization {
+                task: task.to_owned(),
+                started_at,
+                project_root: None,
+                success: false,
+                cancelled: false,
+                duration_ms: 0,
+                errors: errors.clone(),
+            },
+        )
+        .await;
+        return Ok(GradleTaskResult {
+            success: false,
+            timed_out: true,
+            duration_ms: 0,
+            errors,
+        });
+    }
+
+    // Exit code is authoritative. The summary line alone is not enough: stray
+    // "BUILD SUCCESSFUL" text in the output must not override a non-zero exit.
+    let exit_ok = matches!(termination, Ok(Ok(ProcessTermination::ExitCode(0))));
+    let success = exit_ok && success_flag.load(Ordering::Acquire);
     let errors = errors_buf.lock().map(|g| g.clone()).unwrap_or_default();
     let duration_ms = duration_buf.load(Ordering::Relaxed);
-    let error_count = errors
-        .iter()
-        .filter(|e| e.severity == BuildErrorSeverity::Error)
-        .count() as u32;
-    let warning_count = errors
-        .iter()
-        .filter(|e| e.severity == BuildErrorSeverity::Warning)
-        .count() as u32;
-
-    let result = BuildResult {
-        success,
-        duration_ms,
-        error_count,
-        warning_count,
-    };
-    record_build_result(
+    // Counts are derived inside finalize_completed_build — single source of truth.
+    let cancelled = matches!(termination, Ok(Ok(ProcessTermination::Cancelled)));
+    emit_build_complete(
         build_state,
-        task.to_owned(),
-        started_at,
-        result,
-        errors.clone(),
-        None,
+        app_handle,
+        BuildFinalization {
+            task: task.to_owned(),
+            started_at,
+            project_root: None,
+            success,
+            cancelled,
+            duration_ms,
+            errors: errors.clone(),
+        },
     )
     .await;
 
@@ -1320,5 +1458,170 @@ mod tests {
             !production_source.contains("active_process_id.lock().unwrap()"),
             "active_process_id mutex must handle poisoning without unwrap()"
         );
+    }
+
+    // ── Build slot reservation (H2) ──────────────────────────────────────────
+
+    #[tokio::test]
+    async fn try_reserve_build_slot_succeeds_when_idle() {
+        let bs = BuildState::new();
+        try_reserve_build_slot(&bs, "assembleDebug", "2026-01-01T00:00:00Z")
+            .await
+            .expect("idle state must grant the slot");
+
+        let inner = bs.inner.lock().await;
+        assert!(inner.starting);
+        assert!(matches!(inner.status, BuildStatus::Running { .. }));
+    }
+
+    #[tokio::test]
+    async fn try_reserve_build_slot_rejects_when_starting() {
+        let bs = BuildState::new();
+        try_reserve_build_slot(&bs, "assembleDebug", "2026-01-01T00:00:00Z")
+            .await
+            .unwrap();
+
+        // A second caller — e.g. the MCP server while the UI build is starting.
+        let err = try_reserve_build_slot(&bs, "assembleRelease", "2026-01-01T00:00:01Z")
+            .await
+            .expect_err("second reservation must be refused");
+        assert!(err.contains("already running"));
+    }
+
+    #[tokio::test]
+    async fn try_reserve_build_slot_rejects_when_a_process_is_tracked() {
+        let bs = BuildState::new();
+        {
+            let mut inner = bs.inner.lock().await;
+            inner.current_build = Some(42);
+        }
+        assert!(
+            try_reserve_build_slot(&bs, "assembleDebug", "2026-01-01T00:00:00Z")
+                .await
+                .is_err(),
+            "a tracked process must block a new build"
+        );
+    }
+
+    #[tokio::test]
+    async fn build_slot_is_released_after_finalization() {
+        let bs = BuildState::new();
+        try_reserve_build_slot(&bs, "assembleDebug", "2026-01-01T00:00:00Z")
+            .await
+            .unwrap();
+
+        emit_build_complete(
+            &bs,
+            None,
+            BuildFinalization {
+                task: "assembleDebug".to_string(),
+                started_at: "2026-01-01T00:00:00Z".to_string(),
+                project_root: None,
+                success: true,
+                cancelled: false,
+                duration_ms: 10,
+                errors: vec![],
+            },
+        )
+        .await;
+
+        // The next build must be able to start.
+        try_reserve_build_slot(&bs, "assembleDebug", "2026-01-01T00:01:00Z")
+            .await
+            .expect("slot must be free after finalization");
+    }
+
+    // ── Finalization is shared by both front doors (H3) ──────────────────────
+
+    #[tokio::test]
+    async fn emit_build_complete_records_history_without_an_app_handle() {
+        let bs = BuildState::new();
+        let event = emit_build_complete(
+            &bs,
+            None,
+            BuildFinalization {
+                task: "assembleDebug".to_string(),
+                started_at: "2026-01-01T00:00:00Z".to_string(),
+                project_root: Some("/tmp/p".to_string()),
+                success: false,
+                cancelled: false,
+                duration_ms: 1234,
+                errors: vec![BuildError {
+                    message: "boom".to_string(),
+                    file: None,
+                    line: None,
+                    col: None,
+                    severity: BuildErrorSeverity::Error,
+                }],
+            },
+        )
+        .await;
+
+        assert!(!event.success);
+        assert_eq!(event.error_count, 1);
+        assert_eq!(event.warning_count, 0);
+
+        let inner = bs.inner.lock().await;
+        assert_eq!(
+            inner.history.back().map(|r| r.task.as_str()),
+            Some("assembleDebug"),
+            "headless MCP runs must still record history"
+        );
+    }
+
+    #[tokio::test]
+    async fn finalization_counts_warnings_separately_from_errors() {
+        let bs = BuildState::new();
+        let mk = |sev| BuildError {
+            message: "m".to_string(),
+            file: None,
+            line: None,
+            col: None,
+            severity: sev,
+        };
+        let event = emit_build_complete(
+            &bs,
+            None,
+            BuildFinalization {
+                task: "assembleDebug".to_string(),
+                started_at: "2026-01-01T00:00:00Z".to_string(),
+                project_root: None,
+                success: true,
+                cancelled: false,
+                duration_ms: 1,
+                errors: vec![
+                    mk(BuildErrorSeverity::Warning),
+                    mk(BuildErrorSeverity::Warning),
+                    mk(BuildErrorSeverity::Error),
+                ],
+            },
+        )
+        .await;
+
+        assert_eq!(event.error_count, 1);
+        assert_eq!(event.warning_count, 2);
+        assert!(event.success, "warnings alone must not fail a build");
+    }
+
+    #[tokio::test]
+    async fn cancelled_build_is_finalized_as_cancelled() {
+        let bs = BuildState::new();
+        let event = emit_build_complete(
+            &bs,
+            None,
+            BuildFinalization {
+                task: "assembleDebug".to_string(),
+                started_at: "2026-01-01T00:00:00Z".to_string(),
+                project_root: None,
+                success: false,
+                cancelled: true,
+                duration_ms: 0,
+                errors: vec![],
+            },
+        )
+        .await;
+
+        assert!(event.cancelled);
+        assert!(!event.success);
     }
 }

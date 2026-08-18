@@ -330,6 +330,9 @@ impl AndroidMcpServer {
             env,
             &self.build_state,
             &self.process_manager,
+            // Emit build:complete when a GUI is attached so the Build panel
+            // reflects agent-triggered builds instead of going stale.
+            self.app_handle.as_ref(),
         )
         .await
         .map_err(|e| McpError::internal_error(e, None))?;

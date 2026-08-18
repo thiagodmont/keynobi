@@ -7,24 +7,16 @@ use crate::services::process_manager::{self, ProcessManager, ProcessTermination,
 use crate::services::settings_manager;
 use crate::FsState;
 use chrono::Utc;
-use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex as StdMutex};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 
-// ── Event payloads ─────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BuildCompleteEvent {
-    pub success: bool,
-    pub cancelled: bool,
-    pub duration_ms: u64,
-    pub error_count: u32,
-    pub warning_count: u32,
-    pub task: String,
-}
+// Build finalization lives in `build_runner` so the Tauri command layer and the
+// MCP server share one implementation. Re-exported for existing call sites.
+pub use crate::services::build_runner::{
+    finalize_completed_build, BuildCompleteEvent, BuildFinalization,
+};
 
 fn mark_build_spawn_failed(bs: &mut build_runner::BuildStateInner) {
     bs.starting = false;
@@ -63,57 +55,6 @@ fn validate_gradle_task(task: &str) -> Result<(), AppError> {
         )));
     }
     Ok(())
-}
-
-pub(crate) struct BuildFinalization {
-    task: String,
-    started_at: String,
-    project_root: Option<String>,
-    success: bool,
-    cancelled: bool,
-    duration_ms: u64,
-    errors: Vec<BuildError>,
-}
-
-pub(crate) async fn finalize_completed_build(
-    build_state: &BuildState,
-    finalization: BuildFinalization,
-) -> BuildCompleteEvent {
-    let error_count = finalization
-        .errors
-        .iter()
-        .filter(|e| e.severity == BuildErrorSeverity::Error)
-        .count() as u32;
-    let warn_count = finalization
-        .errors
-        .iter()
-        .filter(|e| e.severity == BuildErrorSeverity::Warning)
-        .count() as u32;
-    let result = BuildResult {
-        success: finalization.success,
-        duration_ms: finalization.duration_ms,
-        error_count,
-        warning_count: warn_count,
-    };
-
-    build_runner::record_build_result(
-        build_state,
-        finalization.task.clone(),
-        finalization.started_at,
-        result,
-        finalization.errors,
-        finalization.project_root,
-    )
-    .await;
-
-    BuildCompleteEvent {
-        success: finalization.success,
-        cancelled: finalization.cancelled,
-        duration_ms: finalization.duration_ms,
-        error_count,
-        warning_count: warn_count,
-        task: finalization.task,
-    }
 }
 
 // ── Build commands ─────────────────────────────────────────────────────────────
@@ -159,23 +100,10 @@ pub async fn run_gradle_task(
     let env = build_env_vars(&settings, &gradle_root);
     let started_at = Utc::now().to_rfc3339();
 
-    {
-        let mut bs = build_state.inner.lock().await;
-        if bs.starting
-            || bs.current_build.is_some()
-            || matches!(bs.status, BuildStatus::Running { .. })
-        {
-            return Err(AppError::InvalidInput(
-                "A Gradle build is already running".to_string(),
-            ));
-        }
-        bs.starting = true;
-        bs.status = BuildStatus::Running {
-            task: task.clone(),
-            started_at: started_at.clone(),
-        };
-        bs.current_errors.clear();
-    }
+    // Shared with the MCP path so both front doors enforce one build at a time.
+    build_runner::try_reserve_build_slot(&build_state, &task, &started_at)
+        .await
+        .map_err(AppError::InvalidInput)?;
 
     // Use std::sync::Mutex (not tokio) for these accumulators — they are
     // accessed only from sync callbacks (on_line / on_exit) and must never
@@ -257,8 +185,11 @@ pub async fn run_gradle_task(
                     let flag = success_flag.lock().map(|g| *g).unwrap_or(false);
 
                     let cancelled = matches!(termination, ProcessTermination::Cancelled);
+                    // Exit code is authoritative — `||` let stray "BUILD
+                    // SUCCESSFUL" text in the output override a non-zero exit.
                     let success = !cancelled
-                        && (flag || matches!(termination, ProcessTermination::ExitCode(0)));
+                        && matches!(termination, ProcessTermination::ExitCode(0))
+                        && flag;
 
                     let app = app.clone();
                     let task_name = task_name.clone();

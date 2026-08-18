@@ -49,12 +49,7 @@ export async function initBuildService(): Promise<void> {
       // Build was explicitly cancelled by the user — use dedicated cancelled phase.
       cancelBuildState();
     } else {
-      setBuildResult({
-        success: e.success,
-        durationMs: e.durationMs,
-        errorCount: e.errorCount,
-        warningCount: e.warningCount,
-      });
+      setBuildResult({ success: e.success, durationMs: e.durationMs });
     }
     // Resolve the pending build promise if there is one.
     // Rust records history before emitting build:complete, so this fetch sees
@@ -176,7 +171,7 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
       line: null,
       col: null,
     });
-    setBuildResult({ success: false, durationMs: 0, errorCount: 1, warningCount: 0 });
+    setBuildResult({ success: false, durationMs: 0 });
     throw e;
   }
 
@@ -194,7 +189,7 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
       line: null,
       col: null,
     });
-    setBuildResult({ success: false, durationMs: 0, errorCount: 1, warningCount: 0 });
+    setBuildResult({ success: false, durationMs: 0 });
     throw e;
   }
 

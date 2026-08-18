@@ -35,14 +35,14 @@ describe("build.store", () => {
 
   it("setBuildResult success sets success phase", () => {
     startBuild("assembleDebug");
-    setBuildResult({ success: true, durationMs: 5000, errorCount: 0, warningCount: 0 });
+    setBuildResult({ success: true, durationMs: 5000 });
     expect(buildState.phase).toBe("success");
     expect(buildState.durationMs).toBe(5000);
   });
 
   it("setBuildResult failure sets failed phase", () => {
     startBuild("assembleDebug");
-    setBuildResult({ success: false, durationMs: 3000, errorCount: 2, warningCount: 1 });
+    setBuildResult({ success: false, durationMs: 3000 });
     expect(buildState.phase).toBe("failed");
   });
 
@@ -179,7 +179,7 @@ describe("build store error state transitions", () => {
     addBuildLine({ ...errLine, content: "Unresolved reference: baz" });
     addBuildLine({ ...errLine, content: "Unresolved reference: qux" });
     flushPendingLines();
-    setBuildResult({ success: false, durationMs: 3000, errorCount: 3, warningCount: 0 });
+    setBuildResult({ success: false, durationMs: 3000 });
     expect(buildState.phase).toBe("failed");
     expect(buildState.durationMs).toBe(3000);
     // Errors were accumulated via addBuildLine before setBuildResult was called.
@@ -188,7 +188,7 @@ describe("build store error state transitions", () => {
 
   it("reflects failed phase immediately after setBuildResult with success: false", () => {
     startBuild("assembleRelease");
-    setBuildResult({ success: false, durationMs: 1500, errorCount: 1, warningCount: 0 });
+    setBuildResult({ success: false, durationMs: 1500 });
     expect(buildState.phase).toBe("failed");
     expect(buildState.currentTask).toBe("assembleRelease");
     expect(buildState.startedAt).toBeNull();
@@ -196,7 +196,7 @@ describe("build store error state transitions", () => {
 
   it("reflects failed phase with zero duration when build fails to start", () => {
     startBuild("assembleDebug");
-    setBuildResult({ success: false, durationMs: 0, errorCount: 1, warningCount: 0 });
+    setBuildResult({ success: false, durationMs: 0 });
     expect(buildState.phase).toBe("failed");
     expect(buildState.durationMs).toBe(0);
     expect(buildState.startedAt).toBeNull();
@@ -205,7 +205,7 @@ describe("build store error state transitions", () => {
 
   it("transitions from failed to running when a new build starts", () => {
     startBuild("assembleDebug");
-    setBuildResult({ success: false, durationMs: 2000, errorCount: 1, warningCount: 0 });
+    setBuildResult({ success: false, durationMs: 2000 });
     expect(buildState.phase).toBe("failed");
     // Start a second build — store should reset error list and go back to running.
     startBuild("assembleDebug");
@@ -230,7 +230,7 @@ describe("build store error state transitions", () => {
       line: 20,
       col: 3,
     });
-    setBuildResult({ success: false, durationMs: 500, errorCount: 1, warningCount: 0 });
+    setBuildResult({ success: false, durationMs: 500 });
     expect(buildState.phase).toBe("failed");
     clearBuild();
     expect(buildState.phase).toBe("idle");

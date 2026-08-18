@@ -194,12 +194,14 @@ export function setLastLaunchedAt(ts: number, packageName: string | null = null)
   });
 }
 
-export function setBuildResult(opts: {
-  success: boolean;
-  durationMs: number;
-  errorCount: number;
-  warningCount: number;
-}): void {
+/**
+ * Finalize the build phase.
+ *
+ * Error/warning counts are NOT parameters: they are derived from the lines
+ * streamed through `addBuildLine`, which is the single source of truth for the
+ * Problems tab. Passing counts here previously did nothing.
+ */
+export function setBuildResult(opts: { success: boolean; durationMs: number }): void {
   _stopTick();
   setBuildState({
     phase: opts.success ? "success" : "failed",
