@@ -29,7 +29,9 @@ export function Select(props: SelectProps): JSX.Element {
       class={[styles.root, props.class].filter(Boolean).join(" ")}
     >
       <Show when={props.placeholder}>
-        <option value="" disabled>{props.placeholder}</option>
+        <option value="" disabled>
+          {props.placeholder}
+        </option>
       </Show>
       <For each={props.options}>
         {(opt) => <option value={getValue(opt)}>{getLabel(opt)}</option>}

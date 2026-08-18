@@ -4,9 +4,7 @@ import { TagInput } from "./TagInput";
 
 describe("TagInput", () => {
   it("renders existing tags", () => {
-    const { container } = render(() => (
-      <TagInput tags={["foo", "bar"]} onChange={vi.fn()} />
-    ));
+    const { container } = render(() => <TagInput tags={["foo", "bar"]} onChange={vi.fn()} />);
     expect(container.textContent).toContain("foo");
     expect(container.textContent).toContain("bar");
   });

@@ -15,10 +15,7 @@ function dispatchKey(
   modifiers: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean } = {},
   targetTag: "DIV" | "INPUT" | "TEXTAREA" = "DIV"
 ) {
-  const el =
-    targetTag === "DIV"
-      ? document.body
-      : document.createElement(targetTag.toLowerCase());
+  const el = targetTag === "DIV" ? document.body : document.createElement(targetTag.toLowerCase());
 
   if (targetTag !== "DIV") {
     document.body.appendChild(el);
@@ -96,7 +93,6 @@ describe("registerKeybinding — deduplication by key combo", () => {
 initKeybindings();
 
 describe("initKeybindings", () => {
-
   it("calls the action when a matching keydown fires", () => {
     const action = vi.fn();
     registerKeybinding({ key: "k", metaKey: true, action, description: "Test K action" });

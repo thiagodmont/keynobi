@@ -39,17 +39,17 @@
    */
 
   /* Semantic background tints — derived; update via color tokens above */
-  --error-bg:      color-mix(in srgb, var(--error)   10%, var(--bg-primary));
-  --warning-bg:    color-mix(in srgb, var(--warning) 10%, var(--bg-primary));
-  --success-bg:    color-mix(in srgb, var(--success) 10%, var(--bg-primary));
-  --info-bg:       color-mix(in srgb, var(--info)    10%, var(--bg-primary));
+  --error-bg: color-mix(in srgb, var(--error) 10%, var(--bg-primary));
+  --warning-bg: color-mix(in srgb, var(--warning) 10%, var(--bg-primary));
+  --success-bg: color-mix(in srgb, var(--success) 10%, var(--bg-primary));
+  --info-bg: color-mix(in srgb, var(--info) 10%, var(--bg-primary));
 
   /* Semantic border tints */
-  --error-border:   color-mix(in srgb, var(--error)   30%, transparent);
+  --error-border: color-mix(in srgb, var(--error) 30%, transparent);
   --warning-border: color-mix(in srgb, var(--warning) 30%, transparent);
   --success-border: color-mix(in srgb, var(--success) 30%, transparent);
-  --info-border:    color-mix(in srgb, var(--info)    30%, transparent);
-  --accent-border:  color-mix(in srgb, var(--accent)  30%, transparent);
+  --info-border: color-mix(in srgb, var(--info) 30%, transparent);
+  --accent-border: color-mix(in srgb, var(--accent) 30%, transparent);
 
   /* Fonts */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -145,43 +145,69 @@
 .cm-semantic-enum,
 .cm-semantic-interface,
 .cm-semantic-struct,
-.cm-semantic-type { color: #4ec9b0; }
+.cm-semantic-type {
+  color: #4ec9b0;
+}
 
 /* Type parameters (generics: T, K, V) */
-.cm-semantic-typeParameter { color: #4ec9b0; font-style: italic; }
+.cm-semantic-typeParameter {
+  color: #4ec9b0;
+  font-style: italic;
+}
 
 /* Functions and methods */
 .cm-semantic-function,
-.cm-semantic-method { color: #dcdcaa; }
+.cm-semantic-method {
+  color: #dcdcaa;
+}
 
 /* Namespaces and packages */
-.cm-semantic-namespace { color: #9cdcfe; }
+.cm-semantic-namespace {
+  color: #9cdcfe;
+}
 
 /* Properties */
-.cm-semantic-property { color: #9cdcfe; }
+.cm-semantic-property {
+  color: #9cdcfe;
+}
 
 /* Variables */
-.cm-semantic-variable { color: #9cdcfe; }
+.cm-semantic-variable {
+  color: #9cdcfe;
+}
 
 /* Parameters */
-.cm-semantic-parameter { color: #9cdcfe; }
+.cm-semantic-parameter {
+  color: #9cdcfe;
+}
 
 /* Enum members / constants */
-.cm-semantic-enumMember { color: #4fc1ff; }
+.cm-semantic-enumMember {
+  color: #4fc1ff;
+}
 
 /* Modifiers: deprecated strikethrough */
-.cm-semantic-deprecated { text-decoration: line-through; opacity: 0.65; }
+.cm-semantic-deprecated {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
 
 /* Static members: slightly muted */
-.cm-semantic-static { opacity: 0.90; }
+.cm-semantic-static {
+  opacity: 0.9;
+}
 
 /* Breadcrumbs scrollbar hidden */
 
 /* ── LSP status indicator ──────────────────────────────────────────────────── */
 
 @keyframes lsp-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .lsp-spinner {
@@ -191,8 +217,13 @@
 }
 
 @keyframes lsp-pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 .lsp-dot-pulse {
@@ -204,9 +235,15 @@
 /* ── LSP indexing progress bar ─────────────────────────────────────────────── */
 
 @keyframes lsp-progress-sweep {
-  0%   { transform: translateX(-150%); }
-  50%  { transform: translateX(100%);  }
-  100% { transform: translateX(100%);  }
+  0% {
+    transform: translateX(-150%);
+  }
+  50% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .lsp-progress-indeterminate {
@@ -218,7 +255,13 @@
 
 /* Full-width green bar that fades out on indexing success */
 @keyframes lsp-progress-done {
-  0%   { opacity: 1; }
-  70%  { opacity: 1; }
-  100% { opacity: 0; }
+  0% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }

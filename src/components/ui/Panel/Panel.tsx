@@ -27,7 +27,9 @@ export function Panel(props: PanelProps): JSX.Element {
           styles.body,
           props.noPadding ? styles.noPadding : "",
           props.scrollable ? styles.scrollable : "",
-        ].filter(Boolean).join(" ")}
+        ]
+          .filter(Boolean)
+          .join(" ")}
       >
         {props.children}
       </div>

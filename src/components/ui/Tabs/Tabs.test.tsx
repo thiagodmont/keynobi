@@ -17,9 +17,7 @@ describe("Tabs", () => {
   });
 
   it("marks the active tab with aria-selected=true", () => {
-    const { container } = render(() => (
-      <Tabs tabs={TABS} activeTab="b" onChange={vi.fn()} />
-    ));
+    const { container } = render(() => <Tabs tabs={TABS} activeTab="b" onChange={vi.fn()} />);
     const btns = container.querySelectorAll("button");
     expect(btns[1].getAttribute("aria-selected")).toBe("true");
     expect(btns[0].getAttribute("aria-selected")).toBe("false");
@@ -52,9 +50,7 @@ describe("Tabs", () => {
   });
 
   it("each tab button has role=tab", () => {
-    const { container } = render(() => (
-      <Tabs tabs={TABS} activeTab="a" onChange={vi.fn()} />
-    ));
+    const { container } = render(() => <Tabs tabs={TABS} activeTab="a" onChange={vi.fn()} />);
     const btns = container.querySelectorAll("[role='tab']");
     expect(btns.length).toBe(3);
   });

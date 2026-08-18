@@ -116,7 +116,13 @@ describe("VirtualList windowing — calcWindow()", () => {
   // ── Overscan variation ────────────────────────────────────────────────────
 
   it("zero overscan renders only visible rows", () => {
-    const w = calcWindow({ rowHeight: 20, containerHeight: 400, overscan: 0, totalItems: 10_000, scrollTop: 2000 });
+    const w = calcWindow({
+      rowHeight: 20,
+      containerHeight: 400,
+      overscan: 0,
+      totalItems: 10_000,
+      scrollTop: 2000,
+    });
     // floor(2000/20) = 100 start; ceil(2400/20) = 120 end → exactly 20 rows
     expect(w.startIndex).toBe(100);
     expect(w.endIndex).toBe(120);
@@ -124,7 +130,13 @@ describe("VirtualList windowing — calcWindow()", () => {
   });
 
   it("large overscan extends window proportionally", () => {
-    const w = calcWindow({ rowHeight: 20, containerHeight: 400, overscan: 50, totalItems: 10_000, scrollTop: 5000 });
+    const w = calcWindow({
+      rowHeight: 20,
+      containerHeight: 400,
+      overscan: 50,
+      totalItems: 10_000,
+      scrollTop: 5000,
+    });
     // 20 visible + 2*50 overscan = ~120
     expect(w.visibleCount).toBeGreaterThanOrEqual(118);
     expect(w.visibleCount).toBeLessThanOrEqual(122);
@@ -142,13 +154,25 @@ describe("VirtualList windowing — calcWindow()", () => {
   // ── Different row heights ─────────────────────────────────────────────────
 
   it("works with row height of 1 (minimal)", () => {
-    const w = calcWindow({ rowHeight: 1, containerHeight: 100, overscan: 5, totalItems: 1_000, scrollTop: 100 });
+    const w = calcWindow({
+      rowHeight: 1,
+      containerHeight: 100,
+      overscan: 5,
+      totalItems: 1_000,
+      scrollTop: 100,
+    });
     expect(w.startIndex).toBe(95); // 100 - 5 overscan
     expect(w.endIndex).toBe(205); // 200 + 5 overscan
   });
 
   it("works with row height of 100 (large rows)", () => {
-    const w = calcWindow({ rowHeight: 100, containerHeight: 600, overscan: 2, totalItems: 200, scrollTop: 1000 });
+    const w = calcWindow({
+      rowHeight: 100,
+      containerHeight: 600,
+      overscan: 2,
+      totalItems: 200,
+      scrollTop: 1000,
+    });
     expect(w.startIndex).toBe(8); // floor(1000/100) - 2 = 8
     expect(w.endIndex).toBe(18); // ceil(1600/100) + 2 = 18
   });
@@ -157,7 +181,13 @@ describe("VirtualList windowing — calcWindow()", () => {
 
   it("handles scrollTop that falls in the middle of a row", () => {
     // scrollTop 25 = middle of row 1 (rows 0-19 and 20-39)
-    const w = calcWindow({ rowHeight: 20, containerHeight: 400, overscan: 5, totalItems: 1_000, scrollTop: 25 });
+    const w = calcWindow({
+      rowHeight: 20,
+      containerHeight: 400,
+      overscan: 5,
+      totalItems: 1_000,
+      scrollTop: 25,
+    });
     // floor(25/20) = 1; 1 - 5 = -4 → clamped to 0
     expect(w.startIndex).toBe(0);
     // ceil(425/20) = 22; 22 + 5 = 27

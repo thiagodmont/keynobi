@@ -13,11 +13,21 @@
   cursor: not-allowed;
 }
 
-.off { background: var(--bg-quaternary); }
-.on  { background: var(--accent); }
+.off {
+  background: var(--bg-quaternary);
+}
+.on {
+  background: var(--accent);
+}
 
-.sm { width: 32px; height: 18px; }
-.md { width: 36px; height: 20px; }
+.sm {
+  width: 32px;
+  height: 18px;
+}
+.md {
+  width: 36px;
+  height: 20px;
+}
 
 .thumb {
   position: absolute;
@@ -28,8 +38,18 @@
   transition: transform 0.15s;
 }
 
-.thumbSm { width: 14px; height: 14px; }
-.thumbMd { width: 16px; height: 16px; }
+.thumbSm {
+  width: 14px;
+  height: 14px;
+}
+.thumbMd {
+  width: 16px;
+  height: 16px;
+}
 
-.thumbOnSm { transform: translateX(14px); }
-.thumbOnMd { transform: translateX(16px); }
+.thumbOnSm {
+  transform: translateX(14px);
+}
+.thumbOnMd {
+  transform: translateX(16px);
+}

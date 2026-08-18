@@ -1,10 +1,4 @@
-import {
-  type JSX,
-  For,
-  Show,
-  createSignal,
-  onMount,
-} from "solid-js";
+import { type JSX, For, Show, createSignal, onMount } from "solid-js";
 import {
   deviceState,
   setDevices,
@@ -50,10 +44,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
   async function handleRefresh() {
     setRefreshing(true);
     try {
-      const [devices, avds] = await Promise.all([
-        refreshDevices(),
-        listAvdDevices(),
-      ]);
+      const [devices, avds] = await Promise.all([refreshDevices(), listAvdDevices()]);
       setDevices(devices);
       setAvds(avds);
     } catch (e) {
@@ -167,7 +158,7 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
               </Show>
             </IconButton>
 
-            <div style={{ "flex": "1" }} />
+            <div style={{ flex: "1" }} />
 
             <button
               onClick={() => setShowCreateDialog(true)}
@@ -187,17 +178,31 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
                 "flex-shrink": "0",
                 transition: "opacity 0.1s",
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.85"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.opacity = "0.85";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.opacity = "1";
+              }}
             >
-              <span style={{ "font-size": "14px", "line-height": "1", "margin-top": "-1px" }}>+</span>
+              <span style={{ "font-size": "14px", "line-height": "1", "margin-top": "-1px" }}>
+                +
+              </span>
               New Device
             </button>
           </div>
 
           {/* Content area */}
-          <div style={{ flex: "1", "overflow-y": "auto", padding: "12px 16px", display: "flex", "flex-direction": "column", gap: "20px" }}>
-
+          <div
+            style={{
+              flex: "1",
+              "overflow-y": "auto",
+              padding: "12px 16px",
+              display: "flex",
+              "flex-direction": "column",
+              gap: "20px",
+            }}
+          >
             {/* Connected Devices section */}
             <section>
               <SectionHeader label="Connected Devices" count={deviceState.devices.length} />
@@ -211,7 +216,14 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
                   />
                 }
               >
-                <div style={{ display: "flex", "flex-direction": "column", gap: "2px", "margin-top": "6px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    "flex-direction": "column",
+                    gap: "2px",
+                    "margin-top": "6px",
+                  }}
+                >
                   <For each={deviceState.devices}>
                     {(device) => (
                       <DeviceRow
@@ -229,7 +241,13 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
 
             {/* Virtual Devices section */}
             <section>
-              <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between" }}>
+              <div
+                style={{
+                  display: "flex",
+                  "align-items": "center",
+                  "justify-content": "space-between",
+                }}
+              >
                 <SectionHeader label="Virtual Devices" count={deviceState.avds.length} />
               </div>
               <Show
@@ -247,7 +265,14 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
                   />
                 }
               >
-                <div style={{ display: "flex", "flex-direction": "column", gap: "2px", "margin-top": "6px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    "flex-direction": "column",
+                    gap: "2px",
+                    "margin-top": "6px",
+                  }}
+                >
                   <For each={deviceState.avds}>
                     {(avd) => (
                       <AvdRow
@@ -308,7 +333,14 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
             gap: "8px",
           }}
         >
-          <span style={{ flex: "1", "font-size": "12px", "font-weight": "600", color: "var(--text-secondary)" }}>
+          <span
+            style={{
+              flex: "1",
+              "font-size": "12px",
+              "font-weight": "600",
+              color: "var(--text-secondary)",
+            }}
+          >
             Select Device
           </span>
           <button
@@ -316,9 +348,14 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
             disabled={refreshing()}
             title="Refresh"
             style={{
-              background: "none", border: "none", cursor: refreshing() ? "default" : "pointer",
-              color: "var(--text-muted)", "font-size": "14px", opacity: refreshing() ? "0.4" : "1",
-              display: "flex", "align-items": "center",
+              background: "none",
+              border: "none",
+              cursor: refreshing() ? "default" : "pointer",
+              color: "var(--text-muted)",
+              "font-size": "14px",
+              opacity: refreshing() ? "0.4" : "1",
+              display: "flex",
+              "align-items": "center",
             }}
           >
             {refreshing() ? "…" : "↻"}
@@ -329,7 +366,14 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
           <Show
             when={deviceState.devices.length > 0}
             fallback={
-              <div style={{ padding: "16px 12px", color: "var(--text-muted)", "font-size": "11px", "text-align": "center" }}>
+              <div
+                style={{
+                  padding: "16px 12px",
+                  color: "var(--text-muted)",
+                  "font-size": "11px",
+                  "text-align": "center",
+                }}
+              >
                 No devices connected
               </div>
             }
@@ -340,7 +384,10 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
                   device={device}
                   selected={deviceState.selectedSerial === device.serial}
                   compact={true}
-                  onSelect={() => { pickDevice(device.serial); props.onClose?.(); }}
+                  onSelect={() => {
+                    pickDevice(device.serial);
+                    props.onClose?.();
+                  }}
                   onStop={() => handleStopDevice(device.serial)}
                 />
               )}
@@ -357,14 +404,26 @@ export function DevicePanel(props: DevicePanelProps): JSX.Element {
           }}
         >
           <button
-            onClick={() => { props.onClose?.(); toggleDeviceSidebar(); }}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              color: "var(--accent)", "font-size": "11px", padding: "0",
-              width: "100%", "text-align": "left",
+            onClick={() => {
+              props.onClose?.();
+              toggleDeviceSidebar();
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.7"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              color: "var(--accent)",
+              "font-size": "11px",
+              padding: "0",
+              width: "100%",
+              "text-align": "left",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.opacity = "0.7";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.opacity = "1";
+            }}
           >
             Manage Virtual Devices →
           </button>
@@ -388,10 +447,14 @@ function DeviceRow(props: {
 
   const stateLabel = () => {
     switch (props.device.connectionState) {
-      case "online":       return null;
-      case "offline":      return "Offline";
-      case "unauthorized": return "Unauthorized";
-      default:             return "Unknown";
+      case "online":
+        return null;
+      case "offline":
+        return "Offline";
+      case "unauthorized":
+        return "Unauthorized";
+      default:
+        return "Unknown";
     }
   };
 
@@ -412,11 +475,11 @@ function DeviceRow(props: {
       onClick={() => isOnline() && props.onSelect()}
       onMouseEnter={(e) => {
         if (isOnline() && !props.selected)
-          (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.04))";
+          (e.currentTarget as HTMLElement).style.background =
+            "var(--bg-hover, rgba(255,255,255,0.04))";
       }}
       onMouseLeave={(e) => {
-        if (!props.selected)
-          (e.currentTarget as HTMLElement).style.background = "transparent";
+        if (!props.selected) (e.currentTarget as HTMLElement).style.background = "transparent";
       }}
     >
       {/* Status dot */}
@@ -445,7 +508,16 @@ function DeviceRow(props: {
           {props.device.model ?? props.device.name}
         </div>
         <Show when={!props.compact}>
-          <div style={{ "font-size": "11px", color: "var(--text-muted)", display: "flex", gap: "6px", "margin-top": "1px", "flex-wrap": "wrap" }}>
+          <div
+            style={{
+              "font-size": "11px",
+              color: "var(--text-muted)",
+              display: "flex",
+              gap: "6px",
+              "margin-top": "1px",
+              "flex-wrap": "wrap",
+            }}
+          >
             <span>{isEmulator() ? "Emulator" : "Physical"}</span>
             <Show when={props.device.apiLevel}>
               <span style={{ opacity: "0.5" }}>·</span>
@@ -460,7 +532,9 @@ function DeviceRow(props: {
               <span style={{ color: "var(--warning, #fbbf24)" }}>{stateLabel()}</span>
             </Show>
             <Show when={props.compact && stateLabel()}>
-              <span style={{ color: "var(--warning, #fbbf24)", "font-size": "10px" }}>{stateLabel()}</span>
+              <span style={{ color: "var(--warning, #fbbf24)", "font-size": "10px" }}>
+                {stateLabel()}
+              </span>
             </Show>
           </div>
         </Show>
@@ -480,19 +554,30 @@ function DeviceRow(props: {
       {/* Stop button for running emulators */}
       <Show when={isEmulator() && isOnline()}>
         <button
-          onClick={(e) => { e.stopPropagation(); props.onStop(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            props.onStop();
+          }}
           title="Stop emulator"
           style={{
-            background: "none", border: "none", cursor: "pointer",
-            color: "var(--text-muted)", "font-size": "12px",
-            padding: "3px 5px", "border-radius": "3px",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            color: "var(--text-muted)",
+            "font-size": "12px",
+            padding: "3px 5px",
+            "border-radius": "3px",
             "flex-shrink": "0",
           }}
           onMouseEnter={(e) => {
             (e.currentTarget as HTMLElement).style.color = "var(--error)";
-            (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--error) 10%, transparent)";
+            (e.currentTarget as HTMLElement).style.background =
+              "color-mix(in srgb, var(--error) 10%, transparent)";
           }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; (e.currentTarget as HTMLElement).style.background = "none"; }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
+            (e.currentTarget as HTMLElement).style.background = "none";
+          }}
         >
           ✕
         </button>
@@ -513,7 +598,6 @@ function AvdRow(props: {
   onDelete: () => void;
   onWipe: () => void;
 }): JSX.Element {
-
   return (
     <div
       style={{
@@ -527,8 +611,13 @@ function AvdRow(props: {
         transition: "background 0.1s",
         position: "relative",
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.04))"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLElement).style.background =
+          "var(--bg-hover, rgba(255,255,255,0.04))";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.background = "transparent";
+      }}
     >
       {/* AVD icon */}
       <div
@@ -578,7 +667,15 @@ function AvdRow(props: {
             </span>
           </Show>
         </div>
-        <div style={{ "font-size": "11px", color: "var(--text-muted)", display: "flex", gap: "6px", "margin-top": "2px" }}>
+        <div
+          style={{
+            "font-size": "11px",
+            color: "var(--text-muted)",
+            display: "flex",
+            gap: "6px",
+            "margin-top": "2px",
+          }}
+        >
           <Show when={props.avd.abi}>
             <span>{props.avd.abi}</span>
           </Show>
@@ -607,8 +704,14 @@ function AvdRow(props: {
                 cursor: "pointer",
                 "font-weight": "500",
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--error) 22%, transparent)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--error) 12%, transparent)"; }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background =
+                  "color-mix(in srgb, var(--error) 22%, transparent)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background =
+                  "color-mix(in srgb, var(--error) 12%, transparent)";
+              }}
             >
               Stop
             </button>
@@ -667,7 +770,8 @@ function AvdRow(props: {
                   "font-size": "14px",
                 }}
                 onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.08))";
+                  (e.currentTarget as HTMLElement).style.background =
+                    "var(--bg-hover, rgba(255,255,255,0.08))";
                   (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
                 }}
                 onMouseLeave={(e) => {
@@ -698,7 +802,15 @@ function SectionHeader(props: { label: string; count: number }): JSX.Element {
         "border-bottom": "1px solid var(--border)",
       }}
     >
-      <span style={{ "font-size": "11px", "font-weight": "600", color: "var(--text-muted)", "text-transform": "uppercase", "letter-spacing": "0.06em" }}>
+      <span
+        style={{
+          "font-size": "11px",
+          "font-weight": "600",
+          color: "var(--text-muted)",
+          "text-transform": "uppercase",
+          "letter-spacing": "0.06em",
+        }}
+      >
         {props.label}
       </span>
       <Show when={props.count > 0}>
@@ -721,9 +833,13 @@ function SectionHeader(props: { label: string; count: number }): JSX.Element {
 
 function connectionStateColor(state: Device["connectionState"]): string {
   switch (state) {
-    case "online":       return "var(--success)";
-    case "offline":      return "var(--text-muted)";
-    case "unauthorized": return "var(--warning)";
-    default:             return "var(--text-muted)";
+    case "online":
+      return "var(--success)";
+    case "offline":
+      return "var(--text-muted)";
+    case "unauthorized":
+      return "var(--warning)";
+    default:
+      return "var(--text-muted)";
   }
 }

@@ -24,9 +24,15 @@ beforeEach(() => {
   Object.defineProperty(globalThis, "localStorage", {
     value: {
       getItem: (k: string) => store[k] ?? null,
-      setItem: (k: string, v: string) => { store[k] = v; },
-      removeItem: (k: string) => { delete store[k]; },
-      clear: () => { for (const key of Object.keys(store)) delete store[key]; },
+      setItem: (k: string, v: string) => {
+        store[k] = v;
+      },
+      removeItem: (k: string) => {
+        delete store[k];
+      },
+      clear: () => {
+        for (const key of Object.keys(store)) delete store[key];
+      },
     },
     writable: true,
     configurable: true,
@@ -108,9 +114,7 @@ describe("legacy migration from logcat_presets_v1", () => {
   });
 
   it("persists migrated filters to new key so a second load returns them (data loss regression)", () => {
-    store["logcat_presets_v1"] = JSON.stringify([
-      { name: "Migrated", query: "level:warn" },
-    ]);
+    store["logcat_presets_v1"] = JSON.stringify([{ name: "Migrated", query: "level:warn" }]);
     // First load triggers migration
     loadFilterStorage();
     // Legacy key is gone now — second load must still return the migrated filter
@@ -150,7 +154,10 @@ describe("legacy migration from logcat_presets_v1", () => {
 
   it("deduplicates by name when merging with existing filters", () => {
     // Pre-populate new storage with a filter named "Old preset"
-    saveFilterStorage({ filters: [{ id: "x", name: "Old preset", query: "age:5m", createdAt: 0 }], lastActiveQuery: "" });
+    saveFilterStorage({
+      filters: [{ id: "x", name: "Old preset", query: "age:5m", createdAt: 0 }],
+      lastActiveQuery: "",
+    });
     // Also set legacy key with the same name
     store["logcat_presets_v1"] = JSON.stringify([{ name: "Old preset", query: "level:warn" }]);
     const s = loadFilterStorage();

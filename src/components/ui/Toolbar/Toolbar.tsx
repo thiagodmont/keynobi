@@ -22,11 +22,9 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
   return (
     <div
       role="toolbar"
-      class={[
-        styles.root,
-        props.compact ? styles.compact : "",
-        props.class,
-      ].filter(Boolean).join(" ")}
+      class={[styles.root, props.compact ? styles.compact : "", props.class]
+        .filter(Boolean)
+        .join(" ")}
     >
       <For each={props.items}>
         {(item) => (
@@ -40,10 +38,7 @@ export function Toolbar(props: ToolbarProps): JSX.Element {
               title={item.label}
               aria-label={item.label}
               aria-pressed={item.active ? "true" : undefined}
-              class={[
-                styles.item,
-                item.active ? styles.active : "",
-              ].filter(Boolean).join(" ")}
+              class={[styles.item, item.active ? styles.active : ""].filter(Boolean).join(" ")}
               onClick={item.onClick}
             >
               {item.label}

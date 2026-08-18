@@ -42,9 +42,9 @@ const ZOOM_FACTOR = 1.15;
 // Color-coding by node role (priority: interactive > text > compose > container)
 function nodeStrokeColor(node: UiNode): string {
   if (node.clickable || node.editable) return "#60a5fa"; // interactive → blue
-  if (node.text || node.contentDesc) return "#2dd4bf";   // text content → teal
-  if (node.isComposeHeuristic) return "#f59e0b";         // Compose → amber
-  return "var(--border)";                                // container → default
+  if (node.text || node.contentDesc) return "#2dd4bf"; // text content → teal
+  if (node.isComposeHeuristic) return "#f59e0b"; // Compose → amber
+  return "var(--border)"; // container → default
 }
 
 function nodeFillColor(node: UiNode): string {
@@ -168,8 +168,8 @@ export function LayoutWireframe(props: LayoutWireframeProps): JSX.Element {
             "flex-shrink": 0,
           }}
         >
-          Showing first {prepared().entries.length} rects (cap). Refine filters or use search to reduce
-          the tree.
+          Showing first {prepared().entries.length} rects (cap). Refine filters or use search to
+          reduce the tree.
         </div>
       </Show>
       <div style={{ flex: "1", "min-height": "0", position: "relative" }}>
@@ -198,9 +198,10 @@ export function LayoutWireframe(props: LayoutWireframeProps): JSX.Element {
             const vh0 = height / z0;
             const cx = p0.x + ((e.clientX - rect.left) / rect.width) * vw0;
             const cy = p0.y + ((e.clientY - rect.top) / rect.height) * vh0;
-            const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM,
-              e.deltaY < 0 ? z0 * ZOOM_FACTOR : z0 / ZOOM_FACTOR
-            ));
+            const newZoom = Math.min(
+              MAX_ZOOM,
+              Math.max(MIN_ZOOM, e.deltaY < 0 ? z0 * ZOOM_FACTOR : z0 / ZOOM_FACTOR)
+            );
             const vwNew = width / newZoom;
             const vhNew = height / newZoom;
             // Anchor the device point under cursor.
@@ -357,9 +358,7 @@ export function LayoutWireframe(props: LayoutWireframeProps): JSX.Element {
             </span>
           )}
         </For>
-        <span
-          style={{ "font-size": "10px", color: "var(--text-muted)", "margin-left": "auto" }}
-        >
+        <span style={{ "font-size": "10px", color: "var(--text-muted)", "margin-left": "auto" }}>
           Click to select
         </span>
       </div>

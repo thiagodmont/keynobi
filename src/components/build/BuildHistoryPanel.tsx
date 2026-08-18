@@ -99,8 +99,12 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
               "align-items": "center",
               opacity: "0.6",
             }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.6"; }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.opacity = "1";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.opacity = "0.6";
+            }}
           >
             <Icon name="trash" size={10} color="currentColor" />
           </button>
@@ -115,9 +119,7 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
             display: "block",
             width: "100%",
             padding: "5px 8px",
-            background: isCurrentSelected()
-              ? "rgba(255,255,255,0.09)"
-              : "transparent",
+            background: isCurrentSelected() ? "rgba(255,255,255,0.09)" : "transparent",
             "border-left": `2px solid ${isCurrentSelected() ? "var(--info)" : "transparent"}`,
             "border-right": "none",
             "border-top": "none",
@@ -201,7 +203,8 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
                 </span>
               </div>
               <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>
-                {dur ? `${dur} · ` : ""}{rel}
+                {dur ? `${dur} · ` : ""}
+                {rel}
               </div>
               <Show when={errs > 0}>
                 <div style={{ "font-size": "9px", color: "var(--error)" }}>

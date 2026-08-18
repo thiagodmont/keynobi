@@ -22,11 +22,11 @@ export interface FileTypeInfo {
 }
 
 const FILE_TYPE_MAP: Record<Language, FileTypeInfo> = {
-  kotlin:  { label: "K", color: "#a97bff" },
-  gradle:  { label: "G", color: "#02b10a" },
-  xml:     { label: "X", color: "#f0883e" },
-  json:    { label: "J", color: "#e8c07d" },
-  text:    { label: "T", color: "#858585" },
+  kotlin: { label: "K", color: "#a97bff" },
+  gradle: { label: "G", color: "#02b10a" },
+  xml: { label: "X", color: "#f0883e" },
+  json: { label: "J", color: "#e8c07d" },
+  text: { label: "T", color: "#858585" },
 };
 
 export function getFileTypeInfo(language: Language): FileTypeInfo {

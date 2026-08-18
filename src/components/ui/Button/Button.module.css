@@ -10,7 +10,9 @@
   cursor: pointer;
   border: none;
   white-space: nowrap;
-  transition: background 0.1s, opacity 0.1s;
+  transition:
+    background 0.1s,
+    opacity 0.1s;
   text-decoration: none;
 }
 

@@ -13,7 +13,15 @@
   align-self: stretch;
 }
 
-.spacingSm.horizontal { margin: 4px 0; }
-.spacingMd.horizontal { margin: 8px 0; }
-.spacingSm.vertical   { margin: 0 4px; }
-.spacingMd.vertical   { margin: 0 8px; }
+.spacingSm.horizontal {
+  margin: 4px 0;
+}
+.spacingMd.horizontal {
+  margin: 8px 0;
+}
+.spacingSm.vertical {
+  margin: 0 4px;
+}
+.spacingMd.vertical {
+  margin: 0 8px;
+}

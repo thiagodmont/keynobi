@@ -7,11 +7,7 @@ import {
   createAvdDevice,
   formatError,
 } from "@/lib/tauri-api";
-import {
-  deviceState,
-  setSystemImages,
-  setDeviceDefinitions,
-} from "@/stores/device.store";
+import { deviceState, setSystemImages, setDeviceDefinitions } from "@/stores/device.store";
 import { Icon } from "@/components/ui";
 
 export interface CreateDeviceDialogProps {
@@ -46,15 +42,14 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
     return `${base}_API_${img.apiLevel}`;
   });
 
-  const nameToUse = createMemo(() =>
-    nameManuallyEdited() ? name() : suggestedName()
-  );
+  const nameToUse = createMemo(() => (nameManuallyEdited() ? name() : suggestedName()));
 
   const nameError = createMemo(() => {
     const n = nameToUse();
     if (!n) return null;
     if (/\s/.test(n)) return "Name cannot contain spaces";
-    if (!/^[a-zA-Z0-9_.\- ]+$/.test(n)) return "Only letters, numbers, underscores, dashes, and dots";
+    if (!/^[a-zA-Z0-9_.\- ]+$/.test(n))
+      return "Only letters, numbers, underscores, dashes, and dots";
     if (deviceState.avds.some((a) => a.name === n)) return "An AVD with this name already exists";
     return null;
   });
@@ -167,7 +162,9 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
               <Icon name="device" size={16} color="var(--accent)" />
             </div>
             <div style={{ flex: "1" }}>
-              <div style={{ "font-size": "14px", "font-weight": "600", color: "var(--text-primary)" }}>
+              <div
+                style={{ "font-size": "14px", "font-weight": "600", color: "var(--text-primary)" }}
+              >
                 Create Virtual Device
               </div>
               <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-top": "1px" }}>
@@ -177,13 +174,23 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
             <button
               onClick={() => props.onClose()}
               style={{
-                background: "none", border: "none", cursor: "pointer",
-                color: "var(--text-muted)", "font-size": "16px",
-                padding: "4px", "border-radius": "4px",
-                display: "flex", "align-items": "center",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--text-muted)",
+                "font-size": "16px",
+                padding: "4px",
+                "border-radius": "4px",
+                display: "flex",
+                "align-items": "center",
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.08))"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background =
+                  "var(--bg-hover, rgba(255,255,255,0.08))";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "none";
+              }}
             >
               ✕
             </button>
@@ -191,7 +198,14 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
 
           {/* Body */}
           <Show when={loading()}>
-            <div style={{ padding: "40px 20px", "text-align": "center", color: "var(--text-muted)", "font-size": "13px" }}>
+            <div
+              style={{
+                padding: "40px 20px",
+                "text-align": "center",
+                color: "var(--text-muted)",
+                "font-size": "13px",
+              }}
+            >
               <div class="lsp-spinner" style={{ display: "inline-block", "margin-bottom": "10px" }}>
                 <Icon name="spinner" size={20} color="var(--accent)" />
               </div>
@@ -202,12 +216,35 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
           <Show when={!loading() && images().length === 0}>
             <div style={{ padding: "32px 24px", "text-align": "center" }}>
               <Icon name="warning" size={32} color="var(--warning, #fbbf24)" />
-              <div style={{ "font-size": "14px", "font-weight": "500", color: "var(--text-secondary)", "margin-top": "12px", "margin-bottom": "8px" }}>
+              <div
+                style={{
+                  "font-size": "14px",
+                  "font-weight": "500",
+                  color: "var(--text-secondary)",
+                  "margin-top": "12px",
+                  "margin-bottom": "8px",
+                }}
+              >
                 No system images found
               </div>
-              <div style={{ "font-size": "12px", color: "var(--text-muted)", "line-height": "1.6", "max-width": "340px", margin: "0 auto" }}>
+              <div
+                style={{
+                  "font-size": "12px",
+                  color: "var(--text-muted)",
+                  "line-height": "1.6",
+                  "max-width": "340px",
+                  margin: "0 auto",
+                }}
+              >
                 Download system images via the Android SDK Manager in Android Studio, or run{" "}
-                <code style={{ "font-family": "monospace", background: "var(--bg-primary)", padding: "1px 4px", "border-radius": "3px" }}>
+                <code
+                  style={{
+                    "font-family": "monospace",
+                    background: "var(--bg-primary)",
+                    padding: "1px 4px",
+                    "border-radius": "3px",
+                  }}
+                >
                   sdkmanager "system-images;android-35;google_apis;arm64-v8a"
                 </code>
               </div>
@@ -215,14 +252,31 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
           </Show>
 
           <Show when={!loading() && images().length > 0}>
-            <div style={{ padding: "20px", display: "flex", "flex-direction": "column", gap: "16px", "overflow-y": "auto", flex: "1" }}>
-
+            <div
+              style={{
+                padding: "20px",
+                display: "flex",
+                "flex-direction": "column",
+                gap: "16px",
+                "overflow-y": "auto",
+                flex: "1",
+              }}
+            >
               {/* Device Profile */}
-              <FormGroup label="Device Profile" hint="Hardware configuration (screen size, sensors)">
+              <FormGroup
+                label="Device Profile"
+                hint="Hardware configuration (screen size, sensors)"
+              >
                 <Show
                   when={deviceDefs().length > 0}
                   fallback={
-                    <div style={{ "font-size": "12px", color: "var(--text-muted)", "font-style": "italic" }}>
+                    <div
+                      style={{
+                        "font-size": "12px",
+                        color: "var(--text-muted)",
+                        "font-style": "italic",
+                      }}
+                    >
                       No device definitions found — a generic AVD will be created.
                     </div>
                   }
@@ -235,7 +289,8 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
                     <For each={deviceDefs()}>
                       {(def) => (
                         <option value={def.id}>
-                          {def.name}{def.manufacturer ? ` (${def.manufacturer})` : ""}
+                          {def.name}
+                          {def.manufacturer ? ` (${def.manufacturer})` : ""}
                         </option>
                       )}
                     </For>
@@ -251,16 +306,19 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
                   style={selectStyle()}
                 >
                   <For each={images()}>
-                    {(img, i) => (
-                      <option value={i().toString()}>
-                        {img.displayName}
-                      </option>
-                    )}
+                    {(img, i) => <option value={i().toString()}>{img.displayName}</option>}
                   </For>
                 </select>
                 <Show when={selectedImage()}>
                   {(img) => (
-                    <div style={{ display: "flex", gap: "6px", "margin-top": "6px", "flex-wrap": "wrap" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "6px",
+                        "margin-top": "6px",
+                        "flex-wrap": "wrap",
+                      }}
+                    >
                       <Badge label={`API ${img().apiLevel}`} />
                       <Badge label={img().abi} />
                       <Badge label={img().variant.replace(/_/g, " ")} />
@@ -332,8 +390,12 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
                   "font-size": "13px",
                   cursor: "pointer",
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--text-muted)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border)"; }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--text-muted)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.borderColor = "var(--border)";
+                }}
               >
                 Cancel
               </button>
@@ -382,7 +444,9 @@ function FormGroup(props: {
   return (
     <div style={{ display: "flex", "flex-direction": "column", gap: "6px" }}>
       <div style={{ display: "flex", "align-items": "baseline", gap: "6px" }}>
-        <label style={{ "font-size": "12px", "font-weight": "600", color: "var(--text-secondary)" }}>
+        <label
+          style={{ "font-size": "12px", "font-weight": "600", color: "var(--text-secondary)" }}
+        >
           {props.label}
         </label>
         <Show when={props.hint}>

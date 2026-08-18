@@ -19,7 +19,9 @@
   font-family: var(--font-ui);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s;
 }
 
 .item:hover:not(:disabled) {

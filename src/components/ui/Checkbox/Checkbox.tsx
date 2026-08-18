@@ -19,11 +19,9 @@ export function Checkbox(props: CheckboxProps): JSX.Element {
 
   return (
     <label
-      class={[
-        styles.root,
-        props.disabled ? styles.disabled : "",
-        props.class,
-      ].filter(Boolean).join(" ")}
+      class={[styles.root, props.disabled ? styles.disabled : "", props.class]
+        .filter(Boolean)
+        .join(" ")}
     >
       <input
         ref={inputRef}

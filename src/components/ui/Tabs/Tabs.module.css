@@ -19,7 +19,9 @@
   border-bottom: 2px solid transparent;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.1s, border-color 0.1s;
+  transition:
+    color 0.1s,
+    border-color 0.1s;
 }
 
 .tab:hover {

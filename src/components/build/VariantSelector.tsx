@@ -1,16 +1,5 @@
-import {
-  type JSX,
-  Show,
-  For,
-  createSignal,
-  onMount,
-  onCleanup,
-} from "solid-js";
-import {
-  variantState,
-  selectVariant,
-  loadVariants,
-} from "@/stores/variant.store";
+import { type JSX, Show, For, createSignal, onMount, onCleanup } from "solid-js";
+import { variantState, selectVariant, loadVariants } from "@/stores/variant.store";
 import { projectState } from "@/stores/project.store";
 import { Icon } from "@/components/ui";
 import { showToast } from "@/components/ui";
@@ -37,7 +26,10 @@ export function VariantSelectorPill(): JSX.Element {
   onMount(() => {
     if (projectState.gradleRoot || projectState.projectRoot) {
       // Concurrent with restoreLastProject / openProject — loadVariants coalesces duplicate work.
-      loadVariants().catch(e => { console.error(e); showToast(`Failed to load build variants: ${formatError(e)}`, "error"); });
+      loadVariants().catch((e) => {
+        console.error(e);
+        showToast(`Failed to load build variants: ${formatError(e)}`, "error");
+      });
     }
   });
 
@@ -62,8 +54,12 @@ export function VariantSelectorPill(): JSX.Element {
           "font-size": "11px",
           "white-space": "nowrap",
         }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.15)"; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)"; }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.15)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)";
+        }}
       >
         <Show
           when={isSpinning()}
@@ -141,7 +137,9 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
         "justify-content": "center",
         background: "rgba(0,0,0,0.4)",
       }}
-      onClick={(e) => { if (e.target === overlayRef) props.onClose(); }}
+      onClick={(e) => {
+        if (e.target === overlayRef) props.onClose();
+      }}
     >
       <div
         style={{
@@ -197,14 +195,14 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
             }}
             onMouseEnter={(e) => {
               if (!variantState.gradleLoading)
-                (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.08))";
+                (e.currentTarget as HTMLElement).style.background =
+                  "var(--bg-hover, rgba(255,255,255,0.08))";
             }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+            }}
           >
-            <Show
-              when={variantState.gradleLoading}
-              fallback={<Icon name="refresh" size={13} />}
-            >
+            <Show when={variantState.gradleLoading} fallback={<Icon name="refresh" size={13} />}>
               <span class="lsp-spinner" style={{ "line-height": "0" }}>
                 <Icon name="spinner" size={13} color="var(--accent, #60a5fa)" />
               </span>
@@ -236,10 +234,15 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
 
         {/* ── Variant list ── */}
         <div style={{ "overflow-y": "auto", flex: "1" }}>
-          <Show
-            when={variantState.loading}
-          >
-            <div style={{ padding: "16px", color: "var(--text-muted)", "font-size": "12px", "text-align": "center" }}>
+          <Show when={variantState.loading}>
+            <div
+              style={{
+                padding: "16px",
+                color: "var(--text-muted)",
+                "font-size": "12px",
+                "text-align": "center",
+              }}
+            >
               Loading…
             </div>
           </Show>
@@ -251,12 +254,26 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
                 <Show
                   when={!variantState.gradleLoading}
                   fallback={
-                    <div style={{ padding: "16px", color: "var(--text-muted)", "font-size": "12px", "text-align": "center" }}>
+                    <div
+                      style={{
+                        padding: "16px",
+                        color: "var(--text-muted)",
+                        "font-size": "12px",
+                        "text-align": "center",
+                      }}
+                    >
                       Waiting for Gradle…
                     </div>
                   }
                 >
-                  <div style={{ padding: "16px", color: "var(--text-muted)", "font-size": "12px", "text-align": "center" }}>
+                  <div
+                    style={{
+                      padding: "16px",
+                      color: "var(--text-muted)",
+                      "font-size": "12px",
+                      "text-align": "center",
+                    }}
+                  >
                     {search() ? "No variants match" : "No variants found"}
                   </div>
                 </Show>
@@ -272,9 +289,10 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
                       "justify-content": "space-between",
                       padding: "10px 16px",
                       width: "100%",
-                      background: variantState.activeVariant === v.name
-                        ? "var(--bg-active, rgba(255,255,255,0.08))"
-                        : "transparent",
+                      background:
+                        variantState.activeVariant === v.name
+                          ? "var(--bg-active, rgba(255,255,255,0.08))"
+                          : "transparent",
                       border: "none",
                       "border-left": `3px solid ${variantState.activeVariant === v.name ? "var(--accent)" : "transparent"}`,
                       cursor: "pointer",
@@ -283,7 +301,8 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
                     }}
                     onMouseEnter={(e) => {
                       if (variantState.activeVariant !== v.name)
-                        (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.04))";
+                        (e.currentTarget as HTMLElement).style.background =
+                          "var(--bg-hover, rgba(255,255,255,0.04))";
                     }}
                     onMouseLeave={(e) => {
                       if (variantState.activeVariant !== v.name)
@@ -294,12 +313,22 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
                       <div style={{ "font-size": "13px", color: "var(--text-primary)" }}>
                         {v.name}
                       </div>
-                      <div style={{ "font-size": "10px", color: "var(--text-muted)", "margin-top": "2px" }}>
+                      <div
+                        style={{
+                          "font-size": "10px",
+                          color: "var(--text-muted)",
+                          "margin-top": "2px",
+                        }}
+                      >
                         {v.assembleTask}
                       </div>
                     </div>
                     <Show when={variantState.activeVariant === v.name}>
-                      <span style={{ color: "var(--accent)", "font-size": "14px", "flex-shrink": "0" }}>✓</span>
+                      <span
+                        style={{ color: "var(--accent)", "font-size": "14px", "flex-shrink": "0" }}
+                      >
+                        ✓
+                      </span>
                     </Show>
                   </button>
                 )}
@@ -321,10 +350,10 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
               color: isError()
                 ? "var(--error, #f87171)"
                 : variantState.fromGradle
-                ? "var(--success, #4ade80)"
-                : "var(--text-muted)",
+                  ? "var(--success, #4ade80)"
+                  : "var(--text-muted)",
               "flex-shrink": "0",
-              "overflow": "hidden",
+              overflow: "hidden",
             }}
           >
             <Show
@@ -339,7 +368,9 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
                 <Icon name="spinner" size={11} color="var(--accent, #60a5fa)" />
               </span>
             </Show>
-            <span style={{ overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
+            <span
+              style={{ overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}
+            >
               {statusLabel()}
             </span>
           </div>

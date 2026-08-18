@@ -1,14 +1,40 @@
 import { describe, it, expect } from "vitest";
 import type { BuildRecord, BuildStatus } from "@/bindings";
-import { statusIcon, statusColor, durationLabel, errorCount } from "@/components/build/BuildHistoryPanel";
+import {
+  statusIcon,
+  statusColor,
+  durationLabel,
+  errorCount,
+} from "@/components/build/BuildHistoryPanel";
 import type { BuildHistoryPanelProps } from "@/components/build/BuildHistoryPanel";
 
 function makeRecord(state: BuildStatus["state"], durationMs = 0, errors: any[] = []): BuildRecord {
   const status: any =
-    state === "success" ? { state: "success", success: true, durationMs: BigInt(durationMs), errorCount: 0, warningCount: 0 }
-    : state === "failed" ? { state: "failed", success: false, durationMs: BigInt(durationMs), errorCount: errors.length, warningCount: 0 }
-    : { state };
-  return { id: 1, task: "assembleDebug", status, errors, startedAt: new Date().toISOString(), projectRoot: null };
+    state === "success"
+      ? {
+          state: "success",
+          success: true,
+          durationMs: BigInt(durationMs),
+          errorCount: 0,
+          warningCount: 0,
+        }
+      : state === "failed"
+        ? {
+            state: "failed",
+            success: false,
+            durationMs: BigInt(durationMs),
+            errorCount: errors.length,
+            warningCount: 0,
+          }
+        : { state };
+  return {
+    id: 1,
+    task: "assembleDebug",
+    status,
+    errors,
+    startedAt: new Date().toISOString(),
+    projectRoot: null,
+  };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────

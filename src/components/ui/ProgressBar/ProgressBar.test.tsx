@@ -10,7 +10,9 @@ describe("ProgressBar", () => {
 
   it("sets aria-valuenow when value is provided", () => {
     const { container } = render(() => <ProgressBar value={75} />);
-    expect(container.querySelector("[role='progressbar']")!.getAttribute("aria-valuenow")).toBe("75");
+    expect(container.querySelector("[role='progressbar']")!.getAttribute("aria-valuenow")).toBe(
+      "75"
+    );
   });
 
   it("sets aria-valuemin=0 and aria-valuemax=100", () => {
@@ -22,7 +24,9 @@ describe("ProgressBar", () => {
 
   it("does not set aria-valuenow in indeterminate mode", () => {
     const { container } = render(() => <ProgressBar />);
-    expect(container.querySelector("[role='progressbar']")!.getAttribute("aria-valuenow")).toBeNull();
+    expect(
+      container.querySelector("[role='progressbar']")!.getAttribute("aria-valuenow")
+    ).toBeNull();
   });
 
   it("clamps value between 0 and 100", () => {

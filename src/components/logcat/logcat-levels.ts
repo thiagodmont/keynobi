@@ -1,18 +1,18 @@
 export const LEVEL_CONFIG = {
   verbose: { label: "V", color: "var(--text-muted)", bg: "transparent" },
-  debug:   { label: "D", color: "var(--info)", bg: "transparent" },
-  info:    { label: "I", color: "var(--success)", bg: "transparent" },
-  warn:    {
+  debug: { label: "D", color: "var(--info)", bg: "transparent" },
+  info: { label: "I", color: "var(--success)", bg: "transparent" },
+  warn: {
     label: "W",
     color: "var(--warning)",
     bg: "color-mix(in srgb, var(--warning) 8%, transparent)",
   },
-  error:   {
+  error: {
     label: "E",
     color: "var(--error)",
     bg: "color-mix(in srgb, var(--error) 10%, transparent)",
   },
-  fatal:   {
+  fatal: {
     label: "F",
     color: "var(--error)",
     bg: "color-mix(in srgb, var(--error) 14%, transparent)",

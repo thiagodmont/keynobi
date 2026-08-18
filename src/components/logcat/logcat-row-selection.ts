@@ -1,10 +1,7 @@
 import type { LogcatEntry } from "@/lib/tauri-api";
 
 /** Whether `index` lies in the current copy selection range (inclusive). */
-export function rowInSelectionRange(
-  index: number,
-  range: [number, number] | null
-): boolean {
+export function rowInSelectionRange(index: number, range: [number, number] | null): boolean {
   if (range === null) return false;
   return index >= range[0] && index <= range[1];
 }

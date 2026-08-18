@@ -5,18 +5,28 @@ import { Panel } from "./Panel";
 describe("Panel", () => {
   it("renders children", () => {
     const { container } = render(() => (
-      <Panel><span data-testid="body">content</span></Panel>
+      <Panel>
+        <span data-testid="body">content</span>
+      </Panel>
     ));
     expect(container.querySelector("[data-testid='body']")).not.toBeNull();
   });
 
   it("renders title when provided", () => {
-    render(() => <Panel title="My Panel"><div /></Panel>);
+    render(() => (
+      <Panel title="My Panel">
+        <div />
+      </Panel>
+    ));
     expect(screen.getByText("My Panel")).not.toBeNull();
   });
 
   it("does not render title element when title is absent", () => {
-    const { container } = render(() => <Panel><div /></Panel>);
+    const { container } = render(() => (
+      <Panel>
+        <div />
+      </Panel>
+    ));
     expect(container.querySelector("header")).toBeNull();
   });
 
@@ -31,19 +41,27 @@ describe("Panel", () => {
 
   it("renders footer slot", () => {
     const { container } = render(() => (
-      <Panel footer={<div data-testid="foot" />}><div /></Panel>
+      <Panel footer={<div data-testid="foot" />}>
+        <div />
+      </Panel>
     ));
     expect(container.querySelector("[data-testid='foot']")).not.toBeNull();
   });
 
   it("does not render footer when absent", () => {
-    const { container } = render(() => <Panel><div /></Panel>);
+    const { container } = render(() => (
+      <Panel>
+        <div />
+      </Panel>
+    ));
     expect(container.querySelector("footer")).toBeNull();
   });
 
   it("passes class prop through to root", () => {
     const { container } = render(() => (
-      <Panel class="my-panel"><div /></Panel>
+      <Panel class="my-panel">
+        <div />
+      </Panel>
     ));
     expect(container.firstElementChild!.classList.contains("my-panel")).toBe(true);
   });

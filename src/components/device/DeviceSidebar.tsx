@@ -41,10 +41,13 @@ import { DownloadSystemImageDialog } from "./DownloadSystemImageDialog";
 
 function connectionColor(state: Device["connectionState"]): string {
   switch (state) {
-    case "online":       return "var(--success)";
-    case "unauthorized": return "var(--warning)";
+    case "online":
+      return "var(--success)";
+    case "unauthorized":
+      return "var(--warning)";
     case "offline":
-    default:             return "var(--text-muted)";
+    default:
+      return "var(--text-muted)";
   }
 }
 
@@ -65,10 +68,7 @@ export function DeviceSidebar(): JSX.Element {
   async function handleRefresh() {
     setRefreshing(true);
     try {
-      const [devices, avds] = await Promise.all([
-        refreshDevices(),
-        listAvdDevices(),
-      ]);
+      const [devices, avds] = await Promise.all([refreshDevices(), listAvdDevices()]);
       setDevices(devices);
       setAvds(avds);
     } catch (e) {
@@ -201,14 +201,18 @@ export function DeviceSidebar(): JSX.Element {
                   "border-radius": "4px",
                   opacity: refreshing() ? "0.4" : "1",
                 }}
-                onMouseEnter={(e) => { if (!refreshing()) (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+                onMouseEnter={(e) => {
+                  if (!refreshing())
+                    (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
+                }}
               >
-                <Show
-                  when={refreshing()}
-                  fallback={<Icon name="refresh" size={13} />}
-                >
-                  <span class="lsp-spinner"><Icon name="spinner" size={13} /></span>
+                <Show when={refreshing()} fallback={<Icon name="refresh" size={13} />}>
+                  <span class="lsp-spinner">
+                    <Icon name="spinner" size={13} />
+                  </span>
                 </Show>
               </button>
 
@@ -226,8 +230,12 @@ export function DeviceSidebar(): JSX.Element {
                   "align-items": "center",
                   "border-radius": "4px",
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
+                }}
               >
                 <Icon name="download" size={13} />
               </button>
@@ -247,8 +255,12 @@ export function DeviceSidebar(): JSX.Element {
                 "align-items": "center",
                 "border-radius": "4px",
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
+              }}
             >
               {/* Mirror ProjectSidebar: same chevron-right + rotate trick, but flipped (sidebar is on right) */}
               <span
@@ -308,7 +320,9 @@ export function DeviceSidebar(): JSX.Element {
           </For>
 
           {/* Empty connected state — expanded only */}
-          <Show when={!collapsed() && deviceState.devices.length === 0 && deviceState.avds.length === 0}>
+          <Show
+            when={!collapsed() && deviceState.devices.length === 0 && deviceState.avds.length === 0}
+          >
             <div
               style={{
                 "font-size": "11px",
@@ -394,7 +408,8 @@ export function DeviceSidebar(): JSX.Element {
               transition: "background 0.1s",
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.06))";
+              (e.currentTarget as HTMLElement).style.background =
+                "var(--bg-hover, rgba(255,255,255,0.06))";
               (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
             }}
             onMouseLeave={(e) => {
@@ -453,7 +468,9 @@ function ConnectedDeviceRow(props: {
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={() => { if (isOnline()) props.onSelect(); }}
+      onClick={() => {
+        if (isOnline()) props.onSelect();
+      }}
       title={props.collapsed ? (props.device.model ?? props.device.name) : undefined}
       style={{
         display: "flex",
@@ -466,8 +483,8 @@ function ConnectedDeviceRow(props: {
         background: props.selected
           ? "var(--accent-muted, rgba(92,124,250,0.18))"
           : hover()
-          ? "var(--bg-hover, rgba(255,255,255,0.05))"
-          : "transparent",
+            ? "var(--bg-hover, rgba(255,255,255,0.05))"
+            : "transparent",
         transition: "background 0.1s",
         "justify-content": props.collapsed ? "center" : "flex-start",
         opacity: isOnline() ? "1" : "0.5",
@@ -514,7 +531,9 @@ function ConnectedDeviceRow(props: {
               {props.device.model ?? props.device.name}
             </span>
             <Show when={props.selected}>
-              <span style={{ color: "var(--accent)", "font-size": "11px", "flex-shrink": "0" }}>✓</span>
+              <span style={{ color: "var(--accent)", "font-size": "11px", "flex-shrink": "0" }}>
+                ✓
+              </span>
             </Show>
           </div>
           <div
@@ -535,7 +554,10 @@ function ConnectedDeviceRow(props: {
         {/* Stop button for running emulators — show on hover */}
         <Show when={isEmulator() && isOnline() && hover()}>
           <button
-            onClick={(e) => { e.stopPropagation(); props.onStop(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onStop();
+            }}
             title="Stop emulator"
             style={{
               background: "none",
@@ -549,7 +571,8 @@ function ConnectedDeviceRow(props: {
             }}
             onMouseEnter={(e) => {
               (e.currentTarget as HTMLElement).style.color = "var(--error)";
-              (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--error) 10%, transparent)";
+              (e.currentTarget as HTMLElement).style.background =
+                "color-mix(in srgb, var(--error) 10%, transparent)";
             }}
             onMouseLeave={(e) => {
               (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
@@ -666,7 +689,10 @@ function AvdRow(props: {
               when={!props.isRunning}
               fallback={
                 <button
-                  onClick={(e) => { e.stopPropagation(); props.onStop(); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    props.onStop();
+                  }}
                   title="Stop emulator"
                   style={{
                     background: "none",
@@ -679,7 +705,8 @@ function AvdRow(props: {
                   }}
                   onMouseEnter={(e) => {
                     (e.currentTarget as HTMLElement).style.color = "var(--error)";
-                    (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--error) 10%, transparent)";
+                    (e.currentTarget as HTMLElement).style.background =
+                      "color-mix(in srgb, var(--error) 10%, transparent)";
                   }}
                   onMouseLeave={(e) => {
                     (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
@@ -691,7 +718,10 @@ function AvdRow(props: {
               }
             >
               <button
-                onClick={(e) => { e.stopPropagation(); props.onLaunch(); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  props.onLaunch();
+                }}
                 disabled={props.launching}
                 title={`Launch ${props.avd.displayName}`}
                 style={{
@@ -708,7 +738,8 @@ function AvdRow(props: {
                 onMouseEnter={(e) => {
                   if (!props.launching) {
                     (e.currentTarget as HTMLElement).style.color = "var(--success)";
-                    (e.currentTarget as HTMLElement).style.background = "color-mix(in srgb, var(--success) 10%, transparent)";
+                    (e.currentTarget as HTMLElement).style.background =
+                      "color-mix(in srgb, var(--success) 10%, transparent)";
                   }
                 }}
                 onMouseLeave={(e) => {
@@ -741,8 +772,12 @@ function AvdRow(props: {
                       display: "flex",
                       "align-items": "center",
                     }}
-                    onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)"; }}
-                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "none";
+                    }}
                   >
                     ···
                   </button>

@@ -7,9 +7,5 @@ export interface KbdProps {
 }
 
 export function Kbd(props: KbdProps): JSX.Element {
-  return (
-    <kbd class={[styles.root, props.class].filter(Boolean).join(" ")}>
-      {props.children}
-    </kbd>
-  );
+  return <kbd class={[styles.root, props.class].filter(Boolean).join(" ")}>{props.children}</kbd>;
 }

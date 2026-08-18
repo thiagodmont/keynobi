@@ -73,7 +73,9 @@ export function DialogHost(): JSX.Element {
                 aria-labelledby="dialog-title"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div id="dialog-title" class={styles.title}>{dialog.title}</div>
+                <div id="dialog-title" class={styles.title}>
+                  {dialog.title}
+                </div>
                 <div class={styles.message}>{dialog.message}</div>
                 <div class={styles.actions}>
                   <For each={dialog.buttons.slice().reverse()}>

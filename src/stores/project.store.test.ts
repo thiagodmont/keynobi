@@ -29,7 +29,11 @@ describe("setProject", () => {
   });
 
   it("stores gradleRoot when provided", () => {
-    setProject("/projects/the-crazy-project/the-crazy-app", "the-crazy-app", "/projects/the-crazy-project");
+    setProject(
+      "/projects/the-crazy-project/the-crazy-app",
+      "the-crazy-app",
+      "/projects/the-crazy-project"
+    );
     expect(projectState.projectRoot).toBe("/projects/the-crazy-project/the-crazy-app");
     expect(projectState.gradleRoot).toBe("/projects/the-crazy-project");
   });

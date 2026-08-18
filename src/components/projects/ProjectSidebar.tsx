@@ -27,9 +27,16 @@ import type { ProjectEntry } from "@/bindings";
 // ── Avatar color ──────────────────────────────────────────────────────────────
 
 const AVATAR_COLORS = [
-  "#5c7cfa", "#339af0", "#20c997", "#51cf66",
-  "#fcc419", "#ff6b6b", "#cc5de8", "#f06595",
-  "#74c0fc", "#63e6be",
+  "#5c7cfa",
+  "#339af0",
+  "#20c997",
+  "#51cf66",
+  "#fcc419",
+  "#ff6b6b",
+  "#cc5de8",
+  "#f06595",
+  "#74c0fc",
+  "#63e6be",
 ];
 
 function avatarColor(id: string): string {
@@ -41,7 +48,10 @@ function avatarColor(id: string): string {
 }
 
 function initials(name: string): string {
-  const words = name.trim().split(/[\s_-]+/).filter(Boolean);
+  const words = name
+    .trim()
+    .split(/[\s_-]+/)
+    .filter(Boolean);
   if (words.length === 0) return "??";
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
   return (words[0][0] + words[1][0]).toUpperCase();
@@ -84,7 +94,10 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
   function commitEdit() {
     const trimmed = editValue().trim();
     if (trimmed && trimmed !== props.entry.name) {
-      renameProjectEntry(props.entry.id, trimmed).catch(e => { console.error(e); showToast(`Failed to rename project: ${formatError(e)}`, "error"); });
+      renameProjectEntry(props.entry.id, trimmed).catch((e) => {
+        console.error(e);
+        showToast(`Failed to rename project: ${formatError(e)}`, "error");
+      });
     }
     setEditing(false);
   }
@@ -98,7 +111,13 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={() => { if (!editing()) selectProject(props.entry).catch(e => { console.error(e); showToast(`Failed to open project: ${formatError(e)}`, "error"); }); }}
+      onClick={() => {
+        if (!editing())
+          selectProject(props.entry).catch((e) => {
+            console.error(e);
+            showToast(`Failed to open project: ${formatError(e)}`, "error");
+          });
+      }}
       title={props.collapsed ? props.entry.name : undefined}
       style={{
         display: "flex",
@@ -111,8 +130,8 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
         background: props.isActive
           ? "var(--accent-muted, rgba(92,124,250,0.18))"
           : hover()
-          ? "var(--bg-hover, rgba(255,255,255,0.05))"
-          : "transparent",
+            ? "var(--bg-hover, rgba(255,255,255,0.05))"
+            : "transparent",
         transition: "background 0.1s",
         "justify-content": props.collapsed ? "center" : "flex-start",
         position: "relative",
@@ -251,8 +270,12 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
                 "align-items": "center",
                 "border-radius": "3px",
               }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "none";
+              }}
             >
               <Icon name="pencil" size={11} />
             </button>
@@ -260,7 +283,10 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  removeProjectEntry(props.entry.id).catch(e => { console.error(e); showToast(`Failed to remove project: ${formatError(e)}`, "error"); });
+                  removeProjectEntry(props.entry.id).catch((e) => {
+                    console.error(e);
+                    showToast(`Failed to remove project: ${formatError(e)}`, "error");
+                  });
                 }}
                 title="Remove from list"
                 style={{
@@ -273,8 +299,12 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
                   "line-height": "1",
                   "border-radius": "3px",
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)"; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = "none";
+                }}
               >
                 ×
               </button>
@@ -344,8 +374,12 @@ export function ProjectSidebar(): JSX.Element {
             "align-items": "center",
             "border-radius": "4px",
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-muted)"; }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
+          }}
         >
           <Icon name={collapsed() ? "chevron-right" : "chevron-right"} size={14} />
           <span
@@ -413,7 +447,12 @@ export function ProjectSidebar(): JSX.Element {
         }}
       >
         <button
-          onClick={() => openProjectFolder().catch(e => { console.error(e); showToast(`Failed to open folder: ${formatError(e)}`, "error"); })}
+          onClick={() =>
+            openProjectFolder().catch((e) => {
+              console.error(e);
+              showToast(`Failed to open folder: ${formatError(e)}`, "error");
+            })
+          }
           title={collapsed() ? "Add Project" : undefined}
           style={{
             width: "100%",
@@ -431,7 +470,8 @@ export function ProjectSidebar(): JSX.Element {
             transition: "background 0.1s",
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.06))";
+            (e.currentTarget as HTMLElement).style.background =
+              "var(--bg-hover, rgba(255,255,255,0.06))";
             (e.currentTarget as HTMLElement).style.color = "var(--text-primary)";
           }}
           onMouseLeave={(e) => {

@@ -19,10 +19,7 @@ export function CopyableText(props: CopyableTextProps): JSX.Element {
     <span class={[styles.root, props.class].filter(Boolean).join(" ")}>
       <Show when={!props.iconOnly}>
         <span
-          class={[
-            styles.text,
-            props.mono ? styles.mono : "",
-          ].filter(Boolean).join(" ")}
+          class={[styles.text, props.mono ? styles.mono : ""].filter(Boolean).join(" ")}
           title={props.truncate ? props.text : undefined}
         >
           {props.text}

@@ -24,7 +24,10 @@ describe("Select", () => {
     const { container } = render(() => (
       <Select
         value="v1"
-        options={[{ label: "Option 1", value: "v1" }, { label: "Option 2", value: "v2" }]}
+        options={[
+          { label: "Option 1", value: "v1" },
+          { label: "Option 2", value: "v2" },
+        ]}
         onChange={vi.fn()}
       />
     ));
@@ -35,9 +38,7 @@ describe("Select", () => {
 
   it("calls onChange with the selected value", () => {
     const fn = vi.fn();
-    const { container } = render(() => (
-      <Select value="a" options={["a", "b"]} onChange={fn} />
-    ));
+    const { container } = render(() => <Select value="a" options={["a", "b"]} onChange={fn} />);
     fireEvent.change(container.querySelector("select")!, { target: { value: "b" } });
     expect(fn).toHaveBeenCalledWith("b");
   });

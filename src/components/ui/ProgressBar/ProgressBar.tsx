@@ -21,19 +21,15 @@ export function ProgressBar(props: ProgressBarProps): JSX.Element {
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={isIndeterminate() ? undefined : clamped()}
-      class={[
-        styles.root,
-        props.size === "md" ? styles.md : "",
-        props.class,
-      ].filter(Boolean).join(" ")}
+      class={[styles.root, props.size === "md" ? styles.md : "", props.class]
+        .filter(Boolean)
+        .join(" ")}
     >
       <div
         data-testid="fill"
-        class={[
-          styles.fill,
-          styles[variant()],
-          isIndeterminate() ? styles.indeterminate : "",
-        ].filter(Boolean).join(" ")}
+        class={[styles.fill, styles[variant()], isIndeterminate() ? styles.indeterminate : ""]
+          .filter(Boolean)
+          .join(" ")}
         style={isIndeterminate() ? {} : { width: `${clamped()}%` }}
       />
     </div>

@@ -41,7 +41,9 @@ export function Textarea(props: TextareaProps): JSX.Element {
         resizeClass(),
         props.mono ? styles.mono : "",
         props.class,
-      ].filter(Boolean).join(" ")}
+      ]
+        .filter(Boolean)
+        .join(" ")}
     />
   );
 }

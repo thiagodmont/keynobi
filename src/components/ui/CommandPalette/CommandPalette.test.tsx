@@ -6,8 +6,14 @@ import { CommandPalette, openPalette, closePalette } from "./CommandPalette";
 describe("CommandPalette", () => {
   beforeEach(() => {
     closePalette();
-    registerAction({ id: "test.open", label: "Open File", category: "File", shortcut: "Cmd+O", action: vi.fn() });
-    registerAction({ id: "test.save", label: "Save All",  category: "File", action: vi.fn() });
+    registerAction({
+      id: "test.open",
+      label: "Open File",
+      category: "File",
+      shortcut: "Cmd+O",
+      action: vi.fn(),
+    });
+    registerAction({ id: "test.save", label: "Save All", category: "File", action: vi.fn() });
   });
 
   afterEach(() => {

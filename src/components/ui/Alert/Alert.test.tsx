@@ -9,7 +9,11 @@ describe("Alert", () => {
   });
 
   it("renders title when provided", () => {
-    render(() => <Alert variant="warning" title="Watch out">msg</Alert>);
+    render(() => (
+      <Alert variant="warning" title="Watch out">
+        msg
+      </Alert>
+    ));
     expect(screen.getByText("Watch out")).not.toBeNull();
   });
 
@@ -20,7 +24,9 @@ describe("Alert", () => {
 
   it("renders close button when dismissible", () => {
     const { container } = render(() => (
-      <Alert variant="info" dismissible onDismiss={vi.fn()}>msg</Alert>
+      <Alert variant="info" dismissible onDismiss={vi.fn()}>
+        msg
+      </Alert>
     ));
     expect(container.querySelector("button")).not.toBeNull();
   });
@@ -33,7 +39,9 @@ describe("Alert", () => {
   it("calls onDismiss when close button is clicked", () => {
     const fn = vi.fn();
     const { container } = render(() => (
-      <Alert variant="error" dismissible onDismiss={fn}>msg</Alert>
+      <Alert variant="error" dismissible onDismiss={fn}>
+        msg
+      </Alert>
     ));
     fireEvent.click(container.querySelector("button")!);
     expect(fn).toHaveBeenCalledOnce();
@@ -41,14 +49,18 @@ describe("Alert", () => {
 
   it("renders action slot", () => {
     const { container } = render(() => (
-      <Alert variant="info" action={<button data-testid="act">Retry</button>}>msg</Alert>
+      <Alert variant="info" action={<button data-testid="act">Retry</button>}>
+        msg
+      </Alert>
     ));
     expect(container.querySelector("[data-testid='act']")).not.toBeNull();
   });
 
   it("passes class prop through to root", () => {
     const { container } = render(() => (
-      <Alert variant="success" class="my-alert">msg</Alert>
+      <Alert variant="success" class="my-alert">
+        msg
+      </Alert>
     ));
     expect(container.firstElementChild!.classList.contains("my-alert")).toBe(true);
   });

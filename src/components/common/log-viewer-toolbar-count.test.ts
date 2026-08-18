@@ -3,9 +3,9 @@ import { formatBuildLogToolbarCount } from "./log-viewer-toolbar-count";
 
 describe("formatBuildLogToolbarCount", () => {
   it("no filters: lines", () => {
-    expect(
-      formatBuildLogToolbarCount({ filterActive: false, visible: 10, total: 10 }).text
-    ).toBe("10 lines");
+    expect(formatBuildLogToolbarCount({ filterActive: false, visible: 10, total: 10 }).text).toBe(
+      "10 lines"
+    );
   });
 
   it("filters with subset: slash", () => {

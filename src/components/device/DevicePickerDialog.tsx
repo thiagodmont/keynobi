@@ -68,7 +68,9 @@ export function DevicePickerDialog(): JSX.Element {
       setLaunchingAvd(null);
       resolve(serial);
     } catch (e) {
-      setLaunchError(typeof e === "string" ? e : (e as Error).message ?? "Failed to start emulator");
+      setLaunchError(
+        typeof e === "string" ? e : ((e as Error).message ?? "Failed to start emulator")
+      );
       setLaunchingAvd(null);
     } finally {
       setLaunching(null);
@@ -132,7 +134,14 @@ export function DevicePickerDialog(): JSX.Element {
               "flex-shrink": "0",
             }}
           >
-            <div style={{ "font-size": "13px", "font-weight": "600", color: "var(--text-primary)", "margin-bottom": "2px" }}>
+            <div
+              style={{
+                "font-size": "13px",
+                "font-weight": "600",
+                color: "var(--text-primary)",
+                "margin-bottom": "2px",
+              }}
+            >
               Select a Device
             </div>
             <div style={{ "font-size": "11px", color: "var(--text-muted)" }}>
@@ -276,7 +285,7 @@ function DeviceRow(props: {
 }): JSX.Element {
   return (
     <button
-      onClick={() => props.launching ? undefined : props.onClick()}
+      onClick={() => (props.launching ? undefined : props.onClick())}
       disabled={props.launching}
       style={{
         display: "flex",
@@ -293,9 +302,12 @@ function DeviceRow(props: {
       }}
       onMouseEnter={(e) => {
         if (!props.launching)
-          (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.06))";
+          (e.currentTarget as HTMLElement).style.background =
+            "var(--bg-hover, rgba(255,255,255,0.06))";
       }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLElement).style.background = "transparent";
+      }}
     >
       {/* Icon */}
       <div
@@ -315,7 +327,16 @@ function DeviceRow(props: {
 
       {/* Labels */}
       <div style={{ flex: "1", "min-width": "0" }}>
-        <div style={{ "font-size": "12px", "font-weight": "500", color: "var(--text-primary)", "white-space": "nowrap", overflow: "hidden", "text-overflow": "ellipsis" }}>
+        <div
+          style={{
+            "font-size": "12px",
+            "font-weight": "500",
+            color: "var(--text-primary)",
+            "white-space": "nowrap",
+            overflow: "hidden",
+            "text-overflow": "ellipsis",
+          }}
+        >
           {props.label}
         </div>
         <div style={{ "font-size": "10px", color: "var(--text-muted)", "margin-top": "1px" }}>

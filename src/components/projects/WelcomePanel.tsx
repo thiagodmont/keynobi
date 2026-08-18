@@ -35,7 +35,8 @@ function RecentProjectRow(props: { entry: ProjectEntry }): JSX.Element {
         transition: "background 0.1s",
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.06))";
+        (e.currentTarget as HTMLElement).style.background =
+          "var(--bg-hover, rgba(255,255,255,0.06))";
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLElement).style.background = "none";
@@ -152,8 +153,12 @@ export function WelcomePanel(): JSX.Element {
             transition: "opacity 0.1s",
             "margin-bottom": "40px",
           }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.85"; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.opacity = "0.85";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.opacity = "1";
+          }}
         >
           <Icon name="folder-open" size={16} color="#fff" />
           Open Project Folder…
@@ -200,7 +205,20 @@ export function WelcomePanel(): JSX.Element {
             opacity: "0.6",
           }}
         >
-          Tip: press <kbd style={{ "font-family": "monospace", "font-size": "10px", padding: "1px 4px", background: "var(--bg-tertiary)", "border-radius": "3px", border: "1px solid var(--border)" }}>Cmd+O</kbd> to open a project folder
+          Tip: press{" "}
+          <kbd
+            style={{
+              "font-family": "monospace",
+              "font-size": "10px",
+              padding: "1px 4px",
+              background: "var(--bg-tertiary)",
+              "border-radius": "3px",
+              border: "1px solid var(--border)",
+            }}
+          >
+            Cmd+O
+          </kbd>{" "}
+          to open a project folder
         </p>
       </div>
     </div>

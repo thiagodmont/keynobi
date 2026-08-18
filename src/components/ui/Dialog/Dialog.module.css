@@ -49,6 +49,18 @@
   border-style: solid;
 }
 
-.primary   { background: var(--accent); color: var(--accent-fg); border-color: transparent; }
-.danger    { background: transparent; color: var(--error); border-color: var(--error); }
-.secondary { background: transparent; color: var(--text-secondary); border-color: var(--border); }
+.primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: transparent;
+}
+.danger {
+  background: transparent;
+  color: var(--error);
+  border-color: var(--error);
+}
+.secondary {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border);
+}

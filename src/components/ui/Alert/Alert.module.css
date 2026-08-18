@@ -10,10 +10,26 @@
   line-height: 1.5;
 }
 
-.info    { background: var(--info-bg);    border-color: var(--info-border);    color: var(--info); }
-.warning { background: var(--warning-bg); border-color: var(--warning-border); color: var(--warning); }
-.error   { background: var(--error-bg);   border-color: var(--error-border);   color: var(--error); }
-.success { background: var(--success-bg); border-color: var(--success-border); color: var(--success); }
+.info {
+  background: var(--info-bg);
+  border-color: var(--info-border);
+  color: var(--info);
+}
+.warning {
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+  color: var(--warning);
+}
+.error {
+  background: var(--error-bg);
+  border-color: var(--error-border);
+  color: var(--error);
+}
+.success {
+  background: var(--success-bg);
+  border-color: var(--success-border);
+  color: var(--success);
+}
 
 .content {
   flex: 1;

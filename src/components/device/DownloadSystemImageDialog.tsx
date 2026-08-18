@@ -6,14 +6,7 @@
  * Installed images are marked; not-installed images show a Download button.
  */
 
-import {
-  type JSX,
-  Show,
-  For,
-  createSignal,
-  createMemo,
-  onMount,
-} from "solid-js";
+import { type JSX, Show, For, createSignal, createMemo, onMount } from "solid-js";
 import { Portal } from "solid-js/web";
 import type { AvailableSystemImage } from "@/bindings";
 import { listAvailableSystemImages, downloadSystemImage } from "@/lib/tauri-api";
@@ -33,9 +26,7 @@ interface DownloadState {
   error: boolean;
 }
 
-export function DownloadSystemImageDialog(
-  props: DownloadSystemImageDialogProps
-): JSX.Element {
+export function DownloadSystemImageDialog(props: DownloadSystemImageDialogProps): JSX.Element {
   const [loading, setLoading] = createSignal(true);
   const [loadError, setLoadError] = createSignal<string | null>(null);
   const [images, setImages] = createSignal<AvailableSystemImage[]>([]);
@@ -48,7 +39,9 @@ export function DownloadSystemImageDialog(
       setImages(list);
     } catch (err) {
       const e = err as { message?: string };
-      setLoadError(typeof err === "string" ? err : `Failed to fetch image list: ${e?.message ?? String(err)}`);
+      setLoadError(
+        typeof err === "string" ? err : `Failed to fetch image list: ${e?.message ?? String(err)}`
+      );
     } finally {
       setLoading(false);
     }
@@ -98,7 +91,12 @@ export function DownloadSystemImageDialog(
       const e = err as { message?: string };
       setDownloading((prev) =>
         prev
-          ? { ...prev, done: true, error: true, message: typeof err === "string" ? err : `Error: ${e?.message ?? String(err)}` }
+          ? {
+              ...prev,
+              done: true,
+              error: true,
+              message: typeof err === "string" ? err : `Error: ${e?.message ?? String(err)}`,
+            }
           : null
       );
     }
@@ -112,7 +110,9 @@ export function DownloadSystemImageDialog(
     <Portal>
       {/* Backdrop */}
       <div
-        onClick={() => { if (!downloading() || downloading()!.done) props.onClose(); }}
+        onClick={() => {
+          if (!downloading() || downloading()!.done) props.onClose();
+        }}
         style={{
           position: "fixed",
           inset: "0",
@@ -166,7 +166,9 @@ export function DownloadSystemImageDialog(
               <Icon name="download" size={16} color="var(--accent)" />
             </div>
             <div style={{ flex: "1" }}>
-              <div style={{ "font-size": "14px", "font-weight": "600", color: "var(--text-primary)" }}>
+              <div
+                style={{ "font-size": "14px", "font-weight": "600", color: "var(--text-primary)" }}
+              >
                 Download System Image
               </div>
               <div style={{ "font-size": "11px", color: "var(--text-muted)", "margin-top": "1px" }}>
@@ -177,14 +179,25 @@ export function DownloadSystemImageDialog(
               onClick={() => props.onClose()}
               disabled={!!(downloading() && !downloading()!.done)}
               style={{
-                background: "none", border: "none", cursor: "pointer",
-                color: "var(--text-muted)", "font-size": "16px",
-                padding: "4px", "border-radius": "4px", display: "flex",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "var(--text-muted)",
+                "font-size": "16px",
+                padding: "4px",
+                "border-radius": "4px",
+                display: "flex",
                 "align-items": "center",
                 opacity: downloading() && !downloading()!.done ? "0.3" : "1",
               }}
-              onMouseEnter={(e) => { if (!downloading() || downloading()!.done) (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.08))"; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+              onMouseEnter={(e) => {
+                if (!downloading() || downloading()!.done)
+                  (e.currentTarget as HTMLElement).style.background =
+                    "var(--bg-hover, rgba(255,255,255,0.08))";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.background = "none";
+              }}
             >
               ✕
             </button>
@@ -200,19 +213,46 @@ export function DownloadSystemImageDialog(
                   background: dl().error
                     ? "rgba(248,113,113,0.08)"
                     : dl().done
-                    ? "rgba(74,222,128,0.08)"
-                    : "rgba(99,102,241,0.08)",
+                      ? "rgba(74,222,128,0.08)"
+                      : "rgba(99,102,241,0.08)",
                   "flex-shrink": "0",
                 }}
               >
-                <div style={{ display: "flex", "align-items": "center", "justify-content": "space-between", "margin-bottom": "8px" }}>
-                  <span style={{ "font-size": "12px", "font-weight": "500", color: dl().error ? "var(--error)" : dl().done ? "var(--success)" : "var(--text-primary)" }}>
-                    {dl().error ? "Download failed" : dl().done ? "Download complete" : "Downloading…"}
+                <div
+                  style={{
+                    display: "flex",
+                    "align-items": "center",
+                    "justify-content": "space-between",
+                    "margin-bottom": "8px",
+                  }}
+                >
+                  <span
+                    style={{
+                      "font-size": "12px",
+                      "font-weight": "500",
+                      color: dl().error
+                        ? "var(--error)"
+                        : dl().done
+                          ? "var(--success)"
+                          : "var(--text-primary)",
+                    }}
+                  >
+                    {dl().error
+                      ? "Download failed"
+                      : dl().done
+                        ? "Download complete"
+                        : "Downloading…"}
                   </span>
                   <Show when={dl().done}>
                     <button
                       onClick={dismissDownload}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", "font-size": "11px" }}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: "var(--text-muted)",
+                        "font-size": "11px",
+                      }}
                     >
                       Dismiss
                     </button>
@@ -233,17 +273,29 @@ export function DownloadSystemImageDialog(
                     <div
                       style={{
                         height: "100%",
-                        width: dl().percent !== null && dl().percent !== undefined ? `${dl().percent}%` : "100%",
+                        width:
+                          dl().percent !== null && dl().percent !== undefined
+                            ? `${dl().percent}%`
+                            : "100%",
                         background: dl().error ? "var(--error, #f87171)" : "var(--accent)",
                         "border-radius": "2px",
                         transition: "width 0.3s ease",
-                        animation: (dl().percent === null || dl().percent === undefined) && !dl().done ? "pulse 1.5s ease-in-out infinite" : "none",
+                        animation:
+                          (dl().percent === null || dl().percent === undefined) && !dl().done
+                            ? "pulse 1.5s ease-in-out infinite"
+                            : "none",
                       }}
                     />
                   </div>
                 </Show>
 
-                <div style={{ "font-size": "11px", color: "var(--text-muted)", "word-break": "break-all" }}>
+                <div
+                  style={{
+                    "font-size": "11px",
+                    color: "var(--text-muted)",
+                    "word-break": "break-all",
+                  }}
+                >
                   {dl().message}
                 </div>
               </div>
@@ -252,7 +304,13 @@ export function DownloadSystemImageDialog(
 
           {/* Search filter */}
           <Show when={!loading() && !loadError()}>
-            <div style={{ padding: "10px 20px", "border-bottom": "1px solid var(--border)", "flex-shrink": "0" }}>
+            <div
+              style={{
+                padding: "10px 20px",
+                "border-bottom": "1px solid var(--border)",
+                "flex-shrink": "0",
+              }}
+            >
               <div style={{ position: "relative" }}>
                 <Icon
                   name="search"
@@ -285,8 +343,18 @@ export function DownloadSystemImageDialog(
           <div style={{ flex: "1", "overflow-y": "auto" }}>
             {/* Loading state */}
             <Show when={loading()}>
-              <div style={{ padding: "40px 20px", "text-align": "center", color: "var(--text-muted)", "font-size": "13px" }}>
-                <div class="lsp-spinner" style={{ display: "inline-block", "margin-bottom": "10px" }}>
+              <div
+                style={{
+                  padding: "40px 20px",
+                  "text-align": "center",
+                  color: "var(--text-muted)",
+                  "font-size": "13px",
+                }}
+              >
+                <div
+                  class="lsp-spinner"
+                  style={{ display: "inline-block", "margin-bottom": "10px" }}
+                >
                   <Icon name="spinner" size={20} color="var(--accent)" />
                 </div>
                 <div>Fetching available system images from sdkmanager…</div>
@@ -300,20 +368,57 @@ export function DownloadSystemImageDialog(
             <Show when={!loading() && loadError()}>
               <div style={{ padding: "32px 24px", "text-align": "center" }}>
                 <Icon name="warning" size={28} color="var(--warning, #fbbf24)" />
-                <div style={{ "font-size": "14px", "font-weight": "500", color: "var(--text-secondary)", "margin-top": "12px", "margin-bottom": "8px" }}>
+                <div
+                  style={{
+                    "font-size": "14px",
+                    "font-weight": "500",
+                    color: "var(--text-secondary)",
+                    "margin-top": "12px",
+                    "margin-bottom": "8px",
+                  }}
+                >
                   Could not fetch image list
                 </div>
-                <div style={{ "font-size": "12px", color: "var(--text-muted)", "line-height": "1.6", "max-width": "360px", margin: "0 auto" }}>
+                <div
+                  style={{
+                    "font-size": "12px",
+                    color: "var(--text-muted)",
+                    "line-height": "1.6",
+                    "max-width": "360px",
+                    margin: "0 auto",
+                  }}
+                >
                   {loadError()}
-                  <br /><br />
-                  Make sure <code style={{ "font-family": "monospace", background: "var(--bg-primary)", padding: "1px 4px", "border-radius": "3px" }}>sdkmanager</code> is installed in your Android SDK Command-Line Tools.
+                  <br />
+                  <br />
+                  Make sure{" "}
+                  <code
+                    style={{
+                      "font-family": "monospace",
+                      background: "var(--bg-primary)",
+                      padding: "1px 4px",
+                      "border-radius": "3px",
+                    }}
+                  >
+                    sdkmanager
+                  </code>{" "}
+                  is installed in your Android SDK Command-Line Tools.
                 </div>
               </div>
             </Show>
 
             {/* Empty filter result */}
-            <Show when={!loading() && !loadError() && filtered().length === 0 && images().length > 0}>
-              <div style={{ padding: "32px 24px", "text-align": "center", color: "var(--text-muted)", "font-size": "13px" }}>
+            <Show
+              when={!loading() && !loadError() && filtered().length === 0 && images().length > 0}
+            >
+              <div
+                style={{
+                  padding: "32px 24px",
+                  "text-align": "center",
+                  color: "var(--text-muted)",
+                  "font-size": "13px",
+                }}
+              >
                 No system images match "{filter()}"
               </div>
             </Show>
@@ -395,7 +500,8 @@ function SystemImageRow(props: {
       }}
       onMouseEnter={(e) => {
         if (!props.isActiveDownload && !props.image.installed)
-          (e.currentTarget as HTMLElement).style.background = "var(--bg-hover, rgba(255,255,255,0.03))";
+          (e.currentTarget as HTMLElement).style.background =
+            "var(--bg-hover, rgba(255,255,255,0.03))";
       }}
       onMouseLeave={(e) => {
         if (!props.isActiveDownload)
@@ -418,17 +524,41 @@ function SystemImageRow(props: {
           "flex-shrink": "0",
         }}
       >
-        <span style={{ "font-size": "11px", "font-weight": "600", color: props.image.installed ? "var(--success)" : "var(--text-muted)" }}>
+        <span
+          style={{
+            "font-size": "11px",
+            "font-weight": "600",
+            color: props.image.installed ? "var(--success)" : "var(--text-muted)",
+          }}
+        >
           {props.image.apiLevel}
         </span>
       </div>
 
       {/* Image info */}
       <div style={{ flex: "1", "min-width": "0" }}>
-        <div style={{ "font-size": "12px", "font-weight": "500", color: "var(--text-primary)", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
+        <div
+          style={{
+            "font-size": "12px",
+            "font-weight": "500",
+            color: "var(--text-primary)",
+            overflow: "hidden",
+            "text-overflow": "ellipsis",
+            "white-space": "nowrap",
+          }}
+        >
           {props.image.displayName}
         </div>
-        <div style={{ "font-size": "10px", color: "var(--text-muted)", "margin-top": "2px", overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap" }}>
+        <div
+          style={{
+            "font-size": "10px",
+            color: "var(--text-muted)",
+            "margin-top": "2px",
+            overflow: "hidden",
+            "text-overflow": "ellipsis",
+            "white-space": "nowrap",
+          }}
+        >
           {props.image.sdkId}
         </div>
       </div>

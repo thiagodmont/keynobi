@@ -96,9 +96,7 @@ describe("filterSearchTree", () => {
     const root = node({
       class: "android.widget.FrameLayout",
       bounds: "[0,0][100,100]",
-      children: [
-        node({ class: "android.widget.Button", bounds: "[0,0][10,10]", text: "OK" }),
-      ],
+      children: [node({ class: "android.widget.Button", bounds: "[0,0][10,10]", text: "OK" })],
     });
     const out = filterSearchTree(root, "Button");
     expect(out).not.toBeNull();
@@ -352,10 +350,7 @@ describe("flattenNodesWithBounds", () => {
     const root = node({
       class: "R",
       bounds: "[0,0][10,10]",
-      children: [
-        node({ class: "A", bounds: "[1,1][5,5]" }),
-        node({ class: "B", bounds: "" }),
-      ],
+      children: [node({ class: "A", bounds: "[1,1][5,5]" }), node({ class: "B", bounds: "" })],
     });
     const flat = flattenNodesWithBounds(root);
     expect(flat.length).toBe(2);
@@ -367,7 +362,12 @@ describe("flattenNodesWithBounds", () => {
 describe("inferScreenSizeFromRects", () => {
   it("uses max extents", () => {
     const entries = [
-      { path: "0", rect: { left: 0, top: 0, right: 50, bottom: 40 }, area: 1, node: node({ class: "x", bounds: "" }) },
+      {
+        path: "0",
+        rect: { left: 0, top: 0, right: 50, bottom: 40 },
+        area: 1,
+        node: node({ class: "x", bounds: "" }),
+      },
     ];
     expect(inferScreenSizeFromRects(entries)).toEqual({ width: 50, height: 40 });
   });

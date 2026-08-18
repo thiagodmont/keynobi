@@ -7,7 +7,9 @@
   width: 100%;
 }
 
-.md { height: 6px; }
+.md {
+  height: 6px;
+}
 
 .fill {
   height: 100%;
@@ -15,14 +17,26 @@
   transition: width 0.2s ease;
 }
 
-.default { background: var(--accent); }
-.success  { background: var(--success); }
-.warning  { background: var(--warning); }
+.default {
+  background: var(--accent);
+}
+.success {
+  background: var(--success);
+}
+.warning {
+  background: var(--warning);
+}
 
 @keyframes pb-sweep {
-  0%   { transform: translateX(-150%); }
-  50%  { transform: translateX(100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-150%);
+  }
+  50% {
+    transform: translateX(100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .indeterminate {

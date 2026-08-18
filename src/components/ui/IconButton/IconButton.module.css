@@ -8,7 +8,10 @@
   display: flex;
   flex-shrink: 0;
   justify-content: center;
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    border-color 0.1s,
+    color 0.1s;
 }
 
 .root:disabled {

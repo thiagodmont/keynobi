@@ -1,12 +1,4 @@
-import {
-  type JSX,
-  Show,
-  For,
-  createSignal,
-  createEffect,
-  createMemo,
-  onCleanup,
-} from "solid-js";
+import { type JSX, Show, For, createSignal, createEffect, createMemo, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
 import { searchActions } from "@/lib/action-registry";
 import { Icon } from "@/components/ui/Icon";
@@ -69,15 +61,28 @@ export function CommandPalette(): JSX.Element {
 
   function handleKeyDown(e: KeyboardEvent): void {
     const items = results();
-    if (e.key === "Escape") { e.preventDefault(); closePalette(); return; }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      closePalette();
+      return;
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       if (items.length === 0) return;
       setSelectedIndex((i) => Math.min(i + 1, items.length - 1));
       return;
     }
-    if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIndex((i) => Math.max(i - 1, 0)); return; }
-    if (e.key === "Enter") { e.preventDefault(); const item = items[selectedIndex()]; if (item) item.action(); return; }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIndex((i) => Math.max(i - 1, 0));
+      return;
+    }
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const item = items[selectedIndex()];
+      if (item) item.action();
+      return;
+    }
   }
 
   return (
@@ -101,9 +106,14 @@ export function CommandPalette(): JSX.Element {
                 aria-expanded="true"
                 aria-autocomplete="list"
                 aria-controls="cp-listbox"
-                aria-activedescendant={results()[selectedIndex()] ? `cp-opt-${results()[selectedIndex()].id}` : undefined}
+                aria-activedescendant={
+                  results()[selectedIndex()] ? `cp-opt-${results()[selectedIndex()].id}` : undefined
+                }
                 value={query()}
-                onInput={(e) => { setQuery(e.currentTarget.value); setSelectedIndex(0); }}
+                onInput={(e) => {
+                  setQuery(e.currentTarget.value);
+                  setSelectedIndex(0);
+                }}
                 onKeyDown={handleKeyDown}
                 class={styles.input}
               />
@@ -117,11 +127,17 @@ export function CommandPalette(): JSX.Element {
                     aria-selected={index() === selectedIndex()}
                     onClick={() => item.action()}
                     onMouseEnter={() => setSelectedIndex(index())}
-                    class={[styles.item, index() === selectedIndex() ? styles.active : ""].filter(Boolean).join(" ")}
+                    class={[styles.item, index() === selectedIndex() ? styles.active : ""]
+                      .filter(Boolean)
+                      .join(" ")}
                   >
-                    <Show when={item.icon}><Icon name={item.icon!} size={14} /></Show>
+                    <Show when={item.icon}>
+                      <Icon name={item.icon!} size={14} />
+                    </Show>
                     <span class={styles.label}>{item.label}</span>
-                    <Show when={item.detail}><span class={styles.detail}>{item.detail}</span></Show>
+                    <Show when={item.detail}>
+                      <span class={styles.detail}>{item.detail}</span>
+                    </Show>
                   </div>
                 )}
               </For>

@@ -20,10 +20,15 @@ const [projectState, setProjectState] = createStore<ProjectState>({
 
 export { projectState, setProjectState };
 
-export function setProject(root: string, projectNameOrTree: string | object, gradleRoot?: string | null) {
-  const name = typeof projectNameOrTree === "string"
-    ? projectNameOrTree
-    : root.split("/").filter(Boolean).pop() ?? root;
+export function setProject(
+  root: string,
+  projectNameOrTree: string | object,
+  gradleRoot?: string | null
+) {
+  const name =
+    typeof projectNameOrTree === "string"
+      ? projectNameOrTree
+      : (root.split("/").filter(Boolean).pop() ?? root);
   setProjectState({
     projectRoot: root,
     gradleRoot: gradleRoot ?? null,

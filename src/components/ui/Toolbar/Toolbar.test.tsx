@@ -42,9 +42,7 @@ describe("Toolbar", () => {
   });
 
   it("active item is marked with aria-pressed", () => {
-    render(() => (
-      <Toolbar items={[{ id: "r", label: "Run", onClick: vi.fn(), active: true }]} />
-    ));
+    render(() => <Toolbar items={[{ id: "r", label: "Run", onClick: vi.fn(), active: true }]} />);
     expect(screen.getByText("Run").closest("button")!.getAttribute("aria-pressed")).toBe("true");
   });
 

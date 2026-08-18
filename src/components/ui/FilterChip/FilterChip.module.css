@@ -14,7 +14,10 @@
   overflow: hidden;
   padding: 1px 7px;
   text-overflow: ellipsis;
-  transition: background 0.1s, border-color 0.1s, color 0.1s;
+  transition:
+    background 0.1s,
+    border-color 0.1s,
+    color 0.1s;
   white-space: nowrap;
 }
 

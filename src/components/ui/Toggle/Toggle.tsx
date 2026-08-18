@@ -24,23 +24,27 @@ export function Toggle(props: ToggleProps): JSX.Element {
       role="switch"
       aria-checked={props.checked ? "true" : "false"}
       disabled={props.disabled}
-      onClick={() => { if (!props.disabled) props.onChange(!props.checked); }}
+      onClick={() => {
+        if (!props.disabled) props.onChange(!props.checked);
+      }}
       onKeyDown={handleKeyDown}
       class={[
         styles.track,
         size() === "sm" ? styles.sm : styles.md,
         props.checked ? styles.on : styles.off,
         props.class,
-      ].filter(Boolean).join(" ")}
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       <span
         class={[
           styles.thumb,
           size() === "sm" ? styles.thumbSm : styles.thumbMd,
-          props.checked
-            ? (size() === "sm" ? styles.thumbOnSm : styles.thumbOnMd)
-            : "",
-        ].filter(Boolean).join(" ")}
+          props.checked ? (size() === "sm" ? styles.thumbOnSm : styles.thumbOnMd) : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
       />
     </button>
   );

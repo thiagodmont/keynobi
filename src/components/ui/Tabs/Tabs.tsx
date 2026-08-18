@@ -23,7 +23,9 @@ export function Tabs(props: TabsProps): JSX.Element {
           <button
             role="tab"
             aria-selected={tab.id === props.activeTab}
-            class={[styles.tab, tab.id === props.activeTab ? styles.active : ""].filter(Boolean).join(" ")}
+            class={[styles.tab, tab.id === props.activeTab ? styles.active : ""]
+              .filter(Boolean)
+              .join(" ")}
             onClick={() => {
               if (tab.id !== props.activeTab) props.onChange(tab.id);
             }}

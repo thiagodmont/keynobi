@@ -23,16 +23,40 @@
 }
 
 @keyframes toast-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.error   { background: color-mix(in srgb, var(--error)   12%, var(--bg-secondary)); color: var(--error);   border: 1px solid color-mix(in srgb, var(--error)   35%, transparent); }
-.info    { background: color-mix(in srgb, var(--info)    12%, var(--bg-secondary)); color: var(--info);    border: 1px solid color-mix(in srgb, var(--info)    35%, transparent); }
-.success { background: color-mix(in srgb, var(--success) 12%, var(--bg-secondary)); color: var(--success); border: 1px solid color-mix(in srgb, var(--success) 35%, transparent); }
-.warning { background: color-mix(in srgb, var(--warning) 12%, var(--bg-secondary)); color: var(--warning); border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent); }
+.error {
+  background: color-mix(in srgb, var(--error) 12%, var(--bg-secondary));
+  color: var(--error);
+  border: 1px solid color-mix(in srgb, var(--error) 35%, transparent);
+}
+.info {
+  background: color-mix(in srgb, var(--info) 12%, var(--bg-secondary));
+  color: var(--info);
+  border: 1px solid color-mix(in srgb, var(--info) 35%, transparent);
+}
+.success {
+  background: color-mix(in srgb, var(--success) 12%, var(--bg-secondary));
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 35%, transparent);
+}
+.warning {
+  background: color-mix(in srgb, var(--warning) 12%, var(--bg-secondary));
+  color: var(--warning);
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+}
 
-.message { flex: 1; }
+.message {
+  flex: 1;
+}
 
 .closeBtn {
   background: none;
@@ -45,4 +69,6 @@
   padding: 0 0.25rem;
 }
 
-.closeBtn:hover { opacity: 1; }
+.closeBtn:hover {
+  opacity: 1;
+}

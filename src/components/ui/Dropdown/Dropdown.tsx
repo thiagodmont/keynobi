@@ -4,7 +4,13 @@ import styles from "./Dropdown.module.css";
 
 export type MenuItem =
   | { separator: true; label?: never; onClick?: never; disabled?: never; destructive?: never }
-  | { separator?: false; label: string; onClick: () => void; disabled?: boolean; destructive?: boolean };
+  | {
+      separator?: false;
+      label: string;
+      onClick: () => void;
+      disabled?: boolean;
+      destructive?: boolean;
+    };
 
 export interface DropdownProps {
   trigger: JSX.Element;
@@ -134,12 +140,12 @@ export function Dropdown(props: DropdownProps): JSX.Element {
                           styles.item,
                           item.disabled ? styles.itemDisabled : "",
                           item.destructive ? styles.itemDestructive : "",
-                          !item.disabled &&
-                          !item.destructive &&
-                          myIdx === activeIndex()
+                          !item.disabled && !item.destructive && myIdx === activeIndex()
                             ? styles.focused
                             : "",
-                        ].filter(Boolean).join(" ")}
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
                         onClick={() => {
                           if (!item.disabled) {
                             item.onClick();

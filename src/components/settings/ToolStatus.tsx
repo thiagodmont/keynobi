@@ -6,12 +6,13 @@ import { showToast } from "@/components/ui";
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 function StatusBadge(props: { found: boolean; checking?: boolean }): JSX.Element {
-  const label = () => props.checking ? "Checking…" : props.found ? "Found" : "Not configured";
-  const colors = () => props.checking
-    ? { bg: "rgba(251,191,36,0.15)", text: "#fbbf24" }
-    : props.found
-    ? { bg: "rgba(74,222,128,0.15)", text: "#4ade80" }
-    : { bg: "rgba(248,113,113,0.15)", text: "#f87171" };
+  const label = () => (props.checking ? "Checking…" : props.found ? "Found" : "Not configured");
+  const colors = () =>
+    props.checking
+      ? { bg: "rgba(251,191,36,0.15)", text: "#fbbf24" }
+      : props.found
+        ? { bg: "rgba(74,222,128,0.15)", text: "#4ade80" }
+        : { bg: "rgba(248,113,113,0.15)", text: "#f87171" };
 
   return (
     <span
@@ -112,8 +113,10 @@ function PathField(props: {
           }}
         >
           <Show when={props.detecting} fallback={<>↻ Auto-detect</>}>
-            <span style={{ animation: "lsp-spin 1s linear infinite", display: "inline-block" }}>↻</span>
-            {" "}Detecting…
+            <span style={{ animation: "lsp-spin 1s linear infinite", display: "inline-block" }}>
+              ↻
+            </span>{" "}
+            Detecting…
           </Show>
         </button>
 
@@ -145,7 +148,9 @@ function PathField(props: {
             color: pathValid() ? "var(--success)" : "var(--error)",
           }}
         >
-          {pathValid() ? `✓  ${props.validNote}` : "✗  Path does not exist or is not a valid installation"}
+          {pathValid()
+            ? `✓  ${props.validNote}`
+            : "✗  Path does not exist or is not a valid installation"}
         </span>
       </Show>
     </div>
@@ -188,10 +193,7 @@ export function AndroidSdkStatus(): JSX.Element {
   return (
     <div style={{ display: "flex", "flex-direction": "column", gap: "8px" }}>
       <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
-        <StatusBadge
-          found={!!settingsState.android.sdkPath}
-          checking={detecting()}
-        />
+        <StatusBadge found={!!settingsState.android.sdkPath} checking={detecting()} />
         <span style={{ "font-size": "11px", color: "var(--text-muted)" }}>
           Used for Gradle builds and Android tooling
         </span>
@@ -215,7 +217,13 @@ export function AndroidSdkStatus(): JSX.Element {
             "font-style": "italic",
           }}
         >
-          Tip: set <code style={{ background: "var(--bg-tertiary)", padding: "0 3px", "border-radius": "2px" }}>export ANDROID_HOME=/path/to/sdk</code> in your shell profile (~/.zshrc) or enter the path above.
+          Tip: set{" "}
+          <code
+            style={{ background: "var(--bg-tertiary)", padding: "0 3px", "border-radius": "2px" }}
+          >
+            export ANDROID_HOME=/path/to/sdk
+          </code>{" "}
+          in your shell profile (~/.zshrc) or enter the path above.
         </span>
       </Show>
     </div>
@@ -255,10 +263,7 @@ export function JavaStatus(): JSX.Element {
   return (
     <div style={{ display: "flex", "flex-direction": "column", gap: "8px" }}>
       <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
-        <StatusBadge
-          found={!!settingsState.java.home}
-          checking={detecting()}
-        />
+        <StatusBadge found={!!settingsState.java.home} checking={detecting()} />
         <span style={{ "font-size": "11px", color: "var(--text-muted)" }}>
           Used for Gradle compilation tasks
         </span>

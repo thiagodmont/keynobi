@@ -5,9 +5,7 @@ import { Resizable } from "./Resizable";
 describe("Resizable", () => {
   it("calls onResize with positive delta on horizontal drag", () => {
     const onResize = vi.fn();
-    const { container } = render(() => (
-      <Resizable direction="horizontal" onResize={onResize} />
-    ));
+    const { container } = render(() => <Resizable direction="horizontal" onResize={onResize} />);
     const handle = container.firstElementChild as HTMLElement;
 
     fireEvent.mouseDown(handle, { clientX: 100 });
@@ -27,9 +25,7 @@ describe("Resizable", () => {
   });
 
   it("does not call onReset when prop is omitted", () => {
-    const { container } = render(() => (
-      <Resizable direction="horizontal" onResize={vi.fn()} />
-    ));
+    const { container } = render(() => <Resizable direction="horizontal" onResize={vi.fn()} />);
     // Should not throw
     fireEvent.dblClick(container.firstElementChild as HTMLElement);
   });

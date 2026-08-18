@@ -15,11 +15,20 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createRoot, createSignal, createEffect } from "solid-js";
 import { projectState, setProject, setProjectState } from "@/stores/project.store";
-import { buildLogStore, resetBuildState, addBuildLine, flushPendingLines } from "@/stores/build.store";
+import {
+  buildLogStore,
+  resetBuildState,
+  addBuildLine,
+  flushPendingLines,
+} from "@/stores/build.store";
 import type { BuildLine } from "@/bindings";
 
 const outputLine = (content: string): BuildLine => ({
-  kind: "output", content, file: null, line: null, col: null,
+  kind: "output",
+  content,
+  file: null,
+  line: null,
+  col: null,
 });
 
 function resetProjectState() {

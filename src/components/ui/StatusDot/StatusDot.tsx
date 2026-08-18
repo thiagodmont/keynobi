@@ -12,12 +12,9 @@ export interface StatusDotProps {
 export function StatusDot(props: StatusDotProps): JSX.Element {
   return (
     <span
-      class={[
-        styles.root,
-        styles[props.status],
-        styles[props.size ?? "md"],
-        props.class,
-      ].filter(Boolean).join(" ")}
+      class={[styles.root, styles[props.status], styles[props.size ?? "md"], props.class]
+        .filter(Boolean)
+        .join(" ")}
       role="img"
       aria-label={props.status}
     />

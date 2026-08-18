@@ -11,9 +11,7 @@ describe("formatError", () => {
   });
 
   it("formats AppError-shaped IPC objects with kind and message", () => {
-    expect(
-      formatError({ kind: "io", message: "gradlew not found" }),
-    ).toBe("io: gradlew not found");
+    expect(formatError({ kind: "io", message: "gradlew not found" })).toBe("io: gradlew not found");
   });
 
   it("uses string error property when present", () => {

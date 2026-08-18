@@ -1,9 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import {
-  variantState,
-  clearVariants,
-  resetVariantState,
-} from "@/stores/variant.store";
+import { variantState, clearVariants, resetVariantState } from "@/stores/variant.store";
 
 describe("variant.store", () => {
   beforeEach(() => {

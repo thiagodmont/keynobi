@@ -10,32 +10,24 @@ const ITEMS = [
 
 describe("Dropdown", () => {
   it("renders the trigger", () => {
-    render(() => (
-      <Dropdown trigger={<button>Open</button>} items={ITEMS} />
-    ));
+    render(() => <Dropdown trigger={<button>Open</button>} items={ITEMS} />);
     expect(screen.getByText("Open")).not.toBeNull();
   });
 
   it("menu is not visible initially", () => {
-    render(() => (
-      <Dropdown trigger={<button>Open</button>} items={ITEMS} />
-    ));
+    render(() => <Dropdown trigger={<button>Open</button>} items={ITEMS} />);
     expect(screen.queryByText("Copy")).toBeNull();
   });
 
   it("opens on trigger click", () => {
-    render(() => (
-      <Dropdown trigger={<button>Open</button>} items={ITEMS} />
-    ));
+    render(() => <Dropdown trigger={<button>Open</button>} items={ITEMS} />);
     fireEvent.click(screen.getByText("Open"));
     expect(screen.getByText("Copy")).not.toBeNull();
     expect(screen.getByText("Paste")).not.toBeNull();
   });
 
   it("closes on second trigger click", () => {
-    render(() => (
-      <Dropdown trigger={<button>Open</button>} items={ITEMS} />
-    ));
+    render(() => <Dropdown trigger={<button>Open</button>} items={ITEMS} />);
     fireEvent.click(screen.getByText("Open"));
     fireEvent.click(screen.getByText("Open"));
     expect(screen.queryByText("Copy")).toBeNull();
@@ -53,18 +45,14 @@ describe("Dropdown", () => {
   });
 
   it("does not call onClick for disabled item", () => {
-    render(() => (
-      <Dropdown trigger={<button>Open</button>} items={ITEMS} />
-    ));
+    render(() => <Dropdown trigger={<button>Open</button>} items={ITEMS} />);
     fireEvent.click(screen.getByText("Open"));
     fireEvent.click(screen.getByText("Delete"));
     expect(ITEMS[2].onClick).not.toHaveBeenCalled();
   });
 
   it("closes on Escape key", () => {
-    render(() => (
-      <Dropdown trigger={<button>Open</button>} items={ITEMS} />
-    ));
+    render(() => <Dropdown trigger={<button>Open</button>} items={ITEMS} />);
     fireEvent.click(screen.getByText("Open"));
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByText("Copy")).toBeNull();
@@ -75,7 +63,10 @@ describe("Dropdown", () => {
     render(() => (
       <Dropdown
         trigger={<button>Open</button>}
-        items={[{ label: "First", onClick: fn }, { label: "Second", onClick: vi.fn() }]}
+        items={[
+          { label: "First", onClick: fn },
+          { label: "Second", onClick: vi.fn() },
+        ]}
       />
     ));
     fireEvent.click(screen.getByText("Open"));

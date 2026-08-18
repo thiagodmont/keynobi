@@ -10,22 +10,20 @@ describe("Separator", () => {
 
   it("defaults to horizontal orientation", () => {
     const { container } = render(() => <Separator />);
-    expect(
-      container.querySelector('[role="separator"]')!.getAttribute("aria-orientation")
-    ).toBe("horizontal");
+    expect(container.querySelector('[role="separator"]')!.getAttribute("aria-orientation")).toBe(
+      "horizontal"
+    );
   });
 
   it("sets vertical aria-orientation", () => {
     const { container } = render(() => <Separator orientation="vertical" />);
-    expect(
-      container.querySelector('[role="separator"]')!.getAttribute("aria-orientation")
-    ).toBe("vertical");
+    expect(container.querySelector('[role="separator"]')!.getAttribute("aria-orientation")).toBe(
+      "vertical"
+    );
   });
 
   it("passes class prop through", () => {
     const { container } = render(() => <Separator class="my-sep" />);
-    expect(
-      container.querySelector('[role="separator"]')!.classList.contains("my-sep")
-    ).toBe(true);
+    expect(container.querySelector('[role="separator"]')!.classList.contains("my-sep")).toBe(true);
   });
 });

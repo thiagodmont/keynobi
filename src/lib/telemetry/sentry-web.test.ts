@@ -37,9 +37,7 @@ describe("scrubBrowserEvent", () => {
             type: "Error",
             value: "fail",
             stacktrace: {
-              frames: [
-                { filename: "file:///Users/x/app.js", lineno: 1, colno: 1 },
-              ],
+              frames: [{ filename: "file:///Users/x/app.js", lineno: 1, colno: 1 }],
             },
           },
         ],

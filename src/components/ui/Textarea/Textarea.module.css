@@ -33,8 +33,12 @@
   border-color: var(--error);
 }
 
-.resizeNone     { resize: none; }
-.resizeVertical { resize: vertical; }
+.resizeNone {
+  resize: none;
+}
+.resizeVertical {
+  resize: vertical;
+}
 
 .mono {
   font-family: var(--font-mono);

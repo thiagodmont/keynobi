@@ -52,29 +52,27 @@ export function AppErrorBoundary(props: { children: JSX.Element }): JSX.Element 
       fallback={(err, reset) => {
         captureSentryException(err instanceof Error ? err : new Error(String(err)));
         return (
-        <div style={CONTAINER_STYLE}>
-          <h2 style={{ "font-size": "18px", "font-weight": "600" }}>
-            Something went wrong
-          </h2>
-          <p style={{ color: "var(--text-secondary)", "font-size": "13px" }}>
-            An unexpected error occurred in a component. You can try reloading
-            the panel or restart the app.
-          </p>
-          <div style={ERROR_BOX_STYLE}>
-            {err instanceof Error ? err.message : String(err)}
-            {err instanceof Error && err.stack && (
-              <details style={{ "margin-top": "8px" }}>
-                <summary style={{ cursor: "pointer", color: "var(--text-muted)" }}>
-                  Stack trace
-                </summary>
-                {err.stack}
-              </details>
-            )}
+          <div style={CONTAINER_STYLE}>
+            <h2 style={{ "font-size": "18px", "font-weight": "600" }}>Something went wrong</h2>
+            <p style={{ color: "var(--text-secondary)", "font-size": "13px" }}>
+              An unexpected error occurred in a component. You can try reloading the panel or
+              restart the app.
+            </p>
+            <div style={ERROR_BOX_STYLE}>
+              {err instanceof Error ? err.message : String(err)}
+              {err instanceof Error && err.stack && (
+                <details style={{ "margin-top": "8px" }}>
+                  <summary style={{ cursor: "pointer", color: "var(--text-muted)" }}>
+                    Stack trace
+                  </summary>
+                  {err.stack}
+                </details>
+              )}
+            </div>
+            <button style={RELOAD_BTN_STYLE} onClick={reset}>
+              Try Again
+            </button>
           </div>
-          <button style={RELOAD_BTN_STYLE} onClick={reset}>
-            Try Again
-          </button>
-        </div>
         );
       }}
     >

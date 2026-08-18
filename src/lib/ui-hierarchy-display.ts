@@ -228,10 +228,12 @@ export function inferDominantPackage(root: UiNode): string | null {
 }
 
 /** Primary row snippet: text and/or content-desc (never hide desc when text empty). */
-export function formatRowSnippet(n: UiNode, interactiveOnly: boolean): { text: string; desc: string } {
+export function formatRowSnippet(
+  n: UiNode,
+  interactiveOnly: boolean
+): { text: string; desc: string } {
   let text = n.text.length > 0 ? truncatePreview(n.text, TEXT_PREVIEW_ROW) : "";
-  const desc =
-    n.contentDesc.length > 0 ? truncatePreview(n.contentDesc, TEXT_PREVIEW_ROW) : "";
+  const desc = n.contentDesc.length > 0 ? truncatePreview(n.contentDesc, TEXT_PREVIEW_ROW) : "";
   if (interactiveOnly && !text && !desc) {
     const inherited = firstDescendantTextOrDesc(n, 10);
     if (inherited.length > 0) {
@@ -247,8 +249,7 @@ export function nodeMatchesInteractive(n: UiNode): boolean {
     return false;
   }
   const hasContent = n.text.length > 0 || n.contentDesc.length > 0;
-  const interactive =
-    n.clickable || n.longClickable || n.scrollable || n.editable;
+  const interactive = n.clickable || n.longClickable || n.scrollable || n.editable;
   if (!interactive && !hasContent) return false;
   return boundsArea(n.bounds) > 0;
 }
@@ -435,9 +436,10 @@ const DEFAULT_SCREEN_W = 1080;
 const DEFAULT_SCREEN_H = 2400;
 
 /** Infer logical screen size from rect extents (max right/bottom). */
-export function inferScreenSizeFromRects(
-  rects: WireframeRectEntry[]
-): { width: number; height: number } {
+export function inferScreenSizeFromRects(rects: WireframeRectEntry[]): {
+  width: number;
+  height: number;
+} {
   if (rects.length === 0) {
     return { width: DEFAULT_SCREEN_W, height: DEFAULT_SCREEN_H };
   }
