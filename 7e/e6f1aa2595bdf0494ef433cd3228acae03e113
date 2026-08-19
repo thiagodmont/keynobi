@@ -1,0 +1,19 @@
+.github/workflows/ci.yml
+  s_f37e420079cdc1::t_f935e3d45d52f3 32,51,87,106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.22",
+  "base_commit_sha": "7ee6f1aa2595bdf0494ef433cd3228acae03e113",
+  "prompts": {},
+  "sessions": {
+    "s_f37e420079cdc1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8c9e2d83-5cf9-4e83-8811-880563ecd118",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
