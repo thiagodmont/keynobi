@@ -13,6 +13,7 @@ jobs:
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -28,6 +29,7 @@ jobs:
   design-system:
     name: Design System
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -42,12 +44,26 @@ jobs:
           key: playwright-chromium-${{ hashFiles('package-lock.json') }}
           restore-keys: playwright-chromium-
       - name: Install Playwright Chromium
-        run: npx playwright install chromium --with-deps
+        timeout-minutes: 10
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::Playwright install (attempt $attempt)"
+            if timeout 240 npx playwright install chromium --with-deps; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "Playwright install attempt $attempt failed; retrying in 15s"
+            sleep 15
+          done
+          echo "Playwright install failed after 3 attempts"
+          exit 1
       - run: npm run test:ds
 
   rust:
     name: Rust
     runs-on: macos-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.96.0
@@ -76,6 +92,7 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -90,7 +107,20 @@ jobs:
           key: playwright-chromium-${{ hashFiles('package-lock.json') }}
           restore-keys: playwright-chromium-
       - name: Install Playwright Chromium
-        run: npx playwright install chromium --with-deps
+        timeout-minutes: 10
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::Playwright install (attempt $attempt)"
+            if timeout 240 npx playwright install chromium --with-deps; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "Playwright install attempt $attempt failed; retrying in 15s"
+            sleep 15
+          done
+          echo "Playwright install failed after 3 attempts"
+          exit 1
       - name: Run E2E tests
         run: npm run test:e2e
       - uses: actions/upload-artifact@v7
