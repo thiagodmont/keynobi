@@ -13,6 +13,7 @@ jobs:
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -28,6 +29,7 @@ jobs:
   design-system:
     name: Design System
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -42,12 +44,18 @@ jobs:
           key: playwright-chromium-${{ hashFiles('package-lock.json') }}
           restore-keys: playwright-chromium-
       - name: Install Playwright Chromium
+        # Bounded by the step timeout alone. Do not wrap this in `timeout` or a
+        # retry loop: killing the npx parent orphans the root-owned apt-get
+        # child, which keeps /var/lib/dpkg/lock-frontend and makes every
+        # subsequent attempt fail instantly on the lock.
+        timeout-minutes: 20
         run: npx playwright install chromium --with-deps
       - run: npm run test:ds
 
   rust:
     name: Rust
     runs-on: macos-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@1.97.1
@@ -76,6 +84,7 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -90,6 +99,11 @@ jobs:
           key: playwright-chromium-${{ hashFiles('package-lock.json') }}
           restore-keys: playwright-chromium-
       - name: Install Playwright Chromium
+        # Bounded by the step timeout alone. Do not wrap this in `timeout` or a
+        # retry loop: killing the npx parent orphans the root-owned apt-get
+        # child, which keeps /var/lib/dpkg/lock-frontend and makes every
+        # subsequent attempt fail instantly on the lock.
+        timeout-minutes: 20
         run: npx playwright install chromium --with-deps
       - name: Run E2E tests
         run: npm run test:e2e
