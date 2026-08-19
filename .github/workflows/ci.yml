@@ -44,20 +44,12 @@ jobs:
           key: playwright-chromium-${{ hashFiles('package-lock.json') }}
           restore-keys: playwright-chromium-
       - name: Install Playwright Chromium
-        timeout-minutes: 10
-        run: |
-          for attempt in 1 2 3; do
-            echo "::group::Playwright install (attempt $attempt)"
-            if timeout 240 npx playwright install chromium --with-deps; then
-              echo "::endgroup::"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "Playwright install attempt $attempt failed; retrying in 15s"
-            sleep 15
-          done
-          echo "Playwright install failed after 3 attempts"
-          exit 1
+        # Bounded by the step timeout alone. Do not wrap this in `timeout` or a
+        # retry loop: killing the npx parent orphans the root-owned apt-get
+        # child, which keeps /var/lib/dpkg/lock-frontend and makes every
+        # subsequent attempt fail instantly on the lock.
+        timeout-minutes: 12
+        run: npx playwright install chromium --with-deps
       - run: npm run test:ds
 
   rust:
@@ -107,20 +99,12 @@ jobs:
           key: playwright-chromium-${{ hashFiles('package-lock.json') }}
           restore-keys: playwright-chromium-
       - name: Install Playwright Chromium
-        timeout-minutes: 10
-        run: |
-          for attempt in 1 2 3; do
-            echo "::group::Playwright install (attempt $attempt)"
-            if timeout 240 npx playwright install chromium --with-deps; then
-              echo "::endgroup::"
-              exit 0
-            fi
-            echo "::endgroup::"
-            echo "Playwright install attempt $attempt failed; retrying in 15s"
-            sleep 15
-          done
-          echo "Playwright install failed after 3 attempts"
-          exit 1
+        # Bounded by the step timeout alone. Do not wrap this in `timeout` or a
+        # retry loop: killing the npx parent orphans the root-owned apt-get
+        # child, which keeps /var/lib/dpkg/lock-frontend and makes every
+        # subsequent attempt fail instantly on the lock.
+        timeout-minutes: 12
+        run: npx playwright install chromium --with-deps
       - name: Run E2E tests
         run: npm run test:e2e
       - uses: actions/upload-artifact@v7
