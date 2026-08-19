@@ -55,7 +55,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
-    "@playwright/test": "^1.61.1",
+    "@playwright/test": "^1.62.1",
     "@sentry/vite-plugin": "^5.4.0",
     "@solidjs/testing-library": "^0.8.10",
     "@storybook/addon-a11y": "^10.4.6",
