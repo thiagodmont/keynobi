@@ -115,7 +115,7 @@ fn scrub_thread(th: &mut Thread, home: Option<&str>) {
 }
 
 fn scrub_contexts(contexts: &mut sentry::protocol::Map<String, Context>) {
-    for (_, ctx) in contexts.iter_mut() {
+    for ctx in contexts.values_mut() {
         match ctx {
             Context::Device(d) => {
                 d.name = None;
