@@ -103,13 +103,20 @@ pub async fn detect_java_path() -> Result<Option<String>, String> {
 mod tests {
     use super::SETTINGS_FLUSH_ACK;
 
-    /// The shutdown handler waits on this notifier; the frontend's
-    /// notify_settings_flushed command must wake it.
+    /// Mirrors the real shutdown contract: the Rust teardown handler waits on
+    /// the notifier first, then the frontend's notify_settings_flushed
+    /// command must wake it.
     #[tokio::test]
-    async fn flush_ack_notifies_waiters() {
-        // notify_one with no waiter stores a permit, so a later notified()
-        // resolves immediately — same ordering as the real close flow.
-        SETTINGS_FLUSH_ACK.notify_one();
-        SETTINGS_FLUSH_ACK.notified().await;
+    async fn flush_ack_command_wakes_registered_waiter() {
+        let waiter = tokio::spawn(SETTINGS_FLUSH_ACK.notified());
+        // Give the spawned waiter time to register before notifying.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        super::notify_settings_flushed().await;
+
+        tokio::time::timeout(std::time::Duration::from_secs(5), waiter)
+            .await
+            .expect("waiter should be woken by notify_settings_flushed")
+            .expect("waiter task should not panic");
     }
 }

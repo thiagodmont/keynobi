@@ -61,29 +61,50 @@ const [settingsState, setSettingsState] = createStore<AppSettings>(
 export { settingsState };
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+/** Save request currently in flight, if any. Never rejects. */
+let activeSave: Promise<void> | null = null;
+
+function persistNow(): Promise<void> {
+  const save = saveSettingsIpc(settingsState)
+    .catch((err) => {
+      const msg = formatError(err);
+      console.error("Failed to save settings:", msg);
+      showToast(`Settings could not be saved: ${msg}`, "error");
+    })
+    .finally(() => {
+      if (activeSave === save) activeSave = null;
+    });
+  activeSave = save;
+  return save;
+}
 
 function scheduleSave() {
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    await flushPendingSettingsSave();
+  saveTimer = setTimeout(() => {
+    saveTimer = undefined;
+    void persistNow();
   }, 500);
 }
 
 /**
- * Immediately persist any pending debounced settings change.
- * Called on window close so a setting changed within the 500 ms debounce
- * window is not silently lost when the app quits.
+ * Ensure every settings change made so far has been persisted.
+ *
+ * Waits out any save already in flight, then persists whatever change armed
+ * a debounce timer meanwhile (possibly none). Called on window close so the
+ * Rust shutdown handler's acknowledgement (notify_settings_flushed) is only
+ * sent after the final write has actually completed.
  */
 export async function flushPendingSettingsSave(): Promise<void> {
-  if (saveTimer === undefined) return;
-  clearTimeout(saveTimer);
-  saveTimer = undefined;
-  try {
-    await saveSettingsIpc(settingsState);
-  } catch (err) {
-    const msg = formatError(err);
-    console.error("Failed to save settings:", msg);
-    showToast(`Settings could not be saved: ${msg}`, "error");
+  for (;;) {
+    if (activeSave) {
+      await activeSave;
+      continue;
+    }
+    if (saveTimer === undefined) return;
+    clearTimeout(saveTimer);
+    saveTimer = undefined;
+    await persistNow();
+    // Loop: another change may have armed a timer while we persisted.
   }
 }
 
