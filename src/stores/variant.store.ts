@@ -30,11 +30,46 @@ export interface VariantStoreState {
 // Keyed by project root path. Survives project switches; cleared only when the
 // app restarts (module re-initialisation). Avoids re-running the expensive
 // `./gradlew :app:tasks` query when the user switches back to a known project.
-interface CachedGradleVariants {
+export interface CachedGradleVariants {
   variants: BuildVariant[];
   defaultVariant: string | null;
 }
-const variantCache = new Map<string, CachedGradleVariants>();
+
+interface VariantCache {
+  get(root: string): CachedGradleVariants | undefined;
+  set(root: string, entry: CachedGradleVariants): void;
+  delete(root: string): void;
+  clear(): void;
+  readonly size: number;
+}
+
+/**
+ * FIFO-bounded cache keyed by project root, mirroring `createLogStore`'s
+ * injectable-cap pattern so tests can use a small cap.
+ */
+export function createVariantCache(options: { maxEntries: number }): VariantCache {
+  const maxEntries = Math.max(0, Math.floor(options.maxEntries));
+  const map = new Map<string, CachedGradleVariants>();
+  return {
+    get size() {
+      return map.size;
+    },
+    get: (root) => map.get(root),
+    set: (root, entry) => {
+      map.delete(root);
+      map.set(root, entry);
+      while (map.size > maxEntries) {
+        const oldest = map.keys().next().value;
+        if (oldest === undefined) break;
+        map.delete(oldest);
+      }
+    },
+    delete: (root) => map.delete(root),
+    clear: () => map.clear(),
+  };
+}
+
+const variantCache = createVariantCache({ maxEntries: 8 });
 
 /** Clear the cache for a specific root (or all roots when called with no argument). */
 export function clearVariantCache(root?: string): void {

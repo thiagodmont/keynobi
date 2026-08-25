@@ -6,6 +6,11 @@ use tauri::State;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/// Upper bound for a single `gradlew tasks` invocation. Unlike builds, variant
+/// discovery has no user-facing progress UI, so a hung daemon must not block
+/// this command indefinitely.
+const GRADLE_QUERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
 async fn resolve_gradle_root(fs_state: &State<'_, FsState>) -> Result<PathBuf, String> {
     let fs = fs_state.0.lock().await;
     fs.gradle_root
@@ -114,11 +119,21 @@ pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<Va
         let mut cmd = tokio::process::Command::new(&gradlew);
         cmd.args([task_arg, "--all", "--console=plain"])
             .current_dir(&gradle_root)
-            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())));
+            .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+            // Kill the Gradle process if the timeout below drops the output
+            // future; otherwise a hung daemon would keep running orphaned.
+            .kill_on_drop(true);
 
-        let output = match cmd.output().await {
-            Ok(o) => o,
-            Err(e) => return Err(format!("Failed to run gradlew: {e}")),
+        let output = match tokio::time::timeout(GRADLE_QUERY_TIMEOUT, cmd.output()).await {
+            Ok(Ok(o)) => o,
+            Ok(Err(e)) => return Err(format!("Failed to run gradlew: {e}")),
+            Err(_) => {
+                return Err(format!(
+                    "gradlew '{task_arg}' did not finish within {} seconds — \
+                     is a Gradle daemon stuck? Try again after freeing Gradle.",
+                    GRADLE_QUERY_TIMEOUT.as_secs()
+                ));
+            }
         };
 
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();

@@ -859,7 +859,7 @@ pub async fn run_task(
             BuildFinalization {
                 task: task.to_owned(),
                 started_at,
-                project_root: None,
+                project_root: Some(gradle_root.to_string_lossy().into_owned()),
                 success: false,
                 cancelled: false,
                 duration_ms: 0,
@@ -889,7 +889,7 @@ pub async fn run_task(
         BuildFinalization {
             task: task.to_owned(),
             started_at,
-            project_root: None,
+            project_root: Some(gradle_root.to_string_lossy().into_owned()),
             success,
             cancelled,
             duration_ms,
@@ -1609,6 +1609,11 @@ mod tests {
             inner.history.back().map(|r| r.task.as_str()),
             Some("assembleDebug"),
             "headless MCP runs must still record history"
+        );
+        assert_eq!(
+            inner.history.back().and_then(|r| r.project_root.as_deref()),
+            Some("/tmp/p"),
+            "the recorded root must match get_build_history's project filter"
         );
     }
 
