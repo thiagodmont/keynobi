@@ -1,0 +1,28 @@
+src-tauri/src/commands/variant.rs
+  s_0e9657ddede828::t_3b5ec0506b4c96 123-126
+src-tauri/src/services/build_runner.rs
+  s_0e9657ddede828::t_a2b1b7fe841186 893
+  s_0e9657ddede828::t_68073fc5e965fa 1696
+  s_0e9657ddede828::t_38b9add5c10778 863
+  s_0e9657ddede828::t_e1f2369869b8b6 730
+src/stores/variant.store.ts
+  s_0e9657ddede828::t_22d927c379a474 30-33
+src-tauri/src/services/mcp_server.rs
+  s_0e9657ddede828::t_be250577c47d5b 324-335,343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "5f2978ae14a7a8210a1c7faa23ab5ee650a84a53",
+  "prompts": {},
+  "sessions": {
+    "s_0e9657ddede828": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fc658f370ffeM3gMlVIt5JvhJa",
+        "model": "stealth/ox-alpha"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
