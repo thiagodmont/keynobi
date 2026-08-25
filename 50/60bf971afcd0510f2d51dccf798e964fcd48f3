@@ -1,0 +1,32 @@
+src/services/build.service.test.ts
+  s_156c1b954a1d4e::t_630b6d2e9206a4 239-244
+  s_156c1b954a1d4e::t_dfb6d6b49ccdbe 175-192,199-221,230-238,245-260
+  s_156c1b954a1d4e::t_975ebf1f16de03 261-267
+  s_156c1b954a1d4e::t_2c566dddb22146 193-198
+  s_156c1b954a1d4e::t_c084557bc9da72 222-229
+  s_156c1b954a1d4e::t_f72dba1acca9d4 1,3-10
+src/App.tsx
+  s_156c1b954a1d4e::t_e971ab2d00be65 424-428,430
+src/services/build.service.ts
+  s_156c1b954a1d4e::t_964e8bffef2046 114-118
+  s_156c1b954a1d4e::t_70424ac624028f 233
+  s_156c1b954a1d4e::t_58c15a06cc143d 229-232
+  s_156c1b954a1d4e::t_060b1a1372d907 189
+  s_156c1b954a1d4e::t_4b804199e933e6 70-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "5060bf971afcd0510f2d51dccf798e964fcd48f3",
+  "prompts": {},
+  "sessions": {
+    "s_156c1b954a1d4e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fc9c326adffeP7ulTIfXxpwnvU",
+        "model": "stealth/ox-alpha"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
