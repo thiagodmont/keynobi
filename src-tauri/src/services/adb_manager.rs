@@ -513,12 +513,27 @@ pub async fn launch_app(
 
 /// Force-stop an app on a device.
 pub async fn stop_app(adb: &Path, serial: &str, package: &str) -> Result<(), String> {
-    Command::new(adb)
+    let out = Command::new(adb)
         .args(["-s", serial, "shell", "am", "force-stop", package])
         .output()
         .await
-        .map(|_| ())
-        .map_err(|e| format!("adb force-stop failed: {e}"))
+        .map_err(|e| format!("adb force-stop failed: {e}"))?;
+
+    if out.status.success() {
+        Ok(())
+    } else {
+        let combined = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        )
+        .trim()
+        .to_owned();
+        Err(format!(
+            "adb force-stop failed (exit {}): {combined}",
+            out.status.code().unwrap_or(-1)
+        ))
+    }
 }
 
 // ── AVD management ─────────────────────────────────────────────────────────────

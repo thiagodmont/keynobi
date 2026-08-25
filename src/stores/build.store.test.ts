@@ -81,6 +81,24 @@ describe("build.store", () => {
     expect(buildState.errors[0].line).toBe(10);
   });
 
+  it("caps accumulated problems and drops the oldest entries", () => {
+    const total = 1500;
+    for (let i = 0; i < total; i++) {
+      addBuildLine({
+        kind: "error",
+        content: `error ${i}`,
+        file: null,
+        line: null,
+        col: null,
+      });
+    }
+    flushPendingLines();
+    expect(buildState.errors.length).toBeLessThanOrEqual(1000);
+    // The newest errors survive the cap.
+    const last = buildState.errors[buildState.errors.length - 1];
+    expect(last.message).toBe(`error ${total - 1}`);
+  });
+
   it("clearBuild resets to idle and empties log", () => {
     startBuild("assembleDebug");
     const line: BuildLine = { kind: "output", content: "hello", file: null, line: null, col: null };

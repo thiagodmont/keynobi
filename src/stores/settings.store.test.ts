@@ -30,9 +30,8 @@ describe("settings.store", () => {
   });
 
   it("has correct LSP defaults", () => {
-    const d = getDefaults();
-    expect(d.lsp.logLevel).toBe("INFO");
-    expect(d.lsp.requestTimeoutSec).toBe(30);
+    expect(getDefaults().lsp.logLevel).toBe("INFO");
+    expect(getDefaults().lsp.requestTimeoutSec).toBe(30);
   });
 
   it("has follow-tail defaults for logcat and build log", () => {

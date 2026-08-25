@@ -25,7 +25,12 @@ import { DeviceSidebar } from "@/components/device/DeviceSidebar";
 import { DevicePickerDialog } from "@/components/device/DevicePickerDialog";
 import { registerKeybinding, initKeybindings } from "@/lib/keybindings";
 import { registerAction, type ActionCategory } from "@/lib/action-registry";
-import { applyAppearanceSettings, loadSettings, settingsState } from "@/stores/settings.store";
+import {
+  applyAppearanceSettings,
+  flushPendingSettingsSave,
+  loadSettings,
+  settingsState,
+} from "@/stores/settings.store";
 import { captureSentryException, initSentryWeb } from "@/lib/telemetry/sentry-web";
 import { tryOpenOnboardingAfterLoad, openOnboardingWizard } from "@/stores/onboarding.store";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
@@ -37,7 +42,7 @@ import {
 import { initBuildService, runBuild, runAndDeploy, cancelBuild } from "@/services/build.service";
 import { initDevices } from "@/stores/device.store";
 import { openVariantPicker } from "@/components/build/VariantSelector";
-import { formatError, sendNativeSentryTestEvent } from "@/lib/tauri-api";
+import { formatError, notifySettingsFlushed, sendNativeSentryTestEvent } from "@/lib/tauri-api";
 import { projectState } from "@/stores/project.store";
 import { openMcpPanel } from "@/components/mcp/McpPanel";
 import {
@@ -415,8 +420,19 @@ export function App(): JSX.Element {
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const appWindow = getCurrentWindow();
-      const unlisten = await appWindow.onCloseRequested(async (_event) => {
-        // No dirty files to check — allow close immediately.
+      const unlisten = await appWindow.onCloseRequested(async (event) => {
+        // Prevent the JS wrapper's auto-destroy: the Rust shutdown handler
+        // (lib.rs on_window_event) owns teardown — it cancels any running
+        // build, stops logcat/polling, and performs the final destroy().
+        // Persist any settings change still inside the 500 ms debounce
+        // window, then acknowledge so the Rust handler can proceed without
+        // waiting out its full grace timeout.
+        event.preventDefault();
+        try {
+          await flushPendingSettingsSave();
+        } finally {
+          await notifySettingsFlushed().catch(() => {});
+        }
       });
       if (disposed) unlisten();
       else unlistenClose = unlisten;

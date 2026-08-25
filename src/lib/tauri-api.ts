@@ -94,6 +94,11 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
   return invoke<void>("save_settings", { settings });
 }
 
+/** Acknowledge that the close-time settings flush has completed (see lib.rs shutdown handler). */
+export async function notifySettingsFlushed(): Promise<void> {
+  return invoke<void>("notify_settings_flushed");
+}
+
 export async function getDefaultSettings(): Promise<AppSettings> {
   return invoke<AppSettings>("get_default_settings");
 }

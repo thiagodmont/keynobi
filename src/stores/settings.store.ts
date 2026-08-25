@@ -61,10 +61,20 @@ const [settingsState, setSettingsState] = createStore<AppSettings>(
 export { settingsState };
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
+/**
+ * Tail of the save chain: the most recent persist request, which transitively
+ * awaits every earlier one. Null when no save has been requested or the last
+ * chain entry has settled. Never rejects.
+ */
+let activeSave: Promise<void> | null = null;
 
-function scheduleSave() {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
+function persistNow(): Promise<void> {
+  const prev = activeSave;
+  const save = (async () => {
+    // Serialize behind the previous save so an older snapshot can never
+    // land on disk after a newer one (IPC completion order is not
+    // guaranteed), and so a second debounce firing mid-save cannot race.
+    await prev;
     try {
       await saveSettingsIpc(settingsState);
     } catch (err) {
@@ -72,7 +82,42 @@ function scheduleSave() {
       console.error("Failed to save settings:", msg);
       showToast(`Settings could not be saved: ${msg}`, "error");
     }
+  })();
+  const tracked = save.finally(() => {
+    if (activeSave === tracked) activeSave = null;
+  });
+  activeSave = tracked;
+  return tracked;
+}
+
+function scheduleSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = undefined;
+    void persistNow();
   }, 500);
+}
+
+/**
+ * Ensure every settings change made so far has been persisted.
+ *
+ * Waits out the whole save chain (saves are serialized), then persists
+ * whatever change armed a debounce timer meanwhile (possibly none). Called
+ * on window close so the Rust shutdown handler's acknowledgement
+ * (notify_settings_flushed) is only sent after the final write completed.
+ */
+export async function flushPendingSettingsSave(): Promise<void> {
+  for (;;) {
+    if (activeSave) {
+      await activeSave;
+      continue;
+    }
+    if (saveTimer === undefined) return;
+    clearTimeout(saveTimer);
+    saveTimer = undefined;
+    await persistNow();
+    // Loop: another change may have armed a timer while we persisted.
+  }
 }
 
 export async function loadSettings(): Promise<void> {

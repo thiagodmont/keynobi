@@ -59,6 +59,9 @@ export function resetBuildServiceForTests(): void {
   buildCompleteUnlisten?.();
   buildCompleteUnlisten = null;
   buildListenerInit = null;
+  _resolveBuildComplete = null;
+  clearBuildCompleteTimer();
+  _staleCompletionEventsExpected = 0;
 }
 
 async function registerBuildCompleteListener(): Promise<void> {
@@ -67,8 +70,14 @@ async function registerBuildCompleteListener(): Promise<void> {
     flushPendingLines();
 
     if (e.cancelled) {
-      // Build was explicitly cancelled by the user — use dedicated cancelled phase.
-      cancelBuildState();
+      if (_staleCompletionEventsExpected > 0) {
+        // Late event from a process we killed after a completion timeout —
+        // absorb it so it cannot flip the UI to a plain user cancellation.
+        _staleCompletionEventsExpected--;
+      } else {
+        // Build was explicitly cancelled by the user — use dedicated cancelled phase.
+        cancelBuildState();
+      }
     } else {
       setBuildResult({ success: e.success, durationMs: e.durationMs });
     }
@@ -104,6 +113,19 @@ async function registerBuildCompleteListener(): Promise<void> {
 let _resolveBuildComplete: ((result: { success: boolean; durationMs: number }) => void) | null =
   null;
 let _buildCompleteTimer: ReturnType<typeof setTimeout> | null = null;
+/**
+ * Number of completion events still expected from Gradle processes we
+ * killed after a completion timeout. Each timeout increments this; the
+ * listener consumes one cancelled event per count instead of treating it
+ * as a genuine cancellation.
+ *
+ * This is deliberately NOT reset when a new build starts: the killed
+ * process's completion event can arrive after a later build has begun
+ * (slow process death), and events are delivered in order, so consuming
+ * them FIFO guarantees each stale event is absorbed before any genuine
+ * user cancellation of a subsequent build is processed.
+ */
+let _staleCompletionEventsExpected = 0;
 
 function clearBuildCompleteTimer(): void {
   if (_buildCompleteTimer !== null) {
@@ -167,20 +189,24 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   logBuildHeader(effectiveTask);
 
   // Create a promise that resolves when the build:complete event fires.
-  // A 5-minute timeout prevents the deploy from hanging forever if
-  // something goes wrong in the Rust on_exit callback.
+  // A timeout prevents the deploy from hanging forever if something goes
+  // wrong in the Rust on_exit callback. Uses the user-configured Gradle
+  // timeout (Settings → MCP → buildTimeoutSec) so long cold builds are not
+  // falsely failed while Gradle is still running.
+  const buildTimeoutSec = Math.min(3600, Math.max(60, settingsState.mcp?.buildTimeoutSec ?? 600));
   const buildComplete = new Promise<{ success: boolean; durationMs: number }>((resolve, reject) => {
     _resolveBuildComplete = resolve;
-    _buildCompleteTimer = setTimeout(
-      () => {
-        if (_resolveBuildComplete === resolve) {
-          _resolveBuildComplete = null;
-          _buildCompleteTimer = null;
-          reject(new Error("Build timed out waiting for build:complete event after 5 minutes."));
-        }
-      },
-      5 * 60 * 1000
-    );
+    _buildCompleteTimer = setTimeout(() => {
+      if (_resolveBuildComplete === resolve) {
+        _resolveBuildComplete = null;
+        _buildCompleteTimer = null;
+        reject(
+          new Error(
+            `Build timed out waiting for the build:complete event after ${buildTimeoutSec} seconds.`
+          )
+        );
+      }
+    }, buildTimeoutSec * 1000);
   });
 
   try {
@@ -208,7 +234,17 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
     await buildComplete;
   } catch (e) {
     clearBuildCompleteTimer();
-    // Timeout or unexpected rejection.
+    // The only rejection path is the completion timeout: Gradle is still
+    // running. Cancel it so the shared build slot is released, and expect
+    // one stale cancelled completion event from the dying process — it may
+    // arrive after a later build has started, so this count persists until
+    // the listener consumes it.
+    _staleCompletionEventsExpected++;
+    try {
+      await cancelBuild();
+    } catch (cancelErr) {
+      console.error("[build] Failed to cancel timed-out build:", formatError(cancelErr));
+    }
     const msg = formatError(e);
     addBuildLine({
       kind: "error",

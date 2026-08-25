@@ -59,6 +59,13 @@ export { buildState };
 /** Dedicated log store for build output (capped at 10,000 lines). */
 export const buildLogStore: LogStore = createLogStore({ maxEntries: 10_000 });
 
+/**
+ * Cap for the Problems-tab error/warning arrays. A noisy build can emit
+ * thousands of diagnostic lines; beyond this cap the oldest entries are
+ * dropped (the build log retains up to 10,000 entries in `buildLogStore`).
+ */
+const MAX_PROBLEMS = 1_000;
+
 // ── Derived ───────────────────────────────────────────────────────────────────
 
 /** Live elapsed time in milliseconds (only meaningful while running). */
@@ -137,8 +144,15 @@ function _executePendingFlush(): void {
   if (errors.length > 0 || warnings.length > 0) {
     setBuildState(
       produce((s) => {
-        for (const l of errors) s.errors.push(_lineToError(l));
-        for (const l of warnings) s.warnings.push(_lineToError(l));
+        for (const l of errors) {
+          s.errors.push(_lineToError(l));
+        }
+        if (s.errors.length > MAX_PROBLEMS) s.errors.splice(0, s.errors.length - MAX_PROBLEMS);
+        for (const l of warnings) {
+          s.warnings.push(_lineToError(l));
+        }
+        if (s.warnings.length > MAX_PROBLEMS)
+          s.warnings.splice(0, s.warnings.length - MAX_PROBLEMS);
       })
     );
   }

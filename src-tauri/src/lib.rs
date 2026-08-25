@@ -258,23 +258,34 @@ pub fn run() {
                 api.prevent_close();
                 let app = window.app_handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    let cleanup = async {
-                        // 1. Cancel any running Gradle build.
+                    // One overall shutdown budget: wait briefly for the
+                    // frontend to persist any settings change still inside
+                    // its 500 ms debounce window (it invokes
+                    // notify_settings_flushed when done), then cancel the
+                    // build and stop streaming. If the ack never arrives
+                    // (webview already gone), don't stall the whole budget.
+                    let shutdown = async {
+                        let _ = tokio::time::timeout(
+                            std::time::Duration::from_secs(2),
+                            commands::settings::SETTINGS_FLUSH_ACK.notified(),
+                        )
+                        .await;
+
+                        // Cancel any running Gradle build.
                         let build_state = app.state::<BuildState>();
                         let process_manager = app.state::<ProcessManager>();
                         services::build_runner::cancel_build(&build_state, &process_manager).await;
 
-                        // 2. Stop logcat streaming (best-effort).
+                        // Stop logcat streaming (best-effort).
                         let logcat_state = app.state::<services::logcat::LogcatState>();
                         logcat_state.lock().await.streaming = false;
 
-                        // 3. Stop ADB device polling.
+                        // Stop ADB device polling.
                         let device_state = app.state::<DeviceState>();
                         device_state.0.lock().await.polling = false;
                     };
 
-                    // Never block shutdown longer than 3 seconds.
-                    if tokio::time::timeout(std::time::Duration::from_secs(3), cleanup)
+                    if tokio::time::timeout(std::time::Duration::from_secs(3), shutdown)
                         .await
                         .is_err()
                     {
@@ -307,6 +318,7 @@ pub fn run() {
             // Settings
             get_settings,
             save_settings,
+            notify_settings_flushed,
             get_default_settings,
             reset_settings,
             send_native_sentry_test_event,
