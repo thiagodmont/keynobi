@@ -1,0 +1,20 @@
+src-tauri/src/services/adb_manager.rs
+  s_c3729f622834bc::t_6bd97147ec7153 681,1640-1644
+  s_c3729f622834bc::t_408f452fa5be82 1054-1057
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "ad47da254fe150b2fcb9cde3e02c71294ef8771f",
+  "prompts": {},
+  "sessions": {
+    "s_c3729f622834bc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fc5ca457fffe5n5v53r1pWU2af",
+        "model": "stealth/ox-alpha"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
