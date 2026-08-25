@@ -63,7 +63,7 @@
     "@tauri-apps/cli": "^2",
     "@typescript-eslint/eslint-plugin": "^8.67.0",
     "@typescript-eslint/parser": "^8.67.0",
-    "@vitest/ui": "^4.1.10",
+    "@vitest/ui": "^4.1.11",
     "eslint": "^10.9.0",
     "eslint-plugin-solid": "^0.16.0",
     "http-server": "^14.1.1",
