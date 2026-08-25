@@ -678,10 +678,7 @@ fn newly_online_emulator_serial(before: &[Device], after: &[Device]) -> Option<S
 ///
 /// Returns ALL matching serials — an unrelated emulator becoming online before
 /// the wiped AVD must not shadow it.
-fn newly_online_emulator_serials_since(
-    before: &[Device],
-    after: &[Device],
-) -> Vec<String> {
+fn newly_online_emulator_serials_since(before: &[Device], after: &[Device]) -> Vec<String> {
     let before_online: std::collections::HashSet<&str> = before
         .iter()
         .filter(|d| {
@@ -1054,6 +1051,10 @@ async fn emulator_avd_name(adb: &Path, serial: &str) -> Option<String> {
         EMU_AVD_NAME_TIMEOUT,
         tokio::process::Command::new(adb)
             .args(["-s", serial, "emu", "avd", "name"])
+            // Kill the adb process if the timeout drops the pending output
+            // future — otherwise a stuck console leaks one adb process per
+            // retry.
+            .kill_on_drop(true)
             .output(),
     )
     .await
@@ -1636,7 +1637,11 @@ emulator-5554          device product:sdk model:sdk_gphone transport_id:1\n";
                 DeviceKind::Emulator,
                 DeviceConnectionState::Online,
             ),
-            test_device("ABC123", DeviceKind::Physical, DeviceConnectionState::Online),
+            test_device(
+                "ABC123",
+                DeviceKind::Physical,
+                DeviceConnectionState::Online,
+            ),
         ];
 
         assert_eq!(
