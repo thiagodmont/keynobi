@@ -675,7 +675,13 @@ fn newly_online_emulator_serial(before: &[Device], after: &[Device]) -> Option<S
 /// `wipe_avd_data`: a relaunched emulator typically reacquires its previous
 /// console port (`emulator-5554`), so "absent from the before list" would
 /// never match and the wait would time out on a successful wipe.
-fn newly_online_emulator_since(before: &[Device], after: &[Device]) -> Option<String> {
+///
+/// Returns ALL matching serials — an unrelated emulator becoming online before
+/// the wiped AVD must not shadow it.
+fn newly_online_emulator_serials_since(
+    before: &[Device],
+    after: &[Device],
+) -> Vec<String> {
     let before_online: std::collections::HashSet<&str> = before
         .iter()
         .filter(|d| {
@@ -687,12 +693,13 @@ fn newly_online_emulator_since(before: &[Device], after: &[Device]) -> Option<St
 
     after
         .iter()
-        .find(|d| {
+        .filter(|d| {
             d.device_kind == DeviceKind::Emulator
                 && d.connection_state == DeviceConnectionState::Online
                 && !before_online.contains(d.serial.as_str())
         })
         .map(|d| d.serial.clone())
+        .collect()
 }
 
 /// Kill an emulator via `adb -s <serial> emu kill`.
@@ -1032,17 +1039,26 @@ pub async fn delete_avd(avdmanager: &Path, name: &str) -> Result<(), String> {
     }
 }
 
+/// Upper bound for one `emu avd name` console query. The wipe wait loop polls
+/// every 2s against a 30s deadline; a stuck console connection must not stall
+/// a single poll beyond this window.
+const EMU_AVD_NAME_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Query an emulator's AVD identity via `adb -s <serial> emu avd name`.
-/// Returns the AVD name (first stdout line), or `None` if the query fails —
-/// e.g. the emulator is still booting or the console is not accepting
-/// connections yet. Callers should treat `None` as "not confirmed yet" and
+/// Returns the AVD name (first stdout line), or `None` if the query fails or
+/// times out — e.g. the emulator is still booting or the console connection
+/// is stuck. Callers should treat `None` as "not confirmed yet" and
 /// keep polling rather than as a hard failure.
 async fn emulator_avd_name(adb: &Path, serial: &str) -> Option<String> {
-    let output = tokio::process::Command::new(adb)
-        .args(["-s", serial, "emu", "avd", "name"])
-        .output()
-        .await
-        .ok()?;
+    let output = tokio::time::timeout(
+        EMU_AVD_NAME_TIMEOUT,
+        tokio::process::Command::new(adb)
+            .args(["-s", serial, "emu", "avd", "name"])
+            .output(),
+    )
+    .await
+    .ok()?
+    .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -1072,18 +1088,29 @@ pub async fn wipe_avd_data(emulator_bin: &Path, adb: &Path, avd_name: &str) -> R
 
     // Wait up to 30s for the wiped AVD's emulator to come online. Compare
     // online-state against the pre-spawn snapshot so an unrelated emulator
-    // that was already online cannot satisfy the wait, then confirm the
+    // that was already online cannot satisfy the wait, then confirm each
     // candidate's AVD identity via `emu avd name` so an unrelated emulator
     // that merely transitioned offline→online also cannot satisfy it.
+    // Candidates whose identity does not match are remembered and skipped on
+    // later polls so they cannot shadow the wiped AVD.
+    let mut rejected_serials: std::collections::HashSet<String> = std::collections::HashSet::new();
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     while std::time::Instant::now() < deadline {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let devices = list_devices(adb).await;
-        let Some(serial) = newly_online_emulator_since(&before, &devices) else {
-            continue;
-        };
-        if emulator_avd_name(adb, &serial).await.as_deref() == Some(avd_name) {
-            return Ok(());
+        for serial in newly_online_emulator_serials_since(&before, &devices) {
+            if rejected_serials.contains(&serial) {
+                continue;
+            }
+            match emulator_avd_name(adb, &serial).await.as_deref() {
+                Some(name) if name == avd_name => return Ok(()),
+                // Confirmed to be a different AVD — never re-check it.
+                Some(_) => {
+                    rejected_serials.insert(serial);
+                }
+                // Unconfirmed (booting or console not ready) — retry next poll.
+                None => {}
+            }
         }
     }
     Err(format!(
@@ -1552,8 +1579,8 @@ emulator-5554          device product:sdk model:sdk_gphone transport_id:1\n";
         ];
 
         assert_eq!(
-            newly_online_emulator_since(&before, &after),
-            Some("emulator-5556".to_string())
+            newly_online_emulator_serials_since(&before, &after),
+            vec!["emulator-5556".to_string()]
         );
     }
 
@@ -1587,8 +1614,34 @@ emulator-5554          device product:sdk model:sdk_gphone transport_id:1\n";
         ];
 
         assert_eq!(
-            newly_online_emulator_since(&before, &after),
-            Some("emulator-5554".to_string())
+            newly_online_emulator_serials_since(&before, &after),
+            vec!["emulator-5554".to_string()]
+        );
+    }
+
+    #[test]
+    fn newly_online_emulator_since_returns_all_candidates_in_order() {
+        // An unrelated emulator becoming online before the wiped AVD must not
+        // shadow it — every candidate is returned so the caller can check each
+        // one's AVD identity.
+        let before: Vec<Device> = Vec::new();
+        let after = vec![
+            test_device(
+                "emulator-5554",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+            test_device(
+                "emulator-5556",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+            test_device("ABC123", DeviceKind::Physical, DeviceConnectionState::Online),
+        ];
+
+        assert_eq!(
+            newly_online_emulator_serials_since(&before, &after),
+            vec!["emulator-5554".to_string(), "emulator-5556".to_string()]
         );
     }
 
@@ -1603,7 +1656,7 @@ emulator-5554          device product:sdk model:sdk_gphone transport_id:1\n";
         )];
         let after = before.clone();
 
-        assert_eq!(newly_online_emulator_since(&before, &after), None);
+        assert!(newly_online_emulator_serials_since(&before, &after).is_empty());
     }
 
     #[test]
@@ -1615,6 +1668,6 @@ emulator-5554          device product:sdk model:sdk_gphone transport_id:1\n";
             DeviceConnectionState::Online,
         )];
 
-        assert_eq!(newly_online_emulator_since(&before, &after), None);
+        assert!(newly_online_emulator_serials_since(&before, &after).is_empty());
     }
 }
