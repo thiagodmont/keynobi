@@ -120,8 +120,10 @@ pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<Va
         cmd.args([task_arg, "--all", "--console=plain"])
             .current_dir(&gradle_root)
             .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
-            // Kill the Gradle process if the timeout below drops the output
-            // future; otherwise a hung daemon would keep running orphaned.
+            // Kill the gradlew wrapper process when the timeout below drops
+            // the output future. Note: the detached Gradle daemon JVM the
+            // wrapper spawned may still survive; this only guarantees the
+            // command itself unblocks and the launcher is reaped.
             .kill_on_drop(true);
 
         let output = match tokio::time::timeout(GRADLE_QUERY_TIMEOUT, cmd.output()).await {

@@ -27,9 +27,10 @@ export interface VariantStoreState {
 }
 
 // ── Session cache ─────────────────────────────────────────────────────────────
-// Keyed by project root path. Survives project switches; cleared only when the
-// app restarts (module re-initialisation). Avoids re-running the expensive
-// `./gradlew :app:tasks` query when the user switches back to a known project.
+// Keyed by project root path. Survives project switches and is bounded: past
+// 8 distinct roots the oldest-inserted entry is evicted (FIFO), so switching
+// back to an evicted project reruns the expensive `./gradlew :app:tasks`
+// query. Fully cleared on app restart (module re-initialisation).
 export interface CachedGradleVariants {
   variants: BuildVariant[];
   defaultVariant: string | null;
