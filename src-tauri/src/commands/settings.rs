@@ -108,15 +108,19 @@ mod tests {
     /// command must wake it.
     #[tokio::test]
     async fn flush_ack_command_wakes_registered_waiter() {
-        let waiter = tokio::spawn(SETTINGS_FLUSH_ACK.notified());
-        // Give the spawned waiter time to register before notifying.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        use futures_util::FutureExt;
+
+        let mut waiter = Box::pin(SETTINGS_FLUSH_ACK.notified());
+        // Poll until the future returns Pending — that is when its waker is
+        // registered with the notifier. Deterministic: no sleep heuristic.
+        while waiter.as_mut().now_or_never().is_some() {
+            tokio::task::yield_now().await;
+        }
 
         super::notify_settings_flushed().await;
 
         tokio::time::timeout(std::time::Duration::from_secs(5), waiter)
             .await
-            .expect("waiter should be woken by notify_settings_flushed")
-            .expect("waiter task should not panic");
+            .expect("waiter should be woken by notify_settings_flushed");
     }
 }

@@ -122,6 +122,39 @@ describe("flushPendingSettingsSave", () => {
     await flushPendingSettingsSave();
   });
 
+  it("serializes overlapping saves so an older snapshot cannot land last", async () => {
+    let resolveFirst!: () => void;
+    const saveSpy = vi
+      .spyOn(tauriApi, "saveSettings")
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            resolveFirst = resolve;
+          })
+      )
+      .mockResolvedValue(undefined);
+
+    // Save #1 in flight (debounce fired).
+    updateSetting("appearance", "uiFontSize", 17);
+    await vi.advanceTimersByTimeAsync(500);
+
+    // A second debounce fires while #1 is still in flight: it must queue
+    // behind #1, not start concurrently.
+    updateSetting("appearance", "uiFontSize", 19);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+
+    // Completing #1 lets the queued save run with the newest state.
+    resolveFirst();
+    await flushPendingSettingsSave();
+    expect(saveSpy).toHaveBeenCalledTimes(2);
+    expect(saveSpy.mock.calls[1]?.[0].appearance.uiFontSize).toBe(19);
+
+    // Restore for subsequent tests.
+    updateSetting("appearance", "uiFontSize", 12);
+    await flushPendingSettingsSave();
+  });
+
   it("propagates save failures through the toast path without throwing", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(tauriApi, "saveSettings").mockRejectedValue(new Error("disk full"));
