@@ -727,6 +727,7 @@ pub async fn run_task(
     gradlew: &std::path::Path,
     timeout_sec: u64,
     env: Vec<(String, String)>,
+    project_root_for_history: Option<String>,
     build_state: &BuildState,
     process_manager: &crate::services::process_manager::ProcessManager,
     app_handle: Option<&tauri::AppHandle>,
@@ -859,7 +860,7 @@ pub async fn run_task(
             BuildFinalization {
                 task: task.to_owned(),
                 started_at,
-                project_root: None,
+                project_root: project_root_for_history.clone(),
                 success: false,
                 cancelled: false,
                 duration_ms: 0,
@@ -889,7 +890,7 @@ pub async fn run_task(
         BuildFinalization {
             task: task.to_owned(),
             started_at,
-            project_root: None,
+            project_root: project_root_for_history,
             success,
             cancelled,
             duration_ms,
@@ -1610,6 +1611,11 @@ mod tests {
             Some("assembleDebug"),
             "headless MCP runs must still record history"
         );
+        assert_eq!(
+            inner.history.back().and_then(|r| r.project_root.as_deref()),
+            Some("/tmp/p"),
+            "the recorded root must match get_build_history's project filter"
+        );
     }
 
     #[tokio::test]
@@ -1687,6 +1693,7 @@ mod tests {
             &missing_gradlew,
             30,
             vec![],
+            Some(dir.path().to_string_lossy().into_owned()),
             &build_state,
             &pm,
             None,

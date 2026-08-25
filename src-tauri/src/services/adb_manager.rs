@@ -1032,7 +1032,9 @@ pub async fn wipe_avd_data(emulator_bin: &Path, adb: &Path, avd_name: &str) -> R
             return Ok(());
         }
     }
-    Ok(())
+    Err(format!(
+        "Emulator '{avd_name}' did not come online within 30 seconds after wiping data"
+    ))
 }
 
 // ── sdkmanager operations ──────────────────────────────────────────────────────

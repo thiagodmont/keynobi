@@ -310,9 +310,27 @@ impl AndroidMcpServer {
     ) -> Result<CallToolResult, McpError> {
         validate_gradle_task(&p.task)?;
 
-        let gradle_root = self.get_gradle_root().await.ok_or_else(|| {
-            McpError::invalid_params("No project open. Open an Android project first.", None)
-        })?;
+        // Snapshot both roots under a single FsState lock (mirroring the UI
+        // path in commands/build.rs) so a project switch mid-request cannot
+        // pair one project's gradle_root with another's history root.
+        let (gradle_root, project_root_for_history) = {
+            let fs = self.fs_state.0.lock().await;
+            let root = fs
+                .gradle_root
+                .clone()
+                .or_else(|| fs.project_root.clone())
+                .ok_or_else(|| {
+                    McpError::invalid_params(
+                        "No project open. Open an Android project first.",
+                        None,
+                    )
+                })?;
+            let history_root = fs
+                .project_root
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned());
+            (root, history_root)
+        };
 
         let gradlew = build_runner::find_gradlew(&gradle_root).ok_or_else(|| {
             McpError::invalid_params("gradlew not found. Is this an Android project?", None)
@@ -328,6 +346,7 @@ impl AndroidMcpServer {
             &gradlew,
             settings.mcp.build_timeout_sec as u64,
             env,
+            project_root_for_history,
             &self.build_state,
             &self.process_manager,
             // Emit build:complete when a GUI is attached so the Build panel

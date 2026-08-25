@@ -1,4 +1,4 @@
-import { type JSX, Show, For, createMemo, createSignal, createEffect } from "solid-js";
+import { type JSX, Show, For, createMemo, createSignal, createEffect, onCleanup } from "solid-js";
 import {
   buildState,
   buildLogStore,
@@ -52,11 +52,17 @@ export function BuildPanel(): JSX.Element {
 
   createEffect(() => {
     const id = selectedHistoryId();
+    // Solid effects do not support React-style returned cleanups; onCleanup
+    // runs before each re-run so a slow response for a previous id cannot
+    // overwrite the log shown for the newly selected one.
+    let cancelled = false;
+    onCleanup(() => {
+      cancelled = true;
+    });
     if (id === null) {
       setHistoricalLog([]);
       return;
     }
-    let cancelled = false;
     getBuildLogEntries(id)
       .then((lines) => {
         if (!cancelled) setHistoricalLog(lines.map(lineToLogEntry));
@@ -64,9 +70,6 @@ export function BuildPanel(): JSX.Element {
       .catch(() => {
         if (!cancelled) setHistoricalLog([]);
       });
-    return () => {
-      cancelled = true;
-    };
   });
 
   const logEntries = () => (selectedHistoryId() !== null ? historicalLog() : buildLogStore.entries);
