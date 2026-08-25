@@ -1,0 +1,19 @@
+src-tauri/src/services/mcp_server.rs
+  s_0e9657ddede828::t_72715e32a8e5ed 313-333
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "5639d0ece6bb28f35e173f11325877c4ea011c11",
+  "prompts": {},
+  "sessions": {
+    "s_0e9657ddede828": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fc658f370ffeM3gMlVIt5JvhJa",
+        "model": "stealth/ox-alpha"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
