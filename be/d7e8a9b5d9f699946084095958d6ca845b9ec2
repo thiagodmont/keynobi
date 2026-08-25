@@ -1,0 +1,25 @@
+src/stores/settings.store.ts
+  s_156c1b954a1d4e::t_16d2041d73ee76 64-68,72-80,84-90
+  s_156c1b954a1d4e::t_369ae332514850 104-107
+src/stores/settings.store.flush.test.ts
+  s_156c1b954a1d4e::t_c2f687a272110b 125-157
+src-tauri/src/commands/settings.rs
+  s_156c1b954a1d4e::t_1bbaa465b08a9a 124
+  s_156c1b954a1d4e::t_b20353572f6307 111-118
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "bed7e8a9b5d9f699946084095958d6ca845b9ec2",
+  "prompts": {},
+  "sessions": {
+    "s_156c1b954a1d4e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fc9c326adffeP7ulTIfXxpwnvU",
+        "model": "stealth/ox-alpha"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
