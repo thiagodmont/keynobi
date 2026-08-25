@@ -301,7 +301,13 @@ mod tests {
 
     #[test]
     fn max_id_tracks_newest_entry_after_eviction() {
-        let mut store = LogStore::with_capacity(2);
+        // `with_capacity` clamps to the ring minimum, so override the capacity
+        // directly (same pattern as `eviction_removes_from_indexes`) to force
+        // a 2-entry ring that actually evicts.
+        let mut store = LogStore {
+            capacity: 2,
+            ..LogStore::with_capacity(2)
+        };
         store.push(make_entry(1, 0));
         store.push(make_entry(2, 0));
         store.push(make_entry(3, 0));

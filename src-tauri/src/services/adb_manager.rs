@@ -668,6 +668,33 @@ fn newly_online_emulator_serial(before: &[Device], after: &[Device]) -> Option<S
         .map(|d| d.serial.clone())
 }
 
+/// Emulator serials online in `after` that were NOT online in `before`.
+///
+/// Unlike [`newly_online_emulator_serial`], this also counts a serial that was
+/// listed (offline) before and came back online. This matters for
+/// `wipe_avd_data`: a relaunched emulator typically reacquires its previous
+/// console port (`emulator-5554`), so "absent from the before list" would
+/// never match and the wait would time out on a successful wipe.
+fn newly_online_emulator_since(before: &[Device], after: &[Device]) -> Option<String> {
+    let before_online: std::collections::HashSet<&str> = before
+        .iter()
+        .filter(|d| {
+            d.device_kind == DeviceKind::Emulator
+                && d.connection_state == DeviceConnectionState::Online
+        })
+        .map(|d| d.serial.as_str())
+        .collect();
+
+    after
+        .iter()
+        .find(|d| {
+            d.device_kind == DeviceKind::Emulator
+                && d.connection_state == DeviceConnectionState::Online
+                && !before_online.contains(d.serial.as_str())
+        })
+        .map(|d| d.serial.clone())
+}
+
 /// Kill an emulator via `adb -s <serial> emu kill`.
 pub async fn stop_emulator(adb: &Path, serial: &str) -> Result<(), String> {
     Command::new(adb)
@@ -1022,14 +1049,16 @@ pub async fn wipe_avd_data(emulator_bin: &Path, adb: &Path, avd_name: &str) -> R
         .spawn()
         .map_err(|e| format!("Failed to start emulator: {e}"))?;
 
-    // Wait up to 30s for the wiped AVD's emulator to come online. Diff against
-    // the pre-spawn device list so an unrelated emulator that was already
-    // online cannot satisfy the wait (mirrors launch_emulator).
+    // Wait up to 30s for the wiped AVD's emulator to come online. Compare
+    // online-state against the pre-spawn snapshot so an unrelated emulator
+    // that was already online cannot satisfy the wait, while a relaunched
+    // emulator that reacquired its previous serial still counts (see
+    // `newly_online_emulator_since`).
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     while std::time::Instant::now() < deadline {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let devices = list_devices(adb).await;
-        if newly_online_emulator_serial(&before, &devices).is_some() {
+        if newly_online_emulator_since(&before, &devices).is_some() {
             return Ok(());
         }
     }
@@ -1476,5 +1505,92 @@ emulator-5554          device product:sdk model:sdk_gphone transport_id:1\n";
         assert!(validate_avd_name("-bad").is_err());
         assert!(validate_device_profile_id("pixel 8").is_err());
         assert!(validate_system_image_id("system-images;android-35;google_apis;$(bad)").is_err());
+    }
+
+    #[test]
+    fn newly_online_emulator_since_detects_brand_new_serial() {
+        let before = vec![test_device(
+            "emulator-5554",
+            DeviceKind::Emulator,
+            DeviceConnectionState::Online,
+        )];
+        let after = vec![
+            test_device(
+                "emulator-5554",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+            test_device(
+                "emulator-5556",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+        ];
+
+        assert_eq!(
+            newly_online_emulator_since(&before, &after),
+            Some("emulator-5556".to_string())
+        );
+    }
+
+    #[test]
+    fn newly_online_emulator_since_counts_serial_that_returned_from_offline() {
+        // Wiped AVD relaunch: the emulator reacquires its previous console
+        // port, so the serial exists in both snapshots but was offline before.
+        let before = vec![
+            test_device(
+                "emulator-5554",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Offline,
+            ),
+            test_device(
+                "emulator-5556",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+        ];
+        let after = vec![
+            test_device(
+                "emulator-5554",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+            test_device(
+                "emulator-5556",
+                DeviceKind::Emulator,
+                DeviceConnectionState::Online,
+            ),
+        ];
+
+        assert_eq!(
+            newly_online_emulator_since(&before, &after),
+            Some("emulator-5554".to_string())
+        );
+    }
+
+    #[test]
+    fn newly_online_emulator_since_ignores_already_online_emulators() {
+        // The bug this guards against: another emulator that was already
+        // online must not satisfy the wipe wait.
+        let before = vec![test_device(
+            "emulator-5554",
+            DeviceKind::Emulator,
+            DeviceConnectionState::Online,
+        )];
+        let after = before.clone();
+
+        assert_eq!(newly_online_emulator_since(&before, &after), None);
+    }
+
+    #[test]
+    fn newly_online_emulator_since_ignores_non_emulator_devices() {
+        let before: Vec<Device> = Vec::new();
+        let after = vec![test_device(
+            "ABC123",
+            DeviceKind::Physical,
+            DeviceConnectionState::Online,
+        )];
+
+        assert_eq!(newly_online_emulator_since(&before, &after), None);
     }
 }

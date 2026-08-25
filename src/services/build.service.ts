@@ -270,7 +270,8 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
 /**
  * Full build → install → launch cycle.
  *
- * If no device is selected, resolves a device via the DevicePickerDialog.
+ * If no device is selected, resolves a device via the DevicePickerDialog —
+ * skipped entirely when "Auto Install on Build" is off (build-only run).
  * After a successful build the APK is installed and the app launched.
  */
 export async function runAndDeploy(): Promise<void> {
@@ -285,22 +286,29 @@ export async function runAndDeploy(): Promise<void> {
 
   deployInFlight = true;
   const variant = variantState.activeVariant;
+  // Read once up front: when auto-install is off this is a build-only run,
+  // which must not force device selection.
+  const autoInstall = settingsState.build.autoInstallOnBuild !== false;
 
   try {
     if (!variant) {
       throw new Error("No build variant selected. Open Build → Select Variant.");
     }
 
-    // Resolve a device before the build so we can bail early.
-    // We log this BEFORE startBuild clears the log — that's intentional; users
-    // will see the context when the build panel opens.
-    logStep("Resolving target device…");
-    const serial = await resolveDevice();
-    if (!serial) {
-      logStep("No device selected — run cancelled.");
-      return;
+    // Resolve a device before the build so we can bail early — but only when
+    // the result will actually be installed; a build-only run needs no device.
+    let serial: string | null = null;
+    if (autoInstall) {
+      // We log this BEFORE startBuild clears the log — that's intentional;
+      // users will see the context when the build panel opens.
+      logStep("Resolving target device…");
+      serial = await resolveDevice();
+      if (!serial) {
+        logStep("No device selected — run cancelled.");
+        return;
+      }
+      logStep(`Target device: ${serial}`);
     }
-    logStep(`Target device: ${serial}`);
 
     // 1. Build. startBuild() inside runBuild() clears the log, so we add a
     //    context header as the very first callback line from the Gradle channel.
@@ -308,7 +316,7 @@ export async function runAndDeploy(): Promise<void> {
     await runBuildGuarded(
       `assemble${capitalize(variant)}`,
       {
-        headerLines: [`── Deploy: ${variant} → ${serial} ──`],
+        headerLines: [serial ? `── Deploy: ${variant} → ${serial} ──` : `── Build: ${variant} ──`],
       },
       true
     );
@@ -322,10 +330,13 @@ export async function runAndDeploy(): Promise<void> {
 
     // The "Auto Install on Build" setting gates install + launch; the build
     // itself still counts as a successful deploy cycle when it is off.
-    if (settingsState.build.autoInstallOnBuild === false) {
+    if (!autoInstall) {
       logStep("Auto Install on Build is disabled — skipping install and launch.");
       setDeployPhase(null);
       return;
+    }
+    if (!serial) {
+      throw new Error("No device selected.");
     }
 
     // 2. Find APK.

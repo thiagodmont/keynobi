@@ -64,26 +64,45 @@ pub const MAX_BUILD_LOG: usize = 5_000;
 /// Gradle runs can emit hundreds of thousands of warning lines (lint,
 /// deprecation, per-class); the raw log is capped at `MAX_BUILD_LOG`, so this
 /// list is capped too — it is cloned into every history record and serialized
-/// into the on-disk build history.
+/// into the on-disk build history. Once the cap is reached, one extra slot is
+/// used for a truncation notice.
 pub const MAX_BUILD_ERRORS: usize = 1_000;
 
-/// Push a parsed diagnostic into the build's error accumulator, capping the
-/// buffer at `MAX_BUILD_ERRORS`. Once the cap is reached a single truncation
-/// notice is appended; further diagnostics are dropped.
+const TRUNCATION_NOTICE_PREFIX: &str = "Older diagnostics truncated";
+
+fn truncation_notice() -> BuildError {
+    BuildError {
+        message: format!(
+            "{TRUNCATION_NOTICE_PREFIX}: more than {MAX_BUILD_ERRORS} errors/warnings were emitted."
+        ),
+        file: None,
+        line: None,
+        col: None,
+        severity: BuildErrorSeverity::Warning,
+    }
+}
+
+/// Push a parsed diagnostic into the build's error accumulator.
+///
+/// The buffer keeps the MOST RECENT diagnostics (like `push_build_log` keeps
+/// the newest raw lines): once full, the oldest entry is evicted so late
+/// root-cause errors are not lost to early lint/deprecation noise. The first
+/// time an entry is evicted, a truncation notice is inserted at the front.
 pub fn push_build_error(buf: &mut Vec<BuildError>, error: BuildError) {
     if buf.len() < MAX_BUILD_ERRORS {
         buf.push(error);
-    } else if buf.len() == MAX_BUILD_ERRORS {
-        buf.push(BuildError {
-            message: format!(
-                "More than {MAX_BUILD_ERRORS} errors/warnings emitted — remaining diagnostics were truncated."
-            ),
-            file: None,
-            line: None,
-            col: None,
-            severity: BuildErrorSeverity::Warning,
-        });
+        return;
     }
+
+    let has_notice = buf
+        .first()
+        .is_some_and(|first| first.message.starts_with(TRUNCATION_NOTICE_PREFIX));
+    if !has_notice {
+        buf.insert(0, truncation_notice());
+    }
+    // Evict the oldest diagnostic (right after the notice) to make room.
+    buf.remove(1);
+    buf.push(error);
 }
 
 pub struct BuildStateInner {
@@ -964,26 +983,40 @@ mod tests {
     }
 
     #[test]
-    fn push_build_error_appends_single_truncation_notice_at_cap() {
+    fn push_build_error_keeps_newest_and_prepends_notice_once_at_cap() {
         let mut buf: Vec<BuildError> = (0..MAX_BUILD_ERRORS).map(make_numbered_error).collect();
         push_build_error(&mut buf, make_numbered_error(MAX_BUILD_ERRORS));
+
+        // One truncation notice at the front + the newest diagnostic kept.
         assert_eq!(buf.len(), MAX_BUILD_ERRORS + 1);
-        let notice = buf.last().unwrap();
+        let notice = &buf[0];
         assert_eq!(notice.severity, BuildErrorSeverity::Warning);
-        assert!(notice.message.contains("truncated"));
+        assert!(notice.message.starts_with(TRUNCATION_NOTICE_PREFIX));
         assert!(notice.file.is_none());
+        assert_eq!(buf[1].message, "error 1", "oldest diagnostic evicted");
+        assert_eq!(
+            buf.last().unwrap().message,
+            format!("error {}", MAX_BUILD_ERRORS),
+            "newest diagnostic must survive"
+        );
     }
 
     #[test]
-    fn push_build_error_drops_everything_after_the_notice() {
+    fn push_build_error_stays_capped_across_many_overflows() {
         let mut buf: Vec<BuildError> = (0..MAX_BUILD_ERRORS).map(make_numbered_error).collect();
         for n in 0..50 {
-            push_build_error(&mut buf, make_numbered_error(n));
+            push_build_error(&mut buf, make_numbered_error(MAX_BUILD_ERRORS + n));
         }
         assert_eq!(
             buf.len(),
             MAX_BUILD_ERRORS + 1,
             "buffer must stay capped at the cap plus one truncation notice"
+        );
+        assert!(buf[0].message.starts_with(TRUNCATION_NOTICE_PREFIX));
+        assert_eq!(
+            buf.last().unwrap().message,
+            format!("error {}", MAX_BUILD_ERRORS + 49),
+            "the final root-cause error must be retained"
         );
     }
 

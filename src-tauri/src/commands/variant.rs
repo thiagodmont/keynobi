@@ -169,7 +169,13 @@ pub async fn set_active_variant(
     variant: String,
     fs_state: State<'_, FsState>,
 ) -> Result<(), String> {
-    let gradle_root = resolve_gradle_root(&fs_state).await?;
+    // No project open — nothing to persist, which matches the documented
+    // no-op behavior rather than surfacing an error to the UI.
+    let gradle_root = match resolve_gradle_root(&fs_state).await {
+        Ok(root) => root,
+        Err(error) if error == "No project open" => return Ok(()),
+        Err(error) => return Err(error),
+    };
     let project_path = gradle_root.to_string_lossy().into_owned();
     settings_manager::set_active_variant_for_project(&project_path, &variant)
 }

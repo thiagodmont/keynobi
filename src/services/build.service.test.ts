@@ -380,11 +380,13 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     await deploy;
   }
 
-  it("skips install and launch when autoInstallOnBuild is off", async () => {
+  it("skips device resolution, install, and launch when autoInstallOnBuild is off", async () => {
     updateSetting("build", "autoInstallOnBuild", false);
     await deployThroughSuccessfulBuild();
 
     expect(buildState.phase).toBe("success");
+    // Build-only run: the device picker must not even open.
+    expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
     expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "find_apk_path")).toHaveLength(0);
     expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "install_apk_on_device")).toHaveLength(
       0

@@ -574,15 +574,15 @@ pub async fn start_logcat_stream(
             // reconnects. Without this, a fresh context restarts IDs at 1 while
             // the ring still holds entries from the previous generation, which
             // breaks LogStore's binary-search invariant for context queries.
-            let mut ctx = {
+            // The seed and the clear epoch are captured in ONE locked snapshot:
+            // if a clear lands right after seeding we must adopt its epoch,
+            // otherwise the first tick would keep this pre-clear-seeded context.
+            let (seed_next_id, mut my_epoch) = {
                 let state = logcat_state.lock().await;
-                let next_id = state.store.max_id().saturating_add(1);
-                PipelineContext::with_initial_pids(initial_pid_map).with_next_id(next_id)
+                (state.store.max_id().saturating_add(1), state.clear_epoch)
             };
-
-            // Track the clear epoch so we can discard buffered-but-unprocessed
-            // lines when the user clicks "clear" while streaming.
-            let mut my_epoch = { logcat_state.lock().await.clear_epoch };
+            let mut ctx =
+                PipelineContext::with_initial_pids(initial_pid_map).with_next_id(seed_next_id);
 
             let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -633,9 +633,18 @@ pub async fn start_logcat_stream(
                     // active filter — the entries destined for the frontend.
                     // With a level:error filter this means ~5 % of entries are cloned
                     // instead of 100 %.
+                    //
+                    // Ownership is re-checked under the same lock: a stop→start
+                    // restart may have superseded this task between the tick-top
+                    // check and here. Storing after the replacement stream seeded
+                    // its ID allocator would hand it duplicate IDs.
                     let to_emit = {
                         let mut state = logcat_state.lock().await;
-                        store_and_filter_processed_entries(&mut state, &mut ctx, processed)
+                        if !owns_stream(&state, generation) {
+                            Vec::new()
+                        } else {
+                            store_and_filter_processed_entries(&mut state, &mut ctx, processed)
+                        }
                         // Lock dropped here.
                     };
 
@@ -646,12 +655,18 @@ pub async fn start_logcat_stream(
                 // Exit once the channel is closed (reader task finished).
                 if rx.is_closed() {
                     // Drain any remaining lines after EOF before exiting.
+                    // Same ownership guard as above — the final drain must not
+                    // write into the store on behalf of a superseded stream.
                     let mut remaining: Vec<ProcessedEntry> = Vec::new();
                     pipeline.run_batch_into(&mut rx, &mut ctx, &mut remaining);
                     if !remaining.is_empty() {
                         let to_emit = {
                             let mut state = logcat_state.lock().await;
-                            store_and_filter_processed_entries(&mut state, &mut ctx, remaining)
+                            if !owns_stream(&state, generation) {
+                                Vec::new()
+                            } else {
+                                store_and_filter_processed_entries(&mut state, &mut ctx, remaining)
+                            }
                         };
                         emit_entry_batches(app_handle.as_ref(), &to_emit);
                     }
