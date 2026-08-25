@@ -3328,7 +3328,10 @@ mod tests {
     fn truncate_at_char_boundary_handles_multibyte() {
         // ASCII passes through unchanged.
         assert_eq!(truncate_at_char_boundary("abcdefgh", 120), "abcdefgh");
-        assert_eq!(truncate_at_char_boundary(&"a".repeat(120), 120), "a".repeat(120));
+        assert_eq!(
+            truncate_at_char_boundary(&"a".repeat(120), 120),
+            "a".repeat(120)
+        );
 
         // Multi-byte characters: byte 120 falls exactly on a char boundary
         // (every 漢/字 is 3 bytes), so the full 40 chars are kept.
@@ -3338,7 +3341,10 @@ mod tests {
         assert_eq!(cut, "漢字".repeat(20));
 
         // Byte 119 falls inside the 40th character — back off to its start.
-        assert_eq!(truncate_at_char_boundary(&cjk, 119), "漢字".repeat(19) + "漢");
+        assert_eq!(
+            truncate_at_char_boundary(&cjk, 119),
+            "漢字".repeat(19) + "漢"
+        );
 
         // Emoji (4-byte chars) straddling the limit.
         let emoji = "😀😀😀";
@@ -3347,7 +3353,10 @@ mod tests {
 
         // Cut index landing exactly on a boundary keeps it.
         let mixed = format!("{}{}", "a".repeat(118), "漢字");
-        assert_eq!(truncate_at_char_boundary(&mixed, 121), format!("{}{}", "a".repeat(118), '漢'));
+        assert_eq!(
+            truncate_at_char_boundary(&mixed, 121),
+            format!("{}{}", "a".repeat(118), '漢')
+        );
     }
 
     #[test]
