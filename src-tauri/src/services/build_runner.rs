@@ -94,9 +94,12 @@ pub fn push_build_error(buf: &mut Vec<BuildError>, error: BuildError) {
         return;
     }
 
-    let has_notice = buf
-        .first()
-        .is_some_and(|first| first.message.starts_with(TRUNCATION_NOTICE_PREFIX));
+    // Length invariant: the buffer holds MAX_BUILD_ERRORS entries while only
+    // real diagnostics have been seen, and exactly MAX_BUILD_ERRORS + 1 once
+    // the truncation notice has been inserted. Detecting the notice by length
+    // avoids false positives from user content (e.g. a diagnostic that happens
+    // to start with the notice text).
+    let has_notice = buf.len() > MAX_BUILD_ERRORS;
     if !has_notice {
         buf.insert(0, truncation_notice());
     }
@@ -1017,6 +1020,23 @@ mod tests {
             buf.last().unwrap().message,
             format!("error {}", MAX_BUILD_ERRORS + 49),
             "the final root-cause error must be retained"
+        );
+    }
+
+    #[test]
+    fn push_build_error_notice_detection_is_not_fooled_by_user_content() {
+        // A real diagnostic whose message happens to start with the notice
+        // prefix must not suppress the truncation notice (detected by length,
+        // not by message content).
+        let mut buf: Vec<BuildError> = (0..MAX_BUILD_ERRORS).map(make_numbered_error).collect();
+        buf[0].message = format!("{TRUNCATION_NOTICE_PREFIX}: error 0");
+
+        push_build_error(&mut buf, make_numbered_error(MAX_BUILD_ERRORS));
+
+        assert_eq!(buf.len(), MAX_BUILD_ERRORS + 1);
+        assert!(
+            buf[0].message.starts_with(TRUNCATION_NOTICE_PREFIX),
+            "a synthetic notice must still be inserted at the front"
         );
     }
 

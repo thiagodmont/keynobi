@@ -1032,6 +1032,27 @@ pub async fn delete_avd(avdmanager: &Path, name: &str) -> Result<(), String> {
     }
 }
 
+/// Query an emulator's AVD identity via `adb -s <serial> emu avd name`.
+/// Returns the AVD name (first stdout line), or `None` if the query fails —
+/// e.g. the emulator is still booting or the console is not accepting
+/// connections yet. Callers should treat `None` as "not confirmed yet" and
+/// keep polling rather than as a hard failure.
+async fn emulator_avd_name(adb: &Path, serial: &str) -> Option<String> {
+    let output = tokio::process::Command::new(adb)
+        .args(["-s", serial, "emu", "avd", "name"])
+        .output()
+        .await
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .next()
+        .map(|line| line.trim().to_string())
+        .filter(|name| !name.is_empty())
+}
+
 /// Wipe an emulator's user data by relaunching it with `-wipe-data`.
 pub async fn wipe_avd_data(emulator_bin: &Path, adb: &Path, avd_name: &str) -> Result<(), String> {
     let before = list_devices(adb).await;
@@ -1051,14 +1072,17 @@ pub async fn wipe_avd_data(emulator_bin: &Path, adb: &Path, avd_name: &str) -> R
 
     // Wait up to 30s for the wiped AVD's emulator to come online. Compare
     // online-state against the pre-spawn snapshot so an unrelated emulator
-    // that was already online cannot satisfy the wait, while a relaunched
-    // emulator that reacquired its previous serial still counts (see
-    // `newly_online_emulator_since`).
+    // that was already online cannot satisfy the wait, then confirm the
+    // candidate's AVD identity via `emu avd name` so an unrelated emulator
+    // that merely transitioned offline→online also cannot satisfy it.
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     while std::time::Instant::now() < deadline {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let devices = list_devices(adb).await;
-        if newly_online_emulator_since(&before, &devices).is_some() {
+        let Some(serial) = newly_online_emulator_since(&before, &devices) else {
+            continue;
+        };
+        if emulator_avd_name(adb, &serial).await.as_deref() == Some(avd_name) {
             return Ok(());
         }
     }
