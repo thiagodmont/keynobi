@@ -1,0 +1,37 @@
+src-tauri/src/commands/variant.rs
+  s_c3729f622834bc::t_6642d0432a84c6 172-178
+src/services/build.service.test.ts
+  s_c3729f622834bc::t_0acecd1f9ae7a2 383,388-389
+src-tauri/src/services/build_runner.rs
+  s_c3729f622834bc::t_485427a017f46b 67-68,71-90,94,96-105
+  s_c3729f622834bc::t_1c8f0bbd866e6e 986,989-990,992,994,996-1001,1005,1008,1015-1020
+src-tauri/src/services/logcat.rs
+  s_c3729f622834bc::t_d635ede44d4888 636-640,643-647,658-659,665-669
+  s_c3729f622834bc::t_9b968aa747bd6c 577-580,582,584-585
+src/services/build.service.ts
+  s_c3729f622834bc::t_a79c895e0f025f 273-274
+  s_c3729f622834bc::t_eaeaab8988152f 289-291,298-310,319,333,338-339
+  s_c3729f622834bc::t_8bd17ac0892627 340
+src-tauri/src/services/log_store.rs
+  s_c3729f622834bc::t_e362ec48413765 304-310
+src-tauri/src/services/adb_manager.rs
+  s_c3729f622834bc::t_49ef1cc8e13d80 1509-1595
+  s_c3729f622834bc::t_e9dfceac8d72ae 671-697
+  s_c3729f622834bc::t_8bf7134eafa688 1052-1056,1061
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "604047ad6e6ebdf851d44f876c07c2d59abf417f",
+  "prompts": {},
+  "sessions": {
+    "s_c3729f622834bc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fc5ca457fffe5n5v53r1pWU2af",
+        "model": "stealth/ox-alpha"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
