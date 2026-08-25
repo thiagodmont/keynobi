@@ -310,9 +310,27 @@ impl AndroidMcpServer {
     ) -> Result<CallToolResult, McpError> {
         validate_gradle_task(&p.task)?;
 
-        let gradle_root = self.get_gradle_root().await.ok_or_else(|| {
-            McpError::invalid_params("No project open. Open an Android project first.", None)
-        })?;
+        // Snapshot both roots under a single FsState lock (mirroring the UI
+        // path in commands/build.rs) so a project switch mid-request cannot
+        // pair one project's gradle_root with another's history root.
+        let (gradle_root, project_root_for_history) = {
+            let fs = self.fs_state.0.lock().await;
+            let root = fs
+                .gradle_root
+                .clone()
+                .or_else(|| fs.project_root.clone())
+                .ok_or_else(|| {
+                    McpError::invalid_params(
+                        "No project open. Open an Android project first.",
+                        None,
+                    )
+                })?;
+            let history_root = fs
+                .project_root
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned());
+            (root, history_root)
+        };
 
         let gradlew = build_runner::find_gradlew(&gradle_root).ok_or_else(|| {
             McpError::invalid_params("gradlew not found. Is this an Android project?", None)
@@ -320,18 +338,6 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let env = build_runner::build_env_vars(&settings, &gradle_root);
-
-        // Record the same root the UI path and get_build_history filter use,
-        // so agent-triggered builds show up in the Build panel history even
-        // when gradle_root differs from project_root (e.g. opened subfolder).
-        let project_root_for_history = self
-            .fs_state
-            .0
-            .lock()
-            .await
-            .project_root
-            .as_ref()
-            .map(|p| p.to_string_lossy().into_owned());
 
         let result = build_runner::run_task(
             &p.task,
