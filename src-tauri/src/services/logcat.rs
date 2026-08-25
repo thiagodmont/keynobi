@@ -570,7 +570,15 @@ pub async fn start_logcat_stream(
             let logcat_state = logcat_state_pipeline;
             let app_handle = app_handle_pipeline;
             let pipeline = LogPipeline::default_pipeline();
-            let mut ctx = PipelineContext::with_initial_pids(initial_pid_map);
+            // Seed the ID allocator from the store so IDs stay monotonic across
+            // reconnects. Without this, a fresh context restarts IDs at 1 while
+            // the ring still holds entries from the previous generation, which
+            // breaks LogStore's binary-search invariant for context queries.
+            let mut ctx = {
+                let state = logcat_state.lock().await;
+                let next_id = state.store.max_id().saturating_add(1);
+                PipelineContext::with_initial_pids(initial_pid_map).with_next_id(next_id)
+            };
 
             // Track the clear epoch so we can discard buffered-but-unprocessed
             // lines when the user clicks "clear" while streaming.

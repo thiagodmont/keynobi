@@ -320,6 +320,14 @@ export async function runAndDeploy(): Promise<void> {
       return;
     }
 
+    // The "Auto Install on Build" setting gates install + launch; the build
+    // itself still counts as a successful deploy cycle when it is off.
+    if (settingsState.build.autoInstallOnBuild === false) {
+      logStep("Auto Install on Build is disabled — skipping install and launch.");
+      setDeployPhase(null);
+      return;
+    }
+
     // 2. Find APK.
     logStep(`Searching for APK (variant: ${variant})…`);
     const apkPath = await findApkPath(variant);

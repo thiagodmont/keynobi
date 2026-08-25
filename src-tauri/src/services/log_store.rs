@@ -144,6 +144,16 @@ impl LogStore {
         self.entries.is_empty()
     }
 
+    /// Highest entry ID currently in the buffer (0 if empty).
+    ///
+    /// Entries are append-ordered and IDs are monotonic within the current
+    /// ID generation, so the newest entry always carries the maximum ID.
+    /// Used to re-seed pipeline contexts after a stream reconnect so IDs keep
+    /// increasing across generations instead of restarting at 1.
+    pub fn max_id(&self) -> u64 {
+        self.entries.back().map_or(0, |e| e.id)
+    }
+
     /// Iterate entries (oldest first).
     pub fn iter(&self) -> std::collections::vec_deque::Iter<'_, ProcessedEntry> {
         self.entries.iter()
@@ -273,6 +283,29 @@ mod tests {
         store.push(make_entry(2, 0));
         assert_eq!(store.crash_ids().len(), 1);
         assert_eq!(*store.crash_ids().front().unwrap(), 1);
+    }
+
+    #[test]
+    fn max_id_returns_zero_for_empty_store() {
+        let store = LogStore::new();
+        assert_eq!(store.max_id(), 0);
+    }
+
+    #[test]
+    fn max_id_returns_last_pushed_entry_id() {
+        let mut store = LogStore::new();
+        store.push(make_entry(7, 0));
+        store.push(make_entry(42, 0));
+        assert_eq!(store.max_id(), 42);
+    }
+
+    #[test]
+    fn max_id_tracks_newest_entry_after_eviction() {
+        let mut store = LogStore::with_capacity(2);
+        store.push(make_entry(1, 0));
+        store.push(make_entry(2, 0));
+        store.push(make_entry(3, 0));
+        assert_eq!(store.max_id(), 3);
     }
 
     #[test]

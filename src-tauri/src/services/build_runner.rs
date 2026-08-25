@@ -60,6 +60,32 @@ pub fn load_build_history() -> VecDeque<BuildRecord> {
 /// Maximum number of raw build output lines retained for MCP `get_build_log`.
 pub const MAX_BUILD_LOG: usize = 5_000;
 
+/// Maximum number of structured errors/warnings retained per build. Verbose
+/// Gradle runs can emit hundreds of thousands of warning lines (lint,
+/// deprecation, per-class); the raw log is capped at `MAX_BUILD_LOG`, so this
+/// list is capped too — it is cloned into every history record and serialized
+/// into the on-disk build history.
+pub const MAX_BUILD_ERRORS: usize = 1_000;
+
+/// Push a parsed diagnostic into the build's error accumulator, capping the
+/// buffer at `MAX_BUILD_ERRORS`. Once the cap is reached a single truncation
+/// notice is appended; further diagnostics are dropped.
+pub fn push_build_error(buf: &mut Vec<BuildError>, error: BuildError) {
+    if buf.len() < MAX_BUILD_ERRORS {
+        buf.push(error);
+    } else if buf.len() == MAX_BUILD_ERRORS {
+        buf.push(BuildError {
+            message: format!(
+                "More than {MAX_BUILD_ERRORS} errors/warnings emitted — remaining diagnostics were truncated."
+            ),
+            file: None,
+            line: None,
+            col: None,
+            severity: BuildErrorSeverity::Warning,
+        });
+    }
+}
+
 pub struct BuildStateInner {
     /// Process ID of the currently running Gradle process, if any.
     pub current_build: Option<ProcessId>,
@@ -770,17 +796,20 @@ pub async fn run_task(
                     let line = parse_build_line(&proc_line.text);
                     if matches!(line.kind, BuildLineKind::Error | BuildLineKind::Warning) {
                         if let Ok(mut e) = errors_buf.lock() {
-                            e.push(BuildError {
-                                message: line.content.clone(),
-                                file: line.file.clone(),
-                                line: line.line,
-                                col: line.col,
-                                severity: if line.kind == BuildLineKind::Error {
-                                    BuildErrorSeverity::Error
-                                } else {
-                                    BuildErrorSeverity::Warning
+                            push_build_error(
+                                &mut e,
+                                BuildError {
+                                    message: line.content.clone(),
+                                    file: line.file.clone(),
+                                    line: line.line,
+                                    col: line.col,
+                                    severity: if line.kind == BuildLineKind::Error {
+                                        BuildErrorSeverity::Error
+                                    } else {
+                                        BuildErrorSeverity::Warning
+                                    },
                                 },
-                            });
+                            );
                         }
                     }
                     if line.kind == BuildLineKind::Summary {
@@ -911,6 +940,52 @@ pub async fn run_task(
 mod tests {
     use super::*;
     use crate::models::build::BuildLineKind;
+
+    // ── push_build_error tests ─────────────────────────────────────────────────
+
+    fn make_numbered_error(n: usize) -> BuildError {
+        BuildError {
+            message: format!("error {n}"),
+            file: Some(format!("src/Main{n}.kt")),
+            line: Some(n as u32),
+            col: None,
+            severity: BuildErrorSeverity::Error,
+        }
+    }
+
+    #[test]
+    fn push_build_error_accepts_entries_below_cap() {
+        let mut buf = Vec::new();
+        for n in 0..MAX_BUILD_ERRORS {
+            push_build_error(&mut buf, make_numbered_error(n));
+        }
+        assert_eq!(buf.len(), MAX_BUILD_ERRORS);
+        assert_eq!(buf[0].message, "error 0");
+    }
+
+    #[test]
+    fn push_build_error_appends_single_truncation_notice_at_cap() {
+        let mut buf: Vec<BuildError> = (0..MAX_BUILD_ERRORS).map(make_numbered_error).collect();
+        push_build_error(&mut buf, make_numbered_error(MAX_BUILD_ERRORS));
+        assert_eq!(buf.len(), MAX_BUILD_ERRORS + 1);
+        let notice = buf.last().unwrap();
+        assert_eq!(notice.severity, BuildErrorSeverity::Warning);
+        assert!(notice.message.contains("truncated"));
+        assert!(notice.file.is_none());
+    }
+
+    #[test]
+    fn push_build_error_drops_everything_after_the_notice() {
+        let mut buf: Vec<BuildError> = (0..MAX_BUILD_ERRORS).map(make_numbered_error).collect();
+        for n in 0..50 {
+            push_build_error(&mut buf, make_numbered_error(n));
+        }
+        assert_eq!(
+            buf.len(),
+            MAX_BUILD_ERRORS + 1,
+            "buffer must stay capped at the cap plus one truncation notice"
+        );
+    }
 
     // ── parse_build_line tests ─────────────────────────────────────────────────
 

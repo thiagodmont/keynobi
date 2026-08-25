@@ -160,8 +160,16 @@ pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<Va
         .to_string())
 }
 
-/// Set the active build variant (no-op settings write — variant is managed by the variant store).
+/// Persist the active build variant as `last_build_variant` for the current
+/// project so it is restored on the next session — the same state the MCP
+/// `set_active_variant` tool writes (keyed by gradle root). No-op success if
+/// no project is open or the project is not yet in `recent_projects`.
 #[tauri::command]
-pub async fn set_active_variant(_variant: String) -> Result<(), String> {
-    Ok(())
+pub async fn set_active_variant(
+    variant: String,
+    fs_state: State<'_, FsState>,
+) -> Result<(), String> {
+    let gradle_root = resolve_gradle_root(&fs_state).await?;
+    let project_path = gradle_root.to_string_lossy().into_owned();
+    settings_manager::set_active_variant_for_project(&project_path, &variant)
 }

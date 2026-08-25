@@ -1007,6 +1007,8 @@ pub async fn delete_avd(avdmanager: &Path, name: &str) -> Result<(), String> {
 
 /// Wipe an emulator's user data by relaunching it with `-wipe-data`.
 pub async fn wipe_avd_data(emulator_bin: &Path, adb: &Path, avd_name: &str) -> Result<(), String> {
+    let before = list_devices(adb).await;
+
     tokio::process::Command::new(emulator_bin)
         .args([
             &format!("@{avd_name}"),
@@ -1020,15 +1022,14 @@ pub async fn wipe_avd_data(emulator_bin: &Path, adb: &Path, avd_name: &str) -> R
         .spawn()
         .map_err(|e| format!("Failed to start emulator: {e}"))?;
 
-    // Wait up to 30s for it to come online.
+    // Wait up to 30s for the wiped AVD's emulator to come online. Diff against
+    // the pre-spawn device list so an unrelated emulator that was already
+    // online cannot satisfy the wait (mirrors launch_emulator).
     let deadline = std::time::Instant::now() + Duration::from_secs(30);
     while std::time::Instant::now() < deadline {
         tokio::time::sleep(Duration::from_secs(2)).await;
         let devices = list_devices(adb).await;
-        if devices.iter().any(|d| {
-            d.device_kind == DeviceKind::Emulator
-                && d.connection_state == DeviceConnectionState::Online
-        }) {
+        if newly_online_emulator_serial(&before, &devices).is_some() {
             return Ok(());
         }
     }
