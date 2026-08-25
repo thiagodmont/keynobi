@@ -1,0 +1,25 @@
+src-tauri/src/services/build_runner.rs
+  s_c3729f622834bc::t_fda36176675732 97-102
+  s_c3729f622834bc::t_07718eac5f9f37 1026-1042
+src-tauri/src/commands/variant.rs
+  s_c3729f622834bc::t_300be4c260eb06 14-18,24-28
+  s_c3729f622834bc::t_dbfa055c8aa967 183-184
+src-tauri/src/services/adb_manager.rs
+  s_c3729f622834bc::t_37a47663cf0681 1035-1055,1075-1077,1082-1085
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "a61a637701e82b08e5791fcfa5749094128702e9",
+  "prompts": {},
+  "sessions": {
+    "s_c3729f622834bc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fc5ca457fffe5n5v53r1pWU2af",
+        "model": "stealth/ox-alpha"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
