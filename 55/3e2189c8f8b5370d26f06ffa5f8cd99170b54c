@@ -1,0 +1,53 @@
+src/services/build.service.ts
+  s_156c1b954a1d4e::t_7f7306d7f0c4d8 170-174,177-186
+  s_156c1b954a1d4e::t_cb97d6cdc8183b 187
+src/stores/build.store.ts
+  s_156c1b954a1d4e::t_42f375bca19cb5 147-155
+  s_156c1b954a1d4e::t_f88033b1ad4847 62-68
+src/services/build.service.test.ts
+  s_156c1b954a1d4e::t_193358fa65a116 7
+  s_156c1b954a1d4e::t_c23a90c986cf4b 134-162
+src-tauri/src/services/mcp_server.rs
+  s_156c1b954a1d4e::t_b1f27a1afb9355 3333-3334,3338-3341
+  s_156c1b954a1d4e::t_a1854238a365d4 3328-3332,3335-3337,3342-3352
+  s_156c1b954a1d4e::t_ee0211f1717324 3076
+  s_156c1b954a1d4e::t_a1a1921f256cea 2989-3003
+  s_156c1b954a1d4e::t_fa13314b054a73 3327
+src/stores/build.store.test.ts
+  s_156c1b954a1d4e::t_f6d7609e234b8a 84-101
+src/stores/settings.store.ts
+  s_156c1b954a1d4e::t_b548b90898a8b3 68-69,73-88
+  s_497605907b964d::t_e661fcd3ce3e2d 89-90
+src/stores/settings.store.test.ts
+  s_156c1b954a1d4e::t_45fb6c6a30616b 10
+  s_156c1b954a1d4e::t_3ddecde9dc55dc 120-161
+src-tauri/src/services/adb_manager.rs
+  s_156c1b954a1d4e::t_fc9e85293f57f4 516,520-536
+src/App.tsx
+  s_156c1b954a1d4e::t_c0242aff7e8d7c 424-426
+  s_156c1b954a1d4e::t_bff64c2cbafc9f 28-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "553e2189c8f8b5370d26f06ffa5f8cd99170b54c",
+  "prompts": {},
+  "sessions": {
+    "s_156c1b954a1d4e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fc9c326adffeP7ulTIfXxpwnvU",
+        "model": "stealth/ox-alpha"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    },
+    "s_497605907b964d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0754d36d-e4d8-4d50-9cc7-6bddb39f083b",
+        "model": "claude-opus-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
