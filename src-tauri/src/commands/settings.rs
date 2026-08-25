@@ -4,6 +4,23 @@ use crate::services::logcat::LogcatState;
 use crate::services::settings_manager;
 use tauri::State;
 
+/// Acknowledgement signal used to order window teardown behind the
+/// frontend's final settings flush.
+///
+/// On `CloseRequested`, the Rust shutdown handler (lib.rs) waits briefly on
+/// this notifier before cancelling builds and destroying the window. The
+/// frontend invokes [`notify_settings_flushed`] once its debounced settings
+/// save has been persisted, so a setting changed within the debounce window
+/// cannot be lost when the webview goes away.
+pub static SETTINGS_FLUSH_ACK: std::sync::LazyLock<tokio::sync::Notify> =
+    std::sync::LazyLock::new(tokio::sync::Notify::new);
+
+/// Called by the frontend after the close-time settings flush completes.
+#[tauri::command]
+pub async fn notify_settings_flushed() {
+    SETTINGS_FLUSH_ACK.notify_one();
+}
+
 #[tauri::command]
 pub async fn get_settings() -> Result<AppSettings, String> {
     let (settings, _) = tokio::task::spawn_blocking(settings_manager::load_settings)
@@ -80,4 +97,19 @@ pub async fn detect_java_path() -> Result<Option<String>, String> {
     }
     // 2. Slow path: login shell.
     Ok(settings_manager::detect_java_home_from_shell().await)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SETTINGS_FLUSH_ACK;
+
+    /// The shutdown handler waits on this notifier; the frontend's
+    /// notify_settings_flushed command must wake it.
+    #[tokio::test]
+    async fn flush_ack_notifies_waiters() {
+        // notify_one with no waiter stores a permit, so a later notified()
+        // resolves immediately — same ordering as the real close flow.
+        SETTINGS_FLUSH_ACK.notify_one();
+        SETTINGS_FLUSH_ACK.notified().await;
+    }
 }

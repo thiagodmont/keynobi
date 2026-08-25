@@ -42,7 +42,7 @@ import {
 import { initBuildService, runBuild, runAndDeploy, cancelBuild } from "@/services/build.service";
 import { initDevices } from "@/stores/device.store";
 import { openVariantPicker } from "@/components/build/VariantSelector";
-import { formatError, sendNativeSentryTestEvent } from "@/lib/tauri-api";
+import { formatError, notifySettingsFlushed, sendNativeSentryTestEvent } from "@/lib/tauri-api";
 import { projectState } from "@/stores/project.store";
 import { openMcpPanel } from "@/components/mcp/McpPanel";
 import {
@@ -424,10 +424,15 @@ export function App(): JSX.Element {
         // Prevent the JS wrapper's auto-destroy: the Rust shutdown handler
         // (lib.rs on_window_event) owns teardown — it cancels any running
         // build, stops logcat/polling, and performs the final destroy().
-        // Here we only persist any settings change still inside the 500 ms
-        // debounce window before that teardown runs.
+        // Persist any settings change still inside the 500 ms debounce
+        // window, then acknowledge so the Rust handler can proceed without
+        // waiting out its full grace timeout.
         event.preventDefault();
-        await flushPendingSettingsSave();
+        try {
+          await flushPendingSettingsSave();
+        } finally {
+          await notifySettingsFlushed().catch(() => {});
+        }
       });
       if (disposed) unlisten();
       else unlistenClose = unlisten;

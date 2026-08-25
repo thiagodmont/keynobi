@@ -59,6 +59,9 @@ export function resetBuildServiceForTests(): void {
   buildCompleteUnlisten?.();
   buildCompleteUnlisten = null;
   buildListenerInit = null;
+  _resolveBuildComplete = null;
+  clearBuildCompleteTimer();
+  _staleCompletionEventsExpected = 0;
 }
 
 async function registerBuildCompleteListener(): Promise<void> {
@@ -67,11 +70,10 @@ async function registerBuildCompleteListener(): Promise<void> {
     flushPendingLines();
 
     if (e.cancelled) {
-      if (_completionTimedOut) {
-        // Late event from the process we cancelled after the completion
-        // timeout — keep the timeout failure instead of flipping the UI to
-        // a plain user cancellation.
-        _completionTimedOut = false;
+      if (_staleCompletionEventsExpected > 0) {
+        // Late event from a process we killed after a completion timeout —
+        // absorb it so it cannot flip the UI to a plain user cancellation.
+        _staleCompletionEventsExpected--;
       } else {
         // Build was explicitly cancelled by the user — use dedicated cancelled phase.
         cancelBuildState();
@@ -111,11 +113,19 @@ async function registerBuildCompleteListener(): Promise<void> {
 let _resolveBuildComplete: ((result: { success: boolean; durationMs: number }) => void) | null =
   null;
 let _buildCompleteTimer: ReturnType<typeof setTimeout> | null = null;
-// Set when the completion timer fired and we cancelled the still-running
-// Gradle process. The process exit then emits a late `build:complete`
-// with `cancelled: true`; the listener must not let it overwrite the
-// timeout failure already shown to the user.
-let _completionTimedOut = false;
+/**
+ * Number of completion events still expected from Gradle processes we
+ * killed after a completion timeout. Each timeout increments this; the
+ * listener consumes one cancelled event per count instead of treating it
+ * as a genuine cancellation.
+ *
+ * This is deliberately NOT reset when a new build starts: the killed
+ * process's completion event can arrive after a later build has begun
+ * (slow process death), and events are delivered in order, so consuming
+ * them FIFO guarantees each stale event is absorbed before any genuine
+ * user cancellation of a subsequent build is processed.
+ */
+let _staleCompletionEventsExpected = 0;
 
 function clearBuildCompleteTimer(): void {
   if (_buildCompleteTimer !== null) {
@@ -186,7 +196,6 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   const buildTimeoutSec = Math.min(3600, Math.max(60, settingsState.mcp?.buildTimeoutSec ?? 600));
   const buildComplete = new Promise<{ success: boolean; durationMs: number }>((resolve, reject) => {
     _resolveBuildComplete = resolve;
-    _completionTimedOut = false;
     _buildCompleteTimer = setTimeout(() => {
       if (_resolveBuildComplete === resolve) {
         _resolveBuildComplete = null;
@@ -226,11 +235,11 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   } catch (e) {
     clearBuildCompleteTimer();
     // The only rejection path is the completion timeout: Gradle is still
-    // running. Cancel it so the shared build slot is released. The flag
-    // stays set until the listener consumes the late cancelled
-    // build:complete emitted by the dying process (or the next build
-    // starts) so that event cannot overwrite the timeout failure.
-    _completionTimedOut = true;
+    // running. Cancel it so the shared build slot is released, and expect
+    // one stale cancelled completion event from the dying process — it may
+    // arrive after a later build has started, so this count persists until
+    // the listener consumes it.
+    _staleCompletionEventsExpected++;
     try {
       await cancelBuild();
     } catch (cancelErr) {

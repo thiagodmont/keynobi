@@ -258,6 +258,16 @@ pub fn run() {
                 api.prevent_close();
                 let app = window.app_handle().clone();
                 tauri::async_runtime::spawn(async move {
+                    // Give the frontend a moment to persist any settings
+                    // change still inside its 500 ms debounce window. The
+                    // frontend invokes notify_settings_flushed when done; if
+                    // it never does (webview already gone), don't wait long.
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_secs(2),
+                        commands::settings::SETTINGS_FLUSH_ACK.notified(),
+                    )
+                    .await;
+
                     let cleanup = async {
                         // 1. Cancel any running Gradle build.
                         let build_state = app.state::<BuildState>();
@@ -307,6 +317,7 @@ pub fn run() {
             // Settings
             get_settings,
             save_settings,
+            notify_settings_flushed,
             get_default_settings,
             reset_settings,
             send_native_sentry_test_event,

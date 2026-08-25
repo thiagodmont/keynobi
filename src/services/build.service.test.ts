@@ -205,6 +205,9 @@ describe("late cancelled completion event after a timeout", () => {
     });
 
     await initBuildService();
+    // Fail loudly if the listener was never registered — otherwise the
+    // dispatch below would no-op and the test would pass vacuously.
+    expect(handlers.has("build:complete")).toBe(true);
 
     const first = runBuild();
     const expectation = expect(first).rejects.toThrow(/timed out/);
@@ -215,7 +218,7 @@ describe("late cancelled completion event after a timeout", () => {
     expect(buildState.phase).toBe("failed");
 
     // The dying Gradle process emits a late cancelled completion event.
-    handlers.get("build:complete")?.({
+    handlers.get("build:complete")!({
       payload: {
         success: false,
         cancelled: true,
@@ -240,6 +243,9 @@ describe("late cancelled completion event after a timeout", () => {
     });
 
     await initBuildService();
+    // Fail loudly if the listener was never registered — otherwise the
+    // dispatch below would no-op and the test would pass vacuously.
+    expect(handlers.has("build:complete")).toBe(true);
     mockInvoke.mockImplementation((cmd) => {
       if (cmd === "run_gradle_task") return Promise.resolve(1);
       if (cmd === "cancel_build") return Promise.resolve(undefined);
@@ -251,7 +257,7 @@ describe("late cancelled completion event after a timeout", () => {
     await vi.advanceTimersByTimeAsync(0);
     await cancelBuild();
 
-    handlers.get("build:complete")?.({
+    handlers.get("build:complete")!({
       payload: {
         success: false,
         cancelled: true,
@@ -262,6 +268,56 @@ describe("late cancelled completion event after a timeout", () => {
       },
     });
 
+    expect(buildState.phase).toBe("cancelled");
+  });
+
+  it("absorbs a stale cancelled event that arrives after a later build started", async () => {
+    vi.useFakeTimers();
+    const handlers = new Map<string, (e: { payload: unknown }) => void>();
+    vi.mocked(listen).mockImplementation(async (event, cb) => {
+      handlers.set(String(event), cb as unknown as (e: { payload: unknown }) => void);
+      return () => {};
+    });
+
+    await initBuildService();
+    // Fail loudly if the listener was never registered — otherwise the
+    // dispatch below would no-op and the test would pass vacuously.
+    expect(handlers.has("build:complete")).toBe(true);
+    updateSetting("mcp", "buildTimeoutSec", 120);
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      if (cmd === "cancel_build") return Promise.resolve(undefined);
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    // Build A times out; its process is killed but slow to die.
+    const buildA = runBuild();
+    const expectationA = expect(buildA).rejects.toThrow(/timed out/);
+    await vi.advanceTimersByTimeAsync(121 * 1000);
+    await expectationA;
+    expect(buildState.phase).toBe("failed");
+
+    // Build B starts before A's completion event has been delivered.
+    void runBuild();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(buildState.phase).toBe("running");
+
+    // A's stale cancelled event must NOT cancel build B.
+    handlers.get("build:complete")!({
+      payload: {
+        success: false,
+        cancelled: true,
+        durationMs: 121_000,
+        errorCount: 0,
+        warningCount: 0,
+        task: "assembleDebug",
+      },
+    });
+    expect(buildState.phase).toBe("running");
+
+    // A genuine cancellation of B still lands in the cancelled phase.
+    await cancelBuild();
     expect(buildState.phase).toBe("cancelled");
   });
 });

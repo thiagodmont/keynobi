@@ -61,6 +61,7 @@ export function settingsHandlers(): Record<string, (args: unknown) => unknown> {
       const { settings } = args as { settings: AppSettings };
       currentSettings = { ...settings };
     },
+    notify_settings_flushed: () => undefined,
     get_default_settings: () => ({ ...defaultSettings }),
     reset_settings: () => {
       currentSettings = { ...defaultSettings };
