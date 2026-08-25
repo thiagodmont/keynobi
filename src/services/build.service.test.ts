@@ -1,6 +1,13 @@
-import { describe, it, expect, beforeEach, vi, expectTypeOf } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi, expectTypeOf } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { cancelBuild, runAndDeploy, runBuild } from "@/services/build.service";
+import { listen } from "@tauri-apps/api/event";
+import {
+  cancelBuild,
+  initBuildService,
+  resetBuildServiceForTests,
+  runAndDeploy,
+  runBuild,
+} from "@/services/build.service";
 import { buildState, resetBuildState, startBuild } from "@/stores/build.store";
 import { resetDeviceState } from "@/stores/device.store";
 import { resetVariantState, selectVariant } from "@/stores/variant.store";
@@ -163,5 +170,98 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
       updateSetting("mcp", "buildTimeoutSec", 600);
       vi.useRealTimers();
     }
+  });
+});
+
+describe("late cancelled completion event after a timeout", () => {
+  beforeEach(() => {
+    resetBuildState();
+    resetDeviceState();
+    resetVariantState();
+    mockInvoke.mockResolvedValue(undefined);
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    resetBuildServiceForTests();
+    vi.useRealTimers();
+  });
+
+  it("does not overwrite the timeout failure with a cancelled phase", async () => {
+    vi.useFakeTimers();
+    // Capture the build:complete handler registered by the service.
+    const handlers = new Map<string, (e: { payload: unknown }) => void>();
+    vi.mocked(listen).mockImplementation(async (event, cb) => {
+      handlers.set(String(event), cb as unknown as (e: { payload: unknown }) => void);
+      return () => {};
+    });
+
+    updateSetting("mcp", "buildTimeoutSec", 120);
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      if (cmd === "cancel_build") return Promise.resolve(undefined);
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    await initBuildService();
+
+    const first = runBuild();
+    const expectation = expect(first).rejects.toThrow(/timed out/);
+    await vi.advanceTimersByTimeAsync(121 * 1000);
+    await expectation;
+
+    // The catch path marked the build failed.
+    expect(buildState.phase).toBe("failed");
+
+    // The dying Gradle process emits a late cancelled completion event.
+    handlers.get("build:complete")?.({
+      payload: {
+        success: false,
+        cancelled: true,
+        durationMs: 121_000,
+        errorCount: 0,
+        warningCount: 0,
+        task: "assembleDebug",
+      },
+    });
+
+    // Phase must stay failed, not flip to cancelled.
+    expect(buildState.phase).toBe("failed");
+    await expectation;
+  });
+
+  it("still applies cancelled phase for a genuine user cancellation", async () => {
+    vi.useFakeTimers();
+    const handlers = new Map<string, (e: { payload: unknown }) => void>();
+    vi.mocked(listen).mockImplementation(async (event, cb) => {
+      handlers.set(String(event), cb as unknown as (e: { payload: unknown }) => void);
+      return () => {};
+    });
+
+    await initBuildService();
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      if (cmd === "cancel_build") return Promise.resolve(undefined);
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    void runBuild();
+    await vi.advanceTimersByTimeAsync(0);
+    await cancelBuild();
+
+    handlers.get("build:complete")?.({
+      payload: {
+        success: false,
+        cancelled: true,
+        durationMs: 5_000,
+        errorCount: 0,
+        warningCount: 0,
+        task: "assembleDebug",
+      },
+    });
+
+    expect(buildState.phase).toBe("cancelled");
   });
 });

@@ -67,8 +67,15 @@ async function registerBuildCompleteListener(): Promise<void> {
     flushPendingLines();
 
     if (e.cancelled) {
-      // Build was explicitly cancelled by the user — use dedicated cancelled phase.
-      cancelBuildState();
+      if (_completionTimedOut) {
+        // Late event from the process we cancelled after the completion
+        // timeout — keep the timeout failure instead of flipping the UI to
+        // a plain user cancellation.
+        _completionTimedOut = false;
+      } else {
+        // Build was explicitly cancelled by the user — use dedicated cancelled phase.
+        cancelBuildState();
+      }
     } else {
       setBuildResult({ success: e.success, durationMs: e.durationMs });
     }
@@ -104,6 +111,11 @@ async function registerBuildCompleteListener(): Promise<void> {
 let _resolveBuildComplete: ((result: { success: boolean; durationMs: number }) => void) | null =
   null;
 let _buildCompleteTimer: ReturnType<typeof setTimeout> | null = null;
+// Set when the completion timer fired and we cancelled the still-running
+// Gradle process. The process exit then emits a late `build:complete`
+// with `cancelled: true`; the listener must not let it overwrite the
+// timeout failure already shown to the user.
+let _completionTimedOut = false;
 
 function clearBuildCompleteTimer(): void {
   if (_buildCompleteTimer !== null) {
@@ -174,6 +186,7 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   const buildTimeoutSec = Math.min(3600, Math.max(60, settingsState.mcp?.buildTimeoutSec ?? 600));
   const buildComplete = new Promise<{ success: boolean; durationMs: number }>((resolve, reject) => {
     _resolveBuildComplete = resolve;
+    _completionTimedOut = false;
     _buildCompleteTimer = setTimeout(() => {
       if (_resolveBuildComplete === resolve) {
         _resolveBuildComplete = null;
@@ -213,8 +226,11 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   } catch (e) {
     clearBuildCompleteTimer();
     // The only rejection path is the completion timeout: Gradle is still
-    // running. Cancel it so the shared build slot is released and no stale
-    // completion event can arrive later.
+    // running. Cancel it so the shared build slot is released. The flag
+    // stays set until the listener consumes the late cancelled
+    // build:complete emitted by the dying process (or the next build
+    // starts) so that event cannot overwrite the timeout failure.
+    _completionTimedOut = true;
     try {
       await cancelBuild();
     } catch (cancelErr) {

@@ -421,14 +421,13 @@ export function App(): JSX.Element {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const appWindow = getCurrentWindow();
       const unlisten = await appWindow.onCloseRequested(async (event) => {
-        // Hold the native close until any settings change still inside the
-        // 500 ms debounce window has been persisted, then close explicitly.
+        // Prevent the JS wrapper's auto-destroy: the Rust shutdown handler
+        // (lib.rs on_window_event) owns teardown — it cancels any running
+        // build, stops logcat/polling, and performs the final destroy().
+        // Here we only persist any settings change still inside the 500 ms
+        // debounce window before that teardown runs.
         event.preventDefault();
-        try {
-          await flushPendingSettingsSave();
-        } finally {
-          void appWindow.destroy();
-        }
+        await flushPendingSettingsSave();
       });
       if (disposed) unlisten();
       else unlistenClose = unlisten;
