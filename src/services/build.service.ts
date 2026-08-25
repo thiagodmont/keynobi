@@ -167,20 +167,24 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   logBuildHeader(effectiveTask);
 
   // Create a promise that resolves when the build:complete event fires.
-  // A 5-minute timeout prevents the deploy from hanging forever if
-  // something goes wrong in the Rust on_exit callback.
+  // A timeout prevents the deploy from hanging forever if something goes
+  // wrong in the Rust on_exit callback. Uses the user-configured Gradle
+  // timeout (Settings → MCP → buildTimeoutSec) so long cold builds are not
+  // falsely failed while Gradle is still running.
+  const buildTimeoutSec = Math.max(60, settingsState.mcp?.buildTimeoutSec ?? 600);
   const buildComplete = new Promise<{ success: boolean; durationMs: number }>((resolve, reject) => {
     _resolveBuildComplete = resolve;
-    _buildCompleteTimer = setTimeout(
-      () => {
-        if (_resolveBuildComplete === resolve) {
-          _resolveBuildComplete = null;
-          _buildCompleteTimer = null;
-          reject(new Error("Build timed out waiting for build:complete event after 5 minutes."));
-        }
-      },
-      5 * 60 * 1000
-    );
+    _buildCompleteTimer = setTimeout(() => {
+      if (_resolveBuildComplete === resolve) {
+        _resolveBuildComplete = null;
+        _buildCompleteTimer = null;
+        reject(
+          new Error(
+            `Build timed out waiting for the build:complete event after ${buildTimeoutSec} seconds.`
+          )
+        );
+      }
+    }, buildTimeoutSec * 1000);
   });
 
   try {

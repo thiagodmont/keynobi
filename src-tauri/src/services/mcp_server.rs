@@ -2986,6 +2986,21 @@ fn capitalize_first(s: &str) -> String {
     }
 }
 
+/// Truncate `s` to at most `max_bytes` bytes without splitting a multi-byte
+/// character. Slicing a `&str` at a raw byte index panics when the index falls
+/// inside a multi-byte sequence, so activity summaries built from arbitrary
+/// tool output (logcat lines, app UI text) must use this instead.
+fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut cut = max_bytes;
+    while !s.is_char_boundary(cut) {
+        cut -= 1;
+    }
+    &s[..cut]
+}
+
 // ── Logging wrapper ────────────────────────────────────────────────────────────
 
 /// Wraps `AndroidMcpServer` to intercept all tool calls, resource reads, and
@@ -3058,7 +3073,7 @@ impl ServerHandler for LoggingMcpServer {
                 let first_text = r.content.first().and_then(|c| c.as_text()).map(|t| {
                     let s = &t.text;
                     if s.len() > 120 {
-                        format!("{}…", &s[..120])
+                        format!("{}…", truncate_at_char_boundary(s, 120))
                     } else {
                         s.clone()
                     }
@@ -3307,6 +3322,32 @@ mod tests {
         assert_eq!(capitalize_first("debug"), "Debug");
         assert_eq!(capitalize_first("release"), "Release");
         assert_eq!(capitalize_first(""), "");
+    }
+
+    #[test]
+    fn truncate_at_char_boundary_handles_multibyte() {
+        // ASCII passes through unchanged.
+        assert_eq!(truncate_at_char_boundary("abcdefgh", 120), "abcdefgh");
+        assert_eq!(truncate_at_char_boundary(&"a".repeat(120), 120), "a".repeat(120));
+
+        // Multi-byte characters: byte 120 falls exactly on a char boundary
+        // (every 漢/字 is 3 bytes), so the full 40 chars are kept.
+        let cjk: String = "漢字".repeat(80); // 480 bytes, all 3-byte chars
+        let cut = truncate_at_char_boundary(&cjk, 120);
+        assert!(cut.len() <= 120);
+        assert_eq!(cut, "漢字".repeat(20));
+
+        // Byte 119 falls inside the 40th character — back off to its start.
+        assert_eq!(truncate_at_char_boundary(&cjk, 119), "漢字".repeat(19) + "漢");
+
+        // Emoji (4-byte chars) straddling the limit.
+        let emoji = "😀😀😀";
+        let cut = truncate_at_char_boundary(emoji, 6);
+        assert_eq!(cut, "😀");
+
+        // Cut index landing exactly on a boundary keeps it.
+        let mixed = format!("{}{}", "a".repeat(118), "漢字");
+        assert_eq!(truncate_at_char_boundary(&mixed, 121), format!("{}{}", "a".repeat(118), '漢'));
     }
 
     #[test]

@@ -7,6 +7,7 @@ import {
   loadSettings,
   getDefaults,
   setAppSetting,
+  flushPendingSettingsSave,
 } from "@/stores/settings.store";
 
 describe("settings.store", () => {
@@ -113,6 +114,48 @@ describe("settings.store", () => {
     expect(settingsState.onboardingCompleted).toBe(true);
     setAppSetting("onboardingCompleted", false);
     expect(settingsState.onboardingCompleted).toBe(false);
+  });
+});
+
+describe("flushPendingSettingsSave", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("saves immediately instead of waiting for the debounce window", async () => {
+    const saveSpy = vi.spyOn(tauriApi, "saveSettings").mockResolvedValue(undefined);
+
+    updateSetting("appearance", "uiFontSize", 16);
+    await flushPendingSettingsSave();
+
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+
+    // Restore state and drain the (now-cancelled) debounce timer.
+    updateSetting("appearance", "uiFontSize", 12);
+    await flushPendingSettingsSave();
+    expect(saveSpy).toHaveBeenCalledTimes(2);
+    vi.restoreAllMocks();
+  });
+
+  it("is a no-op when no save is pending", async () => {
+    const saveSpy = vi.spyOn(tauriApi, "saveSettings").mockResolvedValue(undefined);
+
+    await flushPendingSettingsSave();
+    expect(saveSpy).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+
+  it("propagates save failures through the toast path without throwing", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(tauriApi, "saveSettings").mockRejectedValue(new Error("disk full"));
+
+    updateSetting("appearance", "uiFontSize", 16);
+    await expect(flushPendingSettingsSave()).resolves.toBeUndefined();
+
+    updateSetting("appearance", "uiFontSize", 12);
+    await flushPendingSettingsSave();
+    expect(errorSpy).toHaveBeenCalled();
+    vi.restoreAllMocks();
   });
 });
 

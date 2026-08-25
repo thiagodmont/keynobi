@@ -4,6 +4,7 @@ import { cancelBuild, runAndDeploy, runBuild } from "@/services/build.service";
 import { buildState, resetBuildState, startBuild } from "@/stores/build.store";
 import { resetDeviceState } from "@/stores/device.store";
 import { resetVariantState, selectVariant } from "@/stores/variant.store";
+import { updateSetting } from "@/stores/settings.store";
 
 const devicePickerMock = vi.hoisted(() => ({
   showDevicePicker: vi.fn<() => Promise<string | null>>(),
@@ -129,5 +130,34 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
     type PublicOptions = NonNullable<Parameters<typeof runBuild>[1]>;
 
     expectTypeOf<PublicOptions>().toEqualTypeOf<{ headerLines?: string[] }>();
+  });
+
+  it("times out after the configured buildTimeoutSec, not a hardcoded value", async () => {
+    vi.useFakeTimers();
+    try {
+      updateSetting("mcp", "buildTimeoutSec", 60);
+      mockInvoke.mockImplementation((cmd) => {
+        if (cmd === "run_gradle_task") return Promise.resolve(1);
+        if (cmd === "cancel_build") return Promise.resolve(undefined);
+        if (cmd === "get_build_history") return Promise.resolve([]);
+        return Promise.resolve(undefined);
+      });
+
+      const first = runBuild();
+      const expectation = expect(first).rejects.toThrow(
+        "Build timed out waiting for the build:complete event after 60 seconds."
+      );
+
+      // Just under the configured timeout: still pending.
+      await vi.advanceTimersByTimeAsync(59 * 1000);
+
+      // Past it: the promise rejects.
+      await vi.advanceTimersByTimeAsync(2 * 1000);
+      await expectation;
+      await cancelBuild();
+    } finally {
+      updateSetting("mcp", "buildTimeoutSec", 600);
+      vi.useRealTimers();
+    }
   });
 });

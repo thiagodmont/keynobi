@@ -65,14 +65,27 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined;
 function scheduleSave() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    try {
-      await saveSettingsIpc(settingsState);
-    } catch (err) {
-      const msg = formatError(err);
-      console.error("Failed to save settings:", msg);
-      showToast(`Settings could not be saved: ${msg}`, "error");
-    }
+    saveTimer = undefined;
+    await flushPendingSettingsSave();
   }, 500);
+}
+
+/**
+ * Immediately persist any pending debounced settings change.
+ * Called on window close so a setting changed within the 500 ms debounce
+ * window is not silently lost when the app quits.
+ */
+export async function flushPendingSettingsSave(): Promise<void> {
+  if (saveTimer === undefined) return;
+  clearTimeout(saveTimer);
+  saveTimer = undefined;
+  try {
+    await saveSettingsIpc(settingsState);
+  } catch (err) {
+    const msg = formatError(err);
+    console.error("Failed to save settings:", msg);
+    showToast(`Settings could not be saved: ${msg}`, "error");
+  }
 }
 
 export async function loadSettings(): Promise<void> {

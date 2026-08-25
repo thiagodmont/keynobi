@@ -25,7 +25,12 @@ import { DeviceSidebar } from "@/components/device/DeviceSidebar";
 import { DevicePickerDialog } from "@/components/device/DevicePickerDialog";
 import { registerKeybinding, initKeybindings } from "@/lib/keybindings";
 import { registerAction, type ActionCategory } from "@/lib/action-registry";
-import { applyAppearanceSettings, loadSettings, settingsState } from "@/stores/settings.store";
+import {
+  applyAppearanceSettings,
+  flushPendingSettingsSave,
+  loadSettings,
+  settingsState,
+} from "@/stores/settings.store";
 import { captureSentryException, initSentryWeb } from "@/lib/telemetry/sentry-web";
 import { tryOpenOnboardingAfterLoad, openOnboardingWizard } from "@/stores/onboarding.store";
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard";
@@ -416,7 +421,9 @@ export function App(): JSX.Element {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const appWindow = getCurrentWindow();
       const unlisten = await appWindow.onCloseRequested(async (_event) => {
-        // No dirty files to check — allow close immediately.
+        // No dirty files to check — allow close immediately, but persist any
+        // settings change still sitting in the debounce window.
+        await flushPendingSettingsSave();
       });
       if (disposed) unlisten();
       else unlistenClose = unlisten;
