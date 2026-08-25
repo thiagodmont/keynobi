@@ -1,0 +1,41 @@
+src-tauri/src/commands/settings.rs
+  s_156c1b954a1d4e::t_e90fe42946382b 7-23
+  s_156c1b954a1d4e::t_f12911f948fb71 101-109,112,114-115
+  s_156c1b954a1d4e::t_2f521aa01300b6 110-111,113
+src/lib/tauri-api.ts
+  s_156c1b954a1d4e::t_39458df99d82a2 97-101
+src/App.tsx
+  s_156c1b954a1d4e::t_77340a7e462760 45
+  s_156c1b954a1d4e::t_f0d461fbd04dc0 427-429,431-435
+src/services/build.service.test.ts
+  s_156c1b954a1d4e::t_13214d16154757 246-248,260
+  s_156c1b954a1d4e::t_2ad26bcd08e380 273-322
+  s_156c1b954a1d4e::t_38db9e1a150ed6 208-210
+  s_156c1b954a1d4e::t_ded55786f4aa84 221
+src-tauri/src/lib.rs
+  s_156c1b954a1d4e::t_bb562f814e1d7f 320
+  s_156c1b954a1d4e::t_7a9fd7b9b82a3f 261-270
+src/services/build.service.ts
+  s_156c1b954a1d4e::t_4ca0e8adb82cd3 73-76
+  s_156c1b954a1d4e::t_ff6c2662e47a77 62-64
+  s_156c1b954a1d4e::t_f4c067a8fa8126 238-242
+  s_156c1b954a1d4e::t_96b4065a229556 116-128
+src/test/mock-backend/settings.ts
+  s_156c1b954a1d4e::t_2e2386cd5be28e 64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.24",
+  "base_commit_sha": "956810c0cd19a732ab3e6e43bbcf0ee1a0173198",
+  "prompts": {},
+  "sessions": {
+    "s_156c1b954a1d4e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fc9c326adffeP7ulTIfXxpwnvU",
+        "model": "stealth/ox-alpha"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
