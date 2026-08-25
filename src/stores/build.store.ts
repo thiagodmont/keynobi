@@ -62,7 +62,7 @@ export const buildLogStore: LogStore = createLogStore({ maxEntries: 10_000 });
 /**
  * Cap for the Problems-tab error/warning arrays. A noisy build can emit
  * thousands of diagnostic lines; beyond this cap the oldest entries are
- * dropped (the full log remains available in `buildLogStore`).
+ * dropped (the build log retains up to 10,000 entries in `buildLogStore`).
  */
 const MAX_PROBLEMS = 1_000;
 

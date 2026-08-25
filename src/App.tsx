@@ -420,10 +420,15 @@ export function App(): JSX.Element {
     try {
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const appWindow = getCurrentWindow();
-      const unlisten = await appWindow.onCloseRequested(async (_event) => {
-        // No dirty files to check — allow close immediately, but persist any
-        // settings change still sitting in the debounce window.
-        await flushPendingSettingsSave();
+      const unlisten = await appWindow.onCloseRequested(async (event) => {
+        // Hold the native close until any settings change still inside the
+        // 500 ms debounce window has been persisted, then close explicitly.
+        event.preventDefault();
+        try {
+          await flushPendingSettingsSave();
+        } finally {
+          void appWindow.destroy();
+        }
       });
       if (disposed) unlisten();
       else unlistenClose = unlisten;

@@ -171,7 +171,7 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   // wrong in the Rust on_exit callback. Uses the user-configured Gradle
   // timeout (Settings → MCP → buildTimeoutSec) so long cold builds are not
   // falsely failed while Gradle is still running.
-  const buildTimeoutSec = Math.max(60, settingsState.mcp?.buildTimeoutSec ?? 600);
+  const buildTimeoutSec = Math.min(3600, Math.max(60, settingsState.mcp?.buildTimeoutSec ?? 600));
   const buildComplete = new Promise<{ success: boolean; durationMs: number }>((resolve, reject) => {
     _resolveBuildComplete = resolve;
     _buildCompleteTimer = setTimeout(() => {
@@ -212,7 +212,14 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
     await buildComplete;
   } catch (e) {
     clearBuildCompleteTimer();
-    // Timeout or unexpected rejection.
+    // The only rejection path is the completion timeout: Gradle is still
+    // running. Cancel it so the shared build slot is released and no stale
+    // completion event can arrive later.
+    try {
+      await cancelBuild();
+    } catch (cancelErr) {
+      console.error("[build] Failed to cancel timed-out build:", formatError(cancelErr));
+    }
     const msg = formatError(e);
     addBuildLine({
       kind: "error",

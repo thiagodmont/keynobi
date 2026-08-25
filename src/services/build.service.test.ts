@@ -135,7 +135,9 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
   it("times out after the configured buildTimeoutSec, not a hardcoded value", async () => {
     vi.useFakeTimers();
     try {
-      updateSetting("mcp", "buildTimeoutSec", 60);
+      // 120 sits above the 60 s clamp floor, so passing proves the
+      // configured value is honored rather than the minimum.
+      updateSetting("mcp", "buildTimeoutSec", 120);
       mockInvoke.mockImplementation((cmd) => {
         if (cmd === "run_gradle_task") return Promise.resolve(1);
         if (cmd === "cancel_build") return Promise.resolve(undefined);
@@ -145,16 +147,18 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
 
       const first = runBuild();
       const expectation = expect(first).rejects.toThrow(
-        "Build timed out waiting for the build:complete event after 60 seconds."
+        "Build timed out waiting for the build:complete event after 120 seconds."
       );
 
       // Just under the configured timeout: still pending.
-      await vi.advanceTimersByTimeAsync(59 * 1000);
+      await vi.advanceTimersByTimeAsync(119 * 1000);
 
-      // Past it: the promise rejects.
+      // Past it: the promise rejects and the still-running Gradle process
+      // is cancelled to release the shared build slot.
       await vi.advanceTimersByTimeAsync(2 * 1000);
       await expectation;
-      await cancelBuild();
+      const cancelCalls = mockInvoke.mock.calls.filter(([cmd]) => cmd === "cancel_build");
+      expect(cancelCalls).toHaveLength(1);
     } finally {
       updateSetting("mcp", "buildTimeoutSec", 600);
       vi.useRealTimers();

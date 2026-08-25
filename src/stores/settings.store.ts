@@ -65,7 +65,6 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined;
 function scheduleSave() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    saveTimer = undefined;
     await flushPendingSettingsSave();
   }, 500);
 }

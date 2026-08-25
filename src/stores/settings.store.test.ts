@@ -118,8 +118,30 @@ describe("settings.store", () => {
 });
 
 describe("flushPendingSettingsSave", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.restoreAllMocks();
+    vi.useFakeTimers();
+    // Drain any debounced save left pending by another test so each test
+    // starts from an idle timer regardless of execution order.
+    await flushPendingSettingsSave();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("persists settings when the debounce window elapses", async () => {
+    const saveSpy = vi.spyOn(tauriApi, "saveSettings").mockResolvedValue(undefined);
+
+    updateSetting("appearance", "uiFontSize", 18);
+    expect(saveSpy).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(500);
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+    expect(saveSpy.mock.calls[0]?.[0].appearance.uiFontSize).toBe(18);
+
+    // Restore for subsequent tests.
+    updateSetting("appearance", "uiFontSize", 12);
+    await flushPendingSettingsSave();
   });
 
   it("saves immediately instead of waiting for the debounce window", async () => {
@@ -134,7 +156,6 @@ describe("flushPendingSettingsSave", () => {
     updateSetting("appearance", "uiFontSize", 12);
     await flushPendingSettingsSave();
     expect(saveSpy).toHaveBeenCalledTimes(2);
-    vi.restoreAllMocks();
   });
 
   it("is a no-op when no save is pending", async () => {
@@ -142,7 +163,6 @@ describe("flushPendingSettingsSave", () => {
 
     await flushPendingSettingsSave();
     expect(saveSpy).not.toHaveBeenCalled();
-    vi.restoreAllMocks();
   });
 
   it("propagates save failures through the toast path without throwing", async () => {
@@ -155,7 +175,6 @@ describe("flushPendingSettingsSave", () => {
     updateSetting("appearance", "uiFontSize", 12);
     await flushPendingSettingsSave();
     expect(errorSpy).toHaveBeenCalled();
-    vi.restoreAllMocks();
   });
 });
 
