@@ -255,9 +255,9 @@ export async function selectVariant(name: string): Promise<void> {
   try {
     await setActiveVariant(name);
   } catch (err) {
-    // Same reasoning as pickDevice: the backend's active variant drives
-    // find_apk_path and the MCP tools, so a silent divergence is worse than a
-    // visible failure.
+    // The backend persists last_build_variant for this project (the same
+    // state the MCP set_active_variant tool writes), so a silent failure
+    // would leave settings diverged from the UI — worse than a visible error.
     setVariantState("activeVariant", previous);
     showToast(`Failed to select variant: ${formatError(err)}`, "error");
     return;

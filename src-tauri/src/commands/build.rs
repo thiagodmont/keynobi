@@ -115,13 +115,16 @@ pub async fn run_gradle_task(
                             BuildErrorSeverity::Warning
                         };
                         if let Ok(mut errs) = errors_buf.lock() {
-                            errs.push(BuildError {
-                                message: line.content.clone(),
-                                file: line.file.clone(),
-                                line: line.line,
-                                col: line.col,
-                                severity,
-                            });
+                            build_runner::push_build_error(
+                                &mut errs,
+                                BuildError {
+                                    message: line.content.clone(),
+                                    file: line.file.clone(),
+                                    line: line.line,
+                                    col: line.col,
+                                    severity,
+                                },
+                            );
                         }
                     }
 

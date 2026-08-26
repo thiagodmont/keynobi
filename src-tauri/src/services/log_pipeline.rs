@@ -59,6 +59,15 @@ impl PipelineContext {
         }
     }
 
+    /// Seed the ID allocator from an existing store's highest assigned ID
+    /// (pass `store.max_id() + 1`). Keeps IDs monotonic when a fresh context
+    /// replaces the old one while entries from the previous generation are
+    /// still retained — e.g., a logcat reconnect after an ADB server restart.
+    pub fn with_next_id(mut self, next_id: u64) -> Self {
+        self.next_id = self.next_id.max(next_id);
+        self
+    }
+
     pub fn next_id(&mut self) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
@@ -888,5 +897,35 @@ mod tests {
             ctx_plain.seen_packages.len()
         );
         assert_eq!(ctx_seeded.new_packages.len(), ctx_plain.new_packages.len());
+    }
+
+    #[test]
+    fn with_next_id_continues_after_seeded_value() {
+        let mut ctx = PipelineContext::new().with_next_id(43);
+        assert_eq!(ctx.next_id(), 43);
+        assert_eq!(ctx.next_id(), 44);
+    }
+
+    #[test]
+    fn with_next_id_keeps_monotonic_ids_across_context_reset() {
+        // Simulates a reconnect: entries 1..=5 already in the store from the
+        // previous generation, a fresh context must not reissue those IDs.
+        let pipeline = LogPipeline::default_pipeline();
+        let mut ctx = PipelineContext::new().with_next_id(6);
+
+        let raw = RawLogLine {
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1000,
+            tid: 1000,
+            level: LogcatLevel::Info,
+            tag: "T".into(),
+            message: "after reconnect".into(),
+        };
+
+        let entry = pipeline.run(raw, &mut ctx);
+        assert_eq!(
+            entry.id, 6,
+            "first entry after reconnect must continue past existing store IDs"
+        );
     }
 }

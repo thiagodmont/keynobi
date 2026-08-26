@@ -11,12 +11,21 @@ use tauri::State;
 /// this command indefinitely.
 const GRADLE_QUERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
 
-async fn resolve_gradle_root(fs_state: &State<'_, FsState>) -> Result<PathBuf, String> {
+/// Resolve the gradle root for the active project, or `None` if no project
+/// is open. Callers that want to treat "no project" as a normal outcome
+/// (rather than an error) should use this instead of string-matching
+/// [`resolve_gradle_root`]'s error.
+async fn resolve_gradle_root_opt(fs_state: &State<'_, FsState>) -> Option<PathBuf> {
     let fs = fs_state.0.lock().await;
     fs.gradle_root
         .as_ref()
         .or(fs.project_root.as_ref())
         .cloned()
+}
+
+async fn resolve_gradle_root(fs_state: &State<'_, FsState>) -> Result<PathBuf, String> {
+    resolve_gradle_root_opt(fs_state)
+        .await
         .ok_or_else(|| "No project open".to_string())
 }
 
@@ -160,8 +169,20 @@ pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<Va
         .to_string())
 }
 
-/// Set the active build variant (no-op settings write — variant is managed by the variant store).
+/// Persist the active build variant as `last_build_variant` for the current
+/// project so it is restored on the next session — the same state the MCP
+/// `set_active_variant` tool writes (keyed by gradle root). No-op success if
+/// no project is open or the project is not yet in `recent_projects`.
 #[tauri::command]
-pub async fn set_active_variant(_variant: String) -> Result<(), String> {
-    Ok(())
+pub async fn set_active_variant(
+    variant: String,
+    fs_state: State<'_, FsState>,
+) -> Result<(), String> {
+    // No project open — nothing to persist, which matches the documented
+    // no-op behavior rather than surfacing an error to the UI.
+    let Some(gradle_root) = resolve_gradle_root_opt(&fs_state).await else {
+        return Ok(());
+    };
+    let project_path = gradle_root.to_string_lossy().into_owned();
+    settings_manager::set_active_variant_for_project(&project_path, &variant)
 }

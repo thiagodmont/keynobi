@@ -321,3 +321,89 @@ describe("late cancelled completion event after a timeout", () => {
     expect(buildState.phase).toBe("cancelled");
   });
 });
+
+describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
+  beforeEach(() => {
+    resetBuildState();
+    resetDeviceState();
+    resetVariantState();
+    mockInvoke.mockResolvedValue(undefined);
+    devicePickerMock.showDevicePicker.mockReset();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    resetBuildServiceForTests();
+    updateSetting("build", "autoInstallOnBuild", true);
+    vi.useRealTimers();
+  });
+
+  /** Start a deploy and complete its build phase with a success event. */
+  async function deployThroughSuccessfulBuild() {
+    const handlers = new Map<string, (e: { payload: unknown }) => void>();
+    vi.mocked(listen).mockImplementation(async (event, cb) => {
+      handlers.set(String(event), cb as unknown as (e: { payload: unknown }) => void);
+      return () => {};
+    });
+
+    await initBuildService();
+    // Fail loudly if the listener was never registered — otherwise the
+    // dispatch below would no-op and the test would pass vacuously.
+    expect(handlers.has("build:complete")).toBe(true);
+
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      if (cmd === "find_apk_path") return Promise.resolve("/tmp/app-debug.apk");
+      if (cmd === "get_package_name_from_apk") return Promise.resolve("com.example.app");
+      if (cmd === "install_apk_on_device") return Promise.resolve("Success");
+      if (cmd === "launch_app_on_device") return Promise.resolve("Starting: Intent");
+      return Promise.resolve(undefined);
+    });
+
+    devicePickerMock.showDevicePicker.mockResolvedValue("emulator-5554");
+    await selectVariant("debug");
+
+    const deploy = runAndDeploy();
+    await vi.waitFor(() => expect(buildState.phase).toBe("running"));
+
+    handlers.get("build:complete")!({
+      payload: {
+        success: true,
+        cancelled: false,
+        durationMs: 1_000,
+        errorCount: 0,
+        warningCount: 0,
+        task: "assembleDebug",
+      },
+    });
+    await deploy;
+  }
+
+  it("skips device resolution, install, and launch when autoInstallOnBuild is off", async () => {
+    updateSetting("build", "autoInstallOnBuild", false);
+    await deployThroughSuccessfulBuild();
+
+    expect(buildState.phase).toBe("success");
+    // Build-only run: the device picker must not even open.
+    expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "find_apk_path")).toHaveLength(0);
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "install_apk_on_device")).toHaveLength(
+      0
+    );
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "launch_app_on_device")).toHaveLength(0);
+  });
+
+  it("still installs and launches when autoInstallOnBuild is on (default)", async () => {
+    updateSetting("build", "autoInstallOnBuild", true);
+    await deployThroughSuccessfulBuild();
+
+    expect(buildState.phase).toBe("success");
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "install_apk_on_device")).toEqual([
+      ["install_apk_on_device", { serial: "emulator-5554", apkPath: "/tmp/app-debug.apk" }],
+    ]);
+    expect(
+      mockInvoke.mock.calls.filter(([cmd]) => cmd === "launch_app_on_device")[0]?.[1]
+    ).toMatchObject({ serial: "emulator-5554", package: "com.example.app" });
+  });
+});

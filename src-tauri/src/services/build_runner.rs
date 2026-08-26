@@ -60,6 +60,54 @@ pub fn load_build_history() -> VecDeque<BuildRecord> {
 /// Maximum number of raw build output lines retained for MCP `get_build_log`.
 pub const MAX_BUILD_LOG: usize = 5_000;
 
+/// Maximum number of structured errors/warnings retained per build. Verbose
+/// Gradle runs can emit hundreds of thousands of warning lines (lint,
+/// deprecation, per-class); the raw log is capped at `MAX_BUILD_LOG`, so this
+/// list is capped too — it is cloned into every history record and serialized
+/// into the on-disk build history. Once the cap is reached, one extra slot is
+/// used for a truncation notice.
+pub const MAX_BUILD_ERRORS: usize = 1_000;
+
+const TRUNCATION_NOTICE_PREFIX: &str = "Older diagnostics truncated";
+
+fn truncation_notice() -> BuildError {
+    BuildError {
+        message: format!(
+            "{TRUNCATION_NOTICE_PREFIX}: more than {MAX_BUILD_ERRORS} errors/warnings were emitted."
+        ),
+        file: None,
+        line: None,
+        col: None,
+        severity: BuildErrorSeverity::Warning,
+    }
+}
+
+/// Push a parsed diagnostic into the build's error accumulator.
+///
+/// The buffer keeps the MOST RECENT diagnostics (like `push_build_log` keeps
+/// the newest raw lines): once full, the oldest entry is evicted so late
+/// root-cause errors are not lost to early lint/deprecation noise. The first
+/// time an entry is evicted, a truncation notice is inserted at the front.
+pub fn push_build_error(buf: &mut Vec<BuildError>, error: BuildError) {
+    if buf.len() < MAX_BUILD_ERRORS {
+        buf.push(error);
+        return;
+    }
+
+    // Length invariant: the buffer holds MAX_BUILD_ERRORS entries while only
+    // real diagnostics have been seen, and exactly MAX_BUILD_ERRORS + 1 once
+    // the truncation notice has been inserted. Detecting the notice by length
+    // avoids false positives from user content (e.g. a diagnostic that happens
+    // to start with the notice text).
+    let has_notice = buf.len() > MAX_BUILD_ERRORS;
+    if !has_notice {
+        buf.insert(0, truncation_notice());
+    }
+    // Evict the oldest diagnostic (right after the notice) to make room.
+    buf.remove(1);
+    buf.push(error);
+}
+
 pub struct BuildStateInner {
     /// Process ID of the currently running Gradle process, if any.
     pub current_build: Option<ProcessId>,
@@ -770,17 +818,20 @@ pub async fn run_task(
                     let line = parse_build_line(&proc_line.text);
                     if matches!(line.kind, BuildLineKind::Error | BuildLineKind::Warning) {
                         if let Ok(mut e) = errors_buf.lock() {
-                            e.push(BuildError {
-                                message: line.content.clone(),
-                                file: line.file.clone(),
-                                line: line.line,
-                                col: line.col,
-                                severity: if line.kind == BuildLineKind::Error {
-                                    BuildErrorSeverity::Error
-                                } else {
-                                    BuildErrorSeverity::Warning
+                            push_build_error(
+                                &mut e,
+                                BuildError {
+                                    message: line.content.clone(),
+                                    file: line.file.clone(),
+                                    line: line.line,
+                                    col: line.col,
+                                    severity: if line.kind == BuildLineKind::Error {
+                                        BuildErrorSeverity::Error
+                                    } else {
+                                        BuildErrorSeverity::Warning
+                                    },
                                 },
-                            });
+                            );
                         }
                     }
                     if line.kind == BuildLineKind::Summary {
@@ -911,6 +962,83 @@ pub async fn run_task(
 mod tests {
     use super::*;
     use crate::models::build::BuildLineKind;
+
+    // ── push_build_error tests ─────────────────────────────────────────────────
+
+    fn make_numbered_error(n: usize) -> BuildError {
+        BuildError {
+            message: format!("error {n}"),
+            file: Some(format!("src/Main{n}.kt")),
+            line: Some(n as u32),
+            col: None,
+            severity: BuildErrorSeverity::Error,
+        }
+    }
+
+    #[test]
+    fn push_build_error_accepts_entries_below_cap() {
+        let mut buf = Vec::new();
+        for n in 0..MAX_BUILD_ERRORS {
+            push_build_error(&mut buf, make_numbered_error(n));
+        }
+        assert_eq!(buf.len(), MAX_BUILD_ERRORS);
+        assert_eq!(buf[0].message, "error 0");
+    }
+
+    #[test]
+    fn push_build_error_keeps_newest_and_prepends_notice_once_at_cap() {
+        let mut buf: Vec<BuildError> = (0..MAX_BUILD_ERRORS).map(make_numbered_error).collect();
+        push_build_error(&mut buf, make_numbered_error(MAX_BUILD_ERRORS));
+
+        // One truncation notice at the front + the newest diagnostic kept.
+        assert_eq!(buf.len(), MAX_BUILD_ERRORS + 1);
+        let notice = &buf[0];
+        assert_eq!(notice.severity, BuildErrorSeverity::Warning);
+        assert!(notice.message.starts_with(TRUNCATION_NOTICE_PREFIX));
+        assert!(notice.file.is_none());
+        assert_eq!(buf[1].message, "error 1", "oldest diagnostic evicted");
+        assert_eq!(
+            buf.last().unwrap().message,
+            format!("error {}", MAX_BUILD_ERRORS),
+            "newest diagnostic must survive"
+        );
+    }
+
+    #[test]
+    fn push_build_error_stays_capped_across_many_overflows() {
+        let mut buf: Vec<BuildError> = (0..MAX_BUILD_ERRORS).map(make_numbered_error).collect();
+        for n in 0..50 {
+            push_build_error(&mut buf, make_numbered_error(MAX_BUILD_ERRORS + n));
+        }
+        assert_eq!(
+            buf.len(),
+            MAX_BUILD_ERRORS + 1,
+            "buffer must stay capped at the cap plus one truncation notice"
+        );
+        assert!(buf[0].message.starts_with(TRUNCATION_NOTICE_PREFIX));
+        assert_eq!(
+            buf.last().unwrap().message,
+            format!("error {}", MAX_BUILD_ERRORS + 49),
+            "the final root-cause error must be retained"
+        );
+    }
+
+    #[test]
+    fn push_build_error_notice_detection_is_not_fooled_by_user_content() {
+        // A real diagnostic whose message happens to start with the notice
+        // prefix must not suppress the truncation notice (detected by length,
+        // not by message content).
+        let mut buf: Vec<BuildError> = (0..MAX_BUILD_ERRORS).map(make_numbered_error).collect();
+        buf[0].message = format!("{TRUNCATION_NOTICE_PREFIX}: error 0");
+
+        push_build_error(&mut buf, make_numbered_error(MAX_BUILD_ERRORS));
+
+        assert_eq!(buf.len(), MAX_BUILD_ERRORS + 1);
+        assert!(
+            buf[0].message.starts_with(TRUNCATION_NOTICE_PREFIX),
+            "a synthetic notice must still be inserted at the front"
+        );
+    }
 
     // ── parse_build_line tests ─────────────────────────────────────────────────
 
