@@ -71,4 +71,19 @@ describe("bindings staleness guard", () => {
     expect(script).toContain("&&");
     expect(script).toContain("generate:bindings");
   });
+
+  it("check:bindings captures git status --porcelain into a variable instead of inlining it in test -z", () => {
+    // `test -z "$(git status ...)"` discards git's own exit status: a git
+    // failure (not a repo, corrupt index, permission error) yields empty
+    // stdout and the guard passes as "clean". Capturing the substitution's
+    // output into a variable first makes the assignment inherit git's exit
+    // status, so `VAR=$(git ...) && test -z "$VAR"` fails the `&&` chain
+    // when git itself fails, not just when the tree is dirty.
+    const pkg = JSON.parse(readPackageJson());
+    const script = pkg.scripts["check:bindings"];
+
+    expect(script).not.toContain('test -z "$(git status');
+    expect(script).toMatch(/\w+=\$\(git status --porcelain src\/bindings\/\)/);
+    expect(script).toMatch(/test -z "\$\w+"/);
+  });
 });
