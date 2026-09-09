@@ -64,9 +64,9 @@ jobs:
           workspaces: src-tauri
       - name: Check TypeScript bindings are up to date
         run: |
-          cd src-tauri && cargo test --lib 2>/dev/null | grep -q "test result" || true
+          cd src-tauri && cargo test --lib
           cd ..
-          git diff --exit-code src/bindings/ || \
+          test -z "$(git status --porcelain src/bindings/)" || \
             (echo "ERROR: TypeScript bindings are stale. Run: npm run generate:bindings" && exit 1)
       - name: Rust tests
         run: cd src-tauri && cargo test --lib --tests
