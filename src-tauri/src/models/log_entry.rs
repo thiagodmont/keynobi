@@ -9,7 +9,7 @@ static LOG_ENTRY_ID: AtomicU32 = AtomicU32::new(0);
 /// build system, Logcat, etc.).  The `source` field identifies the origin
 /// so multiple sources can share the same [`LogViewer`] component.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct LogEntry {
     /// Monotonically-increasing counter used as a stable React/SolidJS key.
@@ -36,7 +36,7 @@ impl LogEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
+#[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "lowercase")]
 pub enum LogLevel {
     Trace,
