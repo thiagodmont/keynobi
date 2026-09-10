@@ -545,6 +545,14 @@ describe("setAgeInQuery", () => {
   it("returns empty string when only age is removed", () => {
     expect(setAgeInQuery("age:5m", null)).toBe("");
   });
+
+  it("strips a negated age token whole instead of leaving an orphan '-'", () => {
+    expect(setAgeInQuery("-age:5m level:error", "1h")).toBe("level:error age:1h");
+  });
+
+  it("returns empty string when only a negated age token is removed", () => {
+    expect(setAgeInQuery("-age:5m", null)).toBe("");
+  });
 });
 
 // ── getActiveTokenContext ─────────────────────────────────────────────────────
@@ -1045,6 +1053,21 @@ describe("setPackageInQuery", () => {
     // Round-trip: removing both leaves empty
     const cleared = setPackageInQuery(setAgeInQuery(withBoth, null), null);
     expect(cleared).toBe("");
+  });
+
+  it("strips a negated package token whole instead of leaving an orphan '-'", () => {
+    expect(setPackageInQuery("-package:com.a level:error", "com.b")).toBe(
+      "level:error package:com.b"
+    );
+  });
+
+  it("returns empty string when only a negated package token is removed", () => {
+    expect(setPackageInQuery("-package:com.a", null)).toBe("");
+  });
+
+  it("does not produce an orphan negated-empty freetext token", () => {
+    const tokens = parseQuery(setPackageInQuery("-package:com.a level:error", "com.b"));
+    expect(tokens.every((t) => !(t.type === "freetext" && t.value === ""))).toBe(true);
   });
 });
 

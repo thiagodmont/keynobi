@@ -510,7 +510,7 @@ function safeRegexTest(pattern: string, target: string): boolean {
 /** Replace or insert an `age:` token in a raw query string. */
 export function setAgeInQuery(query: string, age: string | null): string {
   const withoutAge = query
-    .replace(/\bage:\S+/g, "")
+    .replace(/(^|\s)-?age:\S+/g, "$1")
     .replace(/\s+/g, " ")
     .trim();
   if (!age) return withoutAge;
@@ -520,7 +520,7 @@ export function setAgeInQuery(query: string, age: string | null): string {
 /** Replace or insert a `package:` token in a raw query string. */
 export function setPackageInQuery(query: string, pkg: string | null): string {
   const withoutPkg = query
-    .replace(/\bpackage:\S+/g, "")
+    .replace(/(^|\s)-?package:\S+/g, "$1")
     .replace(/\s+/g, " ")
     .trim();
   if (!pkg) return withoutPkg;
