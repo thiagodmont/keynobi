@@ -2999,12 +2999,13 @@ fn validate_device_serial(serial: &str) -> Result<(), McpError> {
 /// which would otherwise match any APK under `app/build/outputs/apk`.
 fn resolve_variant(explicit: Option<&str>, persisted: Option<&str>) -> String {
     if let Some(v) = explicit {
-        if !v.trim().is_empty() {
-            return v.to_string();
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
         }
     }
     match persisted {
-        Some(v) if !v.trim().is_empty() => v.to_string(),
+        Some(v) if !v.trim().is_empty() => v.trim().to_string(),
         _ => "debug".to_string(),
     }
 }
@@ -3390,6 +3391,16 @@ mod tests {
     fn resolve_variant_falls_back_to_persisted_when_explicit_is_blank() {
         assert_eq!(resolve_variant(Some(""), Some("staging")), "staging");
         assert_eq!(resolve_variant(Some("  "), Some("staging")), "staging");
+    }
+
+    #[test]
+    fn resolve_variant_trims_padded_explicit_argument() {
+        assert_eq!(resolve_variant(Some(" debug "), None), "debug");
+    }
+
+    #[test]
+    fn resolve_variant_trims_padded_persisted_value() {
+        assert_eq!(resolve_variant(None, Some(" staging ")), "staging");
     }
 
     #[test]
