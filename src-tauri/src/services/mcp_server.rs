@@ -2993,13 +2993,15 @@ fn validate_device_serial(serial: &str) -> Result<(), McpError> {
 
 /// Resolve the variant to use for a variant-optional build tool: an explicit
 /// argument wins; otherwise the variant persisted as active for the project
-/// is used; otherwise the literal `"debug"`. A persisted value that is empty
-/// or only whitespace is treated as not set, so it never reaches
-/// `build_runner::find_output_apk`, which would otherwise match any APK
-/// under `app/build/outputs/apk`.
+/// is used; otherwise the literal `"debug"`. A value that is empty or only
+/// whitespace is treated as not set for both the explicit argument and the
+/// persisted value, so it never reaches `build_runner::find_output_apk`,
+/// which would otherwise match any APK under `app/build/outputs/apk`.
 fn resolve_variant(explicit: Option<&str>, persisted: Option<&str>) -> String {
     if let Some(v) = explicit {
-        return v.to_string();
+        if !v.trim().is_empty() {
+            return v.to_string();
+        }
     }
     match persisted {
         Some(v) if !v.trim().is_empty() => v.to_string(),
@@ -3376,6 +3378,18 @@ mod tests {
     fn resolve_variant_treats_blank_persisted_value_as_not_set() {
         assert_eq!(resolve_variant(None, Some("")), "debug");
         assert_eq!(resolve_variant(None, Some("   ")), "debug");
+    }
+
+    #[test]
+    fn resolve_variant_treats_blank_explicit_argument_as_not_set() {
+        assert_eq!(resolve_variant(Some(""), None), "debug");
+        assert_eq!(resolve_variant(Some("   "), None), "debug");
+    }
+
+    #[test]
+    fn resolve_variant_falls_back_to_persisted_when_explicit_is_blank() {
+        assert_eq!(resolve_variant(Some(""), Some("staging")), "staging");
+        assert_eq!(resolve_variant(Some("  "), Some("staging")), "staging");
     }
 
     #[test]
