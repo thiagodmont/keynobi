@@ -1,0 +1,19 @@
+src-tauri/src/services/mcp_server.rs
+  s_fdd1e67398ca7d::t_a14fe10448ffe9 628-631,2994-3009,3360-3380
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "615e0aac1be6cd00604492c79dd4985ceaa26088",
+  "prompts": {},
+  "sessions": {
+    "s_fdd1e67398ca7d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3de2188d-2e3e-4e87-b8ee-c865a96659b8",
+        "model": "unknown"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
