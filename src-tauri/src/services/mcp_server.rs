@@ -625,7 +625,10 @@ impl AndroidMcpServer {
             .await
             .ok_or_else(|| McpError::invalid_params("No project open", None))?;
 
-        let variant = p.variant.as_deref().unwrap_or("debug");
+        let persisted_variant =
+            settings_manager::get_active_variant_for_project(&gradle_root.to_string_lossy());
+        let variant = resolve_variant(p.variant.as_deref(), persisted_variant.as_deref());
+        let variant = variant.as_str();
 
         match build_runner::find_output_apk(&gradle_root, variant) {
             Some(path) => {
@@ -2988,6 +2991,25 @@ fn validate_device_serial(serial: &str) -> Result<(), McpError> {
         .map_err(|e| McpError::invalid_params(e, None))
 }
 
+/// Resolve the variant to use for a variant-optional build tool: an explicit
+/// argument wins; otherwise the variant persisted as active for the project
+/// is used; otherwise the literal `"debug"`. A value that is empty or only
+/// whitespace is treated as not set for both the explicit argument and the
+/// persisted value, so it never reaches `build_runner::find_output_apk`,
+/// which would otherwise match any APK under `app/build/outputs/apk`.
+fn resolve_variant(explicit: Option<&str>, persisted: Option<&str>) -> String {
+    if let Some(v) = explicit {
+        let trimmed = v.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    match persisted {
+        Some(v) if !v.trim().is_empty() => v.trim().to_string(),
+        _ => "debug".to_string(),
+    }
+}
+
 fn capitalize_first(s: &str) -> String {
     let mut c = s.chars();
     match c.next() {
@@ -3336,6 +3358,49 @@ mod tests {
         assert_eq!(capitalize_first("debug"), "Debug");
         assert_eq!(capitalize_first("release"), "Release");
         assert_eq!(capitalize_first(""), "");
+    }
+
+    #[test]
+    fn resolve_variant_prefers_explicit_argument() {
+        assert_eq!(resolve_variant(Some("release"), Some("staging")), "release");
+    }
+
+    #[test]
+    fn resolve_variant_falls_back_to_persisted() {
+        assert_eq!(resolve_variant(None, Some("staging")), "staging");
+    }
+
+    #[test]
+    fn resolve_variant_defaults_to_debug_when_nothing_set() {
+        assert_eq!(resolve_variant(None, None), "debug");
+    }
+
+    #[test]
+    fn resolve_variant_treats_blank_persisted_value_as_not_set() {
+        assert_eq!(resolve_variant(None, Some("")), "debug");
+        assert_eq!(resolve_variant(None, Some("   ")), "debug");
+    }
+
+    #[test]
+    fn resolve_variant_treats_blank_explicit_argument_as_not_set() {
+        assert_eq!(resolve_variant(Some(""), None), "debug");
+        assert_eq!(resolve_variant(Some("   "), None), "debug");
+    }
+
+    #[test]
+    fn resolve_variant_falls_back_to_persisted_when_explicit_is_blank() {
+        assert_eq!(resolve_variant(Some(""), Some("staging")), "staging");
+        assert_eq!(resolve_variant(Some("  "), Some("staging")), "staging");
+    }
+
+    #[test]
+    fn resolve_variant_trims_padded_explicit_argument() {
+        assert_eq!(resolve_variant(Some(" debug "), None), "debug");
+    }
+
+    #[test]
+    fn resolve_variant_trims_padded_persisted_value() {
+        assert_eq!(resolve_variant(None, Some(" staging ")), "staging");
     }
 
     #[test]
