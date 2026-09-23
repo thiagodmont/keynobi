@@ -15,7 +15,7 @@ import { join } from "node:path";
 // vitest runs with the repo root as cwd (see vite.config.ts `test.include`).
 const REPO_ROOT = process.cwd();
 
-const SEMVER_RE = /^\d+\.\d+\.\d+/;
+const SEMVER_RE = /^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/;
 
 function pkgVersion() {
   const pkg = JSON.parse(
@@ -56,6 +56,14 @@ describe("version sync", () => {
       "src-tauri/tauri.conf.json's version is not a MAJOR.MINOR.PATCH semver " +
         "string."
     ).toMatch(SEMVER_RE);
+  });
+
+  it("SEMVER_RE rejects a version with a stray trailing segment", () => {
+    expect("0.1.28").toMatch(SEMVER_RE);
+    expect("1.2.3-rc.1").toMatch(SEMVER_RE);
+    expect("0.1.28.0").not.toMatch(SEMVER_RE);
+    expect("0.1.28garbage").not.toMatch(SEMVER_RE);
+    expect("1.2").not.toMatch(SEMVER_RE);
   });
 
   it("src-tauri/Cargo.toml's version matches package.json", () => {
