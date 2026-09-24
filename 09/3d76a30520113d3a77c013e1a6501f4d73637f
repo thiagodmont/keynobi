@@ -1,0 +1,21 @@
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_77b6ee00258f0f 3856-3857,3881-3882
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_a5995c645cad43 104,250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "093d76a30520113d3a77c013e1a6501f4d73637f",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
