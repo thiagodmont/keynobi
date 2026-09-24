@@ -64,7 +64,7 @@
     "@typescript-eslint/eslint-plugin": "^8.69.0",
     "@typescript-eslint/parser": "^8.69.0",
     "@vitest/ui": "^5.0.0",
-    "eslint": "^10.10.0",
+    "eslint": "^10.11.0",
     "eslint-plugin-solid": "^0.18.0",
     "http-server": "^14.1.1",
     "husky": "^9.1.7",
