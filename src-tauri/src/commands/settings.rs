@@ -31,22 +31,9 @@ pub async fn get_settings() -> Result<AppSettings, String> {
 
 #[tauri::command]
 pub async fn save_settings(
-    app_handle: tauri::AppHandle,
     logcat_state: State<'_, LogcatState>,
     settings: AppSettings,
 ) -> Result<(), AppError> {
-    // Register the Android SDK directory as an accessible fs scope.
-    if let Some(ref sdk_path) = settings.android.sdk_path {
-        if let Ok(canonical_sdk) = std::path::PathBuf::from(sdk_path).canonicalize() {
-            if canonical_sdk.is_dir() {
-                use tauri_plugin_fs::FsExt;
-                if let Some(scope) = app_handle.try_fs_scope() {
-                    let _ = scope.allow_directory(&canonical_sdk, true);
-                }
-            }
-        }
-    }
-
     let ring_cap = settings::clamp_logcat_ring_capacity_usize({
         let mut tmp = settings.clone();
         settings::normalize_logcat_section(&mut tmp.logcat);

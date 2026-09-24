@@ -22,7 +22,6 @@ export function tauriMockPlugin(): Plugin {
         "@tauri-apps/api/app": "\0tauri-mock-app",
         "@tauri-apps/plugin-dialog": "\0tauri-mock-dialog",
         "@tauri-apps/plugin-fs": "\0tauri-mock-fs",
-        "@tauri-apps/plugin-shell": "\0tauri-mock-shell",
       };
       return map[id] ?? null;
     },
@@ -70,7 +69,6 @@ export const remove = () => Promise.resolve();
 export default {};
 `;
       }
-      if (id === "\0tauri-mock-shell") return `export default {};`;
       return null;
     },
   };

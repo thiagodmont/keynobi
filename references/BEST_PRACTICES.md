@@ -101,7 +101,8 @@ Tauri capabilities and IPC commands should expose only what the app needs. Prefe
 
 Current surface (`src-tauri/capabilities/default.json`, `src-tauri/tauri.conf.json`):
 
-- Filesystem plugin access is scoped to `$HOME/.keynobi/**`. User-chosen paths reach the frontend only through the dialog plugin.
+- The webview's only filesystem permission is `fs:allow-write-text-file`, with no static scope. Its runtime scope holds only paths the user picked in a native dialog: the dialog plugin adds the file chosen in a save dialog (logcat export) and, non-recursively, the folder chosen in an open dialog (Open Project). The backend grants no directory scopes; project, SDK, and data-directory files are read and written in Rust behind typed commands.
+- No shell plugin: the frontend cannot spawn processes.
 - The CSP allows scripts from `'self'` only, and network connections only to the IPC endpoint, `api.github.com` (update check), and Sentry ingest (opt-in crash reports).
 - Any new capability or CSP origin needs a stated reason in the PR.
 
@@ -246,6 +247,7 @@ Do not log secrets, full MCP tool arguments, or raw device text at `info` or abo
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
+- **Webview write access to a picked project folder.** Picking a folder in Open Project adds it to the fs runtime scope, so with `fs:allow-write-text-file` the webview can overwrite that folder's top-level files (for example `gradlew` or `build.gradle.kts`). Closing this needs the folder picker or the logcat export to move behind a Rust command.
 - **Cross-process state.** GUI and headless MCP do not share live state or a build lock, and both write `build-history.json` (last writer wins).
 - **Duplicated logic.** Logcat start/stop/clear is duplicated between `commands/logcat.rs` and `mcp_server.rs`. APK path validation exists twice (`utils/path.rs` and MCP `validate_apk_path`).
 - **`unwrap()` policy.** Enforced by review only. About 15 production `unwrap()` calls remain, mostly `Regex::new` in `build_parser.rs`. Consider `clippy::unwrap_used`.
