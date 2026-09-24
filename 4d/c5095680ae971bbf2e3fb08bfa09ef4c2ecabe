@@ -1,0 +1,25 @@
+src/components/ui/Dialog/Dialog.tsx
+  s_1e114e823b9048::t_a10bb616ab6609 1,56-131,140
+references/DESIGN_SYSTEM.md
+  s_1e114e823b9048::t_86b4995459308c 68
+  s_1e114e823b9048::t_c4cb3724bcaa47 230
+src/components/ui/Dialog/Dialog.test.tsx
+  s_1e114e823b9048::t_56466f939d76b2 1,85-175
+  s_1e114e823b9048::t_c2ce17163e00c3 176
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4dc5095680ae971bbf2e3fb08bfa09ef4c2ecabe",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
