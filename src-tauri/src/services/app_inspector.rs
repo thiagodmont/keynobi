@@ -22,7 +22,8 @@ pub struct RestartResult {
     pub launched: bool,
     pub activity: Option<String>,
     pub display_time_ms: Option<u64>,
-    pub cold_start: bool,
+    /// True when `pm clear` wiped the app's data before the relaunch.
+    pub data_cleared: bool,
 }
 
 pub async fn get_runtime_state(
@@ -74,13 +75,16 @@ pub async fn get_runtime_state(
 }
 
 /// Restart an app on a device. Returns launch result including display time.
+///
+/// The app is always force-stopped, so the relaunch is a process cold start.
+/// Its data is wiped only when `clear_data` is true.
 pub async fn restart_app(
     adb: &PathBuf,
     device_serial: &str,
     package: &str,
-    cold: bool,
+    clear_data: bool,
 ) -> Result<RestartResult, String> {
-    if cold {
+    if clear_data {
         adb_cmd(adb, Some(device_serial), &["shell", "pm", "clear", package]).await?;
     } else {
         adb_cmd(
@@ -107,7 +111,7 @@ pub async fn restart_app(
         launched: true,
         activity: Some(activity),
         display_time_ms,
-        cold_start: cold,
+        data_cleared: clear_data,
     })
 }
 

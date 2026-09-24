@@ -252,13 +252,38 @@ pub struct RestartAppParams {
     #[schemars(description = "Android package name, e.g. com.example.app")]
     pub package: String,
     #[schemars(
-        description = "ADB device serial (from list_devices). Uses first connected device if omitted."
+        description = "ADB device serial (from list_devices). Uses first connected device if omitted. Required when clear_data is true."
     )]
     pub device_serial: Option<String>,
     #[schemars(
-        description = "Cold start: clears app data with pm clear before launching (default true). Set false for warm restart."
+        description = "Also wipe the app's data and runtime permissions (pm clear) before relaunching. Default false. Destructive: requires device_serial."
     )]
-    pub cold: Option<bool>,
+    pub clear_data: Option<bool>,
+    /// Removed parameter (it used to default to `true` and wipe app data).
+    /// Accepted only so old callers get an explicit error instead of a
+    /// silently different behavior.
+    #[schemars(skip)]
+    pub cold: Option<serde_json::Value>,
+}
+
+/// Whether `restart_app` should clear app data. Rejects the removed `cold`
+/// parameter, and data clearing without an explicitly chosen device.
+fn restart_clears_data(p: &RestartAppParams) -> Result<bool, McpError> {
+    if p.cold.is_some() {
+        return Err(McpError::invalid_params(
+            "`cold` was removed: restart_app now preserves app data by default. \
+             Pass `clear_data: true` with `device_serial` to wipe data before relaunching.",
+            None,
+        ));
+    }
+    let clear_data = p.clear_data.unwrap_or(false);
+    if clear_data && p.device_serial.is_none() {
+        return Err(McpError::invalid_params(
+            "clear_data wipes the app's data: pass device_serial explicitly (from list_devices).",
+            None,
+        ));
+    }
+    Ok(clear_data)
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -718,7 +743,7 @@ impl AndroidMcpServer {
 
     /// Restart an Android app: stop it (optionally clearing data), then relaunch and wait for display.
     #[tool(
-        description = "Restart an Android app: force-stop or pm clear, then relaunch and wait for the activity to display. Returns launch time."
+        description = "Restart an Android app: force-stop, then relaunch and wait for the activity to display. Returns launch time. App data is preserved unless clear_data is true (runs pm clear; requires device_serial)."
     )]
     async fn restart_app(
         &self,
@@ -728,6 +753,7 @@ impl AndroidMcpServer {
         if let Some(ref s) = p.device_serial {
             validate_device_serial(s)?;
         }
+        let clear_data = restart_clears_data(&p)?;
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
@@ -742,9 +768,7 @@ impl AndroidMcpServer {
                 }
             };
 
-        let cold = p.cold.unwrap_or(true);
-
-        match app_inspector::restart_app(&adb, &serial, &p.package, cold).await {
+        match app_inspector::restart_app(&adb, &serial, &p.package, clear_data).await {
             Ok(result) => Ok(CallToolResult::structured(json!(result))),
             Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
@@ -3309,6 +3333,50 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn restart_app_preserves_data_by_default() {
+        let p: RestartAppParams =
+            serde_json::from_value(json!({ "package": "com.example.app" })).unwrap();
+        assert!(!restart_clears_data(&p).unwrap());
+    }
+
+    #[test]
+    fn restart_app_clears_data_only_with_explicit_device() {
+        let p: RestartAppParams = serde_json::from_value(json!({
+            "package": "com.example.app",
+            "clear_data": true,
+            "device_serial": "emulator-5554",
+        }))
+        .unwrap();
+        assert!(restart_clears_data(&p).unwrap());
+
+        let p: RestartAppParams = serde_json::from_value(json!({
+            "package": "com.example.app",
+            "clear_data": true,
+        }))
+        .unwrap();
+        let err = restart_clears_data(&p).unwrap_err();
+        assert!(err.message.contains("device_serial"), "{}", err.message);
+    }
+
+    #[test]
+    fn restart_app_rejects_removed_cold_param() {
+        for cold in [true, false] {
+            let p: RestartAppParams =
+                serde_json::from_value(json!({ "package": "com.example.app", "cold": cold }))
+                    .unwrap();
+            let err = restart_clears_data(&p).unwrap_err();
+            assert!(err.message.contains("clear_data"), "{}", err.message);
+        }
+    }
+
+    #[test]
+    fn restart_app_schema_advertises_clear_data_not_cold() {
+        let schema = serde_json::to_string(&schemars::schema_for!(RestartAppParams)).unwrap();
+        assert!(schema.contains("\"clear_data\""));
+        assert!(!schema.contains("\"cold\""));
+    }
 
     #[test]
     fn validate_gradle_task_accepts_valid() {

@@ -91,7 +91,7 @@ Registration is detected with `claude mcp get keynobi` or `codex mcp get keynobi
 | `install_apk` | D | `device_serial`, `apk_path` (must be an `.apk` under the build outputs). |
 | `launch_app` | W | `device_serial`, `package`, `activity?` |
 | `stop_app` | W | |
-| `restart_app` | D | `package`, `device_serial?`, `cold?`. **`cold` defaults to `true` and runs `pm clear`, wiping app data.** Pass `cold: false` to restart without clearing. |
+| `restart_app` | D | `package`, `device_serial?`, `clear_data?`. Force-stops and relaunches; app data is preserved. `clear_data: true` runs `pm clear` first (wipes data and runtime permissions) and requires `device_serial`. The removed `cold` parameter returns an error. |
 | `list_avds` | R | |
 | `launch_avd` | W | `name` |
 | `stop_avd` | D | `serial` |
@@ -238,7 +238,6 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Device shell quoting.** `ui_type_text` and `ui_fill_input` (`encode_adb_input_text` escapes only `%` and space), `open_deep_link` (a query string with `&` is split), and `launch_app` `activity` (not validated in MCP) pass unquoted text to the device shell.
 - **Gradle options.** `validate_gradle_task` accepts a leading `-`, so option injection (`--offline`, `-I`, `--stop`) passes. No denylist blocks tasks such as `publish*` or `uninstall*`.
 - **No annotations.** No tool declares `readOnlyHint`, `destructiveHint`, `idempotentHint`, or `openWorldHint`.
-- **Destructive default.** `restart_app` defaults to `cold = true`, which wipes app data.
 - **Server identity.** `Implementation::from_build_env()` resolves inside rmcp, so `serverInfo` reports `rmcp` and rmcp's version instead of Keynobi's.
 - **Ignored parameter.** `run_gradle_task` accepts `variant` but ignores it.
 - **Parameter casing.** UI tools use camelCase on the wire, while their descriptions and all other tools use snake_case.
