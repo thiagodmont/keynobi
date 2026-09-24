@@ -101,7 +101,8 @@ Tauri capabilities and IPC commands should expose only what the app needs. Prefe
 
 Current surface (`src-tauri/capabilities/default.json`, `src-tauri/tauri.conf.json`):
 
-- Filesystem plugin access is scoped to `$HOME/.keynobi/**`. User-chosen paths reach the frontend only through the dialog plugin.
+- The webview's only filesystem permission is `fs:allow-write-text-file`, with no static scope. It can write only a file the user just picked in a save dialog (the dialog plugin adds that one path to the runtime scope). Used for logcat export. The backend grants no directory scopes; project, SDK, and data-directory files are read and written in Rust behind typed commands.
+- No shell plugin: the frontend cannot spawn processes.
 - The CSP allows scripts from `'self'` only, and network connections only to the IPC endpoint, `api.github.com` (update check), and Sentry ingest (opt-in crash reports).
 - Any new capability or CSP origin needs a stated reason in the PR.
 
