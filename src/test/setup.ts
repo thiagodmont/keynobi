@@ -35,9 +35,6 @@ vi.mock("@tauri-apps/plugin-dialog", () => ({
   open: vi.fn().mockResolvedValue(null),
 }));
 
-// Mock @tauri-apps/plugin-fs
-vi.mock("@tauri-apps/plugin-fs", () => ({}));
-
 // Mock @tauri-apps/plugin-opener
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: vi.fn().mockResolvedValue(undefined),
