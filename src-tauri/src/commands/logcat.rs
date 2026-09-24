@@ -1,9 +1,11 @@
+use crate::models::error::AppError;
 use crate::models::logcat::{LogStats, LogcatFilterSpec, ProcessedEntry};
 use crate::services::logcat::{self, LogcatFilter, LogcatState, LogcatStateInner};
 use crate::services::settings_manager;
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, State};
+use tauri_plugin_dialog::DialogExt;
 use tokio::sync::Mutex;
 
 // ── Commands ──────────────────────────────────────────────────────────────────
@@ -190,6 +192,36 @@ pub async fn get_logcat_stats(logcat_state: State<'_, LogcatState>) -> Result<Lo
     let cap = state.store.capacity().max(1) as f32;
     stats.buffer_usage_pct = (len as f32 / cap) * 100.0;
     Ok(stats)
+}
+
+/// Ask the user where to save `contents` (the entries the panel displays) and
+/// write the file. Returns the saved path, or `None` if the user cancels.
+///
+/// The dialog and the write both run here so the webview needs no filesystem
+/// access.
+#[tauri::command]
+pub async fn export_logcat(app: AppHandle, contents: String) -> Result<Option<String>, AppError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("Log", &["log", "txt"])
+        .set_file_name("logcat.log")
+        .save_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(path) = rx
+        .await
+        .map_err(|_| AppError::Other("Save dialog closed unexpectedly".into()))?
+    else {
+        return Ok(None);
+    };
+    let path = path
+        .into_path()
+        .map_err(|e| AppError::InvalidInput(e.to_string()))?;
+    tokio::fs::write(&path, contents)
+        .await
+        .map_err(|e| AppError::io(path.display(), e))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
 }
 
 pub fn new_logcat_state() -> LogcatState {
