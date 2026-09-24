@@ -524,7 +524,7 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
       >
         <SettingRow
           label="Allow unrestricted Gradle tasks"
-          description="Let AI clients run Gradle tasks that publish, upload, or uninstall (publish*, upload*, uninstall*, closeAndRelease*, *ToMavenCentral, *PlayStore*). These act outside this machine and cannot be undone. Off by default."
+          description="Let AI clients run Gradle tasks that publish, promote, upload, or uninstall (publish*, promote*, upload*, uninstall*, closeAndRelease*, *ToMavenCentral, *PlayStore*). These act outside this machine and cannot be undone. Off by default."
         >
           <SettingToggle
             ariaLabel="Allow unrestricted Gradle tasks"
