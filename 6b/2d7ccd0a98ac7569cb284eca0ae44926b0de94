@@ -1,0 +1,29 @@
+AGENTS.md
+  s_001e6d7fe3b5bd::t_c6ee19c5bf6b8c 1,3,5,7-12,14,16-22,24,26,28,30-35,37,39-41,43,45,48-51,54,56,58-62,64,66
+  s_001e6d7fe3b5bd::t_a1dcf0ac8a9b12 29
+CONTRIBUTING.md
+  s_001e6d7fe3b5bd::t_a1dcf0ac8a9b12 7
+  s_001e6d7fe3b5bd::t_034cb265517218 92
+README.md
+  s_001e6d7fe3b5bd::t_a1dcf0ac8a9b12 148
+.github/pull_request_template.md
+  s_001e6d7fe3b5bd::t_034cb265517218 15
+.claude/CLAUDE.md
+  s_001e6d7fe3b5bd::t_016e3be72433d0 3-4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "6b2d7ccd0a98ac7569cb284eca0ae44926b0de94",
+  "prompts": {},
+  "sessions": {
+    "s_001e6d7fe3b5bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "066850e1-152d-4e65-ba24-bd856b1e61e2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
