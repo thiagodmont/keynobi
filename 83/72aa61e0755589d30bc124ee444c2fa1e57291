@@ -1,0 +1,25 @@
+package.json
+  s_1e114e823b9048::t_6935d517cd25cc 65
+.gitignore
+  s_1e114e823b9048::t_010a21e4ddc2ba 18
+CONTRIBUTING.md
+  s_1e114e823b9048::t_ad0b588d4732d8 31
+package-lock.json
+  s_1e114e823b9048::t_3a9726d4883ea4 30,283-285,293-295,327-329,333,403-405,409-410,416-425,3806-3857,4103-4121,6122-6133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8372aa61e0755589d30bc124ee444c2fa1e57291",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
