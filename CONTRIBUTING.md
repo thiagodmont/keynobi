@@ -4,7 +4,7 @@ Thank you for helping improve Keynobi. This guide is the entry point; deeper rul
 
 ## Before you write code
 
-1. [AGENTS.md](AGENTS.md) — stack, IPC checklist, testing commands, how to add a feature end-to-end.
+1. [AGENTS.md](AGENTS.md) — key rules, commands, checks to run, and Git conventions. For adding a command end to end, see [references/CODE_PATTERN.md](references/CODE_PATTERN.md#commands).
 2. [references/BEST_PRACTICES.md](references/BEST_PRACTICES.md) — security, performance, bounded collections, AI-first design.
 3. [references/CODE_PATTERN.md](references/CODE_PATTERN.md) — naming, stores, Tauri patterns, path canonicalization, testing gate.
 4. [references/DOMAIN_PATTERNS.md](references/DOMAIN_PATTERNS.md) — build, logcat, device, MCP domain conventions.
@@ -89,7 +89,7 @@ Large UI surfaces (for example `src/components/logcat/LogcatPanel.tsx`) are hard
 
 ## Session completion (maintainers & regular contributors)
 
-When you establish a new pattern or ship user-visible behavior, align with [AGENTS.md](AGENTS.md) § Session Completion: update `references/CODE_PATTERN.md`, `references/DOMAIN_PATTERNS.md`, or `references/BEST_PRACTICES.md` when patterns change, `references/MCP_SERVER.md` or `references/DESIGN_SYSTEM.md` when those surfaces change, and `references/USER_MANUAL.md` when users need new docs. Remove a **Known Gaps** entry when your change fixes it.
+When you establish a new pattern or ship user-visible behavior, align with [AGENTS.md](AGENTS.md) § Before You Finish: update `references/CODE_PATTERN.md`, `references/DOMAIN_PATTERNS.md`, or `references/BEST_PRACTICES.md` when patterns change, `references/MCP_SERVER.md` or `references/DESIGN_SYSTEM.md` when those surfaces change, and `references/USER_MANUAL.md` when users need new docs. Remove a **Known Gaps** entry when your change fixes it.
 
 ## Questions
 

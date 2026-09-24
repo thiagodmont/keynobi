@@ -145,7 +145,7 @@ cd src-tauri && cargo test && cargo clippy -- -D warnings
 npm run generate:bindings   # after Rust model / TS export changes
 ```
 
-**Contributors:** full checklist, CI parity, and review expectations are in [CONTRIBUTING.md](CONTRIBUTING.md) (and [AGENTS.md](AGENTS.md) for the end-to-end feature checklist).
+**Contributors:** full checklist, CI parity, and review expectations are in [CONTRIBUTING.md](CONTRIBUTING.md) (and [AGENTS.md](AGENTS.md) for agent rules; [references/CODE_PATTERN.md](references/CODE_PATTERN.md#commands) for adding a command end to end).
 
 ---
 
