@@ -1,0 +1,21 @@
+RELEASING.md
+  s_1e114e823b9048::t_d1021da3bd6d4a 38-40,48-53,145-147
+.github/workflows/release.yml
+  s_1e114e823b9048::t_6ad16a4dd4165b 199-218,249-258,260-262,264-276,281,283-291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d8b9ef362eadf8cbf0a743624fa8c00317d44a74",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
