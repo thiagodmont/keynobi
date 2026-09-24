@@ -1,0 +1,59 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:generateDebugResources
+> Task :app:packageDebugResources
+> Task :app:processDebugNavigationResources
+> Task :app:kspDebugKotlin UP-TO-DATE
+> Task :app:javaPreCompileDebug UP-TO-DATE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:parseDebugLocalResources
+> Task :app:mergeDebugAssets UP-TO-DATE
+> Task :app:compressDebugAssets UP-TO-DATE
+> Task :app:generateDebugGlobalSynthetics UP-TO-DATE
+> Task :app:checkDebugDuplicateClasses UP-TO-DATE
+> Task :app:desugarDebugFileDependencies UP-TO-DATE
+> Task :app:generateDebugRFile
+> Task :app:mergeExtDexDebug UP-TO-DATE
+> Task :app:mergeLibDexDebug UP-TO-DATE
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+> Task :app:mapDebugSourceSetPaths
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+> Task :app:processDebugMainManifest UP-TO-DATE
+> Task :app:processDebugManifest UP-TO-DATE
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+> Task :app:mergeDebugJniLibFolders UP-TO-DATE
+> Task :app:mergeDebugNativeLibs NO-SOURCE
+> Task :app:stripDebugDebugSymbols NO-SOURCE
+> Task :app:validateSigningDebug UP-TO-DATE
+> Task :app:writeDebugAppMetadata UP-TO-DATE
+> Task :app:writeDebugSigningConfigVersions UP-TO-DATE
+> Task :app:mergeDebugResources
+> Task :app:processDebugResources FAILED
+> Task :app:compileDebugKotlin
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:processDebugResources'.
+> A failure occurred while executing com.android.build.gradle.internal.res.LinkApplicationAndroidResourcesTask$TaskAction
+   > Android resource linking failed
+     com.example.r18.app-main-7:/layout/activity_main.xml:11: error: resource color/does_not_exist (aka com.example.r18:color/does_not_exist) not found.
+     com.example.r18.app-main-7:/layout/activity_main.xml:11: error: resource string/missing_label (aka com.example.r18:string/missing_label) not found.
+     com.example.r18.app-main-7:/layout/activity_main.xml:17: error: resource drawable/nope (aka com.example.r18:drawable/nope) not found.
+     com.example.r18.app-main-7:/layout/activity_main.xml:17: error: attribute android:bogusAttribute not found.
+     error: failed linking file resources.
+
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 9s
+29 actionable tasks: 9 executed, 20 up-to-date

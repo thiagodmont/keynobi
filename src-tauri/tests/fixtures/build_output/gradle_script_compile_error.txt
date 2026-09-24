@@ -1,0 +1,28 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Calculating task graph as no cached configuration is available for tasks: :app:printStamp
+
+> Configure project :app
+e: file:///Users/dev/project/app/build.gradle.kts:23:23: Unresolved reference 'io'.
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Build file '/Users/dev/project/app/build.gradle.kts' line: 23
+
+* What went wrong:
+Script compilation error:
+
+  Line 23: val buildStamp = java.io.File(rootDir, "stamp.txt").readText().trim()
+                                 ^ Unresolved reference 'io'.
+
+1 error
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 5s
+Configuration cache entry stored.

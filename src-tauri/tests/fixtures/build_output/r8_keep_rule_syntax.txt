@@ -1,0 +1,72 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :stub:compileJava UP-TO-DATE
+> Task :lib:compileJava UP-TO-DATE
+> Task :lib:processResources NO-SOURCE
+> Task :lib:classes UP-TO-DATE
+> Task :lib:jar UP-TO-DATE
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:mergeReleaseJniLibFolders UP-TO-DATE
+> Task :app:mergeReleaseNativeLibs NO-SOURCE
+> Task :app:stripReleaseDebugSymbols NO-SOURCE
+> Task :app:extractReleaseNativeSymbolTables NO-SOURCE
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:checkReleaseDuplicateClasses UP-TO-DATE
+> Task :app:generateReleaseResources UP-TO-DATE
+> Task :app:packageReleaseResources UP-TO-DATE
+> Task :app:processReleaseNavigationResources UP-TO-DATE
+> Task :app:parseReleaseLocalResources UP-TO-DATE
+> Task :app:generateReleaseRFile UP-TO-DATE
+> Task :app:kspReleaseKotlin UP-TO-DATE
+> Task :app:compileReleaseKotlin UP-TO-DATE
+> Task :app:javaPreCompileRelease UP-TO-DATE
+> Task :app:compileReleaseJavaWithJavac NO-SOURCE
+> Task :app:mergeReleaseArtProfile UP-TO-DATE
+> Task :app:checkReleaseAarMetadata UP-TO-DATE
+> Task :app:mapReleaseSourceSetPaths UP-TO-DATE
+> Task :app:compileReleaseNavigationResources UP-TO-DATE
+> Task :app:mergeReleaseResources UP-TO-DATE
+> Task :app:createReleaseCompatibleScreenManifests UP-TO-DATE
+> Task :app:extractDeepLinksRelease UP-TO-DATE
+> Task :app:processReleaseMainManifest UP-TO-DATE
+> Task :app:processReleaseManifest UP-TO-DATE
+> Task :app:processReleaseManifestForPackage UP-TO-DATE
+> Task :app:processReleaseResources UP-TO-DATE
+> Task :app:expandReleaseArtProfileWildcards UP-TO-DATE
+> Task :app:extractProguardFiles UP-TO-DATE
+> Task :app:mergeReleaseGeneratedProguardFiles UP-TO-DATE
+> Task :app:processReleaseJavaRes UP-TO-DATE
+> Task :app:mergeReleaseJavaResource UP-TO-DATE
+> Task :app:mergeReleaseStartupProfile UP-TO-DATE
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseAssets UP-TO-DATE
+> Task :app:compressReleaseAssets UP-TO-DATE
+> Task :app:extractReleaseVersionControlInfo UP-TO-DATE
+> Task :app:generateReleaseLintVitalReportModel
+> Task :app:optimizeReleaseResources UP-TO-DATE
+> Task :app:collectReleaseDependencies UP-TO-DATE
+> Task :app:sdkReleaseDependencyData UP-TO-DATE
+> Task :app:writeReleaseAppMetadata UP-TO-DATE
+> Task :app:writeReleaseSigningConfigVersions UP-TO-DATE
+
+> Task :app:minifyReleaseWithR8 FAILED
+ERROR: /Users/dev/project/app/proguard-rules.pro:3:19: R8: Expected [!]interface|@interface|class|enum
+
+> Task :app:lintVitalAnalyzeRelease
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:minifyReleaseWithR8'.
+> A failure occurred while executing com.android.build.gradle.internal.tasks.R8Task$R8Runnable
+   > Compilation failed to complete, position: offset: 96, line: 3, column: 19, origin: /Users/dev/project/app/proguard-rules.pro
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 11s
+41 actionable tasks: 3 executed, 38 up-to-date

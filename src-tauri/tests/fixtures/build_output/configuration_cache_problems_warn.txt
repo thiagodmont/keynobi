@@ -1,0 +1,31 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+Calculating task graph as no cached configuration is available for tasks: :app:help
+
+> Task :app:help
+
+Welcome to Gradle 9.4.1.
+
+To run a build, run gradle <task> ...
+
+To see a list of available tasks, run gradle tasks
+
+To see more detail about a task, run gradle help --task <task>
+
+To see a list of command-line options, run gradle --help
+
+For more detail on using Gradle, see https://docs.gradle.org/9.4.1/userguide/command_line_interface.html
+
+For troubleshooting, visit https://help.gradle.org
+
+1 problem was found storing the configuration cache.
+- Build file 'app/build.gradle.kts': registration of listener on 'Gradle.buildFinished' is unsupported
+  See https://docs.gradle.org/9.4.1/userguide/configuration_cache_requirements.html#config_cache:requirements:build_listeners
+
+See the complete report at file:///Users/dev/project/build/reports/configuration-cache/8n32qwbn7gb5528qtm2wbqooa/8b6gkua91kbisn7h3em8idaw7/configuration-cache-report.html
+
+[Incubating] Problems report is available at: file:///Users/dev/project/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 5s
+1 actionable task: 1 executed
+Configuration cache entry stored with 1 problem.

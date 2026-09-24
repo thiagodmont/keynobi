@@ -1,0 +1,116 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+> Task :app:preBuild UP-TO-DATE
+> Task :app:preDebugBuild UP-TO-DATE
+> Task :app:mergeDebugNativeDebugMetadata NO-SOURCE
+> Task :app:generateDebugResources UP-TO-DATE
+> Task :app:packageDebugResources UP-TO-DATE
+> Task :app:processDebugNavigationResources UP-TO-DATE
+> Task :app:parseDebugLocalResources UP-TO-DATE
+> Task :app:generateDebugRFile UP-TO-DATE
+> Task :app:generateDebugAssets UP-TO-DATE
+> Task :app:javaPreCompileDebug
+> Task :app:mergeDebugAssets
+> Task :app:compressDebugAssets
+> Task :app:generateDebugGlobalSynthetics
+> Task :app:desugarDebugFileDependencies
+> Task :app:checkDebugDuplicateClasses
+> Task :app:checkDebugAarMetadata
+> Task :app:kspDebugKotlin
+> Task :app:mergeExtDexDebug
+> Task :app:mergeLibDexDebug
+> Task :app:mapDebugSourceSetPaths
+> Task :app:compileDebugNavigationResources
+> Task :app:createDebugCompatibleScreenManifests
+> Task :app:extractDeepLinksDebug
+> Task :app:mergeDebugResources
+> Task :app:processDebugMainManifest
+> Task :app:processDebugManifest
+> Task :app:mergeDebugJniLibFolders
+> Task :app:mergeDebugNativeLibs NO-SOURCE
+> Task :app:stripDebugDebugSymbols NO-SOURCE
+> Task :app:validateSigningDebug
+> Task :app:writeDebugAppMetadata
+> Task :app:writeDebugSigningConfigVersions
+> Task :app:preReleaseBuild UP-TO-DATE
+> Task :app:mergeReleaseJniLibFolders
+> Task :app:mergeReleaseNativeLibs NO-SOURCE
+> Task :app:stripReleaseDebugSymbols NO-SOURCE
+> Task :app:extractReleaseNativeSymbolTables NO-SOURCE
+> Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
+> Task :app:checkReleaseDuplicateClasses
+> Task :app:generateReleaseResources
+> Task :app:packageReleaseResources
+> Task :app:processReleaseNavigationResources
+> Task :app:parseReleaseLocalResources
+> Task :app:processDebugManifestForPackage
+> Task :app:javaPreCompileRelease
+> Task :app:generateReleaseRFile
+> Task :app:checkReleaseAarMetadata
+> Task :app:mapReleaseSourceSetPaths
+> Task :app:compileReleaseNavigationResources
+> Task :app:createReleaseCompatibleScreenManifests
+> Task :app:mergeReleaseResources
+> Task :app:extractDeepLinksRelease
+> Task :app:processReleaseMainManifest
+> Task :app:processReleaseManifest
+> Task :app:desugarReleaseFileDependencies
+> Task :app:mergeReleaseStartupProfile
+> Task :app:kspReleaseKotlin
+> Task :app:processDebugResources
+> Task :app:compileDebugKotlin
+> Task :app:compileDebugJavaWithJavac NO-SOURCE
+> Task :app:processDebugJavaRes
+> Task :app:dexBuilderDebug
+> Task :app:mergeProjectDexDebug
+> Task :app:generateReleaseAssets UP-TO-DATE
+> Task :app:mergeReleaseArtProfile
+> Task :app:mergeReleaseAssets
+> Task :app:compressReleaseAssets
+> Task :app:extractReleaseVersionControlInfo
+> Task :app:extractProguardFiles
+> Task :app:collectReleaseDependencies
+> Task :app:mergeDebugJavaResource
+> Task :app:sdkReleaseDependencyData
+> Task :app:writeReleaseAppMetadata
+> Task :app:writeReleaseSigningConfigVersions
+> Task :app:processReleaseManifestForPackage
+> Task :app:preDebugAndroidTestBuild SKIPPED
+> Task :app:bundleDebugClassesToCompileJar
+> Task :app:processReleaseResources
+> Task :app:compileReleaseKotlin
+> Task :app:mergeExtDexRelease
+> Task :app:generateDebugLintReportModel
+> Task :app:compileReleaseJavaWithJavac NO-SOURCE
+> Task :app:dexBuilderRelease
+> Task :app:mergeReleaseGlobalSynthetics
+> Task :app:generateReleaseLintVitalReportModel
+> Task :app:mergeDexRelease
+> Task :app:compileReleaseArtProfile
+> Task :app:processReleaseJavaRes
+> Task :app:generateDebugAndroidTestLintModel
+> Task :app:preDebugUnitTestBuild UP-TO-DATE
+> Task :app:generateDebugUnitTestLintModel
+> Task :app:mergeReleaseJavaResource
+> Task :app:packageDebug
+> Task :app:createDebugApkListingFileRedirect
+> Task :app:assembleDebug
+> Task :app:optimizeReleaseResources
+> Task :app:lintAnalyzeDebugAndroidTest
+> Task :app:lintAnalyzeDebugUnitTest
+> Task :app:lintVitalAnalyzeRelease
+> Task :app:lintVitalReportRelease
+> Task :app:lintVitalRelease
+> Task :app:packageRelease
+> Task :app:createReleaseApkListingFileRedirect
+> Task :app:assembleRelease
+> Task :app:lintAnalyzeDebug
+
+> Task :app:lintReportDebug
+Wrote HTML report to file:///Users/dev/project/app/build/reports/lint-results-debug.html
+
+> Task :app:lintDebug
+
+BUILD SUCCESSFUL in 27s
+89 actionable tasks: 84 executed, 5 up-to-date
+Consider enabling configuration cache to speed up this build: https://docs.gradle.org/9.4.1/userguide/configuration_cache_enabling.html
