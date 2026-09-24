@@ -1,0 +1,46 @@
+src/components/build/BuildPanel.tsx
+  s_1e114e823b9048::t_1309e7191e4dc1 226
+src/components/layout/TitleBar.tsx
+  s_1e114e823b9048::t_8af4d2a0cc7356 28
+  s_1e114e823b9048::t_1309e7191e4dc1 5,26-27,42-43,59-62,211
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_c23c3f8c1771ee 78-80
+src/services/build.service.ts
+  s_1e114e823b9048::t_a0c17bc8719e93 62-63,76-85,103-121,123-139,208-210,212-213,223-224,227,230-235,238,258-259,417-419,426-432,535
+  s_1e114e823b9048::t_c9d755b1dc9d21 27,306-308,363,368,531-534
+  s_1e114e823b9048::t_73b5a03e13e408 536
+src/components/layout/TitleBar.test.tsx
+  s_1e114e823b9048::t_3495e0cc1e4d98 3,6,19,114-130
+  s_1e114e823b9048::t_30d44a486faf0b 131
+src/services/build.service.test.ts
+  s_1e114e823b9048::t_459a63646fff61 224,264,277,290,292,298,305-306,310-325,328-331,337-361,364-403,462,545
+  s_1e114e823b9048::t_4576d93357725e 15,532-544
+src/services/project.service.ts
+  s_1e114e823b9048::t_feea054c078e81 152,180
+  s_1e114e823b9048::t_ad8f8dcaabeb92 24-29,83-85,87-89,91-94,136-140,143-144,168,174,189,206,214,220,228
+  s_1e114e823b9048::t_9da2f01c9e993e 290-291,294,299
+  s_1e114e823b9048::t_27d652ca9ae1a7 23
+src/stores/project.store.ts
+  s_1e114e823b9048::t_ad8f8dcaabeb92 23-34
+src/services/project.service.test.ts
+  s_1e114e823b9048::t_d62b608bf0cf2b 4,143-209
+  s_1e114e823b9048::t_928e21d9fbffaf 210
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_c23c3f8c1771ee 81
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "14ccd10b0446060288ac947d845ce6bfac8341fa",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
