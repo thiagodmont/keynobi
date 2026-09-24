@@ -62,7 +62,7 @@ All persistent app data lives under `~/.keynobi/`, resolved by `settings_manager
 | Path | Contents |
 |------|----------|
 | `settings.json` | User settings (atomic writes; a corrupt file is moved to `settings.json.corrupt`). |
-| `logs/app.log.*` | Daily-rotated GUI logs, pruned by retention settings. |
+| `logs/app.log.*` | Daily-rotated GUI logs, pruned by retention and folder-size settings (never the active file). |
 | `build-history.json`, `build-logs/build-{id}.jsonl` | Build history and per-build logs. |
 | `mcp-activity.jsonl`, `mcp-server.pid` | MCP activity log and headless server PID. |
 
@@ -236,6 +236,8 @@ GUI logging reads `KEYNOBI_LOG` (default `debug` in debug builds, `warn` in rele
 ```bash
 KEYNOBI_LOG=keynobi_lib=debug npm run tauri dev
 ```
+
+The file writer is non-blocking. Its guard is held until `RunEvent::Exit`, and dropping it there writes out queued lines; never `mem::forget` it. Old files are pruned at startup by `advanced.logRetentionDays` and every 5 s by `services/monitor.rs` (oldest first until the folder is under `advanced.logMaxSizeMb`). Both passes skip the file being written today (`monitor::active_log_file_name`, UTC date) and count only removals that succeeded.
 
 Headless MCP logging uses the standard tracing env filter (`RUST_LOG`, default `warn`) and writes to stderr so stdout remains reserved for MCP JSON-RPC.
 

@@ -101,21 +101,31 @@ fn cleanup_old_logs(log_dir: &std::path::Path, retention_days: u32) {
     let Ok(entries) = std::fs::read_dir(log_dir) else {
         return;
     };
+    let active = services::monitor::active_log_file_name();
     for entry in entries.flatten() {
         let path = entry.path();
         // Only touch files matching app.log.* pattern.
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if !name.starts_with("app.log") {
+        if !name.starts_with(services::monitor::LOG_FILE_PREFIX) || name == active {
             continue;
         }
         if let Ok(meta) = entry.metadata() {
             if let Ok(modified) = meta.modified() {
-                if modified < cutoff {
-                    let _ = std::fs::remove_file(&path);
+                if modified < cutoff && std::fs::remove_file(&path).is_ok() {
                     tracing::info!("Removed old log file: {}", path.display());
                 }
             }
         }
+    }
+}
+
+/// Drops the log writer guard on exit so lines still queued for the file are written.
+fn release_log_guard_on_exit(
+    event: &tauri::RunEvent,
+    guard: &mut Option<tracing_appender::non_blocking::WorkerGuard>,
+) {
+    if let tauri::RunEvent::Exit = event {
+        drop(guard.take());
     }
 }
 
@@ -129,7 +139,8 @@ pub fn run() {
     let _ = std::fs::create_dir_all(&log_dir);
 
     // Daily rotating file appender. Old files are named app.log.YYYY-MM-DD.
-    let file_appender = tracing_appender::rolling::daily(&log_dir, "app.log");
+    let file_appender =
+        tracing_appender::rolling::daily(&log_dir, services::monitor::LOG_FILE_PREFIX);
     let (non_blocking_file, file_guard) = tracing_appender::non_blocking(file_appender);
 
     let env_filter =
@@ -161,8 +172,8 @@ pub fn run() {
         .with(env_filter)
         .init();
 
-    // Keep the guard alive for the process lifetime so logs are flushed on exit.
-    std::mem::forget(file_guard);
+    // Held until RunEvent::Exit; the event loop exits the process without unwinding `run()`.
+    let mut file_guard = Some(file_guard);
 
     // ── Sentry (optional) ─────────────────────────────────────────────────────
     // Initialized after logging so startup diagnostics still hit the log file first.
@@ -379,8 +390,9 @@ pub fn run() {
             // Android Studio integration
             open_in_studio,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(move |_app, event| release_log_guard_on_exit(&event, &mut file_guard));
 }
 
 #[cfg(test)]
@@ -430,5 +442,65 @@ mod runtime_safety_tests {
                 .collect::<Vec<_>>()
                 .join("\n")
         );
+    }
+}
+
+#[cfg(test)]
+mod log_file_tests {
+    use super::*;
+    use std::io::Write;
+
+    /// Writer slow enough that queued lines are still pending right after they are sent.
+    /// The guard waits at most 1 s on drop, so keep the total well under that even
+    /// on CI runners that stretch short sleeps.
+    struct SlowWriter(Arc<std::sync::Mutex<Vec<u8>>>);
+
+    impl Write for SlowWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+            self.0.lock().unwrap().extend_from_slice(buf);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn exit_event_drops_log_guard_and_flushes_queued_lines() {
+        let written = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (mut writer, guard) = tracing_appender::non_blocking(SlowWriter(written.clone()));
+        let mut guard = Some(guard);
+
+        for i in 0..2 {
+            writeln!(writer, "line {i}").unwrap();
+        }
+
+        release_log_guard_on_exit(&tauri::RunEvent::Ready, &mut guard);
+        assert!(guard.is_some(), "non-exit events must keep the guard");
+
+        release_log_guard_on_exit(&tauri::RunEvent::Exit, &mut guard);
+        assert!(guard.is_none());
+        let text = String::from_utf8(written.lock().unwrap().clone()).unwrap();
+        assert_eq!(
+            text.lines().count(),
+            2,
+            "queued lines were not flushed: {text:?}"
+        );
+    }
+
+    #[test]
+    fn cleanup_old_logs_keeps_the_active_log() {
+        let dir = tempfile::tempdir().unwrap();
+        let active = services::monitor::active_log_file_name();
+        std::fs::write(dir.path().join(&active), b"active").unwrap();
+        std::fs::write(dir.path().join("app.log.2000-01-01"), b"old").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Zero retention puts the cutoff at now, so every existing file is past it.
+        cleanup_old_logs(dir.path(), 0);
+
+        assert!(dir.path().join(&active).exists());
+        assert!(!dir.path().join("app.log.2000-01-01").exists());
     }
 }
