@@ -2760,8 +2760,8 @@ impl AndroidMcpServer {
 #[tool_handler]
 #[prompt_handler]
 impl ServerHandler for AndroidMcpServer {
-    fn get_info(&self) -> ServerInfo {
-        ServerInfo::new(
+    fn get_info(&self) -> ServerConfig {
+        ServerConfig::new(
             ServerCapabilities::builder()
                 .enable_tools()
                 .enable_prompts()
@@ -3045,7 +3045,7 @@ struct LoggingMcpServer(AndroidMcpServer);
 impl ServerHandler for LoggingMcpServer {
     // ── Delegation for methods that AndroidMcpServer overrides ────────────────
 
-    fn get_info(&self) -> ServerInfo {
+    fn get_info(&self) -> ServerConfig {
         self.0.get_info()
     }
 
