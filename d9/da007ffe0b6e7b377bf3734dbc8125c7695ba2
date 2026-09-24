@@ -1,0 +1,19 @@
+src-tauri/Cargo.lock
+  s_1e114e823b9048::t_7037f076b25904 766,768,3355,3357,3544,3546
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d9da007ffe0b6e7b377bf3734dbc8125c7695ba2",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
