@@ -12,7 +12,7 @@
  */
 
 import * as Sentry from "@sentry/browser";
-import type { ErrorEvent } from "@sentry/core";
+import type { ErrorEvent } from "@sentry/browser";
 import { settingsState } from "@/stores/settings.store";
 
 function isTelemetryEnabled(): boolean {

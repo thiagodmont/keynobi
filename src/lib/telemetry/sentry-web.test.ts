@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ErrorEvent } from "@sentry/core";
+import type { ErrorEvent } from "@sentry/browser";
 import { scrubBrowserEvent, scrubWebFrameFilename } from "./sentry-web";
 
 describe("scrubWebFrameFilename", () => {
