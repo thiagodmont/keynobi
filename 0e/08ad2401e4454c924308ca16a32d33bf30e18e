@@ -1,0 +1,26 @@
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_a004950d4131bb 229
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_a004950d4131bb 79-83
+  s_1e114e823b9048::t_b4f7804cf78042 1-78,84-101
+references/CODE_PATTERN.md
+  s_1e114e823b9048::t_a004950d4131bb 35,268
+src-tauri/tests/headless/mod.rs
+  s_1e114e823b9048::t_4aa7ca66ff1539 1-227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0e08ad2401e4454c924308ca16a32d33bf30e18e",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
