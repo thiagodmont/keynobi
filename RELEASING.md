@@ -35,14 +35,21 @@ The release workflow will automatically:
 - Wait for CI to finish on that commit and stop unless it passed
 - Detect the version bump
 - Code-sign and notarize Apple Silicon + Intel DMGs in parallel (requires repository secrets below)
-- Create git tag `v0.1.1`
-- Publish a GitHub Release with both DMGs attached
+- Verify each DMG before publishing: the DMG signature, and for the app inside it `codesign --verify --deep --strict`, `stapler validate`, and Gatekeeper (`spctl --assess`)
+- Create git tag `v0.1.1` on the commit CI validated
+- Publish a GitHub Release with both DMGs and `SHA256SUMS.txt` attached
 
 Monitor progress at: **Actions → Release** in the GitHub repository.
 
 ### 4. Verify
 
 Check the new release at: `https://github.com/<owner>/<repo>/releases`
+
+To check a downloaded DMG against the published checksums:
+
+```bash
+shasum -a 256 -c SHA256SUMS.txt --ignore-missing
+```
 
 ---
 
@@ -135,3 +142,6 @@ GitHub **does not** clear secret values before your script runs; masking only hi
   job from the GitHub Actions UI (Actions → Release → Re-run failed jobs).
   Do not push a new version bump just to re-trigger — that creates a duplicate
   release. Use manual re-run instead.
+- **Re-running the publish job is safe.** A tag that already points at the
+  validated commit is kept, and an existing release gets its assets replaced.
+  A tag that points at any other commit stops the job; it is never moved.
