@@ -65,7 +65,7 @@ Use this map before adding local markup or styles in a feature folder. **Status*
 | Keyboard shortcut hint | `Kbd` | Use only for real shortcuts. | Stable |
 | Divider | `Separator` | Use semantic orientation. | Stable |
 | App command search | `CommandPalette` | Actions must come from `registerAction` or `registerKeyAndAction`. | Stable |
-| Confirmation or blocking choice | `DialogHost` / `showDialog` | Keep messages short and action labels explicit; use the `danger` button style for destructive choices. | Needs work: focus trap, Escape |
+| Confirmation or blocking choice | `DialogHost` / `showDialog` | Keep messages short and action labels explicit; use the `danger` button style for destructive choices. Escape and backdrop clicks resolve `"cancel"`; focus starts on the leftmost button (the last `buttons` entry, so list the safe choice last), is trapped, and returns on close. | Stable |
 | Global transient feedback | `ToastContainer` / `showToast` | Do not use for persistent state or hidden errors. | Stable |
 
 ## Tokens
@@ -227,7 +227,7 @@ Places where the primitives or features do not yet meet the rules above. Remove 
 
 - `IconButton` and `Toolbar` omit `aria-pressed` when inactive instead of setting `"false"`.
 - `Dropdown` has no `role="menu"`/`menuitem`, no `aria-haspopup`/`aria-expanded`, moves a CSS class instead of focus, and does not return focus on close. `MenuList` has no default container role.
-- `Popover` and `Dialog` have no Escape handling or focus management; `Dialog` has no focus trap.
+- `Popover` has no Escape handling or focus management.
 - `Tabs` has no arrow-key navigation.
 - Only `MetadataGrid` defines `:focus-visible`; `global.css` removes the outline on `input`/`textarea`.
 - No `prefers-reduced-motion` handling.
