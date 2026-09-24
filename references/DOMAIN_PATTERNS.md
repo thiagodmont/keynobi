@@ -57,6 +57,15 @@ runAndDeploy()
   -> finally: clear deployPhase
 ```
 
+### Output Parsing
+
+`services/build_parser.rs` turns each output line into a `BuildLine`. Error and warning lines become the diagnostics that the Problems view and MCP `get_build_errors` show. Both front doors parse the same way.
+
+- Formats are verified against real build output in `src-tauri/tests/fixtures/build_output/` (the README lists the toolchain versions). When you support a new format, capture a real log first, add it there, and assert every diagnostic in a fixture test.
+- Supported with a location: Kotlin 1 and 2 (Kotlin 2 omits the colon after the column), KSP, javac, Android lint, AAPT2 link errors, resource merger and R8 `ERROR: path:line:col:` lines, and configuration cache problems (warnings).
+- Error lines without a recognised location (`e:`, `w:`, `ERROR:`, `error:`, R8 `Missing class`) still become diagnostics with the message only. A failing build must never report zero errors when its log contains error lines.
+- Gradle repeats javac and lint errors indented under "What went wrong". Those copies are skipped. AAPT2 link errors appear only there, so they are parsed indented.
+
 ### Invariants
 
 - `runBuild()` resolves only after completion/cancellation state is known.
@@ -273,6 +282,7 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Cross-process builds.** GUI and headless MCP can build at the same time; `build-history.json` is last-writer-wins. MCP builds do not appear live in the GUI.
 - **Build history IDs.** `clear_history` resets `next_id` to 1, so new log filenames can collide with retained files. `MAX_PERSISTED_HISTORY` (20) is effectively unused because load trims to 10.
 - **Build error counts after truncation.** Once `MAX_BUILD_ERRORS` is reached, `errorCount`/`warningCount` count only the retained diagnostics, and the truncation notice itself counts as a warning. True totals would need new `BuildResult`/`BuildCompleteEvent` fields.
+- **Duplicate lint diagnostics.** With `abortOnError`, lint prints its first failure from both the report task and the failing task, so that issue is listed twice. The parser is stateless per line, and diagnostics are not de-duplicated.
 - **MCP cancel during spawn.** A build cancelled during spawn on the MCP path returns without recording history.
 - **Unicode typing.** `ui_type_text_unicode` sets the clipboard with a Clipper broadcast, falling back to `content insert`. `am broadcast` exits 0 even when Clipper is not installed, so the fallback may not run and the paste can insert stale clipboard text. Needs verification on a device.
 - **Screen hash coverage.** `ui_swipe`, `send_ui_key`, `ui_type_text_unicode`, `clear_focused_input`, and `ui_scroll_until_element` do not accept `expectScreenHash`.

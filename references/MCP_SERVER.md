@@ -69,7 +69,7 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 |------|------|-------|
 | `run_gradle_task` | O | `task`; `variant` is accepted but ignored. Times out after `mcp.buildTimeoutSec` (default 600 s). Task names starting with `-` (Gradle options) are rejected. Unless `mcp.allowUnrestrictedGradle` is on, tasks matching `publish*`, `promote*`, `upload*`, `uninstall*`, `closeAndRelease*`, `*ToMavenCentral`, or `*PlayStore*` are refused, including Gradle abbreviations such as `pRB`. |
 | `get_build_status` | R | |
-| `get_build_errors` | R | |
+| `get_build_errors` | R | Errors without a recognised location are returned with the message only. |
 | `get_build_log` | R | `lines`: default `mcp.defaultBuildLogLines` (200), max 2,000. |
 | `cancel_build` | W | |
 | `list_build_variants` | R | |
@@ -195,7 +195,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 | `adb_manager.rs` | Direct | Resolves Android SDK tools and runs device, emulator, install, launch, and AVD operations. |
 | `app_inspector.rs` | Direct | Reads app runtime state and performs app restart flows with launch timing. |
 | `build_inspector.rs` | Direct | Parses Gradle files for SDK levels, application id, build types, and product flavors without running Gradle. |
-| `build_parser.rs` | Indirect | Converts Gradle, Kotlin, Java, and AAPT output into structured build lines and diagnostics. |
+| `build_parser.rs` | Indirect | Converts Gradle output (Kotlin, KSP, Java, lint, AAPT2, R8, configuration cache) into structured build lines and the diagnostics `get_build_errors` returns. |
 | `build_runner.rs` | Direct | Runs Gradle tasks, tracks build state/history, captures build logs, and finds output APKs. |
 | `crash_inspector.rs` | Direct | Groups and parses logcat crash entries into exception, message, stack frames, and causes. |
 | `device_inspector.rs` | Direct | Collects screenshots, device properties, app package details, and memory information. |
