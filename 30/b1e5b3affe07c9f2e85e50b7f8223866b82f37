@@ -1,0 +1,51 @@
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_2791bf1b8e3b16 275,279
+src-tauri/src/services/ui_automation.rs
+  s_1e114e823b9048::t_548bc05d6c87a6 8,1388
+  s_1e114e823b9048::t_4058bfc3cb835d 1854-1908
+src-tauri/src/utils/mod.rs
+  s_1e114e823b9048::t_96754d147769a1 1
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_2791bf1b8e3b16 95,253
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_2791bf1b8e3b16 170
+src-tauri/src/utils/validation.rs
+  s_1e114e823b9048::t_37bfac8f13075c 3-6,83-95
+  s_1e114e823b9048::t_b5d4b9beb19648 96-98
+src-tauri/src/commands/device.rs
+  s_1e114e823b9048::t_37bfac8f13075c 47
+references/CODE_PATTERN.md
+  s_1e114e823b9048::t_2791bf1b8e3b16 112
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_37bfac8f13075c 2438-2441
+src-tauri/src/utils/device_shell.rs
+  s_1e114e823b9048::t_a5b7ffed5873ad 27-64
+  s_1e114e823b9048::t_933c55be092e13 109
+  s_1e114e823b9048::t_548bc05d6c87a6 93-99
+  s_1e114e823b9048::t_8670c754f48da6 1-26,65-68,75-76,89-92,100-108,110-113,115,117-119,121-123,125,127-130
+  s_1e114e823b9048::t_50afdd87365e4f 69-74,77-88,114,116,120,124,126
+src-tauri/src/services/adb_manager.rs
+  s_1e114e823b9048::t_548bc05d6c87a6 6,323,402,421-429,452-460,483,512,534-541
+  s_1e114e823b9048::t_4058bfc3cb835d 1438-1459
+src-tauri/src/services/app_inspector.rs
+  s_1e114e823b9048::t_548bc05d6c87a6 1,296-305
+  s_1e114e823b9048::t_4058bfc3cb835d 325-345
+src-tauri/src/services/device_inspector.rs
+  s_1e114e823b9048::t_548bc05d6c87a6 1,112-119,122-129,175-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "30b1e5b3affe07c9f2e85e50b7f8223866b82f37",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
