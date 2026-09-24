@@ -1680,21 +1680,34 @@ mod reconnect_tests {
         bin
     }
 
-    /// Count live child processes spawned from our fake adb script.
-    fn live_fake_adb_count(marker: &str) -> usize {
-        let out = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(format!(
-                "ps -eo command | grep -c '[{}]{}'",
-                &marker[..1],
-                &marker[1..]
-            ))
+    /// PIDs of live `adb logcat` processes started from our fake adb script.
+    /// The short-lived `adb shell ps` seed call is deliberately not counted.
+    fn live_fake_logcat_pids(adb: &std::path::Path) -> Vec<u32> {
+        let out = std::process::Command::new("ps")
+            .args(["-eo", "pid=,command="])
             .output()
             .unwrap();
+        let adb = adb.to_str().unwrap();
         String::from_utf8_lossy(&out.stdout)
-            .trim()
-            .parse()
-            .unwrap_or(0)
+            .lines()
+            .filter(|line| line.contains(adb) && line.contains(" logcat "))
+            .filter_map(|line| line.split_whitespace().next()?.parse().ok())
+            .collect()
+    }
+
+    /// Poll `done` until it holds or `timeout` elapses. Process teardown is
+    /// asynchronous, so a single sample races the kill on a loaded machine.
+    async fn wait_until(timeout: Duration, mut done: impl FnMut() -> bool) -> bool {
+        let start = std::time::Instant::now();
+        loop {
+            if done() {
+                return true;
+            }
+            if start.elapsed() >= timeout {
+                return false;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
     }
 
     /// Mirrors `commands/logcat.rs::start_logcat`'s state transition.
@@ -1732,8 +1745,12 @@ mod reconnect_tests {
             start_logcat_stream(a1, None, s1, None, None, g1).await;
         });
 
-        // Let it get going and ingest its lines.
-        tokio::time::sleep(Duration::from_millis(250)).await;
+        let started = wait_until(Duration::from_secs(5), || {
+            live_fake_logcat_pids(&adb).len() == 1
+        })
+        .await;
+        assert!(started, "stream #1 never started adb logcat");
+        let old = live_fake_logcat_pids(&adb)[0];
 
         // stop_logcat() — sets the flag only, does not wait for teardown.
         request_stop(&state).await;
@@ -1746,9 +1763,14 @@ mod reconnect_tests {
             start_logcat_stream(a2, None, s2, None, None, g2).await;
         });
 
-        tokio::time::sleep(Duration::from_millis(600)).await;
-
-        let live = live_fake_adb_count(dir.path().join("adb").to_str().unwrap());
+        // The old child must die and exactly one new one must take its place.
+        // With the race, the old task keeps its child alive indefinitely.
+        let replaced = wait_until(Duration::from_secs(5), || {
+            let live = live_fake_logcat_pids(&adb);
+            live.len() == 1 && live[0] != old
+        })
+        .await;
+        let live = live_fake_logcat_pids(&adb);
 
         // Tear down whatever is still running so the test cannot leak.
         request_stop(&state).await;
@@ -1756,8 +1778,8 @@ mod reconnect_tests {
         let _ = tokio::time::timeout(Duration::from_secs(3), h2).await;
 
         assert!(
-            live <= 1,
-            "stop→start must leave at most one live adb logcat process, found {live}"
+            replaced,
+            "stop→start must leave exactly one new adb logcat process; old pid {old}, live {live:?}"
         );
     }
 
@@ -1790,10 +1812,14 @@ mod reconnect_tests {
             "start_logcat_stream must return within 3 s of stop on an idle device"
         );
 
-        let live = live_fake_adb_count(dir.path().join("adb").to_str().unwrap());
-        assert_eq!(
-            live, 0,
-            "adb child must be terminated after stop, found {live}"
+        let terminated = wait_until(Duration::from_secs(3), || {
+            live_fake_logcat_pids(&adb).is_empty()
+        })
+        .await;
+        assert!(
+            terminated,
+            "adb child must be terminated after stop, found {:?}",
+            live_fake_logcat_pids(&adb)
         );
     }
 
