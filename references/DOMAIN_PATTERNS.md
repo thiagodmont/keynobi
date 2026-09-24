@@ -82,6 +82,7 @@ AVD lifecycle commands go through Android SDK tools. `create_avd_device` and `de
 
 - `DeviceSidebar` is the device management surface; `DevicePickerDialog` handles "choose a device" during run flows.
 - Device-picking flows must validate that `selectedSerial` is still online before using it (`resolveDevice` in `build.service.ts`).
+- `pickDevice` and `selectVariant` update the selection before the backend confirms it and roll back if the backend rejects it. Each call takes a revision number; a response from a call that is no longer the latest neither rolls back nor persists project meta, so it cannot undo a newer selection.
 - Activity names passed to `am start` must be validated (`validate_activity_name`).
 
 ---

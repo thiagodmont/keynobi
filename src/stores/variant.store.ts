@@ -249,7 +249,10 @@ async function runLoadVariants(rootAtStart: string | null): Promise<void> {
   }
 }
 
+let selectVariantRevision = 0;
+
 export async function selectVariant(name: string): Promise<void> {
+  const revision = ++selectVariantRevision;
   const previous = variantState.activeVariant;
   setVariantState("activeVariant", name);
   try {
@@ -258,10 +261,13 @@ export async function selectVariant(name: string): Promise<void> {
     // The backend persists last_build_variant for this project (the same
     // state the MCP set_active_variant tool writes), so a silent failure
     // would leave settings diverged from the UI — worse than a visible error.
-    setVariantState("activeVariant", previous);
+    if (revision === selectVariantRevision) {
+      setVariantState("activeVariant", previous);
+    }
     showToast(`Failed to select variant: ${formatError(err)}`, "error");
     return;
   }
+  if (revision !== selectVariantRevision) return;
   // Notify the project service so it can persist per-project meta.
   _onVariantChange?.(name);
 }

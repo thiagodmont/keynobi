@@ -138,7 +138,10 @@ export function setCreating(v: boolean): void {
   setDeviceState("creating", v);
 }
 
+let pickDeviceRevision = 0;
+
 export async function pickDevice(serial: string): Promise<void> {
+  const revision = ++pickDeviceRevision;
   const previous = deviceState.selectedSerial;
   setDeviceState("selectedSerial", serial);
   try {
@@ -147,10 +150,13 @@ export async function pickDevice(serial: string): Promise<void> {
     // The backend's selection is what MCP tools and every command that resolves
     // a `None` serial use. Silently keeping a local-only selection makes the UI
     // and the agent target different devices, so roll back and say so.
-    setDeviceState("selectedSerial", previous);
+    if (revision === pickDeviceRevision) {
+      setDeviceState("selectedSerial", previous);
+    }
     showToast(`Failed to select device: ${formatError(err)}`, "error");
     return;
   }
+  if (revision !== pickDeviceRevision) return;
   // Notify the project service so it can persist per-project meta.
   _onDeviceChange?.(serial);
 }
