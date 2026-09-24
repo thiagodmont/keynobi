@@ -189,6 +189,20 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
     await waitFor(() => expect(screen.getAllByTitle(ROW_TITLE)).toHaveLength(1));
   });
 
+  it("exports the displayed entries through the native save command", async () => {
+    installLogcatPanelMocks([BASE_ENTRY]);
+    render(() => <LogcatPanel />);
+    await screen.findByText("Activity started");
+
+    fireEvent.click(screen.getByTitle("Export filtered log to file"));
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("export_logcat", {
+        contents: expect.stringContaining("MainActivity: Activity started"),
+      })
+    );
+  });
+
   it("keeps quoted message detail filters intact after a QueryBar rebuild", async () => {
     const quotedEntry = {
       ...BASE_ENTRY,

@@ -179,6 +179,7 @@ export function logcatHandlers(): Record<string, (args: unknown) => unknown> {
         streamInterval = null;
       }
     },
+    export_logcat: () => null,
     clear_logcat: () => {
       storedEntries = [];
       triggerEvent("logcat:cleared", undefined);

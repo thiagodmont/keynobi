@@ -443,6 +443,11 @@ export async function listLogcatPackages(): Promise<string[]> {
   return invoke<string[]>("list_logcat_packages");
 }
 
+/** Show a save dialog and write `contents` there. Resolves to the saved path, or null if cancelled. */
+export async function exportLogcat(contents: string): Promise<string | null> {
+  return invoke<string | null>("export_logcat", { contents });
+}
+
 /**
  * Update the backend stream filter.
  * After this call, only entries matching the spec will be emitted via

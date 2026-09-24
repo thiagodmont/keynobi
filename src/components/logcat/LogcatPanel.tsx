@@ -22,10 +22,9 @@ import {
   listenLogcatStopped,
   listenDeviceListChanged,
   formatError,
+  exportLogcat,
   type LogcatEntry,
 } from "@/lib/tauri-api";
-import { writeTextFile } from "@tauri-apps/plugin-fs";
-import { save } from "@tauri-apps/plugin-dialog";
 import { selectedDevice } from "@/stores/device.store";
 import { logcatRowHeightForFontSize, settingsState } from "@/stores/settings.store";
 import { EmptyState, Icon, MenuList, MenuListItem, showToast } from "@/components/ui";
@@ -593,7 +592,6 @@ export function LogcatPanel(): JSX.Element {
       showToast(`Failed to read logcat status: ${formatError(err)}`, "error");
     }
 
-    // eslint-disable-next-line solid/reactivity
     const _unlistenEntries = await listenLogcatEntries((newEntries) => {
       if (paused()) return;
       const dropped = appendLogcatEntries(newEntries, maxUiLinesCap());
@@ -839,14 +837,10 @@ export function LogcatPanel(): JSX.Element {
 
   async function handleExport() {
     try {
-      const path = await save({
-        filters: [{ name: "Log", extensions: ["log", "txt"] }],
-        defaultPath: "logcat.log",
-      });
+      const entries = displayedEntries();
+      const path = await exportLogcat(formatLogcatEntries(entries));
       if (!path) return;
-      const text = formatLogcatEntries(displayedEntries());
-      await writeTextFile(path, text);
-      showToast(`Exported ${displayedEntries().length} entries`, "success");
+      showToast(`Exported ${entries.length} entries`, "success");
     } catch (e) {
       showToast(`Export failed: ${formatError(e)}`, "error");
     }
