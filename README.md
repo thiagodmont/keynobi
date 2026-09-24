@@ -21,7 +21,7 @@ Download the application on the release build and let us know if it helps in you
 - [Quick start](#quick-start)
 - [Development](#development)
 - [Contributing](#contributing)
-- [Troubleshooting](#troubleshooting)
+- [Troubleshooting](references/USER_MANUAL.md#troubleshooting)
 
 ---
 
@@ -154,7 +154,7 @@ npm run generate:bindings   # after Rust model / TS export changes
 - **Ring buffer (50K)** for logcat in Rust; the UI only receives what it needs — bounded memory.
 - **~100 ms batching** of log events before crossing to the frontend to avoid signal storms.
 - **Atomic settings writes** (temp + rename) so crashes mid-save do not corrupt JSON.
-- **Mutex discipline** — no lock held across `await`; see `docs/CODE_PATTERN.md`.
+- **Mutex discipline** — no lock held across `await`; see `references/CODE_PATTERN.md`.
 - **`ts-rs`** — regenerate TypeScript with `npm run generate:bindings` after model changes.
 
 ---
