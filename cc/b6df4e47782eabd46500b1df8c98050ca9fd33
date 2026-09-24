@@ -1,0 +1,55 @@
+src-tauri/src/services/adb_manager.rs
+  s_1e114e823b9048::t_6af362cc28e707 249-251,253-257,262-265
+  s_1e114e823b9048::t_d9cfbe8bf25f1e 356-357,368-373
+  s_1e114e823b9048::t_37a52f8a636c79 396-402
+  s_1e114e823b9048::t_a2a1ff7062918b 452,454,466-467,475-479,498-499,507-511,524-525,535-539,550-551,562-566,583-584,591-595,779-785,957-961,1076,1080-1088,1090-1091,1105-1110,1233-1241,1475-1486
+  s_1e114e823b9048::t_fb534e4189f0a0 278-287,290-292,296-297,303-306
+  s_1e114e823b9048::t_33a18409b3937b 1131-1132
+  s_1e114e823b9048::t_c320db1c18ce3e 1521-1574
+  s_1e114e823b9048::t_018c9f9d703036 7,9,11
+  s_1e114e823b9048::t_d5364bc58dadbd 288-289,293
+  s_1e114e823b9048::t_434bddfb1d4852 167-173
+  s_1e114e823b9048::t_8c39c001d6f961 316-337
+  s_1e114e823b9048::t_49133b11402066 8,10
+src-tauri/src/commands/health.rs
+  s_1e114e823b9048::t_544520628934b8 3,42-49,86-93,136-142
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_fddffb21585439 78-79
+src-tauri/src/services/device_inspector.rs
+  s_1e114e823b9048::t_544520628934b8 2-5,7,48-60,71-72,75-82,129-156,159-168,210-211,218-222,250-255
+src-tauri/src/utils/mod.rs
+  s_1e114e823b9048::t_364305a6efab4e 4
+src-tauri/src/services/ui_automation.rs
+  s_1e114e823b9048::t_544520628934b8 9,1384,1387-1388,1391
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_fddffb21585439 97
+src-tauri/src/services/health_inspector.rs
+  s_1e114e823b9048::t_544520628934b8 2,38-51,53-54
+references/CODE_PATTERN.md
+  s_1e114e823b9048::t_fddffb21585439 34,112,309
+src-tauri/src/utils/process.rs
+  s_1e114e823b9048::t_a5565cd8e19d4f 75
+  s_1e114e823b9048::t_77176c2202aa2c 48-51
+  s_1e114e823b9048::t_739e6ad192ff96 47
+  s_1e114e823b9048::t_8a12bf8c0240ad 1-46,52,61-74,76-172
+  s_1e114e823b9048::t_16548fa63ea368 53-60
+src-tauri/src/services/app_inspector.rs
+  s_1e114e823b9048::t_dbd1645ab5fa53 2-4
+  s_1e114e823b9048::t_544520628934b8 313,315
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ccb6df4e47782eabd46500b1df8c98050ca9fd33",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
