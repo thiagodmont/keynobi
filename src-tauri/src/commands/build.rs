@@ -330,29 +330,35 @@ pub async fn get_package_name_from_apk(
 
     let (settings, _) = settings_manager::load_settings();
 
-    let aapt2 = crate::services::adb_manager::find_aapt2(&settings).ok_or_else(|| {
-        AppError::NotFound(
-            "aapt2 not found in $ANDROID_HOME/build-tools. Check your SDK path in Settings → Android SDK.".to_string(),
-        )
-    })?;
-
     let apk = crate::utils::path::validate_apk_within_build_outputs(&root, &apk_path)?;
 
-    crate::services::adb_manager::get_package_name_from_apk(&aapt2, &apk)
-        .await
+    let from_aapt2 = match crate::services::adb_manager::find_aapt2(&settings) {
+        Some(aapt2) => crate::services::adb_manager::get_package_name_from_apk(&aapt2, &apk).await,
+        None => None,
+    };
+    // AGP records the variant's application ID (suffix included) next to the
+    // APK, so it is exact when aapt2 is missing or fails. The project's base
+    // applicationId is not: it ignores applicationIdSuffix.
+    from_aapt2
+        .or_else(|| build_runner::application_id_from_output_metadata(&apk))
         .ok_or_else(|| {
             AppError::ProcessFailed(format!(
-                "aapt2 failed to extract package name from {apk_path}"
+                "Could not read the package name of {apk_path}: aapt2 failed or was not found \
+                 in $ANDROID_HOME/build-tools, and the APK has no output-metadata.json. \
+                 Check your SDK path in Settings → Android SDK."
             ))
         })
 }
 
 /// Find the output APK path for the given variant after a successful build.
+///
+/// Errors (with the reason and the variants that do have outputs) instead of
+/// returning another variant's APK.
 #[tauri::command]
 pub async fn find_apk_path(
     variant: String,
     fs_state: State<'_, FsState>,
-) -> Result<Option<String>, String> {
+) -> Result<String, String> {
     let gradle_root: PathBuf = {
         let fs = fs_state.0.lock().await;
         fs.gradle_root
@@ -361,7 +367,7 @@ pub async fn find_apk_path(
             .cloned()
             .ok_or("No project open")?
     };
-    Ok(find_output_apk(&gradle_root, &variant).map(|p| p.to_string_lossy().into_owned()))
+    find_output_apk(&gradle_root, &variant).map(|p| p.to_string_lossy().into_owned())
 }
 
 #[cfg(test)]

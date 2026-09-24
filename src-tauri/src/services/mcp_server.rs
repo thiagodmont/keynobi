@@ -715,7 +715,7 @@ impl AndroidMcpServer {
         let variant = variant.as_str();
 
         match build_runner::find_output_apk(&gradle_root, variant) {
-            Some(path) => {
+            Ok(path) => {
                 let path_str = path.to_string_lossy().to_string();
                 Ok(CallToolResult::structured(json!({
                     "found": true,
@@ -724,10 +724,11 @@ impl AndroidMcpServer {
                     "hint": format!("Use install_apk with device_serial and apk_path: {}", path_str)
                 })))
             }
-            None => Ok(CallToolResult::structured(json!({
+            Err(reason) => Ok(CallToolResult::structured(json!({
                 "found": false,
                 "variant": variant,
-                "hint": "Run a build first with run_gradle_task (e.g. assembleDebug)"
+                "reason": reason,
+                "hint": "Run a build for this variant first with run_gradle_task (e.g. assembleDebug)"
             }))),
         }
     }
