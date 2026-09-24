@@ -64,8 +64,14 @@ jobs:
           workspaces: src-tauri
       - name: Check TypeScript bindings are up to date
         # Runs only the ts-rs export tests, not the persistence tests.
+        # A filter that matches nothing still exits 0, so require that the
+        # export tests actually ran.
         run: |
-          cd src-tauri && cargo test --lib export_bindings
+          cd src-tauri
+          out=$(cargo test --lib export_bindings 2>&1) || { echo "$out"; exit 1; }
+          echo "$out" | grep -E "^test result:"
+          echo "$out" | grep -Eq "^test result: ok\. [1-9][0-9]* passed" || \
+            (echo "ERROR: no ts-rs export_bindings tests ran" && exit 1)
           cd ..
           test -z "$(git status --porcelain src/bindings/)" || \
             (echo "ERROR: TypeScript bindings are stale. Run: npm run generate:bindings" && exit 1)

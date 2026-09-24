@@ -542,11 +542,14 @@ async fn mock_gradlew_error_output_produces_error_lines() {
 #[test]
 fn integration_tests_use_isolated_data_dir() {
     common::isolate_data_dir();
-    let real = dirs::home_dir().unwrap().join(".keynobi");
     let dir = keynobi_lib::services::settings_manager::data_dir();
-    assert!(
-        !dir.starts_with(&real),
-        "integration tests resolved the user's data dir: {}",
-        dir.display()
-    );
+    if let Some(home) = dirs::home_dir() {
+        let real = home.join(".keynobi");
+        assert!(
+            !dir.starts_with(&real),
+            "integration tests resolved the user's data dir: {}",
+            dir.display()
+        );
+    }
+    assert!(dir.starts_with(std::env::temp_dir()), "{}", dir.display());
 }

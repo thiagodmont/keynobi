@@ -457,13 +457,16 @@ mod tests {
 
     #[test]
     fn unit_tests_never_resolve_the_real_data_dir() {
-        let real = dirs::home_dir().unwrap().join(".keynobi");
         let dir = data_dir();
-        assert!(
-            !dir.starts_with(&real),
-            "unit tests resolved the user's data dir: {}",
-            dir.display()
-        );
+        if let Some(home) = dirs::home_dir() {
+            let real = home.join(".keynobi");
+            assert!(
+                !dir.starts_with(&real),
+                "unit tests resolved the user's data dir: {}",
+                dir.display()
+            );
+        }
+        assert!(dir.starts_with(std::env::temp_dir()), "{}", dir.display());
         assert_eq!(settings_file().parent(), Some(dir.as_path()));
     }
 
