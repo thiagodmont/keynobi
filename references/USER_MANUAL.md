@@ -118,7 +118,7 @@ Build output has two views:
 - **Log**: Gradle output, colored by level. Filter by level (**ALL**, **ERR**, **WARN**, **INFO**, **DBG**), by source, or by text; show or hide timestamps; copy the visible lines; or clear the view.
 - **Problems (N)**: parsed errors and warnings.
 
-The **Builds** side panel lists recent builds. Click one to see its log, or use **Clear build history**. Keynobi keeps the last 10 builds; log files are removed after 7 days or when the log folder passes 100 MB (both configurable under **Settings → Advanced → Build**).
+The **Builds** side panel lists recent builds. Click one to see its log, or use **Clear build history**. If a past build's log cannot be read, the panel shows the error with a **Retry** button instead of the log. Keynobi keeps the last 10 builds; log files are removed after 7 days or when the log folder passes 100 MB (both configurable under **Settings → Advanced → Build**).
 
 ---
 
