@@ -15,6 +15,7 @@ src-tauri/gen/
 
 docs/
 perf-metrics
+coverage/
 
 # repowise
 .repowise

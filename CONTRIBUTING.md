@@ -28,6 +28,7 @@ npm run lint
 npm run format:check
 npm run typescript:check
 npm run test
+npm run test:coverage   # optional: coverage for stores, services, and lib (report in coverage/)
 ```
 
 ### Design System
