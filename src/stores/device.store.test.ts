@@ -53,10 +53,12 @@ const mockListen = vi.mocked(listen);
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => {
-    resolve = r;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 describe("device.store", () => {
@@ -330,5 +332,92 @@ describe("device selection stays in sync with the backend", () => {
     await pickDevice(target);
 
     expect(deviceState.selectedSerial).toBe(target);
+  });
+
+  describe("overlapping picks", () => {
+    const threeDevices: Device[] = [
+      ...mockDevices,
+      {
+        serial: "third-003",
+        name: "Pixel 8",
+        model: "Pixel 8",
+        deviceKind: "physical",
+        connectionState: "online",
+        apiLevel: 35,
+        androidVersion: "15",
+      },
+    ];
+    let pending: Map<string, ReturnType<typeof deferred<void>>>;
+
+    beforeEach(() => {
+      pending = new Map();
+      mockInvoke.mockImplementation((cmd, args) => {
+        if (cmd !== "select_device") return Promise.resolve(undefined);
+        const d = deferred<void>();
+        pending.set((args as { serial: string }).serial, d);
+        return d.promise;
+      });
+      setDevices(threeDevices);
+      expect(deviceState.selectedSerial).toBe("emulator-5554");
+    });
+
+    it("an older pick failing after a newer one succeeded keeps the newer selection", async () => {
+      const onChange = vi.fn();
+      onDeviceChange(onChange);
+
+      const pickB = pickDevice("ZX1G22ABCD");
+      const pickC = pickDevice("third-003");
+
+      pending.get("third-003")!.resolve();
+      await pickC;
+      pending.get("ZX1G22ABCD")!.reject(new Error("device gone"));
+      await pickB;
+
+      expect(deviceState.selectedSerial).toBe("third-003");
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith("third-003");
+    });
+
+    it("an older pick failing while a newer one is in flight keeps the newer selection", async () => {
+      const pickB = pickDevice("ZX1G22ABCD");
+      const pickC = pickDevice("third-003");
+
+      pending.get("ZX1G22ABCD")!.reject(new Error("device gone"));
+      await pickB;
+      expect(deviceState.selectedSerial).toBe("third-003");
+
+      pending.get("third-003")!.resolve();
+      await pickC;
+      expect(deviceState.selectedSerial).toBe("third-003");
+    });
+
+    it("an older pick succeeding after a newer one does not report the older device", async () => {
+      const onChange = vi.fn();
+      onDeviceChange(onChange);
+
+      const pickB = pickDevice("ZX1G22ABCD");
+      const pickC = pickDevice("third-003");
+
+      pending.get("third-003")!.resolve();
+      await pickC;
+      pending.get("ZX1G22ABCD")!.resolve();
+      await pickB;
+
+      expect(deviceState.selectedSerial).toBe("third-003");
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith("third-003");
+    });
+
+    it("the newest pick failing still rolls back to the selection before it", async () => {
+      const pickB = pickDevice("ZX1G22ABCD");
+      pending.get("ZX1G22ABCD")!.resolve();
+      await pickB;
+
+      const pickC = pickDevice("third-003");
+      pending.get("third-003")!.reject(new Error("device gone"));
+      await pickC;
+
+      expect(deviceState.selectedSerial).toBe("ZX1G22ABCD");
+    });
   });
 });
