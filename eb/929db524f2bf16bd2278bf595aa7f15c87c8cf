@@ -6,6 +6,7 @@ src-tauri/tests/common/mod.rs
   s_1e114e823b9048::t_33bf1c17de8961 1-33
 .github/workflows/ci.yml
   s_1e114e823b9048::t_b44e18daaa9bf4 68,80-89
+  s_1e114e823b9048::t_274b539d865d7c 66
 src-tauri/src/services/settings_manager.rs
   s_1e114e823b9048::t_adb89d203e6454 88-104,106-113,119-133
   s_1e114e823b9048::t_4549c792d5d3e0 459-469
@@ -13,6 +14,7 @@ src-tauri/src/services/settings_manager.rs
   s_1e114e823b9048::t_db4c65d63acee8 134,458
 CONTRIBUTING.md
   s_1e114e823b9048::t_daf745c9214dbc 61
+  s_1e114e823b9048::t_01399f117350f5 58,64
 package.json
   s_1e114e823b9048::t_b44e18daaa9bf4 20
 src-tauri/tests/build_integration.rs
@@ -20,6 +22,12 @@ src-tauri/tests/build_integration.rs
   s_1e114e823b9048::t_2cff664a2af34f 539-552
 src-tauri/tests/ipc/tauri_commands.rs
   s_1e114e823b9048::t_5eecab937724ce 41
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_01399f117350f5 71
+AGENTS.md
+  s_1e114e823b9048::t_01399f117350f5 35
+references/CODE_PATTERN.md
+  s_1e114e823b9048::t_cbaec3dfea9ed5 265,309
 ---
 {
   "schema_version": "authorship/3.0.0",
