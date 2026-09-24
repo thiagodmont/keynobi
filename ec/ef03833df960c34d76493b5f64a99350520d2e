@@ -1,0 +1,21 @@
+package-lock.json
+  s_e31b9b17414fee::t_efa3ddf979e2df 39,3039-3041,6716-6718,6726
+package.json
+  s_e31b9b17414fee::t_bb291243d32bf7 74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "ecef03833df960c34d76493b5f64a99350520d2e",
+  "prompts": {},
+  "sessions": {
+    "s_e31b9b17414fee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "74598b70-6d8d-44fc-8085-e3cc7f834c15",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
