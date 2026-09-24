@@ -1,7 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resetUIStateForTests, uiState } from "@/stores/ui.store";
+import { resetBuildState, setDeployPhase, startBuild } from "@/stores/build.store";
 import { TitleBar } from "./TitleBar";
 
 describe("TitleBar", () => {
@@ -14,6 +16,7 @@ describe("TitleBar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetUIStateForTests();
+    resetBuildState();
     appWindow.isAlwaysOnTop.mockResolvedValue(false);
     appWindow.setAlwaysOnTop.mockResolvedValue(undefined);
     vi.mocked(getCurrentWindow).mockReturnValue(
@@ -107,5 +110,23 @@ describe("TitleBar", () => {
 
     expect(uiState.logMode.active).toBe(false);
     expect(button.getAttribute("aria-pressed")).toBe(null);
+  });
+  it("offers Cancel while Gradle builds, but not during install and launch", () => {
+    render(() => <TitleBar />);
+    const button = screen.getByRole("button", { name: /^build$/i });
+
+    startBuild("assembleDebug");
+    setDeployPhase("building");
+    expect(button.getAttribute("title")).toBe("Cancel build");
+    expect(button.hasAttribute("disabled")).toBe(false);
+
+    // The build succeeded; install cannot be cancelled, so Cancel must not show.
+    resetBuildState();
+    setDeployPhase("installing");
+    expect(button.getAttribute("title")).toBe("Installing APK…");
+    expect(button.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(button);
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "cancel_build")).toHaveLength(0);
   });
 });

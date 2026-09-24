@@ -20,6 +20,18 @@ const [projectState, setProjectState] = createStore<ProjectState>({
 
 export { projectState, setProjectState };
 
+// Bumped when a project open starts, before the backend switches projects.
+// Async work tied to one project compares it to know the project changed.
+let projectGeneration = 0;
+
+export function beginProjectOpen(): number {
+  return ++projectGeneration;
+}
+
+export function currentProjectGeneration(): number {
+  return projectGeneration;
+}
+
 export function setProject(
   root: string,
   projectNameOrTree: string | object,

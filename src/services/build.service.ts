@@ -24,7 +24,7 @@ import {
 import { variantState } from "@/stores/variant.store";
 import { deviceState } from "@/stores/device.store";
 import { setActiveTab } from "@/stores/ui.store";
-import { projectState } from "@/stores/project.store";
+import { projectState, currentProjectGeneration } from "@/stores/project.store";
 import { settingsState } from "@/stores/settings.store";
 import type { BuildError } from "@/bindings";
 
@@ -59,29 +59,13 @@ export function resetBuildServiceForTests(): void {
   buildCompleteUnlisten?.();
   buildCompleteUnlisten = null;
   buildListenerInit = null;
-  _resolveBuildComplete = null;
+  activeRun = null;
+  earlyCompletions.clear();
   clearBuildCompleteTimer();
-  _staleCompletionEventsExpected = 0;
 }
 
 async function registerBuildCompleteListener(): Promise<void> {
   const unlisten = await listenBuildComplete((e) => {
-    // Flush any lines still in the 50ms buffer before updating phase.
-    flushPendingLines();
-
-    if (e.cancelled) {
-      if (_staleCompletionEventsExpected > 0) {
-        // Late event from a process we killed after a completion timeout —
-        // absorb it so it cannot flip the UI to a plain user cancellation.
-        _staleCompletionEventsExpected--;
-      } else {
-        // Build was explicitly cancelled by the user — use dedicated cancelled phase.
-        cancelBuildState();
-      }
-    } else {
-      setBuildResult({ success: e.success, durationMs: e.durationMs });
-    }
-    // Resolve the pending build promise if there is one.
     // Rust records history before emitting build:complete, so this fetch sees
     // the completed record without a frontend finalize step.
     getBuildHistory()
@@ -89,9 +73,16 @@ async function registerBuildCompleteListener(): Promise<void> {
       .catch((err) => {
         console.error("[build] Failed to reload build history:", err);
       });
-    clearBuildCompleteTimer();
-    _resolveBuildComplete?.({ success: e.success, durationMs: e.durationMs });
-    _resolveBuildComplete = null;
+
+    // Only the run this window is waiting on may change the build state. Late
+    // events from cancelled, timed-out, or replaced runs are ignored.
+    if (!activeRun) return;
+    if (activeRun.runId === null) {
+      // run_gradle_task has not returned the run's ID yet.
+      if (earlyCompletions.size < MAX_EARLY_COMPLETIONS) earlyCompletions.set(e.runId, e);
+      return;
+    }
+    if (activeRun.runId === e.runId) completeActiveRun(e);
   });
 
   if (buildCompleteUnlisten) {
@@ -109,23 +100,43 @@ async function registerBuildCompleteListener(): Promise<void> {
     });
 }
 
-// One-shot resolver for the current build. Set before a build starts, cleared on completion.
-let _resolveBuildComplete: ((result: { success: boolean; durationMs: number }) => void) | null =
-  null;
+type BuildCompleteEvent = Parameters<Parameters<typeof listenBuildComplete>[0]>[0];
+
+interface BuildCompletion {
+  success: boolean;
+  durationMs: number;
+}
+
+interface ActiveRun {
+  /** Null until run_gradle_task returns it. */
+  runId: number | null;
+  resolve: (result: BuildCompletion) => void;
+}
+
+// The build this window started and is waiting on. Cleared on completion,
+// cancellation, timeout, or spawn failure.
+let activeRun: ActiveRun | null = null;
+// Completions received while activeRun.runId was still unknown.
+const earlyCompletions = new Map<number, BuildCompleteEvent>();
+const MAX_EARLY_COMPLETIONS = 8;
 let _buildCompleteTimer: ReturnType<typeof setTimeout> | null = null;
-/**
- * Number of completion events still expected from Gradle processes we
- * killed after a completion timeout. Each timeout increments this; the
- * listener consumes one cancelled event per count instead of treating it
- * as a genuine cancellation.
- *
- * This is deliberately NOT reset when a new build starts: the killed
- * process's completion event can arrive after a later build has begun
- * (slow process death), and events are delivered in order, so consuming
- * them FIFO guarantees each stale event is absorbed before any genuine
- * user cancellation of a subsequent build is processed.
- */
-let _staleCompletionEventsExpected = 0;
+
+function completeActiveRun(e: BuildCompleteEvent): void {
+  const run = activeRun;
+  if (!run) return;
+  activeRun = null;
+  earlyCompletions.clear();
+  clearBuildCompleteTimer();
+
+  // Flush any lines still in the 50ms buffer before updating phase.
+  flushPendingLines();
+  if (e.cancelled) {
+    cancelBuildState();
+  } else {
+    setBuildResult({ success: e.success, durationMs: e.durationMs });
+  }
+  run.resolve({ success: e.success, durationMs: e.durationMs });
+}
 
 function clearBuildCompleteTimer(): void {
   if (_buildCompleteTimer !== null) {
@@ -194,11 +205,12 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   // timeout (Settings → MCP → buildTimeoutSec) so long cold builds are not
   // falsely failed while Gradle is still running.
   const buildTimeoutSec = Math.min(3600, Math.max(60, settingsState.mcp?.buildTimeoutSec ?? 600));
-  const buildComplete = new Promise<{ success: boolean; durationMs: number }>((resolve, reject) => {
-    _resolveBuildComplete = resolve;
+  const run: ActiveRun = { runId: null, resolve: () => {} };
+  const buildComplete = new Promise<BuildCompletion>((resolve, reject) => {
+    run.resolve = resolve;
     _buildCompleteTimer = setTimeout(() => {
-      if (_resolveBuildComplete === resolve) {
-        _resolveBuildComplete = null;
+      if (activeRun === run) {
+        activeRun = null;
         _buildCompleteTimer = null;
         reject(
           new Error(
@@ -208,14 +220,22 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
       }
     }, buildTimeoutSec * 1000);
   });
+  activeRun = run;
+  earlyCompletions.clear();
 
   try {
-    await runGradleTask(effectiveTask, (line: BuildLine) => {
+    const runId = await runGradleTask(effectiveTask, (line: BuildLine) => {
       addBuildLine(line);
     });
+    if (activeRun === run) {
+      run.runId = runId;
+      const early = earlyCompletions.get(runId);
+      earlyCompletions.clear();
+      if (early) completeActiveRun(early);
+    }
   } catch (e) {
     // Process-level spawn failure (e.g. gradlew not found).
-    _resolveBuildComplete = null;
+    if (activeRun === run) activeRun = null;
     clearBuildCompleteTimer();
     const msg = formatError(e);
     addBuildLine({
@@ -235,11 +255,8 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   } catch (e) {
     clearBuildCompleteTimer();
     // The only rejection path is the completion timeout: Gradle is still
-    // running. Cancel it so the shared build slot is released, and expect
-    // one stale cancelled completion event from the dying process — it may
-    // arrive after a later build has started, so this count persists until
-    // the listener consumes it.
-    _staleCompletionEventsExpected++;
+    // running. Cancel it so the shared build slot is released. Its late
+    // completion event no longer matches the active run and is ignored.
     try {
       await cancelBuild();
     } catch (cancelErr) {
@@ -286,6 +303,9 @@ export async function runAndDeploy(): Promise<void> {
 
   deployInFlight = true;
   const variant = variantState.activeVariant;
+  // APK lookup reads the backend's current project, so a project switch
+  // mid-deploy must stop it before it installs the other project's APK.
+  const projectGeneration = currentProjectGeneration();
   // Read once up front: when auto-install is off this is a build-only run,
   // which must not force device selection.
   const autoInstall = settingsState.build.autoInstallOnBuild !== false;
@@ -340,10 +360,12 @@ export async function runAndDeploy(): Promise<void> {
     }
 
     // 2. Find APK.
+    assertSameProject(projectGeneration);
     logStep(`Searching for APK (variant: ${variant})…`);
     // Rejects with the reason when no APK of this variant exists; another
     // variant's APK is never used.
     const apkPath = await findApkPath(variant);
+    assertSameProject(projectGeneration);
     logStep(`APK: ${apkPath}`);
 
     // 3. Install.
@@ -392,18 +414,22 @@ export async function runAndDeploy(): Promise<void> {
 export async function cancelBuild(): Promise<void> {
   if (buildState.phase !== "running") return;
 
-  const resolve = _resolveBuildComplete;
-  _resolveBuildComplete = null;
+  const run = activeRun;
+  activeRun = null;
+  earlyCompletions.clear();
   clearBuildCompleteTimer();
 
   // Flush any buffered log lines before finalising state.
   flushPendingLines();
 
   cancelBuildState();
-  await cancelBuildApi();
-
-  // Unblock runBuild immediately so it doesn't hang until timeout.
-  resolve?.({ success: false, durationMs: 0 });
+  try {
+    await cancelBuildApi();
+  } finally {
+    // Unblock runBuild even when the cancel request fails; the timer that
+    // would otherwise release it is already cleared.
+    run?.resolve({ success: false, durationMs: 0 });
+  }
 }
 
 /**
@@ -500,6 +526,12 @@ function logBuildHeader(effectiveTask: string): void {
   logEnvVar("JAVA_HOME", settingsState.java?.home);
   logEnvVar("ANDROID_HOME", settingsState.android?.sdkPath);
   logStep(`./gradlew ${effectiveTask} --console=plain`);
+}
+
+function assertSameProject(generation: number): void {
+  if (generation !== currentProjectGeneration()) {
+    throw new Error("The project changed during deploy. Nothing was installed.");
+  }
 }
 
 /** Emit a visible error into the build log AND the Problems tab. */

@@ -20,7 +20,13 @@ import {
   updateProjectMeta,
   renameProject as renameProjectApi,
 } from "@/lib/tauri-api";
-import { setProject, setLoading, setApplicationId } from "@/stores/project.store";
+import {
+  setProject,
+  setLoading,
+  setApplicationId,
+  beginProjectOpen,
+  currentProjectGeneration,
+} from "@/stores/project.store";
 import {
   setProjects,
   setActiveProjectId,
@@ -74,14 +80,18 @@ export interface OpenProjectResult {
 
 // Guards against interleaved project opens. Two rapid sidebar clicks each run
 // several awaited IPC calls; without this the store ends up mixing one
-// project's root with another's applicationId. variant.store uses the same
-// pattern via isCurrentProject().
-let openGeneration = 0;
+// project's root with another's applicationId, or restoring one project's
+// variant into the other. variant.store uses the same idea via isCurrentProject().
+type IsCurrentOpen = () => boolean;
 
-async function doOpenProject(path: string): Promise<OpenProjectResult | null> {
-  const generation = ++openGeneration;
-  const isCurrent = (): boolean => generation === openGeneration;
+function isCurrentOpen(generation: number): IsCurrentOpen {
+  return () => generation === currentProjectGeneration();
+}
 
+async function doOpenProject(
+  path: string,
+  isCurrent: IsCurrentOpen
+): Promise<OpenProjectResult | null> {
   setLoading(true);
   try {
     const projectName = await openProject(path);
@@ -123,9 +133,15 @@ async function doOpenProject(path: string): Promise<OpenProjectResult | null> {
  * After FsState points at a project, rediscover variants and restore registry selections.
  * Call only after a successful `doOpenProject` so a failed open does not wipe variant state.
  */
-async function reloadVariantsAndRestoreMeta(entry: ProjectEntry | null): Promise<void> {
+async function reloadVariantsAndRestoreMeta(
+  entry: ProjectEntry | null,
+  isCurrent: IsCurrentOpen
+): Promise<void> {
+  if (!isCurrent()) return;
   resetVariantState();
   await loadVariants();
+  // A newer open owns the variant state and the saved selections now.
+  if (!isCurrent()) return;
   if (variantState.error) {
     showToast(`Failed to load build variants: ${variantState.error}`, "error");
   }
@@ -133,7 +149,7 @@ async function reloadVariantsAndRestoreMeta(entry: ProjectEntry | null): Promise
   if (savedVariant && variantState.variants.some((v) => v.name === savedVariant)) {
     await selectVariant(savedVariant).catch(console.error);
   }
-  if (entry?.lastDevice) {
+  if (entry?.lastDevice && isCurrent()) {
     await pickDevice(entry.lastDevice).catch(console.error);
   }
 }
@@ -149,17 +165,19 @@ async function reloadVariantsAndRestoreMeta(entry: ProjectEntry | null): Promise
 export async function openProjectFolder(): Promise<OpenProjectResult | null> {
   const path = await openFolderDialog();
   if (!path) return null;
+  const isCurrent = isCurrentOpen(beginProjectOpen());
 
   // Cancel any running build from the previous project and clear its state.
   await cancelBuild().catch(() => {});
   resetBuildState();
 
-  const result = await doOpenProject(path);
+  const result = await doOpenProject(path, isCurrent);
   if (result) {
     // Refresh the projects list so the new entry shows in the sidebar.
     await refreshProjectsList().catch(console.error);
     // Mark this project as active in the registry store.
     const projects = (await listProjects().catch(() => [])) as ProjectEntry[];
+    if (!isCurrent()) return null;
     const entry = projects.find((p) => p.path === result.root);
     if (entry) {
       upsertProject(entry);
@@ -168,7 +186,7 @@ export async function openProjectFolder(): Promise<OpenProjectResult | null> {
     // Load build history scoped to the newly opened project.
     getBuildHistory().then(setBuildHistory).catch(console.error);
 
-    await reloadVariantsAndRestoreMeta(entry ?? null);
+    await reloadVariantsAndRestoreMeta(entry ?? null, isCurrent);
   }
   return result;
 }
@@ -185,6 +203,7 @@ export async function openProjectFolder(): Promise<OpenProjectResult | null> {
  * 4. Restore per-project variant/device selections
  */
 export async function selectProject(entry: ProjectEntry): Promise<void> {
+  const isCurrent = isCurrentOpen(beginProjectOpen());
   // Cancel build — it targets the old project's Gradle root.
   await cancelBuild().catch(() => {
     // Ignore — no build in progress.
@@ -192,12 +211,13 @@ export async function selectProject(entry: ProjectEntry): Promise<void> {
   // Reset build state AND history so the previous project's builds don't bleed through.
   resetBuildState();
 
-  const result = await doOpenProject(entry.path);
+  const result = await doOpenProject(entry.path, isCurrent);
   if (result) {
     // Fetch fresh metadata for this entry (lastBuildVariant, lastDevice, etc.)
     // but do NOT replace the full list — that would re-sort by lastOpened and
     // jump the selected project to the top.
     const projects = (await listProjects().catch(() => [])) as ProjectEntry[];
+    if (!isCurrent()) return;
     const fresh = projects.find((p) => p.id === entry.id) ?? entry;
     upsertProject(fresh);
     setActiveProjectId(fresh.id);
@@ -205,7 +225,7 @@ export async function selectProject(entry: ProjectEntry): Promise<void> {
     // Load build history scoped to the newly active project.
     getBuildHistory().then(setBuildHistory).catch(console.error);
 
-    await reloadVariantsAndRestoreMeta(fresh);
+    await reloadVariantsAndRestoreMeta(fresh, isCurrent);
   }
 }
 
@@ -267,14 +287,16 @@ export async function restoreLastProject(): Promise<boolean> {
     const lastPath = await getLastActiveProject();
     if (!lastPath) return false;
 
-    const result = await doOpenProject(lastPath);
+    const isCurrent = isCurrentOpen(beginProjectOpen());
+    const result = await doOpenProject(lastPath, isCurrent);
     if (result) {
       const projects = (await listProjects().catch(() => [])) as ProjectEntry[];
+      if (!isCurrent()) return false;
       const entry = projects.find((p) => p.path === lastPath);
       if (entry) {
         setActiveProjectId(entry.id);
       }
-      await reloadVariantsAndRestoreMeta(entry ?? null);
+      await reloadVariantsAndRestoreMeta(entry ?? null, isCurrent);
       setProjects(projects);
       return true;
     }
