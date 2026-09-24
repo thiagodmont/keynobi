@@ -1,0 +1,19 @@
+PITCH.md
+  s_001e6d7fe3b5bd::t_4215de8b9e26a9 3,5,7,9,11,13-17,19,21-23,25-33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2c9aab82b6802e330c090ef98708bbc3f14ca869",
+  "prompts": {},
+  "sessions": {
+    "s_001e6d7fe3b5bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "066850e1-152d-4e65-ba24-bd856b1e61e2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
