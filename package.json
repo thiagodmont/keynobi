@@ -17,7 +17,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "rust:check": "cd src-tauri && cargo check",
-    "generate:bindings": "cd src-tauri && cargo test && echo 'TypeScript bindings regenerated in src/bindings/'",
+    "generate:bindings": "cd src-tauri && cargo test --lib export_bindings && echo 'TypeScript bindings regenerated in src/bindings/'",
     "check:bindings": "npm run generate:bindings && BINDINGS_STATUS=$(git status --porcelain src/bindings/) && test -z \"$BINDINGS_STATUS\"",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",

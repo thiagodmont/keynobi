@@ -68,7 +68,7 @@ All persistent app data lives under `~/.keynobi/`, resolved by `settings_manager
 
 Frontend-only preferences (saved logcat filters, last query, dismissed update versions) live in WebView `localStorage`.
 
-Resolve paths through `settings_manager`, not by rebuilding `~/.keynobi` by hand. Tests must never read or write the real data directory.
+Resolve paths through `settings_manager`, not by rebuilding `~/.keynobi` by hand. Tests must never read or write the real data directory: under `cfg(test)`, `data_dir()` returns a per-process temp directory, and integration tests install an override with `tests/common::isolate_data_dir()` (which calls `settings_manager::set_data_dir_override`).
 
 ---
 
@@ -250,7 +250,6 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Gradle options.** `validate_gradle_task` accepts a leading `-`, so MCP clients can pass Gradle options. No task denylist exists.
 - **Destructive defaults.** MCP `restart_app` defaults to `cold = true`, which runs `pm clear` and wipes app data. No MCP tool declares annotations.
 - **Cross-process state.** GUI and headless MCP do not share live state or a build lock, and both write `build-history.json` (last writer wins).
-- **Test isolation.** There is no data-dir override, so `cargo test`, and therefore `npm run generate:bindings`, can write to the real `~/.keynobi`. Run them with `HOME` set to a temporary directory until one exists.
 - **Duplicated logic.** Logcat start/stop/clear is duplicated between `commands/logcat.rs` and `mcp_server.rs`. APK path validation exists twice (`utils/path.rs` and MCP `validate_apk_path`). `validate_activity_name` lives in `commands/device.rs` instead of `utils/validation.rs`, so MCP does not use it.
 - **`unwrap()` policy.** Enforced by review only. About 15 production `unwrap()` calls remain, mostly `Regex::new` in `build_parser.rs`. Consider `clippy::unwrap_used`.
 - **Unbounded activity log.** `mcp-activity.jsonl` is trimmed only at MCP server start.

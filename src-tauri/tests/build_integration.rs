@@ -7,10 +7,12 @@
 //!   - Real process execution via `tokio::process::Command` with a mock `gradlew`
 
 use keynobi_lib::models::build::{BuildLineKind, BuildResult};
-use keynobi_lib::services::build_runner::{self, BuildState};
+use keynobi_lib::services::build_runner;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::TempDir;
+
+mod common;
 
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -175,7 +177,7 @@ fn parse_build_duration_no_match_returns_zero() {
 async fn record_build_result_success_updates_state() {
     use keynobi_lib::models::build::BuildStatus;
 
-    let state = BuildState::new();
+    let state = common::isolated_build_state();
     // Capture history length before recording — startup may load persisted history from disk.
     let initial_len = state.inner.lock().await.history.len();
 
@@ -220,7 +222,7 @@ async fn record_build_result_success_updates_state() {
 async fn record_build_result_failure_updates_state() {
     use keynobi_lib::models::build::{BuildError, BuildErrorSeverity, BuildStatus};
 
-    let state = BuildState::new();
+    let state = common::isolated_build_state();
     let result = BuildResult {
         success: false,
         duration_ms: 1_000,
@@ -259,7 +261,7 @@ async fn record_build_result_failure_updates_state() {
 async fn record_build_result_respects_history_limit() {
     use keynobi_lib::models::build::BuildStatus;
 
-    let state = BuildState::new();
+    let state = common::isolated_build_state();
 
     // Record MAX_HISTORY + 2 builds — the ring buffer should evict the oldest.
     let limit = build_runner::MAX_HISTORY + 2;
@@ -298,7 +300,7 @@ async fn record_build_result_respects_history_limit() {
 /// get_build_history can return only builds for the active project.
 #[tokio::test]
 async fn record_build_result_stamps_project_root() {
-    let state = BuildState::new();
+    let state = common::isolated_build_state();
     let result = BuildResult {
         success: true,
         duration_ms: 1_000,
@@ -328,7 +330,7 @@ async fn record_build_result_stamps_project_root() {
 /// Records with no project_root (e.g. from MCP run_task paths) store None.
 #[tokio::test]
 async fn record_build_result_stores_none_project_root_when_not_provided() {
-    let state = BuildState::new();
+    let state = common::isolated_build_state();
     let result = BuildResult {
         success: true,
         duration_ms: 500,
@@ -358,7 +360,7 @@ async fn record_build_result_stores_none_project_root_when_not_provided() {
 /// history holds all records, and filtering by project_root is what scopes them.
 #[tokio::test]
 async fn history_records_retain_distinct_project_roots() {
-    let state = BuildState::new();
+    let state = common::isolated_build_state();
     let make_result = || BuildResult {
         success: true,
         duration_ms: 1_000,
@@ -533,4 +535,21 @@ async fn mock_gradlew_error_output_produces_error_lines() {
     assert_eq!(kotlin_err.line, Some(10));
     assert_eq!(kotlin_err.col, Some(5));
     assert!(kotlin_err.content.contains("Unresolved reference: foo"));
+}
+
+// ── Data isolation ────────────────────────────────────────────────────────────
+
+#[test]
+fn integration_tests_use_isolated_data_dir() {
+    common::isolate_data_dir();
+    let dir = keynobi_lib::services::settings_manager::data_dir();
+    if let Some(home) = dirs::home_dir() {
+        let real = home.join(".keynobi");
+        assert!(
+            !dir.starts_with(&real),
+            "integration tests resolved the user's data dir: {}",
+            dir.display()
+        );
+    }
+    assert!(dir.starts_with(std::env::temp_dir()), "{}", dir.display());
 }

@@ -1,6 +1,6 @@
 use crate::models::settings::AppSettings;
 use std::path::PathBuf;
-use std::sync::{LazyLock, Mutex as StdMutex};
+use std::sync::{LazyLock, Mutex as StdMutex, OnceLock};
 
 const KNOWN_SETTINGS_FIELDS: &[&str] = &[
     "appearance",
@@ -85,10 +85,51 @@ fn log_unknown_settings_fields(value: &serde_json::Value) {
     }
 }
 
+/// Process-wide replacement for the data directory. Every persisted file
+/// (settings, build history/logs, MCP activity) resolves through
+/// `settings_dir()`, so this is the single switch that keeps tests away from
+/// the user's real `~/.keynobi`.
+static DATA_DIR_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
+
+/// Redirect all persisted state to `dir` for the rest of the process.
+///
+/// Integration tests (`tests/`) must call this before touching persistence;
+/// they link the library without `cfg(test)`, so the automatic unit-test
+/// isolation below does not apply to them. First call wins; returns `false`
+/// if an override was already installed.
+#[doc(hidden)]
+pub fn set_data_dir_override(dir: PathBuf) -> bool {
+    DATA_DIR_OVERRIDE.set(dir).is_ok()
+}
+
 fn settings_dir() -> PathBuf {
+    match DATA_DIR_OVERRIDE.get() {
+        Some(dir) => dir.clone(),
+        None => default_data_dir(),
+    }
+}
+
+#[cfg(not(test))]
+fn default_data_dir() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".keynobi")
+}
+
+/// Unit tests never see the real home directory: they get one fresh temp
+/// directory per test process. Previously tests loaded and rewrote the user's
+/// `~/.keynobi/build-history.json`, and log rotation deleted their real build
+/// logs as orphans.
+#[cfg(test)]
+fn default_data_dir() -> PathBuf {
+    static TEST_DATA_DIR: LazyLock<PathBuf> = LazyLock::new(|| {
+        tempfile::Builder::new()
+            .prefix("keynobi-test-")
+            .tempdir()
+            .expect("create unit-test data dir")
+            .keep()
+    });
+    TEST_DATA_DIR.clone()
 }
 
 /// Public accessor for the `~/.keynobi/` data directory.
@@ -413,6 +454,21 @@ pub async fn detect_java_home_from_shell() -> Option<String> {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[test]
+    fn unit_tests_never_resolve_the_real_data_dir() {
+        let dir = data_dir();
+        if let Some(home) = dirs::home_dir() {
+            let real = home.join(".keynobi");
+            assert!(
+                !dir.starts_with(&real),
+                "unit tests resolved the user's data dir: {}",
+                dir.display()
+            );
+        }
+        assert!(dir.starts_with(std::env::temp_dir()), "{}", dir.display());
+        assert_eq!(settings_file().parent(), Some(dir.as_path()));
+    }
 
     #[test]
     fn load_returns_defaults_when_no_file() {

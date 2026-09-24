@@ -63,8 +63,15 @@ jobs:
         with:
           workspaces: src-tauri
       - name: Check TypeScript bindings are up to date
+        # Runs only the ts-rs export tests, not the persistence tests.
+        # A filter that matches nothing still exits 0, so require that the
+        # export tests actually ran.
         run: |
-          cd src-tauri && cargo test --lib
+          cd src-tauri
+          out=$(cargo test --lib export_bindings 2>&1) || { echo "$out"; exit 1; }
+          echo "$out" | grep -E "^test result:"
+          echo "$out" | grep -Eq "^test result: ok\. [1-9][0-9]* passed" || \
+            (echo "ERROR: no ts-rs export_bindings tests ran" && exit 1)
           cd ..
           test -z "$(git status --porcelain src/bindings/)" || \
             (echo "ERROR: TypeScript bindings are stale. Run: npm run generate:bindings" && exit 1)
@@ -76,6 +83,16 @@ jobs:
           cargo check --features telemetry
           cargo clippy --features telemetry -- -D warnings
           cargo test --lib --tests --features telemetry
+      - name: Tests must not write the real data directory
+        # Tests persist to an isolated temp dir (settings_manager::data_dir).
+        # The runner's home starts clean, so any ~/.keynobi here means a test
+        # bypassed the isolation and would overwrite a developer's real data.
+        run: |
+          if [ -e "$HOME/.keynobi" ]; then
+            echo "ERROR: tests wrote to \$HOME/.keynobi. Use tests/common::isolate_data_dir()."
+            ls -laR "$HOME/.keynobi"
+            exit 1
+          fi
       - name: Rustfmt
         run: cd src-tauri && cargo fmt --check
       - name: Clippy
