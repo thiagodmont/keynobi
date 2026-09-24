@@ -182,10 +182,11 @@ pub fn check_agent_gradle_task(task: &str) -> Result<(), String> {
     for denied in AGENT_DENIED_TASKS {
         let (hit, label) = match denied {
             DeniedTask::Prefix(words, label) => (words_match(&typed, words), label),
+            // Try every starting word, including ones too close to the end to
+            // hold the whole pattern: Gradle expands a name that stops partway
+            // (`releaseToMav`) to the full task (`releaseToMavenCentral`).
             DeniedTask::Contains(words, label) => (
-                typed
-                    .windows(words.len())
-                    .any(|window| words_match(window, words)),
+                (0..typed.len()).any(|start| words_match(&typed[start..], words)),
                 label,
             ),
         };
@@ -268,6 +269,10 @@ mod tests {
             "releaseToMavenCentral",
             "deployPlayStore",
             "playStoreUpload",
+            // Names that stop partway into a denied word sequence.
+            "releaseTo",
+            "releaseToMav",
+            "deployPlay",
             // Abbreviations Gradle would expand to a denied task.
             "pRB",
             "pub",
@@ -297,7 +302,7 @@ mod tests {
             "packageDebug",
             "preBuild",
             "compileDebugKotlin",
-            "copyTo",
+            "bundleReleaseClassesToCompileJar",
             "dependencies",
             "tasks",
         ] {

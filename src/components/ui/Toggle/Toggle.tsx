@@ -7,6 +7,8 @@ export interface ToggleProps {
   disabled?: boolean;
   size?: "sm" | "md";
   class?: string;
+  /** Accessible name for the switch when no visible label is associated with it. */
+  ariaLabel?: string;
 }
 
 export function Toggle(props: ToggleProps): JSX.Element {
@@ -23,6 +25,7 @@ export function Toggle(props: ToggleProps): JSX.Element {
     <button
       role="switch"
       aria-checked={props.checked ? "true" : "false"}
+      aria-label={props.ariaLabel}
       disabled={props.disabled}
       onClick={() => {
         if (!props.disabled) props.onChange(!props.checked);

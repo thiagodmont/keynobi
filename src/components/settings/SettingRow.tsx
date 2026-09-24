@@ -53,8 +53,9 @@ export function SettingRow(props: SettingRowProps): JSX.Element {
 export function SettingToggle(props: {
   checked: boolean;
   onChange: (val: boolean) => void;
+  ariaLabel?: string;
 }): JSX.Element {
-  return <Toggle checked={props.checked} onChange={props.onChange} />;
+  return <Toggle checked={props.checked} onChange={props.onChange} ariaLabel={props.ariaLabel} />;
 }
 
 export function SettingNumberInput(props: {

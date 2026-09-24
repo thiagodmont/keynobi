@@ -8,6 +8,13 @@ describe("Toggle", () => {
     expect(screen.getByRole("switch")).not.toBeNull();
   });
 
+  it("exposes ariaLabel as the switch's accessible name", () => {
+    render(() => (
+      <Toggle checked={false} onChange={vi.fn()} ariaLabel="Allow unrestricted Gradle tasks" />
+    ));
+    expect(screen.getByRole("switch", { name: "Allow unrestricted Gradle tasks" })).not.toBeNull();
+  });
+
   it("reflects checked=true via aria-checked", () => {
     render(() => <Toggle checked={true} onChange={vi.fn()} />);
     expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("true");

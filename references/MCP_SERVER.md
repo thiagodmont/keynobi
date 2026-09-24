@@ -235,6 +235,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
+- **Play track promotion.** The agent Gradle policy does not block gradle-play-publisher `promote*` tasks (for example `promoteReleaseArtifact`), which change a live Play Console track. Pending a decision to add them to the denylist.
 - **No annotations.** No tool declares `readOnlyHint`, `destructiveHint`, `idempotentHint`, or `openWorldHint`.
 - **Server identity.** `Implementation::from_build_env()` resolves inside rmcp, so `serverInfo` reports `rmcp` and rmcp's version instead of Keynobi's.
 - **Ignored parameter.** `run_gradle_task` accepts `variant` but ignores it.
