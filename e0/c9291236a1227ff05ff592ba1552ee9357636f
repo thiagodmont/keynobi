@@ -1,0 +1,23 @@
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_c3963ef450b7ca 121
+src/components/build/BuildPanel.tsx
+  s_1e114e823b9048::t_09467f5bd28c08 14,52-53,57,65,74-77,321-336,338-358
+src/components/build/BuildPanel.component.test.tsx
+  s_1e114e823b9048::t_49476b0e20fbf5 1-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e0c9291236a1227ff05ff592ba1552ee9357636f",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
