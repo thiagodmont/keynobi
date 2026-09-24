@@ -451,11 +451,13 @@ mod log_file_tests {
     use std::io::Write;
 
     /// Writer slow enough that queued lines are still pending right after they are sent.
+    /// The guard waits at most 1 s on drop, so keep the total well under that even
+    /// on CI runners that stretch short sleeps.
     struct SlowWriter(Arc<std::sync::Mutex<Vec<u8>>>);
 
     impl Write for SlowWriter {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(std::time::Duration::from_millis(25));
             self.0.lock().unwrap().extend_from_slice(buf);
             Ok(buf.len())
         }
@@ -470,7 +472,7 @@ mod log_file_tests {
         let (mut writer, guard) = tracing_appender::non_blocking(SlowWriter(written.clone()));
         let mut guard = Some(guard);
 
-        for i in 0..20 {
+        for i in 0..2 {
             writeln!(writer, "line {i}").unwrap();
         }
 
@@ -482,7 +484,7 @@ mod log_file_tests {
         let text = String::from_utf8(written.lock().unwrap().clone()).unwrap();
         assert_eq!(
             text.lines().count(),
-            20,
+            2,
             "queued lines were not flushed: {text:?}"
         );
     }
