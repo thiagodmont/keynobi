@@ -1,164 +1,100 @@
-# Keynobi
+<p align="center">
+  <img src="src-tauri/icons/128x128.png" width="96" alt="Keynobi icon">
+</p>
 
-[![CI](https://github.com/thiagodmont/keynobi/actions/workflows/ci.yml/badge.svg)](https://github.com/thiagodmont/keynobi/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<h1 align="center">Keynobi</h1>
 
-A focused **Android development companion** for macOS. It sits **next to** Android Studio so you get readable Gradle output, live logcat, devices/AVDs, and health checks in one native window. With a **MCP** that lets tools like Claude Code and Codex run builds, read logs, pull errors, and inspect devices without clicking through the UI.
+<p align="center">
+  <strong>Build, run, and debug Android apps from one fast macOS window, and let your AI agent do the same.</strong>
+</p>
 
-**Platform:** macOS only (v0.x beta) · **Projects:** Kotlin + Gradle
+<p align="center">
+  <a href="https://github.com/thiagodmont/keynobi/releases/latest"><strong>Download for macOS</strong></a> ·
+  <a href="references/USER_MANUAL.md">User guide</a> ·
+  <a href="references/MCP_SERVER.md">MCP reference</a>
+</p>
 
-Download the application on the release build and let us know if it helps in your workflow!
-
----
-
-## Table of contents
-
-- [Why Keynobi](#why-keynobi)
-- [Keyboard shortcuts](#keyboard-shortcuts)
-- [Features](#features)
-- [How it works](#how-it-works)
-- [Setup for contributing](#setup-for-contributing)
-- [Quick start](#quick-start)
-- [Development](#development)
-- [Contributing](#contributing)
-- [Troubleshooting](references/USER_MANUAL.md#troubleshooting)
+<p align="center">
+  <a href="https://github.com/thiagodmont/keynobi/actions/workflows/ci.yml"><img src="https://github.com/thiagodmont/keynobi/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
 
 ---
 
-## Why Keynobi
+## What is Keynobi?
 
-Keynobi is a **single place** to watch builds, tail logcat with filters, manage emulators, and sanity-check your toolchain. If you use AI agents, the MCP server exposes the same capabilities so the agent can act on real device and build state instead of guessing.
+Keynobi is a companion app for Android developers on macOS. Keep writing code in Android Studio (or your editor); use Keynobi for the loop around it: **build → install → run → read logs → fix**.
 
----
+It puts Gradle builds, logcat, devices, and the UI hierarchy in one lightweight window. It also includes an **MCP server**, so AI coding agents such as Claude Code and Codex can build your app, read its crashes, and drive the device using real data instead of guesses.
 
-## Keyboard shortcuts
+## What You Can Do
 
-| Shortcut | Action |
-|----------|--------|
-| `Cmd+Shift+P` | Command palette |
-| `Cmd+Shift+W` | Setup wizard |
-| `Cmd+,` | Settings |
-| `Cmd+O` | Open / add project folder |
-| `Cmd+R` | Run App (build → install → launch) |
-| `Cmd+Shift+R` | Build only (no deploy) |
-| `Cmd+Shift+V` | Select build variant |
-| `Cmd+1` | Build tab |
-| `Cmd+2` | Logcat tab |
-| `Cmd+3` | Toggle Devices sidebar |
-| `Cmd+B` | Toggle Projects sidebar |
-| `Cmd+Shift+H` | Health Center |
-| `Cmd+Shift+M` | MCP activity panel |
+- **Build and run in one keystroke.** `Cmd+R` builds the selected variant, installs it, and launches it on your device. Errors are parsed into a clickable Problems list.
+- **Read logcat that keeps up.** A live stream with a real query language (`level:error tag:OkHttp -package:com.google`), saved filters, crash grouping, JSON viewer, and jump-to-source in Android Studio.
+- **Inspect any screen.** Capture the UI hierarchy (including Jetpack Compose semantics) from any running app, search it, and see the wireframe.
+- **Manage devices and emulators.** See connected devices, and create, launch, wipe, or delete emulators.
+- **Check your setup.** Health Center verifies the Android SDK, ADB, emulator, JDK, and Android Studio CLI, and tells you what to fix.
 
-Use the command palette for **Cancel Build**, **Clean Project**, **Copy MCP Setup Commands**, and other actions without default shortcuts.
+## Works With Your AI Agent
 
----
+Connect Keynobi to your agent once, then ask for things like:
 
-## Features
+> "Build the debug variant and fix any compile errors."
+>
+> "The app crashes on launch. Find the crash in logcat and tell me the cause."
+>
+> "Open the login screen, type a wrong password, and check which error message appears."
 
-| Area | What you get |
-|------|----------------|
-| **Projects** | Multi-project registry, Gradle root detection, app `versionName` / `versionCode` editor |
-| **Builds** | Streaming log, structured errors, variant matrix, clean/cancel, one-click run to device |
-| **Logcat** | Live stream, filters, crash detection, large-session-safe buffering (see architecture) |
-| **Devices & AVDs** | Connected devices, emulator lifecycle (create / wipe / delete) |
-| **Health** | Java, Android SDK, ADB, Gradle, disk checks with actionable hints |
-| **Shell** | Command palette (`Cmd+Shift+P`) backed by a single action registry |
-| **MCP** | Claude Code and Codex / `keynobi` transport (`--mcp`) for agent-driven workflows |
-
----
-
-## How it works
-
-Typical loop:
-
-1. **Open a Gradle project** (or add several to the registry). Keynobi finds the Gradle root and remembers it per project.
-2. **Build** — stream `./gradlew` output with ANSI coloring, parse errors into a list you can jump from, pick variants (build types × flavors), and run **Build → Install → Launch** when you want a tight loop without leaving the app.
-3. **Observe** — **Logcat** streams through Rust (ring buffer + batched events) so the UI stays fast; filter by level, tag, or free text and watch for crashes.
-4. **Devices** — see USB devices and AVDs, create/wipe/delete emulators, and keep **Health** (Java, SDK, ADB, Gradle, disk) honest.
-5. **Agents (optional)** — start the MCP server so external clients can invoke the same operations over stdio.
-
----
-
-## Setup for contributing 
-This part here is only if you want to run it locally or contribute with development. You can download the and install the last build in the release section.
-
-### 1. Rust (stable toolchain)
+Your agent gets 56 tools for builds, logcat, crashes, devices, and UI automation. Set it up from **Health Center**, which copies the exact command for your install, or run:
 
 ```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
-rustc --version  # rustc 1.78.0 or newer
+# Claude Code
+claude mcp add --scope user --transport stdio keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp
+
+# Codex
+codex mcp add keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp
 ```
 
-### 2. Node.js 20+
+The agent runs its own background copy of Keynobi for your project; it does not need the window open. See [AI Client MCP](references/USER_MANUAL.md#ai-client-mcp) for details.
 
-[Volta](https://volta.sh) pins the version automatically:
+## Get Started
 
-```bash
-curl https://get.volta.sh | bash
-volta install node@22
-node --version  # v22.x.x
-```
+**You need:** macOS 12 or later (Apple Silicon or Intel), the Android SDK with platform-tools, JDK 17 or newer, and an Android project with a Gradle wrapper (`gradlew`).
 
-Or install directly from [nodejs.org](https://nodejs.org).
+1. [Download the latest release](https://github.com/thiagodmont/keynobi/releases/latest): the `arm64` DMG for Apple Silicon, or `intel` for Intel Macs.
+2. Drag **Keynobi** to **Applications** and open it. The setup wizard auto-detects your SDK and JDK, or lets you pick them.
+3. Press `Cmd+O` and choose your Android project folder.
+4. Connect a device or start an emulator, then press `Cmd+R`.
 
-### 3. Xcode Command Line Tools
+Press `Cmd+Shift+P` to see every command. The [User guide](references/USER_MANUAL.md) covers each feature, all shortcuts, and troubleshooting.
 
-```bash
-xcode-select --install
-```
+## Status and Privacy
 
-### 4. Tauri CLI (cargo plugin)
+Keynobi is in **beta** (0.x) and runs on **macOS only**. It works with Gradle-based Android projects.
 
-```bash
-cargo install tauri-cli
-cargo tauri --version  # tauri-cli 2.x.x
-```
+- Crash reporting is **off by default**. When on, reports are scrubbed to exclude your code, logs, and project files.
+- The only other network request is a check for new releases on GitHub at startup.
+- Everything else stays on your Mac. See [Privacy and Data](references/USER_MANUAL.md#privacy-and-data).
 
----
+Found a bug or have an idea? [Open an issue](https://github.com/thiagodmont/keynobi/issues).
 
-## Quick start
+## Build From Source
+
+Install Xcode Command Line Tools (`xcode-select --install`), [Rust](https://rustup.rs) (the pinned toolchain installs automatically), and Node.js 22. Then:
 
 ```bash
 git clone https://github.com/thiagodmont/keynobi.git
 cd keynobi
-npm install
+npm ci
 npm run tauri dev
 ```
 
-`npm run tauri dev` runs Vite on `http://localhost:1420`, compiles the Rust backend when needed, and opens a native window.
-
-> **First run:** initial Rust dependency build often takes **3–8 minutes**; later runs are usually seconds.
-
----
-
-## Development
-
-Day to day:
-
-```bash
-npm run tauri dev        # app + hot reload (TS/CSS); Rust rebuilds on .rs changes
-npm run lint
-npm run typescript:check
-npm run test
-cd src-tauri && cargo test && cargo clippy -- -D warnings
-npm run generate:bindings   # after Rust model / TS export changes
-```
-
-**Contributors:** full checklist, CI parity, and review expectations are in [CONTRIBUTING.md](CONTRIBUTING.md) (and [AGENTS.md](AGENTS.md) for agent rules; [references/CODE_PATTERN.md](references/CODE_PATTERN.md#commands) for adding a command end to end).
-
----
-
-**Design choices (short):**
-
-- **Ring buffer (50K)** for logcat in Rust; the UI only receives what it needs — bounded memory.
-- **~100 ms batching** of log events before crossing to the frontend to avoid signal storms.
-- **Atomic settings writes** (temp + rename) so crashes mid-save do not corrupt JSON.
-- **Mutex discipline** — no lock held across `await`; see `references/CODE_PATTERN.md`.
-- **`ts-rs`** — regenerate TypeScript with `npm run generate:bindings` after model changes.
-
----
+The first build compiles the Rust dependencies and takes a few minutes. [CONTRIBUTING.md](CONTRIBUTING.md) lists the checks to run before a PR.
 
 ## Contributing
 
-We welcome issues and pull requests. Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow, [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations, and [SECURITY.md](SECURITY.md) for reporting vulnerabilities. [AGENTS.md](AGENTS.md) is the maintainer-oriented checklist (also useful for advanced contributions).
+Issues and pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md). Engineering rules live in [`references/`](references/), and [AGENTS.md](AGENTS.md) has the rules for AI coding agents. Please follow the [Code of Conduct](CODE_OF_CONDUCT.md), and report security issues privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE)
