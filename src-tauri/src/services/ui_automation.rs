@@ -6,13 +6,13 @@ use crate::models::ui_hierarchy::{UiHierarchySnapshot, UiNode};
 use crate::services::ui_hierarchy;
 use crate::services::ui_hierarchy_parse::center_from_bounds;
 use crate::utils::device_shell::quote_device_shell_arg;
+use crate::utils::process::{describe_failure, output_with_timeout, ADB_UNRESPONSIVE_HINT};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::process::Command;
-use tokio::time::timeout;
 
 /// Max matches returned by [`find_ui_elements`].
 pub const MAX_FIND_RESULTS: usize = 100;
@@ -1381,16 +1381,14 @@ pub fn validate_runtime_permission(permission: &str) -> Result<(), String> {
 }
 
 async fn run_adb_shell(adb: &PathBuf, serial: &str, args: &[&str]) -> Result<String, String> {
-    let out = timeout(
-        INPUT_CMD_TIMEOUT,
+    let out = output_with_timeout(
         Command::new(adb)
             .args(["-s", serial, "shell"])
-            .args(args.iter().map(|a| quote_device_shell_arg(a)))
-            .output(),
+            .args(args.iter().map(|a| quote_device_shell_arg(a))),
+        INPUT_CMD_TIMEOUT,
     )
     .await
-    .map_err(|_| "adb shell timed out".to_string())?
-    .map_err(|e| format!("adb failed: {e}"))?;
+    .map_err(|e| describe_failure("adb shell", &e, ADB_UNRESPONSIVE_HINT))?;
 
     let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
     let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();

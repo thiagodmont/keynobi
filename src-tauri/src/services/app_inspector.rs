@@ -1,4 +1,7 @@
 use crate::utils::device_shell::quote_device_shell_arg;
+use crate::utils::process::{
+    describe_failure, output_with_timeout, ADB_QUERY_TIMEOUT, ADB_UNRESPONSIVE_HINT,
+};
 use std::path::PathBuf;
 
 #[derive(Debug, serde::Serialize)]
@@ -307,10 +310,9 @@ async fn adb_cmd(
             cmd.args(args);
         }
     }
-    let output = cmd
-        .output()
+    let output = output_with_timeout(&mut cmd, ADB_QUERY_TIMEOUT)
         .await
-        .map_err(|e| format!("adb command failed: {e}"))?;
+        .map_err(|e| describe_failure("adb command", &e, ADB_UNRESPONSIVE_HINT))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         let stdout = String::from_utf8_lossy(&output.stdout).to_string();

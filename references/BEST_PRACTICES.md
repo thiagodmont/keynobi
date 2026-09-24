@@ -94,6 +94,7 @@ The effective root is `gradle_root` when available, otherwise `project_root`. Us
 - Spawn host processes with an argument vector through `tokio::process::Command`. Never build a host shell command string.
 - `adb shell` is different: the adb client joins its arguments with spaces and the device's `/system/bin/sh` parses the result again. Every `adb shell` argument that is not a hard-coded literal goes through `utils::device_shell::quote_device_shell_arg`; allowlist validation is defence in depth on top of that.
 - Reject option-shaped values (leading `-`) where a positional value is expected.
+- Every one-shot external command has a deadline. adb, the device, and SDK tools can hang (a wedged adb server, an install waiting on the device, a JVM stuck on start-up); without a deadline the caller, and loops such as device polling, block forever. A timeout kills the child and reports what timed out and what to try.
 
 ### Least Privilege
 

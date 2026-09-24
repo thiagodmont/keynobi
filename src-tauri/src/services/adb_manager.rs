@@ -4,6 +4,11 @@ use crate::models::device::{
 };
 use crate::models::settings::AppSettings;
 use crate::utils::device_shell::quote_device_shell_arg;
+use crate::utils::process::{
+    describe_failure, output_with_timeout, timed_out, AAPT2_TIMEOUT, ADB_INSTALL_TIMEOUT,
+    ADB_LAUNCH_TIMEOUT, ADB_QUERY_TIMEOUT, ADB_UNRESPONSIVE_HINT, AVDMANAGER_TIMEOUT,
+    EMULATOR_STOP_TIMEOUT, SDKMANAGER_LIST_TIMEOUT, SDK_TOOL_HINT,
+};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -159,11 +164,13 @@ pub fn find_aapt2(settings: &AppSettings) -> Option<PathBuf> {
 /// the APK binary, including any `applicationIdSuffix` from the build variant.
 /// Returns `None` if `aapt2` fails or produces no parseable output.
 pub async fn get_package_name_from_apk(aapt2: &Path, apk_path: &Path) -> Option<String> {
-    let out = Command::new(aapt2)
-        .args(["dump", "packagename", apk_path.to_str()?])
-        .output()
-        .await
-        .ok()?;
+    let out = output_with_timeout(
+        Command::new(aapt2).args(["dump", "packagename", apk_path.to_str()?]),
+        AAPT2_TIMEOUT,
+    )
+    .await
+    .map_err(|e| tracing::warn!("aapt2 dump packagename: {e}"))
+    .ok()?;
 
     let stdout = String::from_utf8_lossy(&out.stdout);
     stdout
@@ -239,13 +246,23 @@ fn extract_kv_pair(s: &str, key: &str) -> Option<String> {
 }
 
 /// Run `adb devices -l` and return parsed device list.
+///
+/// Returns an empty list (and logs) if adb fails or does not answer within
+/// [`ADB_QUERY_TIMEOUT`], so the polling loop keeps running.
 pub async fn list_devices(adb: &Path) -> Vec<Device> {
-    let output = Command::new(adb).args(["devices", "-l"]).output().await;
+    list_devices_within(adb, ADB_QUERY_TIMEOUT).await
+}
+
+async fn list_devices_within(adb: &Path, timeout: Duration) -> Vec<Device> {
+    let output = output_with_timeout(Command::new(adb).args(["devices", "-l"]), timeout).await;
 
     match output {
         Ok(out) => parse_devices_output(&String::from_utf8_lossy(&out.stdout)),
         Err(e) => {
-            tracing::warn!("Failed to list ADB devices: {e}");
+            tracing::warn!(
+                "{}",
+                describe_failure("adb devices", &e, ADB_UNRESPONSIVE_HINT)
+            );
             vec![]
         }
     }
@@ -258,25 +275,35 @@ pub async fn enrich_device_props(adb: &Path, device: &mut Device) {
     }
     let serial = device.serial.clone();
 
-    let sdk_out = Command::new(adb)
-        .args(["-s", &serial, "shell", "getprop", "ro.build.version.sdk"])
-        .output()
-        .await;
-    if let Ok(out) = sdk_out {
-        let s = String::from_utf8_lossy(&out.stdout).trim().to_owned();
-        device.api_level = s.parse().ok();
+    let sdk_out = output_with_timeout(
+        Command::new(adb).args(["-s", &serial, "shell", "getprop", "ro.build.version.sdk"]),
+        ADB_QUERY_TIMEOUT,
+    )
+    .await;
+    match sdk_out {
+        Ok(out) => {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_owned();
+            device.api_level = s.parse().ok();
+        }
+        // An unresponsive device must not stall the poll loop a second time.
+        Err(e) if e.kind() == std::io::ErrorKind::TimedOut => {
+            tracing::warn!("adb getprop on {serial}: {e}");
+            return;
+        }
+        Err(_) => {}
     }
 
-    let ver_out = Command::new(adb)
-        .args([
+    let ver_out = output_with_timeout(
+        Command::new(adb).args([
             "-s",
             &serial,
             "shell",
             "getprop",
             "ro.build.version.release",
-        ])
-        .output()
-        .await;
+        ]),
+        ADB_QUERY_TIMEOUT,
+    )
+    .await;
     if let Ok(out) = ver_out {
         device.android_version = Some(String::from_utf8_lossy(&out.stdout).trim().to_owned());
     }
@@ -286,11 +313,28 @@ pub async fn enrich_device_props(adb: &Path, device: &mut Device) {
 
 /// Install an APK on a device using `adb install -r -t`.
 pub async fn install_apk(adb: &Path, serial: &str, apk_path: &str) -> Result<String, String> {
-    let output = Command::new(adb)
-        .args(["-s", serial, "install", "-r", "-t", apk_path])
-        .output()
-        .await
-        .map_err(|e| format!("adb install failed: {e}"))?;
+    install_apk_within(adb, serial, apk_path, ADB_INSTALL_TIMEOUT).await
+}
+
+async fn install_apk_within(
+    adb: &Path,
+    serial: &str,
+    apk_path: &str,
+    timeout: Duration,
+) -> Result<String, String> {
+    let output = output_with_timeout(
+        Command::new(adb).args(["-s", serial, "install", "-r", "-t", apk_path]),
+        timeout,
+    )
+    .await
+    .map_err(|e| {
+        describe_failure(
+            "adb install",
+            &e,
+            "check the device for an install or verification prompt, \
+             then reconnect it or run `adb kill-server` and try again",
+        )
+    })?;
 
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -309,8 +353,8 @@ pub async fn install_apk(adb: &Path, serial: &str, apk_path: &str) -> Result<Str
 /// fully-qualified component (e.g. `com.example.app/.MainActivity`) on API 23+.
 /// Returns `None` if the package is not installed or has no LAUNCHER activity.
 async fn try_resolve_launcher(adb: &Path, serial: &str, package: &str) -> Option<String> {
-    let out = Command::new(adb)
-        .args([
+    let out = output_with_timeout(
+        Command::new(adb).args([
             "-s",
             serial,
             "shell",
@@ -321,10 +365,12 @@ async fn try_resolve_launcher(adb: &Path, serial: &str, package: &str) -> Option
             "-c",
             "android.intent.category.LAUNCHER",
             &quote_device_shell_arg(package),
-        ])
-        .output()
-        .await
-        .ok()?;
+        ]),
+        ADB_QUERY_TIMEOUT,
+    )
+    .await
+    .map_err(|e| tracing::warn!("adb resolve-activity on {serial}: {e}"))
+    .ok()?;
     let stdout = String::from_utf8_lossy(&out.stdout);
     // Output is two lines: priority integer then the component string.
     // Find the first line that contains '/' — that is the component.
@@ -347,11 +393,13 @@ async fn discover_effective_package(
     serial: &str,
     base_package: &str,
 ) -> Option<String> {
-    let out = Command::new(adb)
-        .args(["-s", serial, "shell", "pm", "list", "packages"])
-        .output()
-        .await
-        .ok()?;
+    let out = output_with_timeout(
+        Command::new(adb).args(["-s", serial, "shell", "pm", "list", "packages"]),
+        ADB_QUERY_TIMEOUT,
+    )
+    .await
+    .map_err(|e| tracing::warn!("adb pm list packages on {serial}: {e}"))
+    .ok()?;
     let stdout = String::from_utf8_lossy(&out.stdout);
     // Each line is "package:<name>". Collect names starting with base_package.
     let matches: Vec<String> = stdout
@@ -401,11 +449,9 @@ pub async fn launch_app(
             "-n",
             &quote_device_shell_arg(&format!("{package}/{act}")),
         ];
-        let out = Command::new(adb)
-            .args(args)
-            .output()
+        let out = output_with_timeout(Command::new(adb).args(args), ADB_LAUNCH_TIMEOUT)
             .await
-            .map_err(|e| format!("adb am start failed: {e}"))?;
+            .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))?;
         let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
         let combined = format!("{stdout}{stderr}").trim().to_owned();
@@ -417,8 +463,8 @@ pub async fn launch_app(
 
     // Step 1: ask the device for the LAUNCHER activity of the given package name.
     if let Some(component) = try_resolve_launcher(adb, serial, package).await {
-        let out = Command::new(adb)
-            .args([
+        let out = output_with_timeout(
+            Command::new(adb).args([
                 "-s",
                 serial,
                 "shell",
@@ -426,10 +472,11 @@ pub async fn launch_app(
                 "start",
                 "-n",
                 &quote_device_shell_arg(&component),
-            ])
-            .output()
-            .await
-            .map_err(|e| format!("adb am start failed: {e}"))?;
+            ]),
+            ADB_LAUNCH_TIMEOUT,
+        )
+        .await
+        .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))?;
         let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
         if !stdout.contains("Error") {
             let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
@@ -448,8 +495,8 @@ pub async fn launch_app(
 
     if effective_package != package {
         if let Some(component) = try_resolve_launcher(adb, serial, &effective_package).await {
-            let out = Command::new(adb)
-                .args([
+            let out = output_with_timeout(
+                Command::new(adb).args([
                     "-s",
                     serial,
                     "shell",
@@ -457,10 +504,11 @@ pub async fn launch_app(
                     "start",
                     "-n",
                     &quote_device_shell_arg(&component),
-                ])
-                .output()
-                .await
-                .map_err(|e| format!("adb am start failed: {e}"))?;
+                ]),
+                ADB_LAUNCH_TIMEOUT,
+            )
+            .await
+            .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))?;
             let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
             if !stdout.contains("Error") {
                 let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
@@ -473,8 +521,8 @@ pub async fn launch_app(
     }
 
     // Step 3: fall back to monkey with the effective package name.
-    let monkey_out = Command::new(adb)
-        .args([
+    let monkey_out = output_with_timeout(
+        Command::new(adb).args([
             "-s",
             serial,
             "shell",
@@ -484,10 +532,11 @@ pub async fn launch_app(
             "-c",
             "android.intent.category.LAUNCHER",
             "1",
-        ])
-        .output()
-        .await
-        .map_err(|e| format!("adb monkey failed: {e}"))?;
+        ]),
+        ADB_LAUNCH_TIMEOUT,
+    )
+    .await
+    .map_err(|e| describe_failure("adb monkey", &e, ADB_UNRESPONSIVE_HINT))?;
 
     let monkey_stdout = String::from_utf8_lossy(&monkey_out.stdout).into_owned();
     let monkey_stderr = String::from_utf8_lossy(&monkey_out.stderr).into_owned();
@@ -498,8 +547,8 @@ pub async fn launch_app(
     }
 
     // Step 4: last resort — fire the MAIN/LAUNCHER intent.
-    let out = Command::new(adb)
-        .args([
+    let out = output_with_timeout(
+        Command::new(adb).args([
             "-s",
             serial,
             "shell",
@@ -510,10 +559,11 @@ pub async fn launch_app(
             "-c",
             "android.intent.category.LAUNCHER",
             &quote_device_shell_arg(&effective_package),
-        ])
-        .output()
-        .await
-        .map_err(|e| format!("adb am start failed: {e}"))?;
+        ]),
+        ADB_LAUNCH_TIMEOUT,
+    )
+    .await
+    .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))?;
 
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
@@ -530,18 +580,19 @@ pub async fn launch_app(
 
 /// Force-stop an app on a device.
 pub async fn stop_app(adb: &Path, serial: &str, package: &str) -> Result<(), String> {
-    let out = Command::new(adb)
-        .args([
+    let out = output_with_timeout(
+        Command::new(adb).args([
             "-s",
             serial,
             "shell",
             "am",
             "force-stop",
             &quote_device_shell_arg(package),
-        ])
-        .output()
-        .await
-        .map_err(|e| format!("adb force-stop failed: {e}"))?;
+        ]),
+        ADB_QUERY_TIMEOUT,
+    )
+    .await
+    .map_err(|e| describe_failure("adb force-stop", &e, ADB_UNRESPONSIVE_HINT))?;
 
     if out.status.success() {
         Ok(())
@@ -725,12 +776,13 @@ fn newly_online_emulator_serials_since(before: &[Device], after: &[Device]) -> V
 
 /// Kill an emulator via `adb -s <serial> emu kill`.
 pub async fn stop_emulator(adb: &Path, serial: &str) -> Result<(), String> {
-    Command::new(adb)
-        .args(["-s", serial, "emu", "kill"])
-        .output()
-        .await
-        .map(|_| ())
-        .map_err(|e| format!("Failed to stop emulator: {e}"))
+    output_with_timeout(
+        Command::new(adb).args(["-s", serial, "emu", "kill"]),
+        EMULATOR_STOP_TIMEOUT,
+    )
+    .await
+    .map(|_| ())
+    .map_err(|e| describe_failure("adb emu kill", &e, ADB_UNRESPONSIVE_HINT))
 }
 
 // ── avdmanager operations ──────────────────────────────────────────────────────
@@ -902,10 +954,11 @@ fn api_to_android_version(api: u32) -> &'static str {
 
 /// Run `avdmanager list device -c` and return phone/tablet hardware profiles.
 pub async fn list_device_definitions(avdmanager: &Path) -> Vec<DeviceDefinition> {
-    let output = Command::new(avdmanager)
-        .args(["list", "device", "-c"])
-        .output()
-        .await;
+    let output = output_with_timeout(
+        Command::new(avdmanager).args(["list", "device", "-c"]),
+        AVDMANAGER_TIMEOUT,
+    )
+    .await;
 
     let output = match output {
         Ok(o) => o,
@@ -1020,19 +1073,22 @@ pub async fn create_avd(
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
         .spawn()
         .map_err(|e| format!("Failed to start avdmanager: {e}"))?;
 
-    if let Some(stdin) = child.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        let mut stdin = stdin;
-        let _ = stdin.write_all(b"no\n").await;
-    }
-
-    let output = child
-        .wait_with_output()
+    let run = async move {
+        if let Some(stdin) = child.stdin.take() {
+            use tokio::io::AsyncWriteExt;
+            let mut stdin = stdin;
+            let _ = stdin.write_all(b"no\n").await;
+        }
+        child.wait_with_output().await
+    };
+    let output = tokio::time::timeout(AVDMANAGER_TIMEOUT, run)
         .await
-        .map_err(|e| format!("avdmanager create failed: {e}"))?;
+        .unwrap_or_else(|_| Err(timed_out(AVDMANAGER_TIMEOUT)))
+        .map_err(|e| describe_failure("avdmanager create", &e, SDK_TOOL_HINT))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1046,11 +1102,12 @@ pub async fn create_avd(
 
 /// Delete an existing AVD using `avdmanager delete avd -n <name>`.
 pub async fn delete_avd(avdmanager: &Path, name: &str) -> Result<(), String> {
-    let output = tokio::process::Command::new(avdmanager)
-        .args(["delete", "avd", "--name", name])
-        .output()
-        .await
-        .map_err(|e| format!("Failed to start avdmanager: {e}"))?;
+    let output = output_with_timeout(
+        tokio::process::Command::new(avdmanager).args(["delete", "avd", "--name", name]),
+        AVDMANAGER_TIMEOUT,
+    )
+    .await
+    .map_err(|e| describe_failure("avdmanager delete", &e, SDK_TOOL_HINT))?;
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     if output.status.success() {
@@ -1071,18 +1128,11 @@ const EMU_AVD_NAME_TIMEOUT: Duration = Duration::from_secs(5);
 /// is stuck. Callers should treat `None` as "not confirmed yet" and
 /// keep polling rather than as a hard failure.
 async fn emulator_avd_name(adb: &Path, serial: &str) -> Option<String> {
-    let output = tokio::time::timeout(
+    let output = output_with_timeout(
+        tokio::process::Command::new(adb).args(["-s", serial, "emu", "avd", "name"]),
         EMU_AVD_NAME_TIMEOUT,
-        tokio::process::Command::new(adb)
-            .args(["-s", serial, "emu", "avd", "name"])
-            // Kill the adb process if the timeout drops the pending output
-            // future — otherwise a stuck console leaks one adb process per
-            // retry.
-            .kill_on_drop(true)
-            .output(),
     )
     .await
-    .ok()?
     .ok()?;
     if !output.status.success() {
         return None;
@@ -1180,13 +1230,15 @@ pub async fn list_available_system_images(
     sdkmanager: &Path,
     settings: &AppSettings,
 ) -> Vec<AvailableSystemImage> {
-    let output = tokio::process::Command::new(sdkmanager)
-        .args(["--list", "--include_obsolete"])
-        .env("JAVA_HOME", get_java_home(settings))
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .await;
+    let output = output_with_timeout(
+        tokio::process::Command::new(sdkmanager)
+            .args(["--list", "--include_obsolete"])
+            .env("JAVA_HOME", get_java_home(settings))
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null()),
+        SDKMANAGER_LIST_TIMEOUT,
+    )
+    .await;
 
     let output = match output {
         Ok(o) => o,
@@ -1420,11 +1472,18 @@ pub async fn resolve_device_serial(
     if let Some(s) = requested {
         return Some(s.to_string());
     }
-    let output = tokio::process::Command::new(adb)
-        .arg("devices")
-        .output()
-        .await
-        .ok()?;
+    let output = output_with_timeout(
+        tokio::process::Command::new(adb).arg("devices"),
+        ADB_QUERY_TIMEOUT,
+    )
+    .await
+    .map_err(|e| {
+        tracing::warn!(
+            "{}",
+            describe_failure("adb devices", &e, ADB_UNRESPONSIVE_HINT)
+        )
+    })
+    .ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     text.lines()
         .skip(1)
@@ -1458,6 +1517,60 @@ mod tests {
     }
 
     use super::*;
+
+    /// An `adb` that never answers, like a wedged adb server.
+    fn hanging_adb(dir: &Path) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let adb = dir.join("adb");
+        std::fs::write(&adb, "#!/bin/sh\nexec sleep 30\n").unwrap();
+        std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        adb
+    }
+
+    /// Longer than the deadlines below, much shorter than the hung adb.
+    const TEST_GUARD: Duration = Duration::from_secs(10);
+
+    #[tokio::test]
+    async fn list_devices_gives_up_on_a_hung_adb() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = hanging_adb(dir.path());
+
+        let start = std::time::Instant::now();
+        let devices = tokio::time::timeout(
+            TEST_GUARD,
+            list_devices_within(&adb, Duration::from_millis(300)),
+        )
+        .await
+        .expect("list_devices blocked on a hung adb");
+
+        assert!(devices.is_empty());
+        assert!(start.elapsed() < Duration::from_secs(5));
+    }
+
+    #[tokio::test]
+    async fn install_apk_reports_a_hung_install() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = hanging_adb(dir.path());
+
+        let err = tokio::time::timeout(
+            TEST_GUARD,
+            install_apk_within(
+                &adb,
+                "emulator-5554",
+                "/nonexistent/app.apk",
+                Duration::from_millis(300),
+            ),
+        )
+        .await
+        .expect("install_apk blocked on a hung adb")
+        .unwrap_err();
+
+        assert!(
+            err.starts_with("adb install timed out after 300 ms"),
+            "{err}"
+        );
+        assert!(err.contains("adb kill-server"), "{err}");
+    }
 
     fn test_device(
         serial: &str,

@@ -31,7 +31,7 @@ Backend:
 - `src-tauri/src/commands/` - thin Tauri command handlers.
 - `src-tauri/src/services/` - Rust business logic.
 - `src-tauri/src/models/` - Rust IPC models exported with `ts-rs`, plus `AppError`.
-- `src-tauri/src/utils/` - shared helpers: `path.rs` (filesystem boundaries), `validation.rs` (identifiers), and `line_reader.rs` (bounded process-output lines).
+- `src-tauri/src/utils/` - shared helpers: `path.rs` (filesystem boundaries), `validation.rs` (identifiers), `line_reader.rs` (bounded process-output lines), `process.rs` (deadlines for one-shot commands), and `device_shell.rs` (`adb shell` quoting).
 - `src-tauri/tests/` - integration tests (`build_integration.rs`, `ipc/`, `fixtures/mock_gradlew`) and `mcp_headless.rs`, which drives the real `keynobi --mcp` binary through `headless/`.
 - `src-tauri/benches/` - Criterion benchmarks.
 - `src-tauri/capabilities/` - Tauri permission grants.
@@ -109,6 +109,7 @@ Never use raw `path.starts_with(root)` for security.
 
 - Validate Gradle tasks, device serials, and package names with `utils/validation.rs` (`validate_gradle_task`, `validate_device_serial`, `validate_package_name`). Put new identifier validators there.
 - Spawn processes with argument vectors (`tokio::process::Command::new(bin).args([...])`). Never build a host shell string.
+- Run one-shot external commands (adb queries, `adb install`, aapt2, avdmanager, `sdkmanager --list`, version probes) with `utils::process::output_with_timeout(cmd, DEADLINE)`, never a bare `.output().await`. It sets `kill_on_drop`, so a timed-out child is killed and reaped, and returns an `io::Error` of kind `TimedOut`. Pick a named deadline from `utils/process.rs` (add one there for a new kind of call) and turn errors into messages with `describe_failure(what, &e, hint)`, which adds what to try on timeout (for adb, `ADB_UNRESPONSIVE_HINT`). Long-lived processes that stream output (logcat, Gradle, the emulator, `sdkmanager` downloads) are not one-shot and do not get a total deadline.
 - Read streamed process output with `utils::line_reader::CappedLines`, not `AsyncBufReadExt::lines()`. It keeps at most `MAX_LINE_BYTES` per line, discards the rest up to the next newline with a `… [truncated N bytes]` marker, replaces invalid UTF-8 instead of failing, and is safe to use as a `tokio::select!` branch.
 - Never wait for a child's output to reach EOF before waiting for its exit: a descendant that inherited the pipes (a Gradle daemon, `adb` server) can hold them open forever. `process_manager` waits for exit alongside the reads and then drains remaining output for at most `POST_EXIT_DRAIN` (2 s).
 - Values sent through `adb shell` are re-parsed by the device shell. Pass every non-literal argument through `utils::device_shell::quote_device_shell_arg` (the `run_adb_shell` and `adb_cmd` helpers already do). Test new call sites with `device_shell::test_support::fake_adb`, which parses arguments the way the device does.
@@ -307,6 +308,7 @@ Run the checks that match your change before handoff:
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
+- **One-shot commands without the timeout helper.** `logcat::seed_pid_map_from_ps` has no deadline. `ui_hierarchy.rs`, the login-shell probes in `settings_manager.rs`, and `commands/mcp.rs` wrap `.output()` in `tokio::time::timeout` without `kill_on_drop`, so a timed-out child keeps running. `commands/variant.rs` has its own equivalent of the helper.
 - **`String` errors.** Most commands still return `Result<_, String>`; only about 16 return `AppError`.
 - **Effective-root resolution is repeated.** The `gradle_root`-or-`project_root` lookup is copied inline in `commands/variant.rs`, `build.rs`, `device.rs`, and `health.rs` instead of one shared helper.
 - **Data directory rebuilt by hand.** `lib.rs` joins `~/.keynobi/logs` itself instead of calling `settings_manager::data_dir()`.

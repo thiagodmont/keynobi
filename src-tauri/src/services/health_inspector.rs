@@ -1,4 +1,5 @@
 use crate::models::settings::AppSettings;
+use crate::utils::process::{output_with_timeout, TOOL_PROBE_TIMEOUT};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
@@ -34,19 +35,23 @@ pub async fn run_health_check(
     let adb = crate::services::adb_manager::get_adb_path(settings);
 
     let (java_status, adb_status) = tokio::join!(
-        tokio::process::Command::new(&java_bin)
-            .arg("-version")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status(),
-        tokio::process::Command::new(&adb)
-            .arg("version")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status(),
+        async {
+            output_with_timeout(
+                tokio::process::Command::new(&java_bin).arg("-version"),
+                TOOL_PROBE_TIMEOUT,
+            )
+            .await
+        },
+        async {
+            output_with_timeout(
+                tokio::process::Command::new(&adb).arg("version"),
+                TOOL_PROBE_TIMEOUT,
+            )
+            .await
+        },
     );
-    let java_ok = java_status.map(|s| s.success()).unwrap_or(false);
-    let adb_ok = adb_status.map(|s| s.success()).unwrap_or(false);
+    let java_ok = java_status.map(|o| o.status.success()).unwrap_or(false);
+    let adb_ok = adb_status.map(|o| o.status.success()).unwrap_or(false);
 
     let detected_sdk = detect_sdk_path(settings.android.sdk_path.as_deref(), project_root);
     let sdk_ok = detected_sdk.is_some();
