@@ -215,7 +215,7 @@ Validate every external string before acting, using the shared validators:
 
 | Input | Validator |
 |-------|-----------|
-| Gradle task | `utils/validation.rs::validate_gradle_task` |
+| Gradle task | `utils/validation.rs::validate_gradle_task` (no leading `-`); MCP also applies `check_agent_gradle_task` unless `mcp.allowUnrestrictedGradle` is on |
 | Package name | `utils/validation.rs::validate_package_name` |
 | Device serial | `utils/validation.rs::validate_device_serial` |
 | APK path | `utils/path.rs::validate_apk_within_build_outputs` |

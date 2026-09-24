@@ -516,6 +516,23 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
           />
         </SettingRow>
       </Show>
+      <Show
+        when={props.matchesSearch(
+          "MCP Allow unrestricted Gradle tasks",
+          "Let AI clients run publish, upload, and uninstall Gradle tasks"
+        )}
+      >
+        <SettingRow
+          label="Allow unrestricted Gradle tasks"
+          description="Let AI clients run Gradle tasks that publish, upload, or uninstall (publish*, upload*, uninstall*, closeAndRelease*, *ToMavenCentral, *PlayStore*). These act outside this machine and cannot be undone. Off by default."
+        >
+          <SettingToggle
+            ariaLabel="Allow unrestricted Gradle tasks"
+            checked={settingsState.mcp.allowUnrestrictedGradle}
+            onChange={(v) => updateSetting("mcp", "allowUnrestrictedGradle", v)}
+          />
+        </SettingRow>
+      </Show>
     </>
   );
 }

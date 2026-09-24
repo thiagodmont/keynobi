@@ -58,7 +58,7 @@ Registration is detected with `claude mcp get keynobi` or `codex mcp get keynobi
 
 | Tool | Kind | Notes |
 |------|------|-------|
-| `run_gradle_task` | O | `task`; `variant` is accepted but ignored. Times out after `mcp.buildTimeoutSec` (default 600 s). |
+| `run_gradle_task` | O | `task`; `variant` is accepted but ignored. Times out after `mcp.buildTimeoutSec` (default 600 s). Task names starting with `-` (Gradle options) are rejected. Unless `mcp.allowUnrestrictedGradle` is on, tasks matching `publish*`, `upload*`, `uninstall*`, `closeAndRelease*`, `*ToMavenCentral`, or `*PlayStore*` are refused, including Gradle abbreviations such as `pRB`. |
 | `get_build_status` | R | |
 | `get_build_errors` | R | |
 | `get_build_log` | R | `lines`: default `mcp.defaultBuildLogLines` (200), max 2,000. |
@@ -66,7 +66,7 @@ Registration is detected with `claude mcp get keynobi` or `codex mcp get keynobi
 | `list_build_variants` | R | |
 | `set_active_variant` | W | Persists to settings (shared with the GUI). |
 | `find_apk_path` | R | `variant?` |
-| `run_tests` | O | `test_type` |
+| `run_tests` | O | `test_type`. Custom tasks go through the same policy as `run_gradle_task`. |
 | `get_build_config` | R | `module?`; rejects `/`, `\`, and `..`. |
 
 ### Logcat and Crashes
@@ -235,7 +235,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
-- **Gradle options.** `validate_gradle_task` accepts a leading `-`, so option injection (`--offline`, `-I`, `--stop`) passes. No denylist blocks tasks such as `publish*` or `uninstall*`.
+- **Play track promotion.** The agent Gradle policy does not block gradle-play-publisher `promote*` tasks (for example `promoteReleaseArtifact`), which change a live Play Console track. Pending a decision to add them to the denylist.
 - **No annotations.** No tool declares `readOnlyHint`, `destructiveHint`, `idempotentHint`, or `openWorldHint`.
 - **Server identity.** `Implementation::from_build_env()` resolves inside rmcp, so `serverInfo` reports `rmcp` and rmcp's version instead of Keynobi's.
 - **Ignored parameter.** `run_gradle_task` accepts `variant` but ignores it.

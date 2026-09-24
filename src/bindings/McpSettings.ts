@@ -25,4 +25,10 @@ logcatDefaultCount: number,
  * Default number of raw build log lines returned by `get_build_log`
  * when the caller does not specify a `lines` argument.
  */
-buildLogDefaultLines: number, };
+buildLogDefaultLines: number, 
+/**
+ * Let MCP clients run Gradle tasks that publish, upload, or uninstall
+ * (`publish*`, `upload*`, `uninstall*`, ...). Off by default. Only the
+ * Settings panel changes this; no MCP tool writes it.
+ */
+allowUnrestrictedGradle: boolean, };

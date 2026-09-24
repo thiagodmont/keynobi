@@ -257,7 +257,7 @@ Open Settings with `Cmd+,` or the gear icon. Use the search box to find a settin
 | Tools | Android SDK | SDK Path (with Auto-detect) |
 | Tools | Java / JDK | JAVA_HOME (with Auto-detect) |
 | Tools | Logcat | Auto-start on Connect, Auto-scroll Logcat to end, Logcat Output Font Size, Ring buffer size, Max lines in Logcat |
-| Tools | MCP | Auto-start MCP Server, Build Timeout (seconds), Default Logcat Count, Default Build Log Lines |
+| Tools | MCP | Auto-start MCP Server, Build Timeout (seconds), Default Logcat Count, Default Build Log Lines, Allow unrestricted Gradle tasks (off by default: AI clients cannot run publish, upload, or uninstall tasks) |
 | Advanced | Build | Auto Install on Build, Auto-scroll build log to end, Build log retention (days), Build log folder limit (MB) |
 | Advanced | Logging | Log retention, Max log folder size (MB) |
 | Advanced | Privacy | Anonymous crash reporting |

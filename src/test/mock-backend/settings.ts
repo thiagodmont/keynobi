@@ -36,6 +36,7 @@ export const defaultSettings: AppSettings = {
     buildTimeoutSec: 300,
     logcatDefaultCount: 200,
     buildLogDefaultLines: 500,
+    allowUnrestrictedGradle: false,
   },
   telemetry: { enabled: false },
   onboardingCompleted: true,

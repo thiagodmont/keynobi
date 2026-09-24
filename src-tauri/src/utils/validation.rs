@@ -21,10 +21,17 @@ const MAX_ACTIVITY_NAME_LEN: usize = 256;
 
 /// Validate a Gradle task name.
 ///
-/// Allowed: alphanumeric, `:`, `-`, `_`, `.`.
+/// Allowed: alphanumeric, `:`, `-`, `_`, `.`. A leading `-` is rejected: the
+/// value is passed to `gradlew` as an argument, where it would be read as a
+/// command-line option (`--offline`, `-I init.gradle`, `--stop`, ...).
 pub fn validate_gradle_task(task: &str) -> Result<(), String> {
     if task.is_empty() {
         return Err("Gradle task name must not be empty".to_string());
+    }
+    if task.starts_with('-') {
+        return Err(format!(
+            "Invalid Gradle task name '{task}': Gradle options are not accepted, only task names"
+        ));
     }
     if task.len() > MAX_GRADLE_TASK_LEN {
         return Err(format!(
@@ -106,6 +113,95 @@ pub fn validate_activity_name(activity: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Task-name patterns MCP clients may not run unless the user enables
+/// unrestricted Gradle tasks in the app. Each pattern is a sequence of
+/// camelCase words; `Prefix` patterns match at the start of the task name,
+/// `Contains` patterns anywhere. These tasks publish, upload, or remove things
+/// outside this machine and cannot be undone.
+enum DeniedTask {
+    Prefix(&'static [&'static str], &'static str),
+    Contains(&'static [&'static str], &'static str),
+}
+
+const AGENT_DENIED_TASKS: &[DeniedTask] = &[
+    DeniedTask::Prefix(&["publish"], "publish*"),
+    DeniedTask::Prefix(&["upload"], "upload*"),
+    DeniedTask::Prefix(&["uninstall"], "uninstall*"),
+    DeniedTask::Prefix(&["close", "and", "release"], "closeAndRelease*"),
+    DeniedTask::Contains(&["to", "maven", "central"], "*ToMavenCentral"),
+    DeniedTask::Contains(&["play", "store"], "*PlayStore*"),
+];
+
+/// Split a task name into lowercase words at camelCase humps, `-`, and `_`,
+/// the same boundaries Gradle uses to expand abbreviations.
+fn task_words(name: &str) -> Vec<String> {
+    let mut words: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for c in name.chars() {
+        if c == '-' || c == '_' {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+        if c.is_uppercase() && !current.is_empty() {
+            words.push(std::mem::take(&mut current));
+        }
+        current.extend(c.to_lowercase());
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
+}
+
+/// Gradle runs a task from any unambiguous abbreviation of its camelCase
+/// words (`pRB` runs `publishReleaseBundle`). A typed word therefore matches
+/// a pattern word when either is a prefix of the other.
+fn word_matches(typed: &str, pattern: &str) -> bool {
+    pattern.starts_with(typed) || typed.starts_with(pattern)
+}
+
+fn words_match(typed: &[String], pattern: &[&str]) -> bool {
+    typed
+        .iter()
+        .zip(pattern.iter())
+        .all(|(t, p)| word_matches(t, p))
+}
+
+/// Reject Gradle tasks that MCP clients may not run by default.
+///
+/// Matching is abbreviation-aware and case-insensitive, and applies to the
+/// task name after any `:project:` path. Call [`validate_gradle_task`] first.
+pub fn check_agent_gradle_task(task: &str) -> Result<(), String> {
+    let name = task.rsplit(':').next().unwrap_or(task);
+    let typed = task_words(name);
+    if typed.is_empty() {
+        return Ok(());
+    }
+    for denied in AGENT_DENIED_TASKS {
+        let (hit, label) = match denied {
+            DeniedTask::Prefix(words, label) => (words_match(&typed, words), label),
+            // Try every starting word, including ones too close to the end to
+            // hold the whole pattern: Gradle expands a name that stops partway
+            // (`releaseToMav`) to the full task (`releaseToMavenCentral`).
+            DeniedTask::Contains(words, label) => (
+                (0..typed.len()).any(|start| words_match(&typed[start..], words)),
+                label,
+            ),
+        };
+        if hit {
+            return Err(format!(
+                "Gradle task '{task}' is blocked for MCP clients because it matches '{label}', \
+                 which publishes, uploads, or uninstalls outside this machine. Run it yourself \
+                 from a terminal, or enable \"Allow unrestricted Gradle tasks\" in Keynobi \
+                 Settings → MCP."
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,6 +234,79 @@ mod tests {
             "a>out",
         ] {
             assert!(validate_gradle_task(task).is_err(), "should reject {task}");
+        }
+    }
+
+    #[test]
+    fn gradle_task_rejects_options() {
+        for task in [
+            "--offline",
+            "-Iinit.gradle",
+            "--stop",
+            "-Pfoo",
+            "--scan",
+            "-q",
+        ] {
+            assert!(validate_gradle_task(task).is_err(), "should reject {task}");
+        }
+        assert!(validate_gradle_task("lib-core:build").is_ok());
+    }
+
+    #[test]
+    fn agent_policy_blocks_publishing_uploading_and_uninstalling() {
+        for task in [
+            "publish",
+            "publishReleaseBundle",
+            ":app:publishReleaseBundle",
+            "publishToMavenLocal",
+            "publishing",
+            "PUBLISH",
+            "uploadCrashlyticsMappingFileRelease",
+            "uninstallAll",
+            "uninstallDebug",
+            "closeAndReleaseRepository",
+            "publishAllPublicationsToMavenCentralRepository",
+            "releaseToMavenCentral",
+            "deployPlayStore",
+            "playStoreUpload",
+            // Names that stop partway into a denied word sequence.
+            "releaseTo",
+            "releaseToMav",
+            "deployPlay",
+            // Abbreviations Gradle would expand to a denied task.
+            "pRB",
+            "pub",
+            "uA",
+            "un-all",
+            "cAR",
+        ] {
+            assert!(
+                check_agent_gradle_task(task).is_err(),
+                "should block {task}"
+            );
+        }
+    }
+
+    #[test]
+    fn agent_policy_allows_ordinary_tasks() {
+        for task in [
+            "assembleDebug",
+            ":app:assemblePaidRelease",
+            "bundleRelease",
+            "clean",
+            "check",
+            "lint",
+            "testDebugUnitTest",
+            "connectedAndroidTest",
+            "installDebug",
+            "packageDebug",
+            "preBuild",
+            "compileDebugKotlin",
+            "bundleReleaseClassesToCompileJar",
+            "dependencies",
+            "tasks",
+        ] {
+            assert!(check_agent_gradle_task(task).is_ok(), "should allow {task}");
         }
     }
 
