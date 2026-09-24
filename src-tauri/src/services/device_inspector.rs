@@ -1,3 +1,4 @@
+use crate::utils::device_shell::quote_device_shell_arg;
 use std::path::PathBuf;
 
 #[derive(Debug, serde::Serialize)]
@@ -108,10 +109,24 @@ pub async fn dump_app_info(
 ) -> Result<DumpedAppInfo, String> {
     let (path_res, dump_res) = tokio::join!(
         tokio::process::Command::new(adb.clone())
-            .args(["-s", serial, "shell", "pm", "path", package])
+            .args([
+                "-s",
+                serial,
+                "shell",
+                "pm",
+                "path",
+                &quote_device_shell_arg(package)
+            ])
             .output(),
         tokio::process::Command::new(adb.clone())
-            .args(["-s", serial, "shell", "dumpsys", "package", package])
+            .args([
+                "-s",
+                serial,
+                "shell",
+                "dumpsys",
+                "package",
+                &quote_device_shell_arg(package),
+            ])
             .output(),
     );
 
@@ -157,7 +172,14 @@ pub async fn get_memory_info(
     package: &str,
 ) -> Result<MemoryInfo, String> {
     let output = tokio::process::Command::new(adb)
-        .args(["-s", serial, "shell", "dumpsys", "meminfo", package])
+        .args([
+            "-s",
+            serial,
+            "shell",
+            "dumpsys",
+            "meminfo",
+            &quote_device_shell_arg(package),
+        ])
         .output()
         .await
         .map_err(|e| format!("adb dumpsys meminfo failed: {e}"))?;

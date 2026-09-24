@@ -1,3 +1,4 @@
+use crate::utils::device_shell::quote_device_shell_arg;
 use std::path::PathBuf;
 
 #[derive(Debug, serde::Serialize)]
@@ -296,7 +297,16 @@ async fn adb_cmd(
     if let Some(serial) = device_serial {
         cmd.arg("-s").arg(serial);
     }
-    cmd.args(args);
+    match args.split_first() {
+        // The device shell re-parses everything after `shell`.
+        Some((&"shell", rest)) => {
+            cmd.arg("shell")
+                .args(rest.iter().map(|a| quote_device_shell_arg(a)));
+        }
+        _ => {
+            cmd.args(args);
+        }
+    }
     let output = cmd
         .output()
         .await
@@ -316,6 +326,27 @@ async fn adb_cmd(
 
 #[cfg(test)]
 mod tests {
+    use crate::utils::device_shell::test_support::{fake_adb, recorded_calls};
+
+    #[tokio::test]
+    async fn shell_arguments_are_quoted_for_the_device() {
+        let dir = tempfile::tempdir().unwrap();
+        let (adb, record) = fake_adb(dir.path());
+
+        // No real device answers, so launcher resolution fails after the stop;
+        // only the force-stop invocation matters here.
+        let _ = restart_app(&adb, "emulator-5554", "com.x;exit 3", false).await;
+
+        assert_eq!(
+            recorded_calls(&record).first(),
+            Some(&vec![
+                "am".to_string(),
+                "force-stop".to_string(),
+                "com.x;exit 3".to_string()
+            ])
+        );
+    }
+
     use super::*;
 
     #[test]
