@@ -1,86 +1,67 @@
-# Agent Instructions
+# AGENTS.md
 
-## Tech Stack
+Keynobi is a macOS companion app for Android development: Gradle builds, logcat, devices, UI hierarchy, and an MCP server for AI clients. Tauri 2 (Rust, tokio) backend, SolidJS + TypeScript + Vite frontend, `ts-rs` for IPC types, `rmcp` for MCP.
 
-- **Framework**: Tauri 2.0 (Rust backend + WKWebView frontend)
-- **Frontend**: SolidJS + TypeScript + Vite
-- **Backend**: Rust (tokio async runtime)
-- **Parsing**: Tree-sitter (`tree-sitter-kotlin-ng`)
-- **Search**: ripgrep library crates (`grep-regex`, `grep-searcher`, `grep-matcher`)
-- **Language Intelligence**: JetBrains Kotlin/kotlin-lsp (download-on-demand)
-- **IPC Types**: `ts-rs` (Rust → TypeScript auto-generation)
-- **State Management**: SolidJS Stores (`createStore`, `produce`)
-- **Testing**: Vitest (frontend), Rust `#[test]` / `tokio::test` (backend), Criterion (benchmarks)
+## Commands
 
-## Before You Write Code
+```bash
+npm ci                     # install
+npm run tauri dev          # run the app (first Rust build takes minutes)
+npm run dev:web            # frontend only, against the mock backend
+npm run generate:bindings  # after changing Rust models; commit src/bindings/
+```
 
-1. Read `docs/BEST_PRACTICES.md` — architectural principles, security rules, performance targets, and the AI-first design philosophy.
-2. Read `docs/CODE_PATTERN.md` and `docs/DOMAIN_PATTERNS.md` — concrete conventions: file naming, store patterns, IPC patterns, testing patterns.
-3. Read `docs/USER_MANUAL.md` — understand what the user sees and does, so new features integrate naturally.
+## Where to Look
+
+| Task | Read |
+|------|------|
+| Any change | `references/BEST_PRACTICES.md`, `references/CODE_PATTERN.md` |
+| Build, logcat, devices, layout, settings | `references/DOMAIN_PATTERNS.md` |
+| MCP tools, prompts, resources | `references/MCP_SERVER.md` |
+| UI components, styling, accessibility | `references/DESIGN_SYSTEM.md` |
+| User-visible behavior, shortcuts | `references/USER_MANUAL.md` |
+
+Each reference doc ends with **Known Gaps**: rules the code does not meet yet. Do not copy a known gap into new code.
 
 ## Key Rules
 
-- **Path security**: Every command that accepts a path must validate it against the project root using canonicalization (see `CODE_PATTERN.md` §Path Security). Never use raw `starts_with()` without canonicalization.
-- **Keybindings = Actions**: Use `registerKeyAndAction()` in `App.tsx`, never bare `registerKeybinding()`. Shortcuts that bypass the action registry are invisible in the command palette.
-- **Navigation**: All jump-to-location actions must call `openFileAtLocation()` from `project.service.ts`, not `setActiveFile()` directly. This populates the navigation history stack.
-- **IPC types**: Import from `@/bindings`, never redefine types that originate in Rust.
-- **Mutex discipline**: Lock Rust state, clone what you need, drop the lock, then do I/O. Never hold a Mutex across an `await`.
-- **Bounded collections**: Every in-memory collection that grows must have an explicit cap (see `BEST_PRACTICES.md`).
-- **No `unwrap()` in production Rust**: Use `?` or `.map_err(...)`. `expect()` is allowed only for programmer-error invariants.
-- **Do not commit**: The superpower spec and plan files.
+- **Layering**: components → stores/services → `src/lib/tauri-api.ts` → Tauri commands → Rust services. Only `tauri-api.ts` calls `invoke`; commands validate and delegate.
+- **IPC contract**: a command change updates the Rust handler, `generate_handler!` in `lib.rs`, the `tauri-api.ts` wrapper, and the mock backend together. After changing Rust models, run `npm run generate:bindings`; import IPC types from `@/bindings` and never edit generated files.
+- **One implementation per behavior**: Tauri commands and MCP tools call the same service function. Never copy logic into `mcp_server.rs`.
+- **Process model**: `keynobi --mcp` is a separate process with its own state. The GUI does not see MCP builds, logcat, or project changes.
+- **Untrusted input**: validate identifiers with `utils/validation.rs` and paths with `utils/path.rs` (canonicalized, never raw `starts_with`). Arguments to `adb shell` are re-parsed by the device shell.
+- **Rust**: no `unwrap()` in production code; new commands return `Result<T, AppError>`; never hold a Mutex across `.await`; every growing collection has a named cap.
+- **Frontend**: register shortcuts with `registerKeyAndAction()` in `App.tsx`; build UI from `@/components/ui` primitives and theme tokens.
+- **User data**: tests must never read or write `~/.keynobi`. There is no data-dir override yet (see `BEST_PRACTICES.md` § Known Gaps), so run `cargo test` and `npm run generate:bindings` with `HOME` pointed at a temporary directory, for example `CARGO_HOME="$HOME/.cargo" RUSTUP_HOME="$HOME/.rustup" HOME="$(mktemp -d)" cargo test`.
 
-## Testing Instructions
+## Code Style
 
-### Frontend
-This command should be run after the development is completed to guarantee that the development is working properly. All the should succeed. 
+- Match the surrounding code. Formatting is enforced by Prettier and `rustfmt`.
+- Comment only when the code cannot explain itself; keep comments short.
+- Do not mention external documents or tool names in code, comments, or branch names.
+
+## Before You Finish
+
+Run the checks for what you changed; all must pass.
+
 ```bash
-npm run test              # run all frontend tests once
-npm run test:ui           # Vitest browser UI
-npm run lint              # Check lint rules
-npm run typescript:check  # Check typescript 
-npm run test:e2e          # Run end-to-end tests
+npm run lint && npm run format:check && npm run typescript:check && npm test
+npm run test:ds     # design system, shared styles, or tokens
+npm run test:e2e    # user flows or IPC
+cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --lib --tests
+cd src-tauri && cargo clippy --features telemetry -- -D warnings && cargo test --lib --tests --features telemetry  # telemetry code
 ```
 
-**Design system / UI refactor PRs:** run `npm test && npm run typescript:check && npm run lint` before merge (see `docs/CODE_PATTERN.md` §Testing Patterns — verification gate).
+Update the reference doc that owns what you changed (see [Where to Look](#where-to-look)). Remove a Known Gaps entry when you fix it; add one when you knowingly leave a rule unmet.
 
-### Rust
-```bash
-cd src-tauri
-cargo test                 # run all Rust unit tests
-cargo bench                # run Criterion benchmarks (writes to target/criterion/)
-```
+## Git and PRs
 
-### Performance Metrics
-```bash
-npm run perf:collect       # capture current metrics snapshot
-npm run perf:report        # compare latest vs previous snapshot
-```
+- Branches: `<type>/<short-kebab-slug>`, for example `fix/logcat-reconnect`.
+- Commits and PR titles: [Conventional Commits](https://www.conventionalcommits.org/), `type(scope): summary`. Types: `feat`, `fix`, `docs`, `refactor`, `test`, `ci`, `chore`, `style`, `perf`. The changelog is generated from them.
+- Fill in `.github/pull_request_template.md`. Keep PRs to one concern.
+- Never commit `docs/` (local planning files), secrets, or machine-specific paths.
+- Do not bump versions, tag, or run release scripts unless asked.
 
-### Regenerate TypeScript Bindings
-Run after any Rust model type change:
-```bash
-npm run generate:bindings
-```
+## Security
 
-## Adding a New Feature
-
-1. **Rust model** (`src-tauri/src/models/`): Define the data type with `#[derive(Serialize, Deserialize, Clone, TS)]` and `#[serde(rename_all = "camelCase")]`.
-2. **Rust service** (`src-tauri/src/services/`): Implement business logic with no Tauri dependency.
-3. **Rust command** (`src-tauri/src/commands/`): Thin validation + delegation to service. Add path security if the command accepts file paths.
-4. **Register command** (`src-tauri/src/lib.rs`): Add to `invoke_handler!` and `.manage()` if a new state is needed.
-5. **Regenerate bindings**: `npm run generate:bindings`.
-6. **IPC wrapper** (`src/lib/tauri-api.ts`): Add a typed wrapper calling `invoke`.
-7. **Store** (`src/stores/{domain}.store.ts`): Add reactive state if the feature needs persistent UI state.
-8. **Component** (`src/components/{domain}/`): Build the UI reading from the store.
-9. **Action** (`src/App.tsx`): Register keyboard shortcut + command palette entry via `registerKeyAndAction`.
-10. **Tests**: Add Rust unit tests in the service's `#[cfg(test)]` module; add Vitest tests for the store.
-
-## Session Completion
-
-At the end of every development session:
-
-- Update `docs/CODE_PATTERN.md` and `docs/DOMAIN_PATTERNS.md` when a new code pattern is established.
-- Update `docs/BEST_PRACTICES.md` if foundational architecture or principles change.
-- Update `docs/USER_MANUAL.md` when new user-visible features or keyboard shortcuts are added.
-
-Human contributors: the same expectations are summarized for PRs in [CONTRIBUTING.md](CONTRIBUTING.md) (CI commands, bindings, and doc updates).
+Report vulnerabilities privately (see `SECURITY.md`), never in a public issue or PR.

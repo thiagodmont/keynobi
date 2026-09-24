@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+Project rules shared by all coding agents: @../AGENTS.md
+
 ## Behavioral Guidelines
 
 ### 1. Think Before Coding
