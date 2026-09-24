@@ -1,0 +1,45 @@
+src/bindings/McpSettings.ts
+  s_1e114e823b9048::t_00a6f4fd8dc7a7 28-34
+src/test/mock-backend/settings.ts
+  s_1e114e823b9048::t_de5df8deab12ae 39
+src-tauri/src/models/settings.rs
+  s_1e114e823b9048::t_1578b3ec3438d1 236-239,320
+  s_1e114e823b9048::t_78074db2a467de 344-350
+  s_1e114e823b9048::t_7c68dc639e95e6 343
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_8981e2362c7242 260
+src-tauri/src/utils/validation.rs
+  s_1e114e823b9048::t_637277f6349f3c 31,89-176,212-279
+  s_1e114e823b9048::t_fa45efacb03adc 20-22,27-30
+  s_1e114e823b9048::t_a21c3fd1444771 280
+src/stores/settings.store.ts
+  s_1e114e823b9048::t_de5df8deab12ae 50
+src/components/settings/SettingsPanel.tsx
+  s_1e114e823b9048::t_de5df8deab12ae 519-534
+src/test/factories/settings.ts
+  s_1e114e823b9048::t_de5df8deab12ae 40
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_8981e2362c7242 218
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_1578b3ec3438d1 317-319
+  s_1e114e823b9048::t_933fec2a30dd3c 312-316,3472-3511
+  s_1e114e823b9048::t_c52b1a574f42a2 3512-3513
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_8981e2362c7242 61,69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "43b27b49ab3dc002e86c1b83b9d1a67abbd7f0a3",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
