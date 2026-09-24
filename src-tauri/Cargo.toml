@@ -30,7 +30,7 @@ tracing-appender = "0.2"
 # Auto-generate TypeScript interfaces from Rust types
 ts-rs = "12"
 # Home directory resolution (settings, ADB paths)
-dirs = "6"
+dirs = "7"
 # Timestamps for log entries and build records
 chrono = { version = "0.4", features = ["serde"] }
 # Async futures utilities
