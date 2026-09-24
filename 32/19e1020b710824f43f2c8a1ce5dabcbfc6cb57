@@ -1,0 +1,24 @@
+src-tauri/src/services/ui_automation.rs
+  s_1e114e823b9048::t_5bbb34e3a41a2e 1654-1656,1889-1900
+  s_1e114e823b9048::t_315ad0633f0728 1901-1903
+src-tauri/src/commands/device.rs
+  s_1e114e823b9048::t_9f79be0b7f1c23 452-453
+src-tauri/src/utils/validation.rs
+  s_1e114e823b9048::t_5bbb34e3a41a2e 19-21,93-97,102-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3219e1020b710824f43f2c8a1ce5dabcbfc6cb57",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
