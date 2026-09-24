@@ -345,6 +345,14 @@ impl AndroidMcpServer {
         Parameters(p): Parameters<RunGradleTaskParams>,
     ) -> Result<CallToolResult, McpError> {
         validate_gradle_task(&p.task)?;
+        if !settings_manager::load_settings()
+            .0
+            .mcp
+            .allow_unrestricted_gradle
+        {
+            crate::utils::validation::check_agent_gradle_task(&p.task)
+                .map_err(|e| McpError::invalid_params(e, None))?;
+        }
 
         // Snapshot both roots under a single FsState lock (mirroring the UI
         // path in commands/build.rs) so a project switch mid-request cannot
@@ -3542,6 +3550,48 @@ mod tests {
             FsState::new(),
             ProcessManager::new(),
         )
+    }
+
+    #[tokio::test]
+    async fn run_gradle_task_refuses_denied_tasks_by_default() {
+        let server = headless_server();
+        for task in ["publishReleaseBundle", "pRB", ":app:uninstallAll"] {
+            let err = server
+                .run_gradle_task(Parameters(RunGradleTaskParams {
+                    task: task.into(),
+                    variant: None,
+                }))
+                .await
+                .unwrap_err();
+            assert!(
+                err.message.contains("blocked for MCP clients"),
+                "{task}: {}",
+                err.message
+            );
+        }
+
+        // run_tests delegates to run_gradle_task, so it is covered too.
+        let err = server
+            .run_tests(Parameters(RunTestsParams {
+                test_type: "publish".into(),
+            }))
+            .await
+            .unwrap_err();
+        assert!(
+            err.message.contains("blocked for MCP clients"),
+            "{}",
+            err.message
+        );
+
+        // Ordinary tasks pass the policy and fail later only for lack of a project.
+        let err = server
+            .run_gradle_task(Parameters(RunGradleTaskParams {
+                task: "assembleDebug".into(),
+                variant: None,
+            }))
+            .await
+            .unwrap_err();
+        assert!(err.message.contains("No project open"), "{}", err.message);
     }
 
     /// The UI and the MCP server share one build slot. Previously run_task had

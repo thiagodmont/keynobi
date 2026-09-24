@@ -233,6 +233,10 @@ pub struct McpSettings {
     /// Default number of raw build log lines returned by `get_build_log`
     /// when the caller does not specify a `lines` argument.
     pub build_log_default_lines: u32,
+    /// Let MCP clients run Gradle tasks that publish, upload, or uninstall
+    /// (`publish*`, `upload*`, `uninstall*`, ...). Off by default. Only the
+    /// Settings panel changes this; no MCP tool writes it.
+    pub allow_unrestricted_gradle: bool,
 }
 
 // ── Defaults ──────────────────────────────────────────────────────────────────
@@ -313,6 +317,7 @@ impl Default for McpSettings {
             build_timeout_sec: 600,
             logcat_default_count: 200,
             build_log_default_lines: 200,
+            allow_unrestricted_gradle: false,
         }
     }
 }
@@ -334,6 +339,14 @@ pub struct ProjectAppInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unrestricted_gradle_is_off_by_default_and_for_older_settings_files() {
+        assert!(!McpSettings::default().allow_unrestricted_gradle);
+        let older: McpSettings =
+            serde_json::from_str(r#"{"autoStart": true, "buildTimeoutSec": 900}"#).unwrap();
+        assert!(!older.allow_unrestricted_gradle);
+    }
 
     #[test]
     fn default_settings_serialize_and_deserialize() {

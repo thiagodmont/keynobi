@@ -47,6 +47,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     buildTimeoutSec: 600,
     logcatDefaultCount: 200,
     buildLogDefaultLines: 200,
+    allowUnrestrictedGradle: false,
   },
   telemetry: { enabled: false },
   onboardingCompleted: false,

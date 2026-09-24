@@ -37,6 +37,7 @@ export function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings 
       buildTimeoutSec: 300,
       logcatDefaultCount: 200,
       buildLogDefaultLines: 500,
+      allowUnrestrictedGradle: false,
     },
     telemetry: { enabled: false },
     onboardingCompleted: true,
