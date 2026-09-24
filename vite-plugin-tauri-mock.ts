@@ -21,7 +21,6 @@ export function tauriMockPlugin(): Plugin {
         "@tauri-apps/api/window": "\0tauri-mock-window",
         "@tauri-apps/api/app": "\0tauri-mock-app",
         "@tauri-apps/plugin-dialog": "\0tauri-mock-dialog",
-        "@tauri-apps/plugin-fs": "\0tauri-mock-fs",
       };
       return map[id] ?? null;
     },
@@ -56,17 +55,6 @@ export const getCurrentWindow = () => ({
       if (id === "\0tauri-mock-dialog") {
         return `
 export const open = () => Promise.resolve(null);
-export const save = () => Promise.resolve(null);
-`;
-      }
-      if (id === "\0tauri-mock-fs") {
-        return `
-export const writeTextFile = () => Promise.resolve();
-export const readTextFile = () => Promise.resolve("");
-export const exists = () => Promise.resolve(false);
-export const mkdir = () => Promise.resolve();
-export const remove = () => Promise.resolve();
-export default {};
 `;
       }
       return null;

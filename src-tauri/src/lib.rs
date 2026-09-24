@@ -21,7 +21,7 @@ use commands::file_system::{
 };
 use commands::health::run_health_checks;
 use commands::logcat::{
-    clear_logcat, get_logcat_context_entries, get_logcat_entries, get_logcat_stats,
+    clear_logcat, export_logcat, get_logcat_context_entries, get_logcat_entries, get_logcat_stats,
     get_logcat_status, list_logcat_packages, new_logcat_state, set_logcat_filter, start_logcat,
     stop_logcat,
 };
@@ -190,7 +190,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
         .manage(FsState::new())
         .manage(BuildState::new())
         .manage(ProcessManager::new())
@@ -375,6 +374,7 @@ pub fn run() {
             start_logcat,
             stop_logcat,
             clear_logcat,
+            export_logcat,
             get_logcat_context_entries,
             get_logcat_entries,
             get_logcat_status,
