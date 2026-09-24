@@ -110,6 +110,7 @@ Never use raw `path.starts_with(root)` for security.
 - Validate Gradle tasks, device serials, and package names with `utils/validation.rs` (`validate_gradle_task`, `validate_device_serial`, `validate_package_name`). Put new identifier validators there.
 - Spawn processes with argument vectors (`tokio::process::Command::new(bin).args([...])`). Never build a host shell string.
 - Read streamed process output with `utils::line_reader::CappedLines`, not `AsyncBufReadExt::lines()`. It keeps at most `MAX_LINE_BYTES` per line, discards the rest up to the next newline with a `… [truncated N bytes]` marker, replaces invalid UTF-8 instead of failing, and is safe to use as a `tokio::select!` branch.
+- Never wait for a child's output to reach EOF before waiting for its exit: a descendant that inherited the pipes (a Gradle daemon, `adb` server) can hold them open forever. `process_manager` waits for exit alongside the reads and then drains remaining output for at most `POST_EXIT_DRAIN` (2 s).
 - Values sent through `adb shell` are re-parsed by the device shell. Pass every non-literal argument through `utils::device_shell::quote_device_shell_arg` (the `run_adb_shell` and `adb_cmd` helpers already do). Test new call sites with `device_shell::test_support::fake_adb`, which parses arguments the way the device does.
 
 ### Persistence

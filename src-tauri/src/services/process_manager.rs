@@ -10,6 +10,11 @@ use tokio::task::JoinHandle;
 
 static NEXT_PROCESS_ID: AtomicU32 = AtomicU32::new(1);
 
+/// How long to keep reading output after the process has exited. A descendant
+/// that inherited the pipes (for example a daemon the process started) can keep
+/// them open indefinitely; without a bound the exit would never be reported.
+const POST_EXIT_DRAIN: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// Opaque handle uniquely identifying a managed process.
 pub type ProcessId = u32;
 
@@ -140,9 +145,8 @@ pub async fn spawn(
     let cancelled = Arc::new(AtomicBool::new(false));
     let exited = Arc::new(AtomicBool::new(false));
 
-    // Spawn the reader task that merges stdout and stderr.
-    // We move `child` into this task so we can call child.wait() after both
-    // streams are fully drained — capturing the real exit code.
+    // Spawn the reader task that merges stdout and stderr and waits for exit.
+    // We move `child` into this task so it can capture the real exit code.
     let reader_task = {
         let on_line = on_line.clone();
         let on_exit = on_exit.clone();
@@ -155,13 +159,17 @@ pub async fn spawn(
             let mut stderr_lines = CappedLines::new(BufReader::new(stderr));
             let mut stdout_done = false;
             let mut stderr_done = false;
+            let mut exit_status = None;
+            let mut drain_until = None;
 
-            // Read both streams concurrently until both are fully drained.
-            // When one stream closes we keep reading the other so no output is lost.
+            // Read both streams and wait for exit concurrently. When one stream
+            // closes we keep reading the other so no output is lost; once the
+            // process has exited, remaining output is read for POST_EXIT_DRAIN.
             loop {
                 if stdout_done && stderr_done {
                     break;
                 }
+                let drain_deadline = drain_until.unwrap_or_else(tokio::time::Instant::now);
                 tokio::select! {
                     result = stdout_lines.next_line(), if !stdout_done => {
                         match result {
@@ -175,12 +183,19 @@ pub async fn spawn(
                             _ => stderr_done = true,
                         }
                     }
+                    status = child.wait(), if exit_status.is_none() => {
+                        exit_status = Some(status);
+                        drain_until = Some(tokio::time::Instant::now() + POST_EXIT_DRAIN);
+                    }
+                    _ = tokio::time::sleep_until(drain_deadline), if drain_until.is_some() => break,
                 }
             }
 
-            // Both streams are exhausted — wait for the process to exit and
-            // determine how it terminated.
-            let termination = match child.wait().await {
+            let exit_status = match exit_status {
+                Some(status) => status,
+                None => child.wait().await,
+            };
+            let termination = match exit_status {
                 Ok(status) => {
                     if let Some(code) = status.code() {
                         ProcessTermination::ExitCode(code)
@@ -274,6 +289,45 @@ pub async fn remove(manager: &Mutex<ProcessManagerInner>, id: ProcessId) {
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex as StdMutex};
+
+    /// Gradle can leave a descendant holding its stdout/stderr open after the
+    /// wrapper exits. The exit used to be observed only after both pipes hit
+    /// EOF, so the build never finished and the build slot stayed taken.
+    #[tokio::test]
+    async fn exit_is_reported_while_a_descendant_still_holds_the_pipes() {
+        let manager = ProcessManager::new();
+        let lines: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(vec![]));
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        let tx = StdMutex::new(Some(tx));
+
+        spawn(
+            &manager.0,
+            "sh",
+            &["-c", "sleep 20 & echo done; exit 3"],
+            std::env::temp_dir(),
+            vec![],
+            SpawnOptions {
+                on_line: Box::new({
+                    let lines = lines.clone();
+                    move |l| lines.lock().unwrap().push(l.text)
+                }),
+                on_exit: Box::new(move |_, termination| {
+                    if let Some(tx) = tx.lock().unwrap().take() {
+                        let _ = tx.send(termination);
+                    }
+                }),
+            },
+        )
+        .await
+        .unwrap();
+
+        let termination = tokio::time::timeout(std::time::Duration::from_secs(10), rx)
+            .await
+            .expect("exit must be reported without waiting for the descendant")
+            .unwrap();
+        assert_eq!(termination, ProcessTermination::ExitCode(3));
+        assert_eq!(*lines.lock().unwrap(), vec!["done".to_string()]);
+    }
 
     #[tokio::test]
     async fn spawn_and_collect_output() {
