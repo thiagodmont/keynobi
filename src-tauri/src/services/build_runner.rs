@@ -401,100 +401,170 @@ fn walk_dir_for_apk(base: &Path, max_depth: u32) -> Vec<PathBuf> {
     results
 }
 
-/// Resolve the APK output path for a given variant.
-///
-/// Standard AGP layout:
-///   `{gradle_root}/app/build/outputs/apk/{buildType}/app-{buildType}.apk`
-///   or with flavor:
-///   `{gradle_root}/app/build/outputs/apk/{flavor}/{buildType}/app-{flavor}-{buildType}.apk`
-///
-/// Priority (highest first):
-///   1. Signed APK in a directory that matches the variant name.
-///   2. Unsigned APK in a directory that matches the variant name.
-///   3. Signed APK anywhere under the outputs/apk tree.
-///   4. Unsigned APK anywhere (last resort, excludes unaligned only).
-///
-/// `adb install` works fine with unsigned APKs for development builds.
-/// Only `-unaligned.apk` files are excluded (they are not zip-aligned and
-/// cannot be installed).
-pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Option<PathBuf> {
-    let base = gradle_root
+/// One installable APK under `app/build/outputs/apk`, and the variant it belongs to.
+struct ApkCandidate {
+    path: PathBuf,
+    /// From `output-metadata.json` when present, else the directory segments
+    /// below `apk/` joined (`paid/debug` → `paiddebug`), lowercased.
+    variant: String,
+}
+
+/// Directory holding the APK outputs of the `app` module.
+fn apk_outputs_dir(gradle_root: &Path) -> PathBuf {
+    gradle_root
         .join("app")
         .join("build")
         .join("outputs")
-        .join("apk");
-    if !base.is_dir() {
-        return None;
-    }
-    let all_files = walk_dir_for_apk(&base, 4);
+        .join("apk")
+}
 
-    // Only exclude files that are genuinely not installable.
-    let is_usable = |name: &str| -> bool { !name.ends_with("-unaligned.apk") };
-    let is_signed = |name: &str| -> bool { !name.contains("-unsigned") };
+/// The AGP `output-metadata.json` written next to a variant's APKs.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OutputMetadata {
+    #[serde(default)]
+    application_id: Option<String>,
+    variant_name: String,
+    #[serde(default)]
+    elements: Vec<OutputMetadataElement>,
+}
 
-    let variant_lc = variant_name.to_lowercase();
-    let parent_matches = |path: &Path| -> bool {
-        if variant_name.is_empty() {
-            return true;
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OutputMetadataElement {
+    output_file: String,
+}
+
+fn read_output_metadata(dir: &Path) -> Option<OutputMetadata> {
+    let text = std::fs::read_to_string(dir.join("output-metadata.json")).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+/// The application ID AGP recorded for the variant that produced `apk`,
+/// including any `applicationIdSuffix`.
+pub fn application_id_from_output_metadata(apk: &Path) -> Option<String> {
+    read_output_metadata(apk.parent()?)?.application_id
+}
+
+fn collect_apk_candidates(base: &Path) -> Vec<ApkCandidate> {
+    let is_installable = |p: &Path| {
+        let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        p.extension().and_then(|e| e.to_str()) == Some("apk") && !name.ends_with("-unaligned.apk")
+    };
+    let mut dirs: Vec<PathBuf> = walk_dir_for_apk(base, 6)
+        .into_iter()
+        .filter_map(|p| p.parent().map(Path::to_path_buf))
+        .collect();
+    dirs.sort();
+    dirs.dedup();
+
+    let mut candidates = Vec::new();
+    for dir in dirs {
+        if let Some(meta) = read_output_metadata(&dir) {
+            for element in meta.elements {
+                let path = dir.join(&element.output_file);
+                if path.is_file() && is_installable(&path) {
+                    candidates.push(ApkCandidate {
+                        path,
+                        variant: meta.variant_name.to_lowercase(),
+                    });
+                }
+            }
+            continue;
         }
-        // Check both the immediate parent dir and the grandparent dir so both
-        // `apk/release/app-release.apk` and `apk/flavor/release/app-release.apk` match.
-        for ancestor in path.ancestors().skip(1).take(2) {
-            if ancestor
-                .file_name()
-                .and_then(|n| n.to_str())
-                .map(|n| n.to_lowercase())
-                .as_deref()
-                == Some(variant_lc.as_str())
-            {
-                return true;
+        let variant: String = dir
+            .strip_prefix(base)
+            .map(|rel| {
+                rel.components()
+                    .filter_map(|c| c.as_os_str().to_str())
+                    .collect::<String>()
+                    .to_lowercase()
+            })
+            .unwrap_or_default();
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for path in entries.flatten().map(|e| e.path()) {
+                if path.is_file() && is_installable(&path) {
+                    candidates.push(ApkCandidate {
+                        path,
+                        variant: variant.clone(),
+                    });
+                }
             }
         }
-        false
-    };
+    }
+    candidates
+}
 
-    let apks: Vec<&PathBuf> = all_files
+/// Resolve the APK that building `variant_name` produced.
+///
+/// Standard AGP layout:
+///   `{gradle_root}/app/build/outputs/apk/{buildType}/app-{buildType}.apk`
+///   or with flavors:
+///   `{gradle_root}/app/build/outputs/apk/{flavor}/{buildType}/app-{flavor}-{buildType}.apk`
+///
+/// A directory's `output-metadata.json` (written by AGP) decides the variant
+/// and file; without it the directory segments below `apk/` must spell the
+/// variant (`paid/debug` for `paidDebug`). Only that variant's APKs are
+/// considered: installing a stale output of another flavor or build type is
+/// worse than failing. Within the variant a signed APK wins over an
+/// `-unsigned` one; `-unaligned` APKs are never installable.
+///
+/// An empty `variant_name` accepts the single APK present, if there is exactly one.
+///
+/// # Errors
+/// An actionable message when there are no outputs, no APK for the variant,
+/// or more than one candidate (for example split APKs).
+pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Result<PathBuf, String> {
+    let base = apk_outputs_dir(gradle_root);
+    let candidates = collect_apk_candidates(&base);
+    if candidates.is_empty() {
+        return Err(format!(
+            "No APK found under {}. Build the variant first (for example assembleDebug).",
+            base.display()
+        ));
+    }
+
+    let wanted = variant_name.to_lowercase();
+    let matching: Vec<&ApkCandidate> = candidates
         .iter()
-        .filter(|p| {
-            let name = p
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_lowercase();
-            p.extension().and_then(|e| e.to_str()) == Some("apk") && is_usable(&name)
-        })
+        .filter(|c| wanted.is_empty() || c.variant == wanted)
         .collect();
+    if matching.is_empty() {
+        let mut available: Vec<&str> = candidates.iter().map(|c| c.variant.as_str()).collect();
+        available.sort_unstable();
+        available.dedup();
+        return Err(format!(
+            "No APK for variant '{variant_name}' under {}. Found outputs for: {}. \
+             Build that variant first.",
+            base.display(),
+            available.join(", ")
+        ));
+    }
 
-    // Pass 1 — signed + variant dir match.
-    for p in &apks {
-        let name = p
+    let is_signed = |c: &&&ApkCandidate| {
+        !c.path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("")
-            .to_lowercase();
-        if is_signed(&name) && parent_matches(p) {
-            return Some((*p).clone());
-        }
+            .contains("-unsigned")
+    };
+    let signed: Vec<&&ApkCandidate> = matching.iter().filter(is_signed).collect();
+    let preferred: Vec<&ApkCandidate> = if signed.is_empty() {
+        matching
+    } else {
+        signed.into_iter().copied().collect()
+    };
+    match preferred.as_slice() {
+        [only] => Ok(only.path.clone()),
+        many => Err(format!(
+            "More than one APK matches variant '{variant_name}': {}. \
+             Split or multi-output APKs are not supported yet; install one with install_apk.",
+            many.iter()
+                .map(|c| c.path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
     }
-    // Pass 2 — unsigned + variant dir match (e.g. app-release-unsigned.apk).
-    for p in &apks {
-        if parent_matches(p) {
-            return Some((*p).clone());
-        }
-    }
-    // Pass 3 — signed, any location.
-    for p in &apks {
-        let name = p
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_lowercase();
-        if is_signed(&name) {
-            return Some((*p).clone());
-        }
-    }
-    // Pass 4 — any usable APK (unsigned, any location).
-    apks.into_iter().next().cloned()
 }
 
 // ── Build completion ──────────────────────────────────────────────────────────
@@ -1284,8 +1354,88 @@ mod tests {
         std::fs::write(&unaligned, b"").unwrap();
 
         let found = find_output_apk(&tmp, "release");
-        assert!(found.is_none(), "unaligned APK must be excluded");
+        assert!(found.is_err(), "unaligned APK must be excluded");
         std::fs::remove_dir_all(&tmp).ok();
+    }
+
+    /// Create `app/build/outputs/apk/<rel>` under `root` as an empty file.
+    fn apk_at(root: &Path, rel: &str) -> PathBuf {
+        let path = apk_outputs_dir(root).join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"").unwrap();
+        path
+    }
+
+    #[test]
+    fn flavored_variant_matches_its_flavor_and_build_type_dirs() {
+        let root = tempfile::tempdir().unwrap();
+        let paid = apk_at(root.path(), "paid/debug/app-paid-debug.apk");
+        apk_at(root.path(), "free/debug/app-free-debug.apk");
+
+        assert_eq!(find_output_apk(root.path(), "paidDebug").unwrap(), paid);
+    }
+
+    /// With only a stale output of another flavor present, the old fallback
+    /// passes returned it and Run installed the wrong app without a word.
+    #[test]
+    fn never_falls_back_to_another_variants_apk() {
+        let root = tempfile::tempdir().unwrap();
+        apk_at(root.path(), "free/debug/app-free-debug.apk");
+        apk_at(root.path(), "release/app-release.apk");
+
+        let err = find_output_apk(root.path(), "paidDebug").unwrap_err();
+        assert!(err.contains("paidDebug"), "{err}");
+        assert!(
+            err.contains("freedebug") && err.contains("release"),
+            "should list the variants that do have outputs: {err}"
+        );
+    }
+
+    #[test]
+    fn output_metadata_decides_the_variant_and_file() {
+        let root = tempfile::tempdir().unwrap();
+        let apk = apk_at(root.path(), "demo/app-renamed.apk");
+        std::fs::write(
+            apk.parent().unwrap().join("output-metadata.json"),
+            r#"{"version":3,"applicationId":"com.example.app.debug","variantName":"demoDebug",
+                "elements":[{"type":"SINGLE","outputFile":"app-renamed.apk"}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(find_output_apk(root.path(), "demoDebug").unwrap(), apk);
+        assert!(find_output_apk(root.path(), "demo").is_err());
+        assert_eq!(
+            application_id_from_output_metadata(&apk).as_deref(),
+            Some("com.example.app.debug"),
+            "the suffixed application ID comes from the metadata"
+        );
+    }
+
+    #[test]
+    fn more_than_one_candidate_is_an_error_not_a_guess() {
+        let root = tempfile::tempdir().unwrap();
+        apk_at(root.path(), "debug/app-arm64-v8a-debug.apk");
+        apk_at(root.path(), "debug/app-x86_64-debug.apk");
+
+        let err = find_output_apk(root.path(), "debug").unwrap_err();
+        assert!(err.contains("More than one APK"), "{err}");
+    }
+
+    #[test]
+    fn empty_variant_accepts_only_a_single_apk() {
+        let root = tempfile::tempdir().unwrap();
+        let debug = apk_at(root.path(), "debug/app-debug.apk");
+        assert_eq!(find_output_apk(root.path(), "").unwrap(), debug);
+
+        apk_at(root.path(), "release/app-release.apk");
+        assert!(find_output_apk(root.path(), "").is_err());
+    }
+
+    #[test]
+    fn missing_outputs_dir_is_an_actionable_error() {
+        let root = tempfile::tempdir().unwrap();
+        let err = find_output_apk(root.path(), "debug").unwrap_err();
+        assert!(err.contains("Build the variant first"), "{err}");
     }
 
     // ── parse_build_duration tests ─────────────────────────────────────────────

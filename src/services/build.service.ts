@@ -341,14 +341,9 @@ export async function runAndDeploy(): Promise<void> {
 
     // 2. Find APK.
     logStep(`Searching for APK (variant: ${variant})…`);
+    // Rejects with the reason when no APK of this variant exists; another
+    // variant's APK is never used.
     const apkPath = await findApkPath(variant);
-    if (!apkPath) {
-      logError(
-        `APK not found for variant "${variant}". ` +
-          "Expected: app/build/outputs/apk/. Make sure the build produced an APK."
-      );
-      throw new Error("APK not found.");
-    }
     logStep(`APK: ${apkPath}`);
 
     // 3. Install.
@@ -360,19 +355,16 @@ export async function runAndDeploy(): Promise<void> {
     const installOutput = await installApkOnDevice(serial, apkPath);
     logStep(`Install: ${installOutput.trim()} (${formatDuration(Date.now() - installStart)})`);
 
-    // 4. Launch — resolve exact package name from the APK binary.
+    // 4. Launch — resolve the exact package name of this APK (aapt2, or the
+    // variant's output metadata). The project's base applicationId is not a
+    // safe guess: it ignores applicationIdSuffix and would launch another app.
     setDeployPhase("launching");
     let packageName: string | null = null;
     try {
       packageName = await getPackageNameFromApk(apkPath);
       logStep(`Package (from APK): ${packageName}`);
     } catch (e) {
-      // aapt2 unavailable or failed — fall back to applicationId from project.
-      const fallback = projectState.applicationId;
-      if (fallback) {
-        logStep(`aapt2 unavailable (${formatError(e)}), using applicationId: ${fallback}`);
-        packageName = fallback;
-      }
+      logStep(`Could not read the APK's package name: ${formatError(e)}`);
     }
 
     if (packageName) {
@@ -383,7 +375,7 @@ export async function runAndDeploy(): Promise<void> {
     } else {
       logStep(
         "APK installed. Could not determine package name — cannot auto-launch. " +
-          "Ensure aapt2 is available in your Android SDK or set applicationId in Project App Info."
+          "Ensure aapt2 is available in your Android SDK (Settings → Android SDK)."
       );
     }
   } catch (e) {

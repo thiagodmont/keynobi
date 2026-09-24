@@ -196,8 +196,9 @@ export async function getBuildLogEntries(id: number): Promise<BuildLine[]> {
   return invoke<BuildLine[]>("get_build_log_entries", { id });
 }
 
-export async function findApkPath(variant: string): Promise<string | null> {
-  return invoke<string | null>("find_apk_path", { variant });
+/** Rejects with the reason (and the variants that have outputs) when no APK matches `variant`. */
+export async function findApkPath(variant: string): Promise<string> {
+  return invoke<string>("find_apk_path", { variant });
 }
 
 /**

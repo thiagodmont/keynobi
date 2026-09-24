@@ -74,7 +74,7 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 | `cancel_build` | W | |
 | `list_build_variants` | R | |
 | `set_active_variant` | W | Persists to settings (shared with the GUI). |
-| `find_apk_path` | R | `variant?` |
+| `find_apk_path` | R | `variant?`. Matches the variant exactly, using `output-metadata.json` when present. Returns `found: false` with a `reason` when no APK or more than one APK matches. |
 | `run_tests` | O | `test_type`. Custom tasks go through the same policy as `run_gradle_task`. |
 | `get_build_config` | R | `module?`; rejects `/`, `\`, and `..`. |
 

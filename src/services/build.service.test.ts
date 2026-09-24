@@ -12,6 +12,7 @@ import { buildState, resetBuildState, startBuild } from "@/stores/build.store";
 import { resetDeviceState } from "@/stores/device.store";
 import { resetVariantState, selectVariant } from "@/stores/variant.store";
 import { updateSetting } from "@/stores/settings.store";
+import { setApplicationId } from "@/stores/project.store";
 
 const devicePickerMock = vi.hoisted(() => ({
   showDevicePicker: vi.fn<() => Promise<string | null>>(),
@@ -338,8 +339,14 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     vi.useRealTimers();
   });
 
-  /** Start a deploy and complete its build phase with a success event. */
-  async function deployThroughSuccessfulBuild() {
+  /**
+   * Start a deploy and complete its build phase with a success event.
+   * `overrides` replace individual IPC replies. Resolves to the error the
+   * deploy failed with, or null.
+   */
+  async function deployThroughSuccessfulBuild(
+    overrides: Record<string, () => Promise<unknown>> = {}
+  ): Promise<unknown> {
     const handlers = new Map<string, (e: { payload: unknown }) => void>();
     vi.mocked(listen).mockImplementation(async (event, cb) => {
       handlers.set(String(event), cb as unknown as (e: { payload: unknown }) => void);
@@ -352,6 +359,7 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     expect(handlers.has("build:complete")).toBe(true);
 
     mockInvoke.mockImplementation((cmd) => {
+      if (overrides[cmd]) return overrides[cmd]();
       if (cmd === "run_gradle_task") return Promise.resolve(1);
       if (cmd === "get_build_history") return Promise.resolve([]);
       if (cmd === "find_apk_path") return Promise.resolve("/tmp/app-debug.apk");
@@ -377,7 +385,10 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
         task: "assembleDebug",
       },
     });
-    await deploy;
+    return deploy.then(
+      () => null,
+      (e: unknown) => e
+    );
   }
 
   it("skips device resolution, install, and launch when autoInstallOnBuild is off", async () => {
@@ -405,5 +416,34 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     expect(
       mockInvoke.mock.calls.filter(([cmd]) => cmd === "launch_app_on_device")[0]?.[1]
     ).toMatchObject({ serial: "emulator-5554", package: "com.example.app" });
+  });
+
+  it("stops before installing when the variant has no APK, with the backend's reason", async () => {
+    const reason =
+      "No APK for variant 'debug'. Found outputs for: freerelease. Build that variant first.";
+    const error = await deployThroughSuccessfulBuild({
+      find_apk_path: () => Promise.reject(reason),
+    });
+
+    expect(String(error)).toContain("Found outputs for: freerelease");
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "install_apk_on_device")).toHaveLength(
+      0
+    );
+  });
+
+  it("installs but does not launch a guessed package when the APK's package is unknown", async () => {
+    // The base applicationId ignores applicationIdSuffix, so launching it
+    // could start a different app than the one just installed.
+    setApplicationId("com.example.app");
+    const error = await deployThroughSuccessfulBuild({
+      get_package_name_from_apk: () => Promise.reject("aapt2 not found"),
+    });
+
+    expect(error).toBeNull();
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "install_apk_on_device")).toHaveLength(
+      1
+    );
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "launch_app_on_device")).toHaveLength(0);
+    setApplicationId(null);
   });
 });

@@ -68,6 +68,8 @@ runAndDeploy()
 - **A run is identified by its Gradle process ID** (`BuildFinalization.run_id`, `build:complete` `runId`). Once the process has spawned, both front doors set `latest_run`. Finalization always appends history, but only the latest run may update the shared status, errors, current build, and cancellable process, so a cancelled build that finishes after its replacement started cannot take the replacement over.
 - **Each run has its own output buffer** (`BuildLogSlot::start_run`). `get_build_log` reads the latest run's; a run's history entry saves its own lines even when it finishes late.
 - Build history IDs must stay unique across restarts and clears so log filenames never collide.
+- **Deploy installs only the requested variant's APK.** `find_output_apk` reads AGP's `output-metadata.json` (else the directory path under `apk/`) and returns an error when no APK or more than one APK matches. It never falls back to another variant's APK.
+- **Launch uses the installed APK's package name** (aapt2, else `output-metadata.json`). If neither works, deploy installs but does not launch; it never guesses from the project's `applicationId`.
 
 ---
 
@@ -282,5 +284,6 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **MCP error model.** Coordinate, permission, and deep-link validation failures return `CallToolResult::error` instead of `McpError::invalid_params`.
 - **Validator duplication.** MCP `validate_apk_path` duplicates `validate_apk_within_build_outputs` and hard-codes the `app` module.
 - **Activity log.** `mcp-activity.jsonl` is trimmed only at server start (over 1,000 lines → last 500), and summaries are not redacted.
+- **APK lookup module.** `find_output_apk` looks only under `app/build/outputs/apk`, so projects whose application module is not named `app` cannot deploy.
 - **Project App Info.** When the app module is not named `app`, the root build file is edited and success is reported even if nothing changed.
 - **Dead code.** `DevicePanel.tsx` (panel/popover modes) is not imported anywhere.
