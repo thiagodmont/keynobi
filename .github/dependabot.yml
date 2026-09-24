@@ -25,3 +25,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # dtolnay/rust-toolchain tags are Rust versions, not action releases.
+      # Dependabot treats them as semver and proposes pins to Rust versions
+      # that don't exist yet (e.g. 1.120.0 → rustup 404, see #221). Bump the
+      # toolchain pin in ci.yml and release.yml by hand instead.
+      - dependency-name: "dtolnay/rust-toolchain"
