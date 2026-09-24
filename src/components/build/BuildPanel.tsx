@@ -11,7 +11,7 @@ import { runBuild, runAndDeploy, cancelBuild, jumpToBuildError } from "@/service
 import { LogViewer } from "@/components/common/LogViewer";
 import type { BuildError, BuildRecord } from "@/bindings";
 import type { LogEntry } from "@/stores/log.store";
-import { Icon, IconButton, showToast } from "@/components/ui";
+import { Alert, Button, Icon, IconButton, showToast } from "@/components/ui";
 import { BuildHistoryPanel, relativeTime } from "@/components/build/BuildHistoryPanel";
 import { projectState } from "@/stores/project.store";
 import { settingsState } from "@/stores/settings.store";
@@ -49,9 +49,12 @@ export function BuildPanel(): JSX.Element {
   });
 
   const [historicalLog, setHistoricalLog] = createSignal<LogEntry[]>([]);
+  const [historicalLogError, setHistoricalLogError] = createSignal<string | null>(null);
+  const [historicalLogAttempt, setHistoricalLogAttempt] = createSignal(0);
 
   createEffect(() => {
     const id = selectedHistoryId();
+    void historicalLogAttempt(); // reactive dependency: Retry reloads the same id
     // Solid effects do not support React-style returned cleanups; onCleanup
     // runs before each re-run so a slow response for a previous id cannot
     // overwrite the log shown for the newly selected one.
@@ -59,6 +62,7 @@ export function BuildPanel(): JSX.Element {
     onCleanup(() => {
       cancelled = true;
     });
+    setHistoricalLogError(null);
     if (id === null) {
       setHistoricalLog([]);
       return;
@@ -67,8 +71,10 @@ export function BuildPanel(): JSX.Element {
       .then((lines) => {
         if (!cancelled) setHistoricalLog(lines.map(lineToLogEntry));
       })
-      .catch(() => {
-        if (!cancelled) setHistoricalLog([]);
+      .catch((e) => {
+        if (cancelled) return;
+        setHistoricalLog([]);
+        setHistoricalLogError(formatError(e));
       });
   });
 
@@ -312,19 +318,44 @@ export function BuildPanel(): JSX.Element {
                   </div>
                 )}
               </Show>
-              <LogViewer
-                entries={logEntries()}
-                defaultAutoScroll={settingsState.build.autoScrollBuildLog}
-                onClear={
-                  selectedHistoryId() !== null ? undefined : () => buildLogStore.clearEntries()
+              <Show
+                when={historicalLogError()}
+                fallback={
+                  <LogViewer
+                    entries={logEntries()}
+                    defaultAutoScroll={settingsState.build.autoScrollBuildLog}
+                    onClear={
+                      selectedHistoryId() !== null ? undefined : () => buildLogStore.clearEntries()
+                    }
+                    showSource={false}
+                    emptyMessage={
+                      selectedHistoryId() !== null
+                        ? "No log saved for this build"
+                        : "No build output yet — press the run button or Cmd+Shift+R"
+                    }
+                  />
                 }
-                showSource={false}
-                emptyMessage={
-                  selectedHistoryId() !== null
-                    ? "No log saved for this build"
-                    : "No build output yet — press the run button or Cmd+Shift+R"
-                }
-              />
+              >
+                {(message) => (
+                  <div style={{ padding: "8px" }}>
+                    <Alert
+                      variant="error"
+                      title="Couldn't load the log for this build"
+                      action={
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          onClick={() => setHistoricalLogAttempt((n) => n + 1)}
+                        >
+                          Retry
+                        </Button>
+                      }
+                    >
+                      {message()}
+                    </Alert>
+                  </div>
+                )}
+              </Show>
             </Show>
             <Show when={viewMode() === "problems"}>
               <ProblemsView errors={buildState.errors} warnings={buildState.warnings} />
