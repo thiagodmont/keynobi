@@ -1,5 +1,10 @@
 use crate::utils::device_shell::quote_device_shell_arg;
+use crate::utils::process::{
+    describe_failure, output_with_timeout, ADB_QUERY_TIMEOUT, ADB_SCREENSHOT_TIMEOUT,
+    ADB_UNRESPONSIVE_HINT,
+};
 use std::path::PathBuf;
+use tokio::process::Command;
 
 #[derive(Debug, serde::Serialize)]
 pub struct DeviceInfo {
@@ -40,10 +45,19 @@ pub struct MemoryInfo {
 
 #[allow(clippy::ptr_arg)]
 pub async fn get_device_info(adb: &PathBuf, serial: &str) -> Result<DeviceInfo, String> {
-    let mk_getprop = |prop: &'static str| {
-        tokio::process::Command::new(adb.clone())
-            .args(["-s", serial, "shell", "getprop", prop])
-            .output()
+    let shell = |args: &'static [&'static str]| async move {
+        output_with_timeout(
+            Command::new(adb).args(["-s", serial, "shell"]).args(args),
+            ADB_QUERY_TIMEOUT,
+        )
+        .await
+    };
+    let mk_getprop = |prop: &'static str| async move {
+        output_with_timeout(
+            Command::new(adb).args(["-s", serial, "shell", "getprop", prop]),
+            ADB_QUERY_TIMEOUT,
+        )
+        .await
     };
 
     let (sdk, release, manufacturer, model, name, fingerprint, build_id, wm_size, battery) = tokio::join!(
@@ -54,13 +68,17 @@ pub async fn get_device_info(adb: &PathBuf, serial: &str) -> Result<DeviceInfo, 
         mk_getprop("ro.product.name"),
         mk_getprop("ro.build.fingerprint"),
         mk_getprop("ro.build.id"),
-        tokio::process::Command::new(adb.clone())
-            .args(["-s", serial, "shell", "wm", "size"])
-            .output(),
-        tokio::process::Command::new(adb.clone())
-            .args(["-s", serial, "shell", "dumpsys", "battery"])
-            .output(),
+        shell(&["wm", "size"]),
+        shell(&["dumpsys", "battery"]),
     );
+
+    // The probes run concurrently, so an unresponsive device times out all of
+    // them; report that instead of an all-empty result.
+    if let Err(e) = &sdk {
+        if e.kind() == std::io::ErrorKind::TimedOut {
+            return Err(describe_failure("adb getprop", e, ADB_UNRESPONSIVE_HINT));
+        }
+    }
 
     let prop_val = |res: Result<std::process::Output, _>| -> Option<String> {
         let s = res
@@ -108,27 +126,45 @@ pub async fn dump_app_info(
     package: &str,
 ) -> Result<DumpedAppInfo, String> {
     let (path_res, dump_res) = tokio::join!(
-        tokio::process::Command::new(adb.clone())
-            .args([
-                "-s",
-                serial,
-                "shell",
-                "pm",
-                "path",
-                &quote_device_shell_arg(package)
-            ])
-            .output(),
-        tokio::process::Command::new(adb.clone())
-            .args([
-                "-s",
-                serial,
-                "shell",
-                "dumpsys",
-                "package",
-                &quote_device_shell_arg(package),
-            ])
-            .output(),
+        async {
+            output_with_timeout(
+                Command::new(adb).args([
+                    "-s",
+                    serial,
+                    "shell",
+                    "pm",
+                    "path",
+                    &quote_device_shell_arg(package),
+                ]),
+                ADB_QUERY_TIMEOUT,
+            )
+            .await
+        },
+        async {
+            output_with_timeout(
+                Command::new(adb).args([
+                    "-s",
+                    serial,
+                    "shell",
+                    "dumpsys",
+                    "package",
+                    &quote_device_shell_arg(package),
+                ]),
+                ADB_QUERY_TIMEOUT,
+            )
+            .await
+        },
     );
+
+    if let Err(e) = &dump_res {
+        if e.kind() == std::io::ErrorKind::TimedOut {
+            return Err(describe_failure(
+                "adb dumpsys package",
+                e,
+                ADB_UNRESPONSIVE_HINT,
+            ));
+        }
+    }
 
     let path_out = path_res
         .ok()
@@ -171,18 +207,19 @@ pub async fn get_memory_info(
     serial: &str,
     package: &str,
 ) -> Result<MemoryInfo, String> {
-    let output = tokio::process::Command::new(adb)
-        .args([
+    let output = output_with_timeout(
+        Command::new(adb).args([
             "-s",
             serial,
             "shell",
             "dumpsys",
             "meminfo",
             &quote_device_shell_arg(package),
-        ])
-        .output()
-        .await
-        .map_err(|e| format!("adb dumpsys meminfo failed: {e}"))?;
+        ]),
+        ADB_QUERY_TIMEOUT,
+    )
+    .await
+    .map_err(|e| describe_failure("adb dumpsys meminfo", &e, ADB_UNRESPONSIVE_HINT))?;
 
     let text = String::from_utf8_lossy(&output.stdout).to_string();
 
@@ -210,11 +247,12 @@ pub async fn get_memory_info(
 }
 
 pub async fn take_screenshot(adb: &PathBuf, serial: &str) -> Result<Vec<u8>, String> {
-    let output = tokio::process::Command::new(adb)
-        .args(["-s", serial, "exec-out", "screencap", "-p"])
-        .output()
-        .await
-        .map_err(|e| format!("adb exec-out screencap failed: {e}"))?;
+    let output = output_with_timeout(
+        Command::new(adb).args(["-s", serial, "exec-out", "screencap", "-p"]),
+        ADB_SCREENSHOT_TIMEOUT,
+    )
+    .await
+    .map_err(|e| describe_failure("adb exec-out screencap", &e, ADB_UNRESPONSIVE_HINT))?;
 
     if !output.status.success() || output.stdout.is_empty() {
         let stderr = String::from_utf8_lossy(&output.stderr);

@@ -1,5 +1,6 @@
 use crate::models::health::SystemHealthReport;
 use crate::services::settings_manager;
+use crate::utils::process::{output_with_timeout, TOOL_PROBE_TIMEOUT};
 use crate::FsState;
 use std::path::PathBuf;
 
@@ -38,12 +39,14 @@ pub async fn run_health_checks(
 
     let java_bin_used = java_bin.to_string_lossy().into_owned();
 
-    let java_output = tokio::process::Command::new(&java_bin)
-        .arg("-version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
-        .output()
-        .await;
+    let java_output = output_with_timeout(
+        tokio::process::Command::new(&java_bin)
+            .arg("-version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped()),
+        TOOL_PROBE_TIMEOUT,
+    )
+    .await;
 
     let (java_executable_found, java_version) = match java_output {
         Ok(out) if out.status.success() || !out.stderr.is_empty() => {
@@ -80,12 +83,14 @@ pub async fn run_health_checks(
         .filter(|p| p.is_file())
         .unwrap_or_else(|| PathBuf::from("adb"));
 
-    let adb_output = tokio::process::Command::new(&adb_bin)
-        .arg("version")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .await;
+    let adb_output = output_with_timeout(
+        tokio::process::Command::new(&adb_bin)
+            .arg("version")
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null()),
+        TOOL_PROBE_TIMEOUT,
+    )
+    .await;
 
     let (adb_found, adb_version) = match adb_output {
         Ok(out) if out.status.success() => {
@@ -128,14 +133,13 @@ pub async fn run_health_checks(
     // ── Android Studio CLI probe ──────────────────────────────────────────────
     // Uses a login shell so macOS users who set PATH in .zshrc / .zprofile
     // have the `studio` command resolved correctly.
-    let studio_command_found = tokio::process::Command::new("sh")
-        .args(["-lc", "which studio"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await
-        .map(|s| s.success())
-        .unwrap_or(false);
+    let studio_command_found = output_with_timeout(
+        tokio::process::Command::new("sh").args(["-lc", "which studio"]),
+        TOOL_PROBE_TIMEOUT,
+    )
+    .await
+    .map(|o| o.status.success())
+    .unwrap_or(false);
 
     Ok(SystemHealthReport {
         java_executable_found,

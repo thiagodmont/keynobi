@@ -88,6 +88,8 @@ runAndDeploy()
 
 `DeviceState` (`services/adb_manager.rs`) owns connected devices, the selected serial, and the polling guard. Device polling runs as a detached task every 3 s and emits `device:list_changed` when any device's serial or connection state changes (for example unauthorized → online).
 
+adb and SDK tool calls have per-operation deadlines (`utils/process.rs`): 10 s for queries (`devices`, `getprop`, `pm`, `dumpsys`, `am force-stop`), 30 s for launches and screenshots, 5 min for `adb install`, 15 s for `emu kill`, 30 s for aapt2, 60 s for avdmanager, and 2 min for `sdkmanager --list`. When `adb devices` times out, `list_devices` logs it and returns an empty list, so polling continues on the next tick; enrichment skips a device whose `getprop` times out.
+
 ### AVDs
 
 AVD lifecycle commands go through Android SDK tools. `create_avd_device` and `delete_avd_device` return the refreshed AVD list so the frontend updates in one round-trip; `launch_avd` returns the new serial and emits `device:list_changed`. Validate AVD names, system image IDs, and device profile IDs with the validators in `adb_manager.rs`.
