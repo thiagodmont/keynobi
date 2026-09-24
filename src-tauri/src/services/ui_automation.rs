@@ -1651,7 +1651,9 @@ pub async fn adb_open_deep_link(
     package: Option<&str>,
 ) -> Result<String, String> {
     validate_deep_link_uri(uri)?;
-    let args = build_open_deep_link_args(uri, package);
+    // Validation trims; do the same here, since quoting would otherwise keep
+    // the padding as part of the URI.
+    let args = build_open_deep_link_args(uri.trim(), package);
     run_adb_shell_owned(adb, serial, &args).await
 }
 
@@ -1881,6 +1883,21 @@ mod tests {
         assert_eq!(
             recorded_calls(&record),
             vec![build_open_deep_link_args(uri, Some("com.example.app"))]
+        );
+    }
+
+    #[tokio::test]
+    async fn deep_link_padding_is_trimmed() {
+        let dir = tempfile::tempdir().unwrap();
+        let (adb, record) = fake_adb(dir.path());
+
+        adb_open_deep_link(&adb, "emulator-5554", "  myapp://profile/42 \t", None)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            recorded_calls(&record),
+            vec![build_open_deep_link_args("myapp://profile/42", None)]
         );
     }
 

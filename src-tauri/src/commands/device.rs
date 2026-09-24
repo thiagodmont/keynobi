@@ -449,5 +449,7 @@ mod tests {
         assert!(validate_activity_name("Main Activity").is_err());
         assert!(validate_activity_name(".MainActivity; rm -rf").is_err());
         assert!(validate_activity_name(".MainActivity\nOther").is_err());
+        assert!(validate_activity_name(&format!(".{}", "A".repeat(256))).is_err());
+        assert!(validate_activity_name(&format!(".{}", "A".repeat(255))).is_ok());
     }
 }

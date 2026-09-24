@@ -16,6 +16,9 @@ const MAX_GRADLE_TASK_LEN: usize = 256;
 /// Max length of an ADB device serial.
 const MAX_DEVICE_SERIAL_LEN: usize = 64;
 
+/// Max length of an activity class name.
+const MAX_ACTIVITY_NAME_LEN: usize = 256;
+
 /// Validate a Gradle task name.
 ///
 /// Allowed: alphanumeric, `:`, `-`, `_`, `.`.
@@ -87,11 +90,18 @@ pub fn validate_activity_name(activity: &str) -> Result<(), String> {
     if activity.is_empty() {
         return Err("Activity name cannot be empty".to_string());
     }
+    if activity.len() > MAX_ACTIVITY_NAME_LEN {
+        return Err(format!(
+            "Activity name is too long (max {MAX_ACTIVITY_NAME_LEN} characters)"
+        ));
+    }
     let valid = activity
         .chars()
         .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_' | '$'));
     if !valid {
-        return Err(format!("Invalid activity name '{activity}'"));
+        return Err(format!(
+            "Invalid activity name '{activity}': only alphanumeric, '.', '_', '$' are allowed"
+        ));
     }
     Ok(())
 }
