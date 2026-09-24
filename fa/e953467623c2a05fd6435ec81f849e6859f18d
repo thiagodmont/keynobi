@@ -1,0 +1,29 @@
+references/BEST_PRACTICES.md
+  s_001e6d7fe3b5bd::t_4633df9ec09635 253
+CONTRIBUTING.md
+  s_001e6d7fe3b5bd::t_4633df9ec09635 58-62
+references/DOMAIN_PATTERNS.md
+  s_001e6d7fe3b5bd::t_4633df9ec09635 30
+AGENTS.md
+  s_001e6d7fe3b5bd::t_4633df9ec09635 35,52
+src-tauri/src/services/logcat.rs
+  s_001e6d7fe3b5bd::t_4633df9ec09635 1618-1619
+references/DESIGN_SYSTEM.md
+  s_001e6d7fe3b5bd::t_4633df9ec09635 20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fae953467623c2a05fd6435ec81f849e6859f18d",
+  "prompts": {},
+  "sessions": {
+    "s_001e6d7fe3b5bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "066850e1-152d-4e65-ba24-bd856b1e61e2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
