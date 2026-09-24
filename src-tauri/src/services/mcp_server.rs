@@ -553,9 +553,8 @@ impl AndroidMcpServer {
             .lines
             .unwrap_or(mcp_settings.build_log_default_lines as usize)
             .min(2000);
-        let log = self
-            .build_state
-            .build_log
+        let current_log = self.build_state.build_log.current();
+        let log = current_log
             .lock()
             .map_err(|_| McpError::internal_error("Lock poisoned", None))?;
         if log.is_empty() {

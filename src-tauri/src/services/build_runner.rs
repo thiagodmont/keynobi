@@ -113,6 +113,10 @@ pub struct BuildStateInner {
     pub current_build: Option<ProcessId>,
     /// True after a build request reserves the slot and before the process ID is known.
     pub starting: bool,
+    /// The most recently started run. A run that finishes after a newer one has
+    /// started (for example a cancelled build still shutting down) must not
+    /// touch the shared status, errors, or cancellable process of that newer run.
+    pub latest_run: Option<ProcessId>,
     /// Current build status.
     pub status: BuildStatus,
     /// Ring-buffer of past build records.
@@ -136,6 +140,7 @@ impl BuildStateInner {
         Self {
             current_build: None,
             starting: false,
+            latest_run: None,
             status: BuildStatus::Idle,
             history,
             current_errors: vec![],
@@ -150,10 +155,38 @@ impl BuildStateInner {
 /// push lines without `await`. Capped at `MAX_BUILD_LOG` entries.
 pub type BuildLog = Arc<std::sync::Mutex<VecDeque<String>>>;
 
+/// Points at the log of the most recently started run.
+///
+/// Each run writes to its own [`BuildLog`], so a cancelled run that is still
+/// printing while it shuts down cannot write into the next run's log, and its
+/// own history entry keeps its own lines.
+#[derive(Clone, Default)]
+pub struct BuildLogSlot(Arc<StdMutex<BuildLog>>);
+
+impl BuildLogSlot {
+    /// Install an empty log for a new run and return it.
+    pub fn start_run(&self) -> BuildLog {
+        let log = BuildLog::default();
+        match self.0.lock() {
+            Ok(mut current) => *current = log.clone(),
+            Err(poisoned) => *poisoned.into_inner() = log.clone(),
+        }
+        log
+    }
+
+    /// The log of the most recently started run.
+    pub fn current(&self) -> BuildLog {
+        match self.0.lock() {
+            Ok(current) => current.clone(),
+            Err(poisoned) => poisoned.into_inner().clone(),
+        }
+    }
+}
+
 pub struct BuildState {
     pub inner: Arc<Mutex<BuildStateInner>>,
-    /// Raw build output log — accessible from both sync callbacks and async MCP tools.
-    pub build_log: BuildLog,
+    /// Raw output of the most recent run — accessible from both sync callbacks and async MCP tools.
+    pub build_log: BuildLogSlot,
     /// Set synchronously in the same task tick immediately after `spawn` returns (no `.await`
     /// before this), so `cancel_build` can always resolve the `ProcessId` even if it runs
     /// before `inner.current_build` is updated (otherwise cancel saw `None` and did not kill Gradle).
@@ -164,7 +197,7 @@ impl BuildState {
     pub fn new() -> Self {
         BuildState {
             inner: Arc::new(Mutex::new(BuildStateInner::new())),
-            build_log: Arc::new(std::sync::Mutex::new(VecDeque::new())),
+            build_log: BuildLogSlot::default(),
             active_process_id: Arc::new(StdMutex::new(None)),
         }
     }
@@ -173,6 +206,18 @@ impl BuildState {
         match self.active_process_id.lock() {
             Ok(mut guard) => guard.take(),
             Err(poisoned) => poisoned.into_inner().take(),
+        }
+    }
+
+    /// Clear the cancellable process only if it is still `run`, so a finishing
+    /// run cannot make a newer run uncancellable.
+    pub fn release_active_process_id(&self, run: ProcessId) {
+        let mut guard = match self.active_process_id.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if *guard == Some(run) {
+            *guard = None;
         }
     }
 
@@ -206,12 +251,6 @@ pub fn push_build_log(build_log: &BuildLog, line: String) {
             log.pop_front();
         }
         log.push_back(line);
-    }
-}
-
-pub fn clear_build_log(build_log: &BuildLog) {
-    if let Ok(mut log) = build_log.lock() {
-        log.clear();
     }
 }
 
@@ -485,6 +524,8 @@ pub async fn emit_build_complete(
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BuildCompleteEvent {
+    /// The run this event belongs to (the Gradle process ID the build started with).
+    pub run_id: ProcessId,
     pub success: bool,
     pub cancelled: bool,
     pub duration_ms: u64,
@@ -494,6 +535,10 @@ pub struct BuildCompleteEvent {
 }
 
 pub struct BuildFinalization {
+    /// The Gradle process ID of the run being finalized.
+    pub run_id: ProcessId,
+    /// That run's own output, from [`BuildLogSlot::start_run`].
+    pub log: BuildLog,
     pub task: String,
     pub started_at: String,
     pub project_root: Option<String>,
@@ -526,15 +571,19 @@ pub async fn finalize_completed_build(
 
     record_build_result(
         build_state,
+        finalization.run_id,
+        &finalization.log,
         finalization.task.clone(),
         finalization.started_at,
         result,
+        finalization.cancelled,
         finalization.errors,
         finalization.project_root,
     )
     .await;
 
     BuildCompleteEvent {
+        run_id: finalization.run_id,
         success: finalization.success,
         cancelled: finalization.cancelled,
         duration_ms: finalization.duration_ms,
@@ -632,39 +681,50 @@ pub async fn clear_history(build_state: &BuildState) {
 }
 
 /// Record the completed build result and push it to history.
+///
+/// Every run gets a history entry, but only the latest run updates the shared
+/// status, errors, and cancellable process. A run cancelled and replaced by a
+/// newer one can finish seconds later; letting it write those would show its
+/// outcome as the newer build's, make the newer build uncancellable, and free
+/// the build slot while the newer Gradle is still running.
+#[allow(clippy::too_many_arguments)]
 pub async fn record_build_result(
     build_state: &BuildState,
+    run_id: ProcessId,
+    log: &BuildLog,
     task: String,
     started_at: String,
     result: BuildResult,
+    cancelled: bool,
     errors: Vec<BuildError>,
     project_root: Option<String>,
 ) {
-    // Snapshot the raw build log before taking the inner lock so we don't
-    // hold two locks simultaneously.
-    let raw_lines: VecDeque<String> = build_state
-        .build_log
-        .lock()
-        .map(|g| g.clone())
-        .unwrap_or_default();
+    // Snapshot the run's log before taking the inner lock so we don't hold two
+    // locks simultaneously.
+    let raw_lines: VecDeque<String> = log.lock().map(|g| g.clone()).unwrap_or_default();
 
-    let _ = build_state.take_active_process_id();
+    build_state.release_active_process_id(run_id);
+
+    let status = if cancelled {
+        BuildStatus::Cancelled
+    } else if result.success {
+        BuildStatus::Success(result.clone())
+    } else {
+        BuildStatus::Failed(result.clone())
+    };
 
     let (record_id, history_snapshot) = {
         let mut bs = build_state.inner.lock().await;
-        bs.status = if result.success {
-            BuildStatus::Success(result.clone())
-        } else {
-            BuildStatus::Failed(result.clone())
-        };
-        bs.starting = false;
-        bs.current_errors = errors.clone();
-        bs.current_build = None;
+        if !bs.starting && bs.latest_run == Some(run_id) {
+            bs.status = status.clone();
+            bs.current_errors = errors.clone();
+            bs.current_build = None;
+        }
 
         let record = BuildRecord {
             id: bs.next_id,
             task,
-            status: bs.status.clone(),
+            status,
             errors,
             started_at,
             project_root,
@@ -789,8 +849,7 @@ pub async fn run_task(
 
     try_reserve_build_slot(build_state, task, &started_at).await?;
 
-    let build_log = build_state.build_log.clone();
-    clear_build_log(&build_log);
+    let build_log = build_state.build_log.start_run();
 
     let mut args = vec![task, "--console=plain"];
     args.extend_from_slice(extra_args);
@@ -867,6 +926,7 @@ pub async fn run_task(
     build_state.set_active_process_id(Some(pid));
     let cancelled_during_spawn = {
         let mut bs = build_state.inner.lock().await;
+        bs.latest_run = Some(pid);
         if matches!(bs.status, BuildStatus::Cancelled) {
             bs.starting = false;
             true
@@ -909,6 +969,8 @@ pub async fn run_task(
             build_state,
             app_handle,
             BuildFinalization {
+                run_id: pid,
+                log: build_log.clone(),
                 task: task.to_owned(),
                 started_at,
                 project_root: project_root_for_history.clone(),
@@ -939,6 +1001,8 @@ pub async fn run_task(
         build_state,
         app_handle,
         BuildFinalization {
+            run_id: pid,
+            log: build_log,
             task: task.to_owned(),
             started_at,
             project_root: project_root_for_history,
@@ -1675,17 +1739,46 @@ mod tests {
         );
     }
 
+    /// What both front doors do once Gradle has spawned as `pid`: the run
+    /// becomes the latest one and the cancellable process. Returns its log.
+    async fn start_run(bs: &BuildState, pid: ProcessId) -> BuildLog {
+        let log = bs.build_log.start_run();
+        bs.set_active_process_id(Some(pid));
+        let mut inner = bs.inner.lock().await;
+        inner.latest_run = Some(pid);
+        inner.starting = false;
+        inner.current_build = Some(pid);
+        log
+    }
+
+    fn finalization(run_id: ProcessId, log: BuildLog, task: &str) -> BuildFinalization {
+        BuildFinalization {
+            run_id,
+            log,
+            task: task.to_string(),
+            started_at: "2026-01-01T00:00:00Z".to_string(),
+            project_root: None,
+            success: false,
+            cancelled: false,
+            duration_ms: 0,
+            errors: vec![],
+        }
+    }
+
     #[tokio::test]
     async fn build_slot_is_released_after_finalization() {
         let bs = BuildState::new();
         try_reserve_build_slot(&bs, "assembleDebug", "2026-01-01T00:00:00Z")
             .await
             .unwrap();
+        let log = start_run(&bs, 7).await;
 
         emit_build_complete(
             &bs,
             None,
             BuildFinalization {
+                run_id: 7,
+                log,
                 task: "assembleDebug".to_string(),
                 started_at: "2026-01-01T00:00:00Z".to_string(),
                 project_root: None,
@@ -1708,10 +1801,13 @@ mod tests {
     #[tokio::test]
     async fn emit_build_complete_records_history_without_an_app_handle() {
         let bs = BuildState::new();
+        let log = start_run(&bs, 7).await;
         let event = emit_build_complete(
             &bs,
             None,
             BuildFinalization {
+                run_id: 7,
+                log,
                 task: "assembleDebug".to_string(),
                 started_at: "2026-01-01T00:00:00Z".to_string(),
                 project_root: Some("/tmp/p".to_string()),
@@ -1749,6 +1845,7 @@ mod tests {
     #[tokio::test]
     async fn finalization_counts_warnings_separately_from_errors() {
         let bs = BuildState::new();
+        let log = start_run(&bs, 7).await;
         let mk = |sev| BuildError {
             message: "m".to_string(),
             file: None,
@@ -1760,6 +1857,8 @@ mod tests {
             &bs,
             None,
             BuildFinalization {
+                run_id: 7,
+                log,
                 task: "assembleDebug".to_string(),
                 started_at: "2026-01-01T00:00:00Z".to_string(),
                 project_root: None,
@@ -1783,10 +1882,13 @@ mod tests {
     #[tokio::test]
     async fn cancelled_build_is_finalized_as_cancelled() {
         let bs = BuildState::new();
+        let log = start_run(&bs, 7).await;
         let event = emit_build_complete(
             &bs,
             None,
             BuildFinalization {
+                run_id: 7,
+                log,
                 task: "assembleDebug".to_string(),
                 started_at: "2026-01-01T00:00:00Z".to_string(),
                 project_root: None,
@@ -1800,6 +1902,95 @@ mod tests {
 
         assert!(event.cancelled);
         assert!(!event.success);
+        let inner = bs.inner.lock().await;
+        assert!(matches!(inner.status, BuildStatus::Cancelled));
+        assert!(
+            matches!(
+                inner.history.back().map(|r| &r.status),
+                Some(BuildStatus::Cancelled)
+            ),
+            "history must tell a cancel from a failure"
+        );
+    }
+
+    /// Cancel A, start B, then A finishes (Gradle takes seconds to shut down).
+    /// A used to take B's process ID, clear the slot, and write its own
+    /// outcome as the current status: B became uncancellable, a third build
+    /// could start next to it, and B's panel showed A's result.
+    #[tokio::test]
+    async fn late_finalization_of_a_replaced_run_leaves_the_newer_run_alone() {
+        let bs = BuildState::new();
+        let pm = ProcessManager::new();
+        try_reserve_build_slot(&bs, "assembleDebug", "2026-01-01T00:00:00Z")
+            .await
+            .unwrap();
+        let log_a = start_run(&bs, 100).await;
+        push_build_log(&log_a, "line from A".into());
+        cancel_build(&bs, &pm).await;
+
+        try_reserve_build_slot(&bs, "assembleRelease", "2026-01-01T00:00:05Z")
+            .await
+            .expect("cancelling A frees the slot for B");
+        let log_b = start_run(&bs, 200).await;
+        push_build_log(&log_a, "A still shutting down".into());
+        push_build_log(&log_b, "line from B".into());
+
+        let mut late = finalization(100, log_a, "assembleDebug");
+        late.cancelled = true;
+        late.errors = vec![BuildError {
+            message: "error from A".into(),
+            file: None,
+            line: None,
+            col: None,
+            severity: BuildErrorSeverity::Error,
+        }];
+        emit_build_complete(&bs, None, late).await;
+
+        let (record_id, record_status) = {
+            let inner = bs.inner.lock().await;
+            assert_eq!(inner.current_build, Some(200));
+            assert!(
+                matches!(&inner.status, BuildStatus::Running { task, .. } if task == "assembleRelease"),
+                "B's status was replaced: {:?}",
+                inner.status
+            );
+            assert!(inner.current_errors.is_empty(), "A's errors leaked into B");
+            let record = inner.history.back().expect("A is recorded");
+            (record.id, record.status.clone())
+        };
+        assert!(matches!(record_status, BuildStatus::Cancelled));
+        assert_eq!(
+            *bs.active_process_id.lock().unwrap(),
+            Some(200),
+            "B must stay cancellable"
+        );
+        assert!(
+            try_reserve_build_slot(&bs, "check", "2026-01-01T00:00:10Z")
+                .await
+                .is_err(),
+            "B still holds the build slot"
+        );
+
+        let saved = std::fs::read_to_string(
+            data_dir()
+                .join("build-logs")
+                .join(format!("build-{record_id}.jsonl")),
+        )
+        .unwrap();
+        assert!(saved.contains("line from A") && saved.contains("A still shutting down"));
+        assert!(
+            !saved.contains("line from B"),
+            "A's saved log holds B's lines"
+        );
+        let current: Vec<String> = bs
+            .build_log
+            .current()
+            .lock()
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect();
+        assert_eq!(current, vec!["line from B".to_string()]);
     }
 
     // ── Slot release on failure paths ────────────────────────────────────────

@@ -211,6 +211,7 @@ export async function getPackageNameFromApk(apkPath: string): Promise<string> {
 
 export function listenBuildComplete(
   cb: (e: {
+    runId: number;
     success: boolean;
     cancelled: boolean;
     durationMs: number;
@@ -220,6 +221,7 @@ export function listenBuildComplete(
   }) => void
 ): Promise<UnlistenFn> {
   return listen<{
+    runId: number;
     success: boolean;
     cancelled: boolean;
     durationMs: number;

@@ -173,6 +173,33 @@ fn parse_build_duration_no_match_returns_zero() {
 
 // ── State-machine tests ───────────────────────────────────────────────────────
 
+/// Record a finished run the way both build paths do once Gradle has spawned,
+/// so the run is the latest one and owns the shared status.
+async fn record(
+    state: &build_runner::BuildState,
+    task: String,
+    started_at: String,
+    result: BuildResult,
+    errors: Vec<keynobi_lib::models::build::BuildError>,
+    project_root: Option<String>,
+) {
+    let run_id = 1;
+    state.inner.lock().await.latest_run = Some(run_id);
+    let log = state.build_log.start_run();
+    build_runner::record_build_result(
+        state,
+        run_id,
+        &log,
+        task,
+        started_at,
+        result,
+        false,
+        errors,
+        project_root,
+    )
+    .await;
+}
+
 #[tokio::test]
 async fn record_build_result_success_updates_state() {
     use keynobi_lib::models::build::BuildStatus;
@@ -188,7 +215,7 @@ async fn record_build_result_success_updates_state() {
         warning_count: 0,
     };
 
-    build_runner::record_build_result(
+    record(
         &state,
         "assembleDebug".into(),
         "2024-01-01T00:00:00Z".into(),
@@ -237,7 +264,7 @@ async fn record_build_result_failure_updates_state() {
         severity: BuildErrorSeverity::Error,
     }];
 
-    build_runner::record_build_result(
+    record(
         &state,
         "assembleDebug".into(),
         "2024-01-01T00:00:00Z".into(),
@@ -272,7 +299,7 @@ async fn record_build_result_respects_history_limit() {
             error_count: 0,
             warning_count: 0,
         };
-        build_runner::record_build_result(
+        record(
             &state,
             format!("task_{i}"),
             "2024-01-01T00:00:00Z".into(),
@@ -308,7 +335,7 @@ async fn record_build_result_stamps_project_root() {
         warning_count: 0,
     };
 
-    build_runner::record_build_result(
+    record(
         &state,
         "assembleDebug".into(),
         "2024-01-01T00:00:00Z".into(),
@@ -338,7 +365,7 @@ async fn record_build_result_stores_none_project_root_when_not_provided() {
         warning_count: 0,
     };
 
-    build_runner::record_build_result(
+    record(
         &state,
         "assembleDebug".into(),
         "2024-01-01T00:00:00Z".into(),
@@ -368,7 +395,7 @@ async fn history_records_retain_distinct_project_roots() {
         warning_count: 0,
     };
 
-    build_runner::record_build_result(
+    record(
         &state,
         "assembleDebug".into(),
         "2024-01-01T00:00:00Z".into(),
@@ -378,7 +405,7 @@ async fn history_records_retain_distinct_project_roots() {
     )
     .await;
 
-    build_runner::record_build_result(
+    record(
         &state,
         "assembleRelease".into(),
         "2024-01-02T00:00:00Z".into(),

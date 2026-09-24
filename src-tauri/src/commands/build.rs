@@ -79,15 +79,13 @@ pub async fn run_gradle_task(
     let errors_buf: Arc<StdMutex<Vec<BuildError>>> = Arc::new(StdMutex::new(vec![]));
     let duration_ms: Arc<StdMutex<u64>> = Arc::new(StdMutex::new(0));
     let success_flag: Arc<StdMutex<bool>> = Arc::new(StdMutex::new(false));
-    // Share the BuildLog Arc so the on_line callback can push lines directly.
-    let build_log = build_state.build_log.clone();
+    // This run's own log; the on_line callback pushes into it directly.
+    // Starting it BEFORE spawning means no early line can be dropped.
+    let build_log = build_state.build_log.start_run();
     let build_state_for_exit = build_state.inner().clone();
 
     let args_strs: Vec<String> = args;
     let args_refs: Vec<&str> = args_strs.iter().map(|s| s.as_str()).collect();
-
-    // Clear the log for this run BEFORE spawning so no early lines can be clobbered.
-    build_runner::clear_build_log(&build_state.build_log);
 
     let spawn_result = process_manager::spawn(
         &process_manager.0,
@@ -149,7 +147,8 @@ pub async fn run_gradle_task(
                 let started_at = started_at.clone();
                 let project_root = project_root_for_history.clone();
                 let build_state = build_state_for_exit.clone();
-                move |_pid, termination| {
+                let log = build_log.clone();
+                move |run_id, termination| {
                     // std::sync::Mutex::lock() — safe to call from any context.
                     let errs = errors_buf.lock().map(|g| g.clone()).unwrap_or_default();
                     let dur = duration_ms.lock().map(|g| *g).unwrap_or(0);
@@ -167,10 +166,13 @@ pub async fn run_gradle_task(
                     let started_at = started_at.clone();
                     let project_root = project_root.clone();
                     let build_state = build_state.clone();
+                    let log = log.clone();
                     tauri::async_runtime::spawn(async move {
                         let event = finalize_completed_build(
                             &build_state,
                             BuildFinalization {
+                                run_id,
+                                log,
                                 task: task_name,
                                 started_at,
                                 project_root,
@@ -204,6 +206,7 @@ pub async fn run_gradle_task(
     // Mark build as running in the managed state and clear the log for this run.
     let cancel_after_spawn = {
         let mut bs = build_state.inner.lock().await;
+        bs.latest_run = Some(id);
         if matches!(bs.status, BuildStatus::Cancelled) {
             // User cancelled in the window after spawn but before this lock — Gradle may already be gone.
             bs.starting = false;
@@ -419,6 +422,7 @@ mod tests {
     #[tokio::test]
     async fn process_exit_finalization_records_backend_history() {
         let build_state = BuildState::new();
+        build_state.inner.lock().await.latest_run = Some(42);
         let errors = vec![BuildError {
             message: "compile failed".to_string(),
             file: Some("Main.kt".to_string()),
@@ -430,6 +434,8 @@ mod tests {
         let event = finalize_completed_build(
             &build_state,
             BuildFinalization {
+                run_id: 42,
+                log: build_state.build_log.start_run(),
                 task: "assembleDebug".to_string(),
                 started_at: "2026-01-01T00:00:00Z".to_string(),
                 project_root: Some("/tmp/project".to_string()),

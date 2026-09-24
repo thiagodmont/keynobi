@@ -64,7 +64,9 @@ runAndDeploy()
 - Parsed build errors are persisted by backend finalization before `build:complete` is emitted.
 - **Only one build at a time per process.** Every path that spawns Gradle must call `try_reserve_build_slot` first.
 - **Success requires exit code 0 AND a `BUILD SUCCESSFUL` summary line.** The exit code is authoritative; the summary line alone is not sufficient.
-- A cancelled or timed-out build still records a history entry.
+- A cancelled or timed-out build still records a history entry. A cancelled build is recorded as `cancelled`, not `failed`.
+- **A run is identified by its Gradle process ID** (`BuildFinalization.run_id`, `build:complete` `runId`). Once the process has spawned, both front doors set `latest_run`. Finalization always appends history, but only the latest run may update the shared status, errors, current build, and cancellable process, so a cancelled build that finishes after its replacement started cannot take the replacement over.
+- **Each run has its own output buffer** (`BuildLogSlot::start_run`). `get_build_log` reads the latest run's; a run's history entry saves its own lines even when it finishes late.
 - Build history IDs must stay unique across restarts and clears so log filenames never collide.
 
 ---
