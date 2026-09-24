@@ -43,6 +43,7 @@ export function buildHandlers(): Record<string, (args: unknown) => unknown> {
           warningCount: 0,
         } as BuildStatus;
         triggerEvent("build:complete", {
+          runId: id,
           success: true,
           cancelled: false,
           durationMs: 4000,
