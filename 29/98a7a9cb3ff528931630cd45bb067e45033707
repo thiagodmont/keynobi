@@ -1,0 +1,29 @@
+src/components/ui/Toggle/Toggle.test.tsx
+  s_1e114e823b9048::t_b63bee39825c71 11-17
+src/components/settings/SettingsPanel.tsx
+  s_1e114e823b9048::t_7fa410fec2181b 530
+src/components/ui/Toggle/Toggle.tsx
+  s_1e114e823b9048::t_7fa410fec2181b 10-11,28
+src/components/settings/SettingRow.tsx
+  s_1e114e823b9048::t_7fa410fec2181b 56,58
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_2103bb31f892f2 238
+src-tauri/src/utils/validation.rs
+  s_1e114e823b9048::t_360564a54677eb 158-160,162,245-248,278
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "2998a7a9cb3ff528931630cd45bb067e45033707",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
