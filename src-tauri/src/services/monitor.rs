@@ -21,7 +21,7 @@ pub fn collect_log_files(log_dir: &Path) -> (u64, Vec<(PathBuf, SystemTime, u64)
     for entry in entries.flatten() {
         let path = entry.path();
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if !name.starts_with("app.log") {
+        if !name.starts_with(LOG_FILE_PREFIX) {
             continue;
         }
         if let Ok(meta) = entry.metadata() {
@@ -34,8 +34,24 @@ pub fn collect_log_files(log_dir: &Path) -> (u64, Vec<(PathBuf, SystemTime, u64)
     (total, files)
 }
 
-/// Deletes oldest app.log* files until total_bytes <= limit. Returns true if rotation was attempted (over limit).
-pub fn rotate_logs(mut files: Vec<(PathBuf, SystemTime, u64)>, limit: u64) -> bool {
+/// Prefix the daily appender gives every GUI log file (`app.log.YYYY-MM-DD`).
+pub const LOG_FILE_PREFIX: &str = "app.log";
+
+/// Name of the file the daily appender is writing to now. The appender rolls on UTC dates.
+pub fn active_log_file_name() -> String {
+    format!(
+        "{LOG_FILE_PREFIX}.{}",
+        chrono::Utc::now().format("%Y-%m-%d")
+    )
+}
+
+/// Deletes oldest app.log* files, never `active_file_name`, until total_bytes <= limit.
+/// Returns true if rotation was attempted (over limit).
+pub fn rotate_logs(
+    mut files: Vec<(PathBuf, SystemTime, u64)>,
+    limit: u64,
+    active_file_name: &str,
+) -> bool {
     // Sort oldest-first
     files.sort_by_key(|(_, modified, _)| *modified);
     let mut total: u64 = files.iter().map(|(_, _, size)| size).sum();
@@ -47,16 +63,18 @@ pub fn rotate_logs(mut files: Vec<(PathBuf, SystemTime, u64)>, limit: u64) -> bo
         if total <= limit {
             break;
         }
+        if path.file_name().and_then(|n| n.to_str()) == Some(active_file_name) {
+            continue;
+        }
         if std::fs::remove_file(path).is_ok() {
             tracing::info!("Size-based log rotation: removed {}", path.display());
+            total = total.saturating_sub(*size);
         } else {
             tracing::warn!(
                 "Size-based log rotation: could not remove {}, skipping",
                 path.display()
             );
         }
-        // Subtract either way so we don't retry the same file on the next tick.
-        total = total.saturating_sub(*size);
     }
     // Return true to signal that rotation was triggered (regardless of deletion success).
     true
@@ -83,7 +101,7 @@ pub async fn run_monitor(app_handle: AppHandle, log_dir: PathBuf, log_max_size_b
 
         // 3. Rotate if needed
         let rotation_triggered = if log_folder_bytes > log_max_size_bytes {
-            rotate_logs(files, log_max_size_bytes)
+            rotate_logs(files, log_max_size_bytes, &active_log_file_name())
         } else {
             false
         };
@@ -103,6 +121,8 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    const ACTIVE: &str = "app.log.2026-04-09";
 
     fn write_file(dir: &Path, name: &str, size: usize) {
         fs::write(dir.join(name), vec![0u8; size]).unwrap();
@@ -139,7 +159,7 @@ mod tests {
         let dir = tempdir().unwrap();
         write_file(dir.path(), "app.log.2026-04-01", 100);
         let (_, files) = collect_log_files(dir.path());
-        let rotated = rotate_logs(files, 1000);
+        let rotated = rotate_logs(files, 1000, ACTIVE);
         assert!(!rotated);
         assert!(dir.path().join("app.log.2026-04-01").exists());
     }
@@ -154,7 +174,7 @@ mod tests {
 
         let (_, files) = collect_log_files(dir.path());
         // Limit of 400 → must delete oldest (300 bytes) to get to 300 ≤ 400
-        let rotated = rotate_logs(files, 400);
+        let rotated = rotate_logs(files, 400, ACTIVE);
         assert!(rotated);
         // Newer file must survive
         assert!(dir.path().join("app.log.2026-04-02").exists());
@@ -173,10 +193,58 @@ mod tests {
 
         let (_, files) = collect_log_files(dir.path());
         // Limit of 250 → must delete first two files (400 bytes) to reach 200 ≤ 250
-        let rotated = rotate_logs(files, 250);
+        let rotated = rotate_logs(files, 250, ACTIVE);
         assert!(rotated);
         assert!(dir.path().join("app.log.2026-04-03").exists());
         assert!(!dir.path().join("app.log.2026-04-01").exists());
         assert!(!dir.path().join("app.log.2026-04-02").exists());
+    }
+
+    #[test]
+    fn active_log_file_name_matches_daily_appender_naming() {
+        let name = active_log_file_name();
+        let date = name.strip_prefix("app.log.").unwrap();
+        assert!(chrono::NaiveDate::parse_from_str(date, "%Y-%m-%d").is_ok());
+    }
+
+    #[test]
+    fn rotate_never_deletes_the_active_log_even_when_it_is_oldest() {
+        let dir = tempdir().unwrap();
+        write_file(dir.path(), ACTIVE, 300);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        write_file(dir.path(), "app.log.2026-04-02", 300);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        write_file(dir.path(), "app.log.2026-04-03", 300);
+
+        let (_, files) = collect_log_files(dir.path());
+        let rotated = rotate_logs(files, 100, ACTIVE);
+        assert!(rotated);
+        assert!(dir.path().join(ACTIVE).exists());
+        assert!(!dir.path().join("app.log.2026-04-02").exists());
+        assert!(!dir.path().join("app.log.2026-04-03").exists());
+    }
+
+    #[test]
+    fn rotate_keeps_going_when_a_removal_fails() {
+        let dir = tempdir().unwrap();
+        // A directory cannot be removed with remove_file, so this removal always fails.
+        fs::create_dir(dir.path().join("app.log.2026-04-01")).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        write_file(dir.path(), "app.log.2026-04-02", 300);
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        write_file(dir.path(), ACTIVE, 300);
+
+        let (_, mut files) = collect_log_files(dir.path());
+        // Give the directory a size that alone would bring the total under the limit.
+        for (path, _, size) in &mut files {
+            if path.ends_with("app.log.2026-04-01") {
+                *size = 600;
+            }
+        }
+        // 1200 bytes over a 700 limit: the failed 600-byte removal must not count as freed.
+        let rotated = rotate_logs(files, 700, ACTIVE);
+        assert!(rotated);
+        assert!(!dir.path().join("app.log.2026-04-02").exists());
+        assert!(dir.path().join(ACTIVE).exists());
     }
 }
