@@ -1,5 +1,6 @@
 use crate::models::device::{
-    AvailableSystemImage, AvdInfo, Device, DeviceDefinition, SdkDownloadProgress, SystemImageInfo,
+    AvailableSystemImage, AvdInfo, Device, DeviceConnectionState, DeviceDefinition,
+    SdkDownloadProgress, SystemImageInfo,
 };
 use crate::models::error::AppError;
 use crate::services::adb_manager::{
@@ -30,6 +31,15 @@ fn record_polled_devices(
 ) -> DeviceListChangedEvent {
     state.devices = devices.clone();
     DeviceListChangedEvent { devices }
+}
+
+/// Serial and connection state of each polled device, in `adb devices` order.
+/// A state change on the same serial (e.g. unauthorized → online) counts as a change.
+fn device_snapshot(devices: &[Device]) -> Vec<(String, DeviceConnectionState)> {
+    devices
+        .iter()
+        .map(|d| (d.serial.clone(), d.connection_state.clone()))
+        .collect()
 }
 
 // ── Validation helpers ─────────────────────────────────────────────────────────
@@ -215,7 +225,7 @@ pub async fn start_device_polling(
     tokio::spawn(async move {
         let (settings, _) = settings_manager::load_settings();
         let adb = get_adb_path(&settings);
-        let mut last_serials: Vec<String> = vec![];
+        let mut last_snapshot: Vec<(String, DeviceConnectionState)> = vec![];
 
         loop {
             tokio::time::sleep(Duration::from_secs(3)).await;
@@ -227,14 +237,14 @@ pub async fn start_device_polling(
             }
 
             let mut current = list_devices(&adb).await;
-            let current_serials: Vec<String> = current.iter().map(|d| d.serial.clone()).collect();
+            let current_snapshot = device_snapshot(&current);
 
-            if current_serials != last_serials {
+            if current_snapshot != last_snapshot {
                 // Enrich online devices with API level / version.
                 for d in &mut current {
                     enrich_device_props(&adb, d).await;
                 }
-                last_serials = current_serials;
+                last_snapshot = current_snapshot;
                 let event = {
                     let mut state = device_state_bg.lock().await;
                     record_polled_devices(&mut state, current)
@@ -359,7 +369,7 @@ pub async fn download_system_image_cmd(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::device::{DeviceConnectionState, DeviceKind};
+    use crate::models::device::DeviceKind;
     use crate::services::adb_manager::DeviceStateInner;
 
     #[test]
@@ -419,6 +429,52 @@ mod tests {
         assert_eq!(state.devices[0].serial, "emulator-5554");
         assert_eq!(event.devices.len(), 1);
         assert_eq!(event.devices[0].serial, device.serial);
+    }
+
+    fn polled_device(serial: &str, connection_state: DeviceConnectionState) -> Device {
+        Device {
+            serial: serial.to_string(),
+            name: serial.to_string(),
+            model: None,
+            device_kind: DeviceKind::Physical,
+            connection_state,
+            api_level: None,
+            android_version: None,
+        }
+    }
+
+    #[test]
+    fn device_snapshot_changes_when_state_changes_on_same_serial() {
+        let before = [polled_device(
+            "R5CNA0ZVXXX",
+            DeviceConnectionState::Unauthorized,
+        )];
+        let after = [polled_device("R5CNA0ZVXXX", DeviceConnectionState::Online)];
+
+        assert_ne!(device_snapshot(&before), device_snapshot(&after));
+    }
+
+    #[test]
+    fn device_snapshot_is_equal_for_identical_polls() {
+        let poll = || {
+            [
+                polled_device("emulator-5554", DeviceConnectionState::Online),
+                polled_device("R5CNA0ZVXXX", DeviceConnectionState::Offline),
+            ]
+        };
+
+        assert_eq!(device_snapshot(&poll()), device_snapshot(&poll()));
+    }
+
+    #[test]
+    fn device_snapshot_keeps_adb_order() {
+        let a = polled_device("emulator-5554", DeviceConnectionState::Online);
+        let b = polled_device("R5CNA0ZVXXX", DeviceConnectionState::Online);
+
+        assert_ne!(
+            device_snapshot(&[a.clone(), b.clone()]),
+            device_snapshot(&[b, a])
+        );
     }
 
     #[test]

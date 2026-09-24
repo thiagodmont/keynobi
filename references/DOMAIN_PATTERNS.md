@@ -72,7 +72,7 @@ runAndDeploy()
 
 ### Backend State
 
-`DeviceState` (`services/adb_manager.rs`) owns connected devices, the selected serial, and the polling guard. Device polling runs as a detached task every 3 s and emits `device:list_changed` when the set of serials changes.
+`DeviceState` (`services/adb_manager.rs`) owns connected devices, the selected serial, and the polling guard. Device polling runs as a detached task every 3 s and emits `device:list_changed` when any device's serial or connection state changes (for example unauthorized → online).
 
 ### AVDs
 
@@ -271,7 +271,6 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Cross-process builds.** GUI and headless MCP can build at the same time; `build-history.json` is last-writer-wins. MCP builds do not appear live in the GUI.
 - **Build history IDs.** `clear_history` resets `next_id` to 1, so new log filenames can collide with retained files. `MAX_PERSISTED_HISTORY` (20) is effectively unused because load trims to 10.
 - **MCP cancel during spawn.** A build cancelled during spawn on the MCP path returns without recording history.
-- **Device polling.** `device:list_changed` fires only when the serial set changes, not when a device's state changes (for example unauthorized → device).
 - **Unicode typing.** `ui_type_text_unicode` sets the clipboard with a Clipper broadcast, falling back to `content insert`. `am broadcast` exits 0 even when Clipper is not installed, so the fallback may not run and the paste can insert stale clipboard text. Needs verification on a device.
 - **Screen hash coverage.** `ui_swipe`, `send_ui_key`, `ui_type_text_unicode`, `clear_focused_input`, and `ui_scroll_until_element` do not accept `expectScreenHash`.
 - **Logcat duplication.** Start/stop/clear is duplicated between `commands/logcat.rs` and `mcp_server.rs`. Shutdown sets `streaming = false` without bumping the generation.
