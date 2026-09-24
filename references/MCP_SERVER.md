@@ -226,7 +226,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 5. Bound the output: add a default and a maximum for any count, size, or timeout.
 6. Decide the tool's kind (R/W/D/O). Destructive behavior must be opt-in through an explicitly named parameter.
 7. Update the `instructions` string, the tool tables in this file, and `USER_MANUAL.md` if users see the change.
-8. Add tests: validation (including injection cases) and behavior against a headless server.
+8. Add tests: validation (including injection cases), and behavior against the real headless binary in `tests/mcp_headless.rs` (fake `adb`/`gradlew` via `headless::Sandbox`).
 
 ## Testing and Debugging
 

@@ -32,7 +32,7 @@ Backend:
 - `src-tauri/src/services/` - Rust business logic.
 - `src-tauri/src/models/` - Rust IPC models exported with `ts-rs`, plus `AppError`.
 - `src-tauri/src/utils/` - shared helpers: `path.rs` (filesystem boundaries), `validation.rs` (identifiers), and `line_reader.rs` (bounded process-output lines).
-- `src-tauri/tests/` - integration tests (`build_integration.rs`, `ipc/`, `fixtures/mock_gradlew`).
+- `src-tauri/tests/` - integration tests (`build_integration.rs`, `ipc/`, `fixtures/mock_gradlew`) and `mcp_headless.rs`, which drives the real `keynobi --mcp` binary through `headless/`.
 - `src-tauri/benches/` - Criterion benchmarks.
 - `src-tauri/capabilities/` - Tauri permission grants.
 
@@ -265,6 +265,7 @@ Visual regression tests live under `e2e/visual/` and run through `playwright.vis
 - Unit tests live in `#[cfg(test)]` modules near the service code.
 - Use `tempfile::TempDir` for filesystem fixtures. Never read or write the real `~/.keynobi`: unit tests are isolated automatically, and integration tests in `tests/` must call `common::isolate_data_dir()` before touching persisted state.
 - Command tests should focus on validation and boundary behavior.
+- End-to-end MCP behavior goes in `tests/mcp_headless.rs`. `headless::Sandbox` gives each server process its own `HOME` (so its data dir is a temp dir), a fake SDK whose `adb` records its arguments, and a project whose `gradlew` runs the script you give it; `Sandbox::start()` launches `keynobi --mcp` and completes the MCP handshake.
 - Security validators need negative tests: traversal, symlinks, option-shaped values, and shell metacharacters.
 
 ### Verification Gate
