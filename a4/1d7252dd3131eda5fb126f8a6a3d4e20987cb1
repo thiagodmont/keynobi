@@ -1,5 +1,7 @@
 src-tauri/src/services/mcp_server.rs
   s_1e114e823b9048::t_77b6ee00258f0f 3570-3571,3595-3596
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_a5995c645cad43 104,251
 ---
 {
   "schema_version": "authorship/3.0.0",
