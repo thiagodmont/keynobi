@@ -68,7 +68,7 @@
     "eslint-plugin-solid": "^0.18.0",
     "http-server": "^14.1.1",
     "husky": "^9.1.7",
-    "jsdom": "^30.0.1",
+    "jsdom": "^30.1.0",
     "lint-staged": "^17.5.1",
     "prettier": "^3.9.6",
     "storybook": "^10.6.0",
