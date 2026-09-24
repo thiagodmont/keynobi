@@ -1615,7 +1615,8 @@ mod reconnect_tests {
     // ── Phase 0 characterization: stream lifecycle ownership ─────────────────
     //
     // These two tests describe behaviour the stream MUST have. They fail on the
-    // pre-generation-token implementation (see docs/HARDENING_PLAN.md C1 / H4).
+    // pre-generation-token implementation, where a `streaming` bool let a
+    // stopped stream task outlive its replacement.
 
     /// Writes a fake `adb` that emits `line_count` logcat lines then sleeps
     /// forever, simulating a live device that has gone quiet.

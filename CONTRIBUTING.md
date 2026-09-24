@@ -55,7 +55,11 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 ```
 
-Rust tests must never touch your real `~/.keynobi`. Confirm `set_data_dir_override` exists in `src-tauri/src/services/settings_manager.rs` before running them.
+Rust tests must never touch your real `~/.keynobi`, but there is no data-dir override yet (see `references/BEST_PRACTICES.md` § Known Gaps). Until there is, run them with `HOME` pointed at a temporary directory:
+
+```bash
+CARGO_HOME="$HOME/.cargo" RUSTUP_HOME="$HOME/.rustup" HOME="$(mktemp -d)" cargo test --lib --tests
+```
 
 The Husky pre-commit hook runs `lint-staged` (ESLint + Prettier), `tsc --noEmit`, and `cargo clippy -- -D warnings`.
 

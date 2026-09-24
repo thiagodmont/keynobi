@@ -17,7 +17,7 @@ Storybook (`.storybook/`) loads `src/styles/global.css`, so examples use the sam
 
 ## Primitives
 
-Every primitive has its own folder: `ui/{Name}/{Name}.tsx`, `{Name}.module.css`, `{Name}.stories.tsx`, `{Name}.test.tsx`, and `index.ts`. All are re-exported from `@/components/ui`.
+Every primitive has its own folder: `ui/{Name}/{Name}.tsx`, `{Name}.stories.tsx`, `{Name}.test.tsx`, `index.ts`, and `{Name}.module.css` when it has styles (`Icon` and `VirtualList` do not). All are re-exported from `@/components/ui`.
 
 | Group | Primitives |
 |-------|------------|

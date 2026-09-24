@@ -250,7 +250,7 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Gradle options.** `validate_gradle_task` accepts a leading `-`, so MCP clients can pass Gradle options. No task denylist exists.
 - **Destructive defaults.** MCP `restart_app` defaults to `cold = true`, which runs `pm clear` and wipes app data. No MCP tool declares annotations.
 - **Cross-process state.** GUI and headless MCP do not share live state or a build lock, and both write `build-history.json` (last writer wins).
-- **Test isolation.** On branches without the data-dir override (`set_data_dir_override`), `cargo test`, and therefore `npm run generate:bindings`, can write to the real `~/.keynobi`.
+- **Test isolation.** There is no data-dir override, so `cargo test`, and therefore `npm run generate:bindings`, can write to the real `~/.keynobi`. Run them with `HOME` set to a temporary directory until one exists.
 - **Duplicated logic.** Logcat start/stop/clear is duplicated between `commands/logcat.rs` and `mcp_server.rs`. APK path validation exists twice (`utils/path.rs` and MCP `validate_apk_path`). `validate_activity_name` lives in `commands/device.rs` instead of `utils/validation.rs`, so MCP does not use it.
 - **`unwrap()` policy.** Enforced by review only. About 15 production `unwrap()` calls remain, mostly `Regex::new` in `build_parser.rs`. Consider `clippy::unwrap_used`.
 - **Unbounded activity log.** `mcp-activity.jsonl` is trimmed only at MCP server start.

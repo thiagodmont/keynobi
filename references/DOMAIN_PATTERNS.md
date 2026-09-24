@@ -27,7 +27,7 @@ Key caps and persistence:
 
 - Build history in memory: `MAX_HISTORY` (10), persisted to `~/.keynobi/build-history.json`.
 - Raw build output retained for MCP/history: `MAX_BUILD_LOG` (5,000 lines).
-- Per-build logs: `~/.keynobi/build-logs/build-{id}.jsonl`, pruned after each build by `rotate_build_logs` in three passes: older than `build.buildLogRetentionDays` (default 7; 0 disables), orphans not in history, then oldest-first until under `build.buildLogMaxFolderMb` (default 100).
+- Per-build logs: `~/.keynobi/build-logs/build-{id}.jsonl`, pruned after each build by `rotate_build_logs` in two passes: first, files older than `build.buildLogRetentionDays` (default 7; 0 disables) or not in history; then oldest-first until the folder is under `build.buildLogMaxFolderMb` (default 100).
 
 ### Execution Paths
 

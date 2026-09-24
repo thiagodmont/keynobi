@@ -32,7 +32,7 @@ Each reference doc ends with **Known Gaps**: rules the code does not meet yet. D
 - **Untrusted input**: validate identifiers with `utils/validation.rs` and paths with `utils/path.rs` (canonicalized, never raw `starts_with`). Arguments to `adb shell` are re-parsed by the device shell.
 - **Rust**: no `unwrap()` in production code; new commands return `Result<T, AppError>`; never hold a Mutex across `.await`; every growing collection has a named cap.
 - **Frontend**: register shortcuts with `registerKeyAndAction()` in `App.tsx`; build UI from `@/components/ui` primitives and theme tokens.
-- **User data**: tests must never read or write `~/.keynobi`. Before running `cargo test` or `generate:bindings`, confirm `set_data_dir_override` exists in `settings_manager.rs`.
+- **User data**: tests must never read or write `~/.keynobi`. There is no data-dir override yet (see `BEST_PRACTICES.md` § Known Gaps), so run `cargo test` and `npm run generate:bindings` with `HOME` pointed at a temporary directory, for example `CARGO_HOME="$HOME/.cargo" RUSTUP_HOME="$HOME/.rustup" HOME="$(mktemp -d)" cargo test`.
 
 ## Code Style
 
@@ -49,6 +49,7 @@ npm run lint && npm run format:check && npm run typescript:check && npm test
 npm run test:ds     # design system, shared styles, or tokens
 npm run test:e2e    # user flows or IPC
 cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --lib --tests
+cd src-tauri && cargo clippy --features telemetry -- -D warnings && cargo test --lib --tests --features telemetry  # telemetry code
 ```
 
 Update the reference doc that owns what you changed (see [Where to Look](#where-to-look)). Remove a Known Gaps entry when you fix it; add one when you knowingly leave a rule unmet.
