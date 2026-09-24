@@ -1,0 +1,44 @@
+name: Dependency audit
+
+# Also runs weekly: new advisories arrive without any change to this repo.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  npm:
+    name: npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      # Only what ships in the app bundle; dev tooling never reaches users.
+      - run: npm audit --omit=dev
+
+  cargo:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      # Fails on vulnerabilities; unmaintained or yanked crates are reported
+      # as warnings. Reviewed exceptions go in src-tauri/.cargo/audit.toml,
+      # each with the reason it does not affect Keynobi.
+      - run: cd src-tauri && cargo audit

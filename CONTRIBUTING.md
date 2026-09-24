@@ -20,6 +20,8 @@ Thank you for helping improve Keynobi. This guide is the entry point; deeper rul
 
 Match [.github/workflows/ci.yml](.github/workflows/ci.yml) locally before opening a PR.
 
+[.github/workflows/audit.yml](.github/workflows/audit.yml) also runs `npm audit --omit=dev` and `cargo audit` on every PR and weekly. If an advisory does not affect Keynobi, add it to `src-tauri/.cargo/audit.toml` with the reason instead of disabling the check.
+
 ### Frontend (Node 22)
 
 ```bash
