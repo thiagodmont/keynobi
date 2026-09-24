@@ -1,0 +1,23 @@
+.github/workflows/ci.yml
+  s_1e114e823b9048::t_a4b5e5571a5571 67-68,70-74
+src-tauri/tests/build_integration.rs
+  s_1e114e823b9048::t_a4b5e5571a5571 546-554
+src-tauri/src/services/settings_manager.rs
+  s_1e114e823b9048::t_a4b5e5571a5571 461-469
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0a8ef96ef408d3259179ceada4db5af3a7c3e656",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
