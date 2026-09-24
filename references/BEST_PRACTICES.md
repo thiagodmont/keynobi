@@ -134,6 +134,8 @@ Every long-lived collection, in memory or on disk, must have an explicit, named 
 | Logcat IPC batch | `MAX_BATCH_SIZE` (500) |
 | Build history | `MAX_HISTORY` (10) |
 | Raw build log kept for MCP | `MAX_BUILD_LOG` (5,000 lines) |
+| Structured build errors/warnings | `MAX_BUILD_ERRORS` (1,000, newest kept) |
+| One line of process output (build, logcat) | `MAX_LINE_BYTES` (64 KiB) |
 | Build log files | Age, orphan, and folder-size pruning (settings) |
 | UI hierarchy | `MAX_XML_BYTES`, `MAX_NODES`, `MAX_DEPTH`, `MAX_ATTR_LEN` |
 | Saved logcat filters | `MAX_SAVED_FILTERS` (50) |

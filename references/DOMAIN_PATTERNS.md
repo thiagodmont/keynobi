@@ -26,7 +26,8 @@ Invariants that say "one at a time" or "the GUI sees it" hold **within one proce
 Key caps and persistence:
 
 - Build history in memory: `MAX_HISTORY` (10), persisted to `~/.keynobi/build-history.json`.
-- Raw build output retained for MCP/history: `MAX_BUILD_LOG` (5,000 lines).
+- Raw build output retained for MCP/history: `MAX_BUILD_LOG` (5,000 lines). Each line keeps at most `MAX_LINE_BYTES` (64 KiB); longer lines end with `… [truncated N bytes]`.
+- Structured errors/warnings per build: `MAX_BUILD_ERRORS` (1,000). The newest are kept and a truncation notice is prepended; `errorCount`/`warningCount` count only what was kept (see Known Gaps).
 - Per-build logs: `~/.keynobi/build-logs/build-{id}.jsonl`, pruned after each build by `rotate_build_logs` in two passes: first, files older than `build.buildLogRetentionDays` (default 7; 0 disables) or not in history; then oldest-first until the folder is under `build.buildLogMaxFolderMb` (default 100).
 
 ### Execution Paths
@@ -94,7 +95,7 @@ Logcat is a backend-first streaming pipeline:
 
 ```text
 adb logcat -T 1                       (starts at "now"; no earlier history)
-  -> raw line ingestion               (bounded channel, RAW_LOG_LINE_CHANNEL_CAPACITY = 10,000)
+  -> raw line ingestion               (lines capped at MAX_LINE_BYTES = 64 KiB; bounded channel, RAW_LOG_LINE_CHANNEL_CAPACITY = 10,000)
   -> processor chain                  (PackageResolver -> CrashAnalyzer -> JsonExtractor -> CategoryClassifier)
   -> bounded LogStore                 (ring buffer: setting, default 50,000, 1,000–100,000)
   -> backend filter                   (log_stream.rs)
@@ -270,6 +271,7 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 
 - **Cross-process builds.** GUI and headless MCP can build at the same time; `build-history.json` is last-writer-wins. MCP builds do not appear live in the GUI.
 - **Build history IDs.** `clear_history` resets `next_id` to 1, so new log filenames can collide with retained files. `MAX_PERSISTED_HISTORY` (20) is effectively unused because load trims to 10.
+- **Build error counts after truncation.** Once `MAX_BUILD_ERRORS` is reached, `errorCount`/`warningCount` count only the retained diagnostics, and the truncation notice itself counts as a warning. True totals would need new `BuildResult`/`BuildCompleteEvent` fields.
 - **MCP cancel during spawn.** A build cancelled during spawn on the MCP path returns without recording history.
 - **Device polling.** `device:list_changed` fires only when the serial set changes, not when a device's state changes (for example unauthorized → device).
 - **Unicode typing.** `ui_type_text_unicode` sets the clipboard with a Clipper broadcast, falling back to `content insert`. `am broadcast` exits 0 even when Clipper is not installed, so the fallback may not run and the paste can insert stale clipboard text. Needs verification on a device.

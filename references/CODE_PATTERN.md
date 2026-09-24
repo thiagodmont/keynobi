@@ -31,7 +31,7 @@ Backend:
 - `src-tauri/src/commands/` - thin Tauri command handlers.
 - `src-tauri/src/services/` - Rust business logic.
 - `src-tauri/src/models/` - Rust IPC models exported with `ts-rs`, plus `AppError`.
-- `src-tauri/src/utils/` - shared validators: `path.rs` (filesystem boundaries) and `validation.rs` (identifiers).
+- `src-tauri/src/utils/` - shared helpers: `path.rs` (filesystem boundaries), `validation.rs` (identifiers), and `line_reader.rs` (bounded process-output lines).
 - `src-tauri/tests/` - integration tests (`build_integration.rs`, `ipc/`, `fixtures/mock_gradlew`).
 - `src-tauri/benches/` - Criterion benchmarks.
 - `src-tauri/capabilities/` - Tauri permission grants.
@@ -109,6 +109,7 @@ Never use raw `path.starts_with(root)` for security.
 
 - Validate Gradle tasks, device serials, and package names with `utils/validation.rs` (`validate_gradle_task`, `validate_device_serial`, `validate_package_name`). Put new identifier validators there.
 - Spawn processes with argument vectors (`tokio::process::Command::new(bin).args([...])`). Never build a host shell string.
+- Read streamed process output with `utils::line_reader::CappedLines`, not `AsyncBufReadExt::lines()`. It keeps at most `MAX_LINE_BYTES` per line, discards the rest up to the next newline with a `… [truncated N bytes]` marker, replaces invalid UTF-8 instead of failing, and is safe to use as a `tokio::select!` branch.
 - Values sent through `adb shell` are re-parsed by the device shell. Pass every non-literal argument through `utils::device_shell::quote_device_shell_arg` (the `run_adb_shell` and `adb_cmd` helpers already do). Test new call sites with `device_shell::test_support::fake_adb`, which parses arguments the way the device does.
 
 ### Persistence
@@ -309,5 +310,6 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Data directory rebuilt by hand.** `lib.rs` joins `~/.keynobi/logs` itself instead of calling `settings_manager::data_dir()`.
 - **Legacy settings fields.** `AdvancedSettings` (`tree_sitter_cache_size`, `lsp_*`, `navigation_history_depth`, and related fields), `LspSettings`, and `SystemHealthReport.lsp_system_dir_ok` belong to removed editor features and are still exported to the frontend.
 - **Stale generated files.** `src-tauri/bindings/` holds old `LogEntry.ts`/`LogLevel.ts` exports that nothing uses.
+- **Uncapped output reader.** `adb_manager::download_system_image` still reads `sdkmanager` output with `AsyncBufReadExt::lines()` instead of `CappedLines`.
 - **Store naming.** `layoutViewer.store.ts` uses camelCase instead of kebab-case.
 - **Typed factories are rarely used.** Only one test imports `src/test/factories/`; most tests build IPC data inline.

@@ -2,11 +2,12 @@ use crate::models::logcat::{LogcatFilterSpec, LogcatLevel, ProcessedEntry};
 use crate::services::log_pipeline::{parse_logcat_line, LogPipeline, PipelineContext, RawLogLine};
 use crate::services::log_store::LogStore;
 use crate::services::log_stream::StreamState;
+use crate::utils::line_reader::CappedLines;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Emitter;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::BufReader;
 use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, Mutex};
 use tracing::{debug, error, warn};
@@ -513,7 +514,7 @@ pub async fn start_logcat_stream(
         // Parses raw lines only — zero state access, zero mutex.
         // Uses a 64 KB read buffer to batch syscalls at high log rates.
         let reader_handle = tokio::spawn(async move {
-            let mut reader = BufReader::with_capacity(64 * 1024, stdout).lines();
+            let mut reader = CappedLines::new(BufReader::with_capacity(64 * 1024, stdout));
             loop {
                 let next = tokio::select! {
                     line = reader.next_line() => line,
@@ -1930,6 +1931,81 @@ mod reconnect_tests {
             std::fs::set_permissions(&bin, perms).unwrap();
         }
         bin
+    }
+
+    // ── Per-line byte cap ────────────────────────────────────────────────────
+
+    /// A multi-megabyte log line is stored truncated, and a non-UTF-8 byte
+    /// neither ends the connection nor loses the lines that follow it.
+    #[tokio::test]
+    async fn overlong_and_invalid_utf8_lines_are_bounded_and_keep_streaming() {
+        use crate::utils::line_reader::MAX_LINE_BYTES;
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let adb = dir.path().join("adb");
+        let mut f = std::fs::File::create(&adb).unwrap();
+        writeln!(f, "#!/bin/sh").unwrap();
+        writeln!(f, "for a in \"$@\"; do").unwrap();
+        writeln!(f, "  if [ \"$a\" = logcat ]; then").unwrap();
+        writeln!(
+            f,
+            "    printf '01-01 00:00:00.000  1000  1001 I FakeTag: '; \
+             head -c 1000000 /dev/zero | tr '\\0' x"
+        )
+        .unwrap();
+        writeln!(
+            f,
+            "    printf '\\n01-01 00:00:01.000  1000  1001 I FakeTag: bad \\377 byte\\n'"
+        )
+        .unwrap();
+        writeln!(
+            f,
+            "    printf '01-01 00:00:02.000  1000  1001 I FakeTag: after\\n'"
+        )
+        .unwrap();
+        writeln!(f, "    sleep 300").unwrap();
+        writeln!(f, "    exit 0").unwrap();
+        writeln!(f, "  fi").unwrap();
+        writeln!(f, "done").unwrap();
+        writeln!(f, "exit 0").unwrap();
+        drop(f);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let state = make_state(false);
+        let generation = request_start(&state, None).await;
+        let s = state.clone();
+        let handle = tokio::spawn(async move {
+            start_logcat_stream(adb, None, s, None, None, generation).await;
+        });
+
+        let mut messages = Vec::new();
+        for _ in 0..250 {
+            messages = state
+                .lock()
+                .await
+                .store
+                .iter()
+                .map(|e| e.message.clone())
+                .collect::<Vec<_>>();
+            if messages.len() >= 3 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        request_stop(&state).await;
+        let _ = tokio::time::timeout(Duration::from_secs(3), handle).await;
+
+        assert_eq!(messages.len(), 3, "got {} entries", messages.len());
+        assert!(messages[0].starts_with("xxxx"));
+        assert!(messages[0].len() < MAX_LINE_BYTES + 64);
+        assert!(messages[0].contains("… [truncated "));
+        assert_eq!(messages[1], "bad \u{fffd} byte");
+        assert_eq!(messages[2], "after");
     }
 
     // ── Dropped-line counter lifecycle ───────────────────────────────────────

@@ -1,8 +1,9 @@
+use crate::utils::line_reader::CappedLines;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::BufReader;
 use tokio::process::Command;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
@@ -150,11 +151,8 @@ pub async fn spawn(
         let manager_for_cleanup = manager.clone();
 
         tokio::spawn(async move {
-            let stdout_reader = BufReader::new(stdout);
-            let stderr_reader = BufReader::new(stderr);
-
-            let mut stdout_lines = stdout_reader.lines();
-            let mut stderr_lines = stderr_reader.lines();
+            let mut stdout_lines = CappedLines::new(BufReader::new(stdout));
+            let mut stderr_lines = CappedLines::new(BufReader::new(stderr));
             let mut stdout_done = false;
             let mut stderr_done = false;
 
@@ -309,6 +307,72 @@ mod tests {
 
         let collected = lines.lock().unwrap();
         assert!(collected.iter().any(|l| l.contains("hello world")));
+    }
+
+    /// A tool printing a multi-megabyte line must not be buffered whole, and a
+    /// non-UTF-8 byte must not stop the stream from being drained.
+    #[tokio::test]
+    async fn overlong_and_invalid_utf8_lines_are_bounded_and_do_not_end_the_stream() {
+        use crate::utils::line_reader::MAX_LINE_BYTES;
+
+        let manager = ProcessManager::new();
+        let lines: Arc<StdMutex<Vec<(bool, String)>>> = Arc::new(StdMutex::new(vec![]));
+        let lines_clone = lines.clone();
+        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+        let done_tx = StdMutex::new(Some(done_tx));
+
+        spawn(
+            &manager.0,
+            "sh",
+            &[
+                "-c",
+                "head -c 1000000 /dev/zero | tr '\\0' a; printf '\\nbad \\377\\nnext\\n'; \
+                 head -c 200000 /dev/zero | tr '\\0' b >&2; printf '\\nerr next\\n' >&2",
+            ],
+            std::env::temp_dir(),
+            vec![],
+            SpawnOptions {
+                on_line: Box::new(move |l| {
+                    lines_clone.lock().unwrap().push((l.is_stderr, l.text));
+                }),
+                on_exit: Box::new(move |_, _| {
+                    if let Some(tx) = done_tx.lock().unwrap().take() {
+                        let _ = tx.send(());
+                    }
+                }),
+            },
+        )
+        .await
+        .unwrap();
+        tokio::time::timeout(std::time::Duration::from_secs(10), done_rx)
+            .await
+            .expect("process must exit")
+            .unwrap();
+
+        let collected = lines.lock().unwrap();
+        let stdout: Vec<&str> = collected
+            .iter()
+            .filter(|(err, _)| !err)
+            .map(|(_, t)| t.as_str())
+            .collect();
+        let stderr: Vec<&str> = collected
+            .iter()
+            .filter(|(err, _)| *err)
+            .map(|(_, t)| t.as_str())
+            .collect();
+
+        assert_eq!(stdout.len(), 3, "got {} stdout lines", stdout.len());
+        assert!(stdout[0].starts_with(&"a".repeat(MAX_LINE_BYTES)));
+        assert!(stdout[0].ends_with(&format!(
+            "… [truncated {} bytes]",
+            1_000_000 - MAX_LINE_BYTES
+        )));
+        assert_eq!(stdout[1], "bad \u{fffd}");
+        assert_eq!(stdout[2], "next");
+
+        assert_eq!(stderr.len(), 2, "got {} stderr lines", stderr.len());
+        assert!(stderr[0].ends_with(&format!("… [truncated {} bytes]", 200_000 - MAX_LINE_BYTES)));
+        assert_eq!(stderr[1], "err next");
     }
 
     #[tokio::test]
