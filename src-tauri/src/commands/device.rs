@@ -44,20 +44,7 @@ fn validate_package_name(package: &str) -> Result<(), AppError> {
 }
 
 fn validate_activity_name(activity: &str) -> Result<(), AppError> {
-    if activity.is_empty() {
-        return Err(AppError::InvalidInput(
-            "Activity name cannot be empty".to_string(),
-        ));
-    }
-    let valid = activity
-        .chars()
-        .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_' | '$'));
-    if !valid {
-        return Err(AppError::InvalidInput(format!(
-            "Invalid activity name '{activity}'"
-        )));
-    }
-    Ok(())
+    crate::utils::validation::validate_activity_name(activity).map_err(AppError::InvalidInput)
 }
 
 // ── Device commands ────────────────────────────────────────────────────────────

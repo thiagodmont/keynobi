@@ -167,7 +167,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 ### Rules
 
 1. Validate every string with the shared validators before acting (see `DOMAIN_PATTERNS.md` § MCP → Validation).
-2. Spawn host processes with argv only. Quote any free text sent through `adb shell` for the device shell; pass only allowlisted identifiers unquoted.
+2. Spawn host processes with argv only. Every non-literal argument sent through `adb shell` is quoted for the device shell with `utils::device_shell::quote_device_shell_arg`.
 3. Restrict filesystem access. MCP exposes no general path parameters. APK installs are limited to `.apk` files under the project's build outputs, and resources read fixed project files.
 4. Make destructive behavior explicit and opt-in, and declare it with tool annotations (`destructiveHint`, `readOnlyHint`, `openWorldHint`) so clients can ask the user for confirmation.
 5. Keep responses bounded (see the limits in the tool tables).
@@ -235,7 +235,6 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
-- **Device shell quoting.** `ui_type_text` and `ui_fill_input` (`encode_adb_input_text` escapes only `%` and space), `open_deep_link` (a query string with `&` is split), and `launch_app` `activity` (not validated in MCP) pass unquoted text to the device shell.
 - **Gradle options.** `validate_gradle_task` accepts a leading `-`, so option injection (`--offline`, `-I`, `--stop`) passes. No denylist blocks tasks such as `publish*` or `uninstall*`.
 - **No annotations.** No tool declares `readOnlyHint`, `destructiveHint`, `idempotentHint`, or `openWorldHint`.
 - **Server identity.** `Implementation::from_build_env()` resolves inside rmcp, so `serverInfo` reports `rmcp` and rmcp's version instead of Keynobi's.

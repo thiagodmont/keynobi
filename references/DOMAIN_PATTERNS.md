@@ -272,11 +272,11 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Build history IDs.** `clear_history` resets `next_id` to 1, so new log filenames can collide with retained files. `MAX_PERSISTED_HISTORY` (20) is effectively unused because load trims to 10.
 - **MCP cancel during spawn.** A build cancelled during spawn on the MCP path returns without recording history.
 - **Device polling.** `device:list_changed` fires only when the serial set changes, not when a device's state changes (for example unauthorized → device).
-- **Device shell quoting.** Typed text (`encode_adb_input_text` escapes only `%` and space), deep links, and MCP `launch_app` activity are not quoted for the device shell. `ui_type_text_unicode` relies on a fragile nested `sh -c`.
+- **Unicode typing.** `ui_type_text_unicode` sets the clipboard with a Clipper broadcast, falling back to `content insert`. `am broadcast` exits 0 even when Clipper is not installed, so the fallback may not run and the paste can insert stale clipboard text. Needs verification on a device.
 - **Screen hash coverage.** `ui_swipe`, `send_ui_key`, `ui_type_text_unicode`, `clear_focused_input`, and `ui_scroll_until_element` do not accept `expectScreenHash`.
 - **Logcat duplication.** Start/stop/clear is duplicated between `commands/logcat.rs` and `mcp_server.rs`. Shutdown sets `streaming = false` without bumping the generation.
 - **MCP error model.** Coordinate, permission, and deep-link validation failures return `CallToolResult::error` instead of `McpError::invalid_params`.
-- **Validator duplication.** MCP `validate_apk_path` duplicates `validate_apk_within_build_outputs` and hard-codes the `app` module. MCP `launch_app` does not call `validate_activity_name`.
+- **Validator duplication.** MCP `validate_apk_path` duplicates `validate_apk_within_build_outputs` and hard-codes the `app` module.
 - **Activity log.** `mcp-activity.jsonl` is trimmed only at server start (over 1,000 lines → last 500), and summaries are not redacted.
 - **Project App Info.** When the app module is not named `app`, the root build file is edited and success is reported even if nothing changed.
 - **Dead code.** `DevicePanel.tsx` (panel/popover modes) is not imported anywhere.

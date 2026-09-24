@@ -2470,6 +2470,10 @@ impl AndroidMcpServer {
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.device_serial)?;
         validate_package_name(&p.package)?;
+        if let Some(ref activity) = p.activity {
+            crate::utils::validation::validate_activity_name(activity)
+                .map_err(|e| McpError::invalid_params(e, None))?;
+        }
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);

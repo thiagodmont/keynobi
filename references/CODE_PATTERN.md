@@ -109,7 +109,7 @@ Never use raw `path.starts_with(root)` for security.
 
 - Validate Gradle tasks, device serials, and package names with `utils/validation.rs` (`validate_gradle_task`, `validate_device_serial`, `validate_package_name`). Put new identifier validators there.
 - Spawn processes with argument vectors (`tokio::process::Command::new(bin).args([...])`). Never build a host shell string.
-- Values sent through `adb shell` are re-parsed by the device shell. Pass only allowlisted identifiers, or quote the value for the device shell. See the Known Gaps in `BEST_PRACTICES.md`.
+- Values sent through `adb shell` are re-parsed by the device shell. Pass every non-literal argument through `utils::device_shell::quote_device_shell_arg` (the `run_adb_shell` and `adb_cmd` helpers already do). Test new call sites with `device_shell::test_support::fake_adb`, which parses arguments the way the device does.
 
 ### Persistence
 
@@ -307,7 +307,6 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **`String` errors.** Most commands still return `Result<_, String>`; only about 16 return `AppError`.
 - **Effective-root resolution is repeated.** The `gradle_root`-or-`project_root` lookup is copied inline in `commands/variant.rs`, `build.rs`, `device.rs`, and `health.rs` instead of one shared helper.
 - **Data directory rebuilt by hand.** `lib.rs` joins `~/.keynobi/logs` itself instead of calling `settings_manager::data_dir()`.
-- **Validator placement.** `validate_activity_name` lives in `commands/device.rs`, not `utils/validation.rs`.
 - **Legacy settings fields.** `AdvancedSettings` (`tree_sitter_cache_size`, `lsp_*`, `navigation_history_depth`, and related fields), `LspSettings`, and `SystemHealthReport.lsp_system_dir_ok` belong to removed editor features and are still exported to the frontend.
 - **Stale generated files.** `src-tauri/bindings/` holds old `LogEntry.ts`/`LogLevel.ts` exports that nothing uses.
 - **Store naming.** `layoutViewer.store.ts` uses camelCase instead of kebab-case.

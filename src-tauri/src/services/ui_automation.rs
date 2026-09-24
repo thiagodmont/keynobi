@@ -5,6 +5,7 @@
 use crate::models::ui_hierarchy::{UiHierarchySnapshot, UiNode};
 use crate::services::ui_hierarchy;
 use crate::services::ui_hierarchy_parse::center_from_bounds;
+use crate::utils::device_shell::quote_device_shell_arg;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -1384,7 +1385,7 @@ async fn run_adb_shell(adb: &PathBuf, serial: &str, args: &[&str]) -> Result<Str
         INPUT_CMD_TIMEOUT,
         Command::new(adb)
             .args(["-s", serial, "shell"])
-            .args(args)
+            .args(args.iter().map(|a| quote_device_shell_arg(a)))
             .output(),
     )
     .await
@@ -1850,6 +1851,61 @@ pub async fn adb_clear_field(adb: &PathBuf, serial: &str) -> Result<(), String> 
 
 #[cfg(test)]
 mod tests {
+    use crate::utils::device_shell::test_support::{fake_adb, recorded_calls};
+
+    #[tokio::test]
+    async fn input_text_reaches_the_device_unaltered() {
+        let dir = tempfile::tempdir().unwrap();
+        let (adb, record) = fake_adb(dir.path());
+        let text = "it's P@ss&word;exit 3 $(id) *";
+
+        adb_input_text(&adb, "emulator-5554", text).await.unwrap();
+
+        let expected = encode_adb_input_text(text).unwrap();
+        assert_eq!(
+            recorded_calls(&record),
+            vec![vec!["input", "text", &expected]]
+        );
+    }
+
+    #[tokio::test]
+    async fn deep_link_query_string_is_not_split_by_the_device_shell() {
+        let dir = tempfile::tempdir().unwrap();
+        let (adb, record) = fake_adb(dir.path());
+        let uri = "https://example.com/item?a=1&b=2;exit 3";
+
+        adb_open_deep_link(&adb, "emulator-5554", uri, Some("com.example.app"))
+            .await
+            .unwrap();
+
+        assert_eq!(
+            recorded_calls(&record),
+            vec![build_open_deep_link_args(uri, Some("com.example.app"))]
+        );
+    }
+
+    #[tokio::test]
+    async fn unicode_typing_hands_the_whole_script_to_sh_c() {
+        let dir = tempfile::tempdir().unwrap();
+        let (adb, record) = fake_adb(dir.path());
+
+        adb_type_text_unicode(&adb, "emulator-5554", "héllo 'wörld'")
+            .await
+            .unwrap();
+
+        let calls = recorded_calls(&record);
+        assert_eq!(calls.len(), 2, "{calls:?}");
+        let escaped = "héllo 'wörld'".replace('\'', "'\"'\"'");
+        assert_eq!(
+            calls[0],
+            vec!["sh", "-c", &unicode_clipboard_set_shell(&escaped)]
+        );
+        assert_eq!(
+            calls[1],
+            vec!["input", "keyevent", "--metastate", "4096", "50"]
+        );
+    }
+
     use super::*;
     use crate::models::ui_hierarchy::UiLayoutContext;
     use crate::services::ui_hierarchy_parse::parse_hierarchy_xml;

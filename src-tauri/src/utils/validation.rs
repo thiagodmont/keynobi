@@ -1,8 +1,9 @@
 //! Single source of truth for user-supplied identifier validation.
 //!
-//! These values reach `adb` and `gradlew` as process arguments. Arguments are
-//! passed directly to `tokio::process::Command` — never through a shell — so
-//! these allowlists are defence in depth rather than the only barrier.
+//! These values reach `adb` and `gradlew` as process arguments. The host
+//! never runs them through a shell, but anything sent through `adb shell` IS
+//! re-parsed by the device's shell; `utils::device_shell` quotes those
+//! arguments. These allowlists are defence in depth on top of that quoting.
 //!
 //! Both front doors (the Tauri command layer and the MCP server) previously
 //! carried their own copies, which had already drifted: the command versions
@@ -75,6 +76,22 @@ pub fn validate_package_name(package: &str) -> Result<(), String> {
         return Err(format!(
             "Invalid package name '{package}'. Expected format: com.example.app"
         ));
+    }
+    Ok(())
+}
+
+/// Validate an activity class name as passed to `am start -n <package>/<activity>`.
+///
+/// Allowed: alphanumeric, `.`, `_`, `$` (inner classes).
+pub fn validate_activity_name(activity: &str) -> Result<(), String> {
+    if activity.is_empty() {
+        return Err("Activity name cannot be empty".to_string());
+    }
+    let valid = activity
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, '.' | '_' | '$'));
+    if !valid {
+        return Err(format!("Invalid activity name '{activity}'"));
     }
     Ok(())
 }

@@ -3,6 +3,7 @@ use crate::models::device::{
     SdkDownloadProgress, SystemImageInfo,
 };
 use crate::models::settings::AppSettings;
+use crate::utils::device_shell::quote_device_shell_arg;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -319,7 +320,7 @@ async fn try_resolve_launcher(adb: &Path, serial: &str, package: &str) -> Option
             "--brief",
             "-c",
             "android.intent.category.LAUNCHER",
-            package,
+            &quote_device_shell_arg(package),
         ])
         .output()
         .await
@@ -398,7 +399,7 @@ pub async fn launch_app(
             "am",
             "start",
             "-n",
-            &format!("{package}/{act}"),
+            &quote_device_shell_arg(&format!("{package}/{act}")),
         ];
         let out = Command::new(adb)
             .args(args)
@@ -417,7 +418,15 @@ pub async fn launch_app(
     // Step 1: ask the device for the LAUNCHER activity of the given package name.
     if let Some(component) = try_resolve_launcher(adb, serial, package).await {
         let out = Command::new(adb)
-            .args(["-s", serial, "shell", "am", "start", "-n", &component])
+            .args([
+                "-s",
+                serial,
+                "shell",
+                "am",
+                "start",
+                "-n",
+                &quote_device_shell_arg(&component),
+            ])
             .output()
             .await
             .map_err(|e| format!("adb am start failed: {e}"))?;
@@ -440,7 +449,15 @@ pub async fn launch_app(
     if effective_package != package {
         if let Some(component) = try_resolve_launcher(adb, serial, &effective_package).await {
             let out = Command::new(adb)
-                .args(["-s", serial, "shell", "am", "start", "-n", &component])
+                .args([
+                    "-s",
+                    serial,
+                    "shell",
+                    "am",
+                    "start",
+                    "-n",
+                    &quote_device_shell_arg(&component),
+                ])
                 .output()
                 .await
                 .map_err(|e| format!("adb am start failed: {e}"))?;
@@ -463,7 +480,7 @@ pub async fn launch_app(
             "shell",
             "monkey",
             "-p",
-            &effective_package,
+            &quote_device_shell_arg(&effective_package),
             "-c",
             "android.intent.category.LAUNCHER",
             "1",
@@ -492,7 +509,7 @@ pub async fn launch_app(
             "android.intent.action.MAIN",
             "-c",
             "android.intent.category.LAUNCHER",
-            &effective_package,
+            &quote_device_shell_arg(&effective_package),
         ])
         .output()
         .await
@@ -514,7 +531,14 @@ pub async fn launch_app(
 /// Force-stop an app on a device.
 pub async fn stop_app(adb: &Path, serial: &str, package: &str) -> Result<(), String> {
     let out = Command::new(adb)
-        .args(["-s", serial, "shell", "am", "force-stop", package])
+        .args([
+            "-s",
+            serial,
+            "shell",
+            "am",
+            "force-stop",
+            &quote_device_shell_arg(package),
+        ])
         .output()
         .await
         .map_err(|e| format!("adb force-stop failed: {e}"))?;
@@ -1411,6 +1435,28 @@ pub async fn resolve_device_serial(
 
 #[cfg(test)]
 mod tests {
+    use crate::utils::device_shell::test_support::{fake_adb, recorded_calls};
+
+    #[tokio::test]
+    async fn launch_app_passes_inner_class_activity_intact() {
+        let dir = tempfile::tempdir().unwrap();
+        let (adb, record) = fake_adb(dir.path());
+
+        launch_app(
+            &adb,
+            "emulator-5554",
+            "com.example.app",
+            Some(".Main$Inner"),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(
+            recorded_calls(&record),
+            vec![vec!["am", "start", "-n", "com.example.app/.Main$Inner"]]
+        );
+    }
+
     use super::*;
 
     fn test_device(
