@@ -261,9 +261,20 @@ pub struct RestartAppParams {
     pub clear_data: Option<bool>,
     /// Removed parameter (it used to default to `true` and wipe app data).
     /// Accepted only so old callers get an explicit error instead of a
-    /// silently different behavior.
+    /// silently different behavior. `Some` whenever the key is present,
+    /// including `"cold": null`.
     #[schemars(skip)]
+    #[serde(default, deserialize_with = "deserialize_present")]
     pub cold: Option<serde_json::Value>,
+}
+
+/// Deserialize a field as `Some(value)` whenever its key is present, even when
+/// the value is JSON `null` (plain `Option` would turn `null` into `None`).
+fn deserialize_present<'de, D>(deserializer: D) -> Result<Option<serde_json::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    <serde_json::Value as Deserialize>::deserialize(deserializer).map(Some)
 }
 
 /// Whether `restart_app` should clear app data. Rejects the removed `cold`
@@ -3362,7 +3373,7 @@ mod tests {
 
     #[test]
     fn restart_app_rejects_removed_cold_param() {
-        for cold in [true, false] {
+        for cold in [json!(true), json!(false), serde_json::Value::Null] {
             let p: RestartAppParams =
                 serde_json::from_value(json!({ "package": "com.example.app", "cold": cold }))
                     .unwrap();
