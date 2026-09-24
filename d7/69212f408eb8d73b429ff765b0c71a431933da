@@ -5,6 +5,27 @@ src-tauri/src/commands/device.rs
   s_1e114e823b9048::t_9f79be0b7f1c23 452-453
 src-tauri/src/utils/validation.rs
   s_1e114e823b9048::t_5bbb34e3a41a2e 19-21,100-104,109-111
+  s_1e114e823b9048::t_75beafbcbf7acc 24-26,31-35,116-203,239-306
+src-tauri/src/models/settings.rs
+  s_1e114e823b9048::t_75beafbcbf7acc 236-239,320,343-349
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_75beafbcbf7acc 260
+src/stores/settings.store.ts
+  s_1e114e823b9048::t_75beafbcbf7acc 50
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_75beafbcbf7acc 218
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_75beafbcbf7acc 61,69
+src/bindings/McpSettings.ts
+  s_1e114e823b9048::t_75beafbcbf7acc 28-34
+src/components/settings/SettingsPanel.tsx
+  s_1e114e823b9048::t_75beafbcbf7acc 519-534
+src/test/factories/settings.ts
+  s_1e114e823b9048::t_75beafbcbf7acc 40
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_75beafbcbf7acc 348-355,3555-3594
+src/test/mock-backend/settings.ts
+  s_1e114e823b9048::t_75beafbcbf7acc 39
 ---
 {
   "schema_version": "authorship/3.0.0",
