@@ -448,7 +448,11 @@ impl AndroidMcpServer {
     /// Get the current build status.
     #[tool(
         description = "Get the current Gradle build status: idle, running (with task name), success, failed, or cancelled.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_build_status(&self) -> Result<CallToolResult, McpError> {
         let bs = self.build_state.inner.lock().await;
@@ -498,7 +502,11 @@ impl AndroidMcpServer {
     /// Get structured compiler errors and warnings from the last build.
     #[tool(
         description = "Get compiler errors and warnings from the last Gradle build. Each entry includes severity, file path, line number, and message.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_build_errors(&self) -> Result<CallToolResult, McpError> {
         let bs = self.build_state.inner.lock().await;
@@ -529,7 +537,11 @@ impl AndroidMcpServer {
     /// Get the raw build log output lines.
     #[tool(
         description = "Get the raw Gradle build output lines. Useful for diagnosing build issues not captured as structured errors.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_build_log(
         &self,
@@ -593,7 +605,11 @@ impl AndroidMcpServer {
     /// List available build variants.
     #[tool(
         description = "List available build variants (build types + product flavors) for the current Android project, which variant Keynobi treats as the Gradle/Android Studio default (`defaultVariant`), and which one is persisted as active in settings (`active`).",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn list_build_variants(&self) -> Result<CallToolResult, McpError> {
         let gradle_root = match self.get_gradle_root().await {
@@ -678,7 +694,11 @@ impl AndroidMcpServer {
     /// Find the output APK path for a given build variant.
     #[tool(
         description = "Find the output APK path after a successful build. Returns the path to use with install_apk. Specify variant or uses the active one.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn find_apk_path(
         &self,
@@ -745,7 +765,11 @@ impl AndroidMcpServer {
     /// Requires logcat to be running (call start_logcat first).
     #[tool(
         description = "Get a parsed crash stack trace from logcat. Returns exception type, message, stack frames, and caused-by chain. Requires start_logcat to be running.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_crash_stack_trace(
         &self,
@@ -827,7 +851,11 @@ impl AndroidMcpServer {
     /// Get process list, thread counts, and RSS memory for all processes of an app.
     #[tool(
         description = "Get runtime state for an Android app: running processes, thread counts per process, and RSS memory. Lightweight — no SIGQUIT.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_app_runtime_state(
         &self,
@@ -851,7 +879,11 @@ impl AndroidMcpServer {
     /// Parse the module's build.gradle(.kts) for SDK levels, build types, and product flavors.
     #[tool(
         description = "Parse build.gradle(.kts) for SDK levels, applicationId, buildTypes, and productFlavors. No Gradle execution needed.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_build_config(
         &self,
@@ -973,7 +1005,11 @@ impl AndroidMcpServer {
     /// Get recent logcat entries with optional filtering.
     #[tool(
         description = "Get recent Android logcat entries. Filter by level, tag, text, package, or show only crashes. Call start_logcat first in headless mode.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_logcat_entries(
         &self,
@@ -1029,7 +1065,11 @@ impl AndroidMcpServer {
     /// Get recent crash logs (FATAL EXCEPTION, ANR, native crashes).
     #[tool(
         description = "Get recent crash logs: FATAL EXCEPTION, ANR, and native crashes from logcat.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_crash_logs(
         &self,
@@ -1098,7 +1138,11 @@ impl AndroidMcpServer {
     /// Get logcat statistics.
     #[tool(
         description = "Get logcat statistics: total entries ingested, counts by level, crash count, and packages seen.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_logcat_stats(&self) -> Result<CallToolResult, McpError> {
         let state = self.logcat_state.lock().await;
@@ -1126,7 +1170,11 @@ impl AndroidMcpServer {
     /// List connected ADB devices (always queries ADB for fresh results).
     #[tool(
         description = "List all connected Android devices and running emulators. Queries ADB directly for fresh results.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn list_devices(&self) -> Result<CallToolResult, McpError> {
         let (settings, _) = settings_manager::load_settings();
@@ -1180,7 +1228,11 @@ impl AndroidMcpServer {
     /// Dump UI Automator / accessibility hierarchy for the focused window (native Views + Compose).
     #[tool(
         description = "Dump the focused window UI hierarchy (UI Automator accessibility XML) for native Views and Jetpack Compose. Includes capped shell context (dumpsys window/display, wm size/density) and tries uiautomator dump --compressed when supported. Use interactive_only for a compact list of tappable fields.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_ui_hierarchy(
         &self,
@@ -1245,7 +1297,11 @@ impl AndroidMcpServer {
     /// Search the focused window hierarchy for nodes matching text, content-desc, resource-id, class, or package. Returns centers for use with ui_tap. Requires at least one primary filter (not only clickable/editable flags).
     #[tool(
         description = "Find UI elements on the focused screen by text, content-desc, resource-id, class, or package. Returns treePath, bounds, centerX/centerY, flags, and screenHash from a fresh uiautomator dump. Use centerX/centerY with ui_tap. At least one of textContains, textEquals, contentDescContains, resourceIdEquals, resourceIdContains, classContains, or packageEquals is required.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn find_ui_elements(
         &self,
@@ -1300,7 +1356,11 @@ impl AndroidMcpServer {
     /// List clickable nodes without requiring a text/id/class/package filter.
     #[tool(
         description = "List all clickable UI elements on the focused screen from a fresh uiautomator dump. Returns treePath, bounds, centerX/centerY, flags, and screenHash. Use this when you need to discover available buttons/tap targets before choosing one.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn list_clickable_elements(
         &self,
@@ -1361,7 +1421,11 @@ impl AndroidMcpServer {
     /// Resolve the direct parent of a node by layout treePath (same paths as find_ui_elements / Layout tab).
     #[tool(
         description = "Given a non-empty layout treePath from find_ui_elements or the Layout viewer, returns the direct parent node (treePath, bounds, centerX/centerY, flags) plus screenHash from a fresh dump. Optional expect_screen_hash refuses if the UI changed. Empty treePath is invalid (root has no parent).",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn find_ui_parent(
         &self,
@@ -2105,7 +2169,11 @@ impl AndroidMcpServer {
     /// Poll until a UI element matching filters appears (or timeout elapses).
     #[tool(
         description = "Poll the device hierarchy until an element matching the given filters appears, or timeout_ms elapses (default 15s, max 30s). Returns the same shape as find_ui_elements on success. Requires at least one primary filter. Use after ui_tap or navigation to wait for the next screen to load.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn wait_for_element(
         &self,
@@ -2149,7 +2217,11 @@ impl AndroidMcpServer {
     /// Wait until consecutive hierarchy dumps have the same screenHash.
     #[tool(
         description = "Wait until the focused UI appears idle by polling screenHash until it is stable for consecutive samples. Use after taps, scrolls, launches, or keyboard actions before the next UI query.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn ui_wait_for_idle(
         &self,
@@ -2219,7 +2291,11 @@ impl AndroidMcpServer {
     /// Assert element presence and state.
     #[tool(
         description = "Assert that an element matching text/content-desc/resource-id/class/package exists or does not exist, optionally checking clickable/editable/enabled/focused/checked/selected flags. Returns an error when the assertion fails.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn ui_assert_element(
         &self,
@@ -2265,7 +2341,11 @@ impl AndroidMcpServer {
     /// Capture a screenshot from a connected device.
     #[tool(
         description = "Capture a screenshot from a connected Android device. Returns the image inline.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn screenshot(
         &self,
@@ -2291,7 +2371,11 @@ impl AndroidMcpServer {
     /// Get device hardware and software properties.
     #[tool(
         description = "Get Android device properties: SDK level, Android version, manufacturer, model, screen resolution, and battery.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_device_info(
         &self,
@@ -2486,7 +2570,11 @@ impl AndroidMcpServer {
     /// Compare current UI state against a baseline screenHash captured earlier.
     #[tool(
         description = "Compare current UI state against a baseline screenHash. Returns changed=false if the screen hash matches (UI is identical), or changed=true with all currently interactive (clickable/editable) nodes when the screen changed. Use after ui_tap, ui_swipe, ui_type_text, etc. to verify the action had an effect before taking the next step.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn compare_ui_state(
         &self,
@@ -2550,7 +2638,11 @@ impl AndroidMcpServer {
     /// Get installed app details from a device.
     #[tool(
         description = "Get installed app details: version name/code, install path, permissions, and declared activities.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn dump_app_info(
         &self,
@@ -2572,7 +2664,11 @@ impl AndroidMcpServer {
     /// Get memory usage for an app.
     #[tool(
         description = "Get memory usage for an Android app: PSS, heap size, native memory, and graphics memory.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_memory_info(
         &self,
@@ -2684,7 +2780,11 @@ impl AndroidMcpServer {
     /// List available Android Virtual Devices (AVDs).
     #[tool(
         description = "List all available Android Virtual Devices (AVDs) configured in the Android SDK.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn list_avds(&self) -> Result<CallToolResult, McpError> {
         let avds = adb_manager::list_avds();
@@ -2772,7 +2872,11 @@ impl AndroidMcpServer {
     /// Get information about the open Android project.
     #[tool(
         description = "Get the currently open Android project name, path, and detected Gradle root.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn get_project_info(&self) -> Result<CallToolResult, McpError> {
         let fs = self.fs_state.0.lock().await;
@@ -2803,7 +2907,11 @@ impl AndroidMcpServer {
     /// Run system health checks.
     #[tool(
         description = "Run system health checks: Java, Android SDK, ADB, emulator, and Gradle wrapper availability.",
-        annotations(read_only_hint = true, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     async fn run_health_check(&self) -> Result<CallToolResult, McpError> {
         let (settings, _) = settings_manager::load_settings();
@@ -3798,7 +3906,7 @@ mod tests {
                 .as_ref()
                 .unwrap_or_else(|| panic!("{} declares no annotations", tool.name));
             let kind = match (a.read_only_hint, a.destructive_hint, a.open_world_hint) {
-                (Some(true), _, Some(false)) => "R",
+                (Some(true), Some(false), Some(false)) => "R",
                 (Some(false), Some(false), Some(false)) => "W",
                 (Some(false), Some(true), Some(false)) => "D",
                 (Some(false), Some(true), Some(true)) => "O",

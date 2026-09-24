@@ -52,7 +52,16 @@ Registration is detected with `claude mcp get keynobi` or `codex mcp get keynobi
 
 56 tools. Parameters marked † are camelCase on the wire (UI automation structs use `rename_all = "camelCase"`); all others are snake_case.
 
-**Kind** is the tool's declared MCP annotation: **R** read-only (`readOnlyHint`), **W** changes state but not destructively (`destructiveHint: false`), **D** destructive or hard to reverse (`destructiveHint: true`), **O** open-world, runs arbitrary project code (`destructiveHint: true`, `openWorldHint: true`). The test `every_tool_declares_annotations_matching_the_reference_docs` fails if this column and the code disagree, so update both together.
+**Kind** is the tool's declared MCP annotation. Every tool declares all three hints:
+
+| Kind | Meaning | `readOnlyHint` | `destructiveHint` | `openWorldHint` |
+|------|---------|----------------|-------------------|-----------------|
+| **R** | Read-only | `true` | `false` | `false` |
+| **W** | Changes state, not destructively | `false` | `false` | `false` |
+| **D** | Destructive or hard to reverse | `false` | `true` | `false` |
+| **O** | Open-world: runs arbitrary project code | `false` | `true` | `true` |
+
+The test `every_tool_declares_annotations_matching_the_reference_docs` fails if a tool's hints do not match its Kind in the tables below, so update both together.
 
 ### Build
 
