@@ -38,7 +38,7 @@ async fn get_selected_device(
 
 fn create_app() -> tauri::App<MockRuntime> {
     mock_builder()
-        .manage(BuildState::new())
+        .manage(crate::common::isolated_build_state())
         .manage(DeviceState::new())
         .invoke_handler(tauri::generate_handler![
             get_default_settings,

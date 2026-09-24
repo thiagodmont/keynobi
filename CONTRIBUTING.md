@@ -55,17 +55,13 @@ cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 ```
 
-Rust tests must never touch your real `~/.keynobi`, but there is no data-dir override yet (see `references/BEST_PRACTICES.md` § Known Gaps). Until there is, run them with `HOME` pointed at a temporary directory:
-
-```bash
-CARGO_HOME="$HOME/.cargo" RUSTUP_HOME="$HOME/.rustup" HOME="$(mktemp -d)" cargo test --lib --tests
-```
+Rust tests must never touch your real `~/.keynobi`. Unit tests are redirected to a temp directory automatically. Integration tests under `tests/` must call `common::isolate_data_dir()` (or use `common::isolated_build_state()`) before loading or saving any persisted state. CI fails if a test creates `~/.keynobi`.
 
 The Husky pre-commit hook runs `lint-staged` (ESLint + Prettier), `tsc --noEmit`, and `cargo clippy -- -D warnings`.
 
 ### TypeScript bindings (`ts-rs`)
 
-After any change under `src-tauri/src/models/` (or other types exported to TS), regenerate and commit bindings. This runs `cargo test`, so the warning above applies:
+After any change under `src-tauri/src/models/` (or other types exported to TS), regenerate and commit bindings. This runs only the `ts-rs` export tests (`cargo test --lib export_bindings`):
 
 ```bash
 npm run generate:bindings

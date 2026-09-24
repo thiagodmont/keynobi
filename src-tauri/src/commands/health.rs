@@ -122,9 +122,7 @@ pub async fn run_health_checks(
         .unwrap_or(false);
 
     // ── App directory probe ──────────────────────────────────────────────────
-    let app_dir = dirs::home_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join(".keynobi");
+    let app_dir = crate::services::settings_manager::data_dir();
     let lsp_system_dir_ok = tokio::fs::create_dir_all(&app_dir).await.is_ok();
 
     // ── Android Studio CLI probe ──────────────────────────────────────────────

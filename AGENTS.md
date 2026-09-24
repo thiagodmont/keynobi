@@ -32,7 +32,7 @@ Each reference doc ends with **Known Gaps**: rules the code does not meet yet. D
 - **Untrusted input**: validate identifiers with `utils/validation.rs` and paths with `utils/path.rs` (canonicalized, never raw `starts_with`). Arguments to `adb shell` are re-parsed by the device shell.
 - **Rust**: no `unwrap()` in production code; new commands return `Result<T, AppError>`; never hold a Mutex across `.await`; every growing collection has a named cap.
 - **Frontend**: register shortcuts with `registerKeyAndAction()` in `App.tsx`; build UI from `@/components/ui` primitives and theme tokens.
-- **User data**: tests must never read or write `~/.keynobi`. There is no data-dir override yet (see `BEST_PRACTICES.md` § Known Gaps), so run `cargo test` and `npm run generate:bindings` with `HOME` pointed at a temporary directory, for example `CARGO_HOME="$HOME/.cargo" RUSTUP_HOME="$HOME/.rustup" HOME="$(mktemp -d)" cargo test`.
+- **User data**: tests must never read or write `~/.keynobi`. Unit tests get a temp data directory automatically (`cfg(test)` in `settings_manager`); integration tests must call `tests/common::isolate_data_dir()` first. CI fails if a test creates `~/.keynobi`.
 
 ## Code Style
 

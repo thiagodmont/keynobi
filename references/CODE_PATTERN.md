@@ -262,7 +262,7 @@ Visual regression tests live under `e2e/visual/` and run through `playwright.vis
 ### Rust
 
 - Unit tests live in `#[cfg(test)]` modules near the service code.
-- Use `tempfile::TempDir` for filesystem fixtures. Never read or write the real `~/.keynobi`.
+- Use `tempfile::TempDir` for filesystem fixtures. Never read or write the real `~/.keynobi`: unit tests are isolated automatically, and integration tests in `tests/` must call `common::isolate_data_dir()` before touching persisted state.
 - Command tests should focus on validation and boundary behavior.
 - Security validators need negative tests: traversal, symlinks, option-shaped values, and shell metacharacters.
 
@@ -306,7 +306,7 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 
 - **`String` errors.** Most commands still return `Result<_, String>`; only about 16 return `AppError`.
 - **Effective-root resolution is repeated.** The `gradle_root`-or-`project_root` lookup is copied inline in `commands/variant.rs`, `build.rs`, `device.rs`, and `health.rs` instead of one shared helper.
-- **Data directory rebuilt by hand.** `commands/health.rs` and `lib.rs` join `~/.keynobi` themselves instead of calling `settings_manager::data_dir()`.
+- **Data directory rebuilt by hand.** `lib.rs` joins `~/.keynobi/logs` itself instead of calling `settings_manager::data_dir()`.
 - **Validator placement.** `validate_activity_name` lives in `commands/device.rs`, not `utils/validation.rs`.
 - **Legacy settings fields.** `AdvancedSettings` (`tree_sitter_cache_size`, `lsp_*`, `navigation_history_depth`, and related fields), `LspSettings`, and `SystemHealthReport.lsp_system_dir_ok` belong to removed editor features and are still exported to the frontend.
 - **Stale generated files.** `src-tauri/bindings/` holds old `LogEntry.ts`/`LogLevel.ts` exports that nothing uses.
