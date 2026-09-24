@@ -196,6 +196,26 @@ jobs:
           echo "path=$DEST" >> "$GITHUB_OUTPUT"
           echo "Built: $DEST"
 
+      - name: Verify signature and notarization
+        # Tauri notarizes and staples the .app inside the DMG; the DMG itself
+        # is signed but carries no stapled ticket.
+        env:
+          DMG: ${{ steps.dmg.outputs.path }}
+        run: |
+          set -euo pipefail
+          codesign --verify --strict --verbose=2 "$DMG"
+          MOUNT=$(mktemp -d)
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT" >/dev/null
+          trap 'hdiutil detach "$MOUNT" -quiet || true' EXIT
+          APP=$(find "$MOUNT" -maxdepth 1 -name '*.app' -print -quit)
+          if [ -z "$APP" ]; then
+            echo "::error::No .app bundle inside $DMG"
+            exit 1
+          fi
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=4 "$APP"
+
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v7
         with:
@@ -226,19 +246,46 @@ jobs:
         with:
           name: dmg-intel
 
-      - name: Create and push tag
+      - name: Write checksums
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
-          VERSION=${{ needs.check.outputs.version }}
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
+          set -euo pipefail
+          sha256sum "Keynobi_${VERSION}_arm64.dmg" "Keynobi_${VERSION}_intel.dmg" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      # Safe to re-run: a tag already at the validated commit is kept, and a
+      # tag anywhere else stops the release instead of being moved.
+      - name: Create and push tag
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          EXISTING=$(git ls-remote --tags origin "refs/tags/${TAG}^{}" | cut -f1)
+          [ -n "$EXISTING" ] || EXISTING=$(git ls-remote --tags origin "refs/tags/${TAG}" | cut -f1)
+          if [ -z "$EXISTING" ]; then
+            git tag "$TAG" "$SHA"
+            git push origin "$TAG"
+          elif [ "$EXISTING" = "$SHA" ]; then
+            echo "Tag $TAG already points at $SHA; keeping it."
+          else
+            echo "::error::Tag $TAG already exists at $EXISTING, not at the validated commit $SHA."
+            exit 1
+          fi
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
-          VERSION=${{ needs.check.outputs.version }}
-          gh release create "v${VERSION}" \
-            --title "v${VERSION}" \
-            --generate-notes \
-            "Keynobi_${VERSION}_arm64.dmg" \
-            "Keynobi_${VERSION}_intel.dmg"
+          set -euo pipefail
+          TAG="v${VERSION}"
+          ASSETS=("Keynobi_${VERSION}_arm64.dmg" "Keynobi_${VERSION}_intel.dmg" SHA256SUMS.txt)
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG exists (re-run); replacing its assets."
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes --verify-tag "${ASSETS[@]}"
+          fi
