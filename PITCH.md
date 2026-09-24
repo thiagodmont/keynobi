@@ -1,25 +1,33 @@
 # Keynobi
 
-**A focused macOS companion for Android development** — build output, logcat, and devices in one place, built to sit next to Android Studio and Claude Code.
+**One fast macOS window for the Android build-and-debug loop, for you and your AI agent.**
 
-## Vision
+## The Problem
 
-Shipping Android apps still means juggling Gradle logs, `adb`, emulators, and crash signals. Keynobi exists to give you a **single, fast surface** for that loop while you keep editing in the IDE and automating with AI. The goal is less tab-hopping and a tighter feedback cycle between **build → device → logs → fix**.
+Shipping an Android app means constant switching: a terminal for Gradle, Android Studio's Logcat tab, `adb` commands, the emulator manager, and a pile of one-off scripts. AI coding agents have it worse. They can't see your build output, your logs, or your device, so they guess, or you paste screenshots for them.
 
-## What it does
+## What Keynobi Does
 
-- **Build** — Stream Gradle output, surface structured errors and warnings, run variants, and drive install/launch against the device you pick.
-- **Logcat** — Live device logs with filtering, crash highlighting, and enough buffer to keep context during long sessions.
-- **Devices** — See connected hardware and AVDs; start/stop emulators from the app.
-- **Projects** — Keep a registry of Android projects and switch without losing your place.
-- **MCP** — Expose builds, logcat, devices, and health checks to [Claude Code](https://claude.com/claude-code) (or any MCP client) so agents can run Gradle, read logs, and operate devices **using the same project you have open in Keynobi**.
+Keynobi sits next to Android Studio (or any editor) and handles everything around the code:
 
-## Why developers care
+- **Build and run.** Build any variant, see errors as a clickable list, and install and launch on your device with `Cmd+R`.
+- **Logs.** Stream logcat with fast filters, saved searches, and crash highlighting, without losing context in long sessions.
+- **Screens.** Capture the UI hierarchy of any app, including Jetpack Compose, to see what is on screen and why.
+- **Devices.** See connected phones and emulators; create, start, stop, and wipe emulators.
+- **Setup checks.** Find out quickly whether the SDK, ADB, JDK, and emulator are ready.
 
-- **One window for the run/debug story** instead of stitching together terminal panes, Logcat tabs, and one-off scripts.
-- **Agent-ready**: MCP turns “ask the AI to fix the build” into something grounded in **your** tree, **your** Gradle output, and **your** device state — not pasted screenshots.
-- **Privacy-minded defaults** — Anonymous crash reporting is opt-in; you stay in control of what leaves the machine.
+## Why It Matters
 
-## Fit
+- **Less tab-hopping.** Build, device, and logs live in one window, so the loop from "change" to "see the result" is shorter.
+- **AI agents work with real data.** Keynobi's MCP server gives Claude Code, Codex, and other agents the same abilities: run Gradle, read build errors and crashes, and operate the device. They work from your actual project and device state, not from pasted text.
+- **Private by default.** Everything runs on your Mac. Crash reporting is off unless you turn it on.
 
-**macOS** today. **Kotlin + Gradle** Android projects (Gradle root detection and project-aware workflows). If that’s your stack and you want a tighter companion around Studio and Claude Code, Keynobi is for you.
+## How the AI Connection Works
+
+You register Keynobi with your agent once. The agent then starts its own background copy of Keynobi for your project; the Keynobi window does not need to be open. It uses the project you pass with `--project`; otherwise the last project you opened in Keynobi, or the folder the agent runs in. If you switch projects in Keynobi, restart the agent's Keynobi connection to follow.
+
+## Who It's For
+
+Android developers on **macOS** working with **Gradle** projects (Kotlin or Java), especially those who pair with AI coding agents. Keynobi is in beta.
+
+**Try it:** [download the latest release](https://github.com/thiagodmont/keynobi/releases/latest).
