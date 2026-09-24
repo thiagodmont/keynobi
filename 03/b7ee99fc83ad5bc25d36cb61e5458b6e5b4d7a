@@ -1,0 +1,41 @@
+src-tauri/tests/ipc_tests.rs
+  s_1e114e823b9048::t_5eecab937724ce 1
+src-tauri/src/commands/health.rs
+  s_1e114e823b9048::t_b4c358d3d32dbb 125
+src-tauri/tests/common/mod.rs
+  s_1e114e823b9048::t_33bf1c17de8961 1-33
+.github/workflows/ci.yml
+  s_1e114e823b9048::t_b44e18daaa9bf4 66-67,69,81-90
+src-tauri/src/services/settings_manager.rs
+  s_1e114e823b9048::t_adb89d203e6454 88-104,106-113,119-133
+  s_1e114e823b9048::t_4549c792d5d3e0 459-469
+  s_1e114e823b9048::t_e0b4e662056977 3
+  s_1e114e823b9048::t_db4c65d63acee8 134,458
+CONTRIBUTING.md
+  s_1e114e823b9048::t_daf745c9214dbc 41-42
+package.json
+  s_1e114e823b9048::t_b44e18daaa9bf4 20
+src-tauri/tests/build_integration.rs
+  s_1e114e823b9048::t_5eecab937724ce 10,15-16,180,225,264,303,333,363
+  s_1e114e823b9048::t_2cff664a2af34f 539-552
+src-tauri/tests/ipc/tauri_commands.rs
+  s_1e114e823b9048::t_5eecab937724ce 41
+docs/RELIABILITY_AND_PRODUCT_ROADMAP.md
+  s_1e114e823b9048::t_1a492408186792 11,58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "03b7ee99fc83ad5bc25d36cb61e5458b6e5b4d7a",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
