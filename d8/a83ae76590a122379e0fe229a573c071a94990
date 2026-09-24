@@ -1,0 +1,46 @@
+AGENTS.md
+  s_1e114e823b9048::t_01399f117350f5 35
+src-tauri/src/services/settings_manager.rs
+  s_1e114e823b9048::t_adb89d203e6454 88-104,106-113,119-133
+  s_1e114e823b9048::t_e0b4e662056977 3
+  s_1e114e823b9048::t_4549c792d5d3e0 459-469
+  s_1e114e823b9048::t_db4c65d63acee8 134,458
+src-tauri/tests/ipc/tauri_commands.rs
+  s_1e114e823b9048::t_5eecab937724ce 41
+src-tauri/src/commands/health.rs
+  s_1e114e823b9048::t_b4c358d3d32dbb 125
+src-tauri/tests/ipc_tests.rs
+  s_1e114e823b9048::t_5eecab937724ce 1
+src-tauri/tests/common/mod.rs
+  s_1e114e823b9048::t_33bf1c17de8961 1-33
+references/CODE_PATTERN.md
+  s_1e114e823b9048::t_cbaec3dfea9ed5 265,309
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_01399f117350f5 71
+CONTRIBUTING.md
+  s_1e114e823b9048::t_01399f117350f5 58,64
+package.json
+  s_1e114e823b9048::t_b44e18daaa9bf4 20
+src-tauri/tests/build_integration.rs
+  s_1e114e823b9048::t_5eecab937724ce 10,15-16,180,225,264,303,333,363
+  s_1e114e823b9048::t_2cff664a2af34f 539-552
+.github/workflows/ci.yml
+  s_1e114e823b9048::t_b44e18daaa9bf4 68,80-89
+  s_1e114e823b9048::t_274b539d865d7c 66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d8a83ae76590a122379e0fe229a573c071a94990",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
