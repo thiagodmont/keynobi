@@ -52,7 +52,16 @@ Registration is detected with `claude mcp get keynobi` or `codex mcp get keynobi
 
 56 tools. Parameters marked † are camelCase on the wire (UI automation structs use `rename_all = "camelCase"`); all others are snake_case.
 
-**Kind** is the intended MCP tool annotation: **R** read-only, **W** changes state but not destructively, **D** destructive or hard to reverse, **O** open-world (runs arbitrary project code). No tool declares annotations yet.
+**Kind** is the tool's declared MCP annotation. Every tool declares all three hints:
+
+| Kind | Meaning | `readOnlyHint` | `destructiveHint` | `openWorldHint` |
+|------|---------|----------------|-------------------|-----------------|
+| **R** | Read-only | `true` | `false` | `false` |
+| **W** | Changes state, not destructively | `false` | `false` | `false` |
+| **D** | Destructive or hard to reverse | `false` | `true` | `false` |
+| **O** | Open-world: runs arbitrary project code | `false` | `true` | `true` |
+
+The test `every_tool_declares_annotations_matching_the_reference_docs` fails if a tool's hints do not match its Kind in the tables below, so update both together.
 
 ### Build
 
@@ -236,7 +245,6 @@ Tool errors are for the model to read and recover from, so make the message acti
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
 - **Play track promotion.** The agent Gradle policy does not block gradle-play-publisher `promote*` tasks (for example `promoteReleaseArtifact`), which change a live Play Console track. Pending a decision to add them to the denylist.
-- **No annotations.** No tool declares `readOnlyHint`, `destructiveHint`, `idempotentHint`, or `openWorldHint`.
 - **Server identity.** `Implementation::from_build_env()` resolves inside rmcp, so `serverInfo` reports `rmcp` and rmcp's version instead of Keynobi's.
 - **Ignored parameter.** `run_gradle_task` accepts `variant` but ignores it.
 - **Parameter casing.** UI tools use camelCase on the wire, while their descriptions and all other tools use snake_case.
