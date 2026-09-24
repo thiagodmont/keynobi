@@ -27,8 +27,8 @@ logcatDefaultCount: number,
  */
 buildLogDefaultLines: number, 
 /**
- * Let MCP clients run Gradle tasks that publish, upload, or uninstall
- * (`publish*`, `upload*`, `uninstall*`, ...). Off by default. Only the
+ * Let MCP clients run Gradle tasks that publish, promote, upload, or
+ * uninstall (`publish*`, `promote*`, `upload*`, `uninstall*`, ...). Off by default. Only the
  * Settings panel changes this; no MCP tool writes it.
  */
 allowUnrestrictedGradle: boolean, };

@@ -116,8 +116,8 @@ pub fn validate_activity_name(activity: &str) -> Result<(), String> {
 /// Task-name patterns MCP clients may not run unless the user enables
 /// unrestricted Gradle tasks in the app. Each pattern is a sequence of
 /// camelCase words; `Prefix` patterns match at the start of the task name,
-/// `Contains` patterns anywhere. These tasks publish, upload, or remove things
-/// outside this machine and cannot be undone.
+/// `Contains` patterns anywhere. These tasks publish, promote, upload, or
+/// remove things outside this machine and cannot be undone.
 enum DeniedTask {
     Prefix(&'static [&'static str], &'static str),
     Contains(&'static [&'static str], &'static str),
@@ -125,6 +125,7 @@ enum DeniedTask {
 
 const AGENT_DENIED_TASKS: &[DeniedTask] = &[
     DeniedTask::Prefix(&["publish"], "publish*"),
+    DeniedTask::Prefix(&["promote"], "promote*"),
     DeniedTask::Prefix(&["upload"], "upload*"),
     DeniedTask::Prefix(&["uninstall"], "uninstall*"),
     DeniedTask::Prefix(&["close", "and", "release"], "closeAndRelease*"),
@@ -193,7 +194,7 @@ pub fn check_agent_gradle_task(task: &str) -> Result<(), String> {
         if hit {
             return Err(format!(
                 "Gradle task '{task}' is blocked for MCP clients because it matches '{label}', \
-                 which publishes, uploads, or uninstalls outside this machine. Run it yourself \
+                 which publishes, promotes, uploads, or uninstalls outside this machine. Run it yourself \
                  from a terminal, or enable \"Allow unrestricted Gradle tasks\" in Keynobi \
                  Settings → MCP."
             ));
@@ -269,6 +270,9 @@ mod tests {
             "releaseToMavenCentral",
             "deployPlayStore",
             "playStoreUpload",
+            "promoteArtifact",
+            "promoteReleaseArtifact",
+            ":app:promotePaidReleaseArtifact",
             // Names that stop partway into a denied word sequence.
             "releaseTo",
             "releaseToMav",
@@ -279,6 +283,7 @@ mod tests {
             "uA",
             "un-all",
             "cAR",
+            "pRA",
         ] {
             assert!(
                 check_agent_gradle_task(task).is_err(),
@@ -305,6 +310,10 @@ mod tests {
             "bundleReleaseClassesToCompileJar",
             "dependencies",
             "tasks",
+            "projects",
+            "properties",
+            "processDebugResources",
+            "processReleaseManifest",
         ] {
             assert!(check_agent_gradle_task(task).is_ok(), "should allow {task}");
         }

@@ -67,7 +67,7 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 
 | Tool | Kind | Notes |
 |------|------|-------|
-| `run_gradle_task` | O | `task`; `variant` is accepted but ignored. Times out after `mcp.buildTimeoutSec` (default 600 s). Task names starting with `-` (Gradle options) are rejected. Unless `mcp.allowUnrestrictedGradle` is on, tasks matching `publish*`, `upload*`, `uninstall*`, `closeAndRelease*`, `*ToMavenCentral`, or `*PlayStore*` are refused, including Gradle abbreviations such as `pRB`. |
+| `run_gradle_task` | O | `task`; `variant` is accepted but ignored. Times out after `mcp.buildTimeoutSec` (default 600 s). Task names starting with `-` (Gradle options) are rejected. Unless `mcp.allowUnrestrictedGradle` is on, tasks matching `publish*`, `promote*`, `upload*`, `uninstall*`, `closeAndRelease*`, `*ToMavenCentral`, or `*PlayStore*` are refused, including Gradle abbreviations such as `pRB`. |
 | `get_build_status` | R | |
 | `get_build_errors` | R | |
 | `get_build_log` | R | `lines`: default `mcp.defaultBuildLogLines` (200), max 2,000. |
@@ -244,7 +244,6 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
-- **Play track promotion.** The agent Gradle policy does not block gradle-play-publisher `promote*` tasks (for example `promoteReleaseArtifact`), which change a live Play Console track. Pending a decision to add them to the denylist.
 - **Server identity.** `Implementation::from_build_env()` resolves inside rmcp, so `serverInfo` reports `rmcp` and rmcp's version instead of Keynobi's.
 - **Ignored parameter.** `run_gradle_task` accepts `variant` but ignores it.
 - **Parameter casing.** UI tools use camelCase on the wire, while their descriptions and all other tools use snake_case.

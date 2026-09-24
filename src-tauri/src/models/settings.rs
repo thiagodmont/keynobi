@@ -233,8 +233,8 @@ pub struct McpSettings {
     /// Default number of raw build log lines returned by `get_build_log`
     /// when the caller does not specify a `lines` argument.
     pub build_log_default_lines: u32,
-    /// Let MCP clients run Gradle tasks that publish, upload, or uninstall
-    /// (`publish*`, `upload*`, `uninstall*`, ...). Off by default. Only the
+    /// Let MCP clients run Gradle tasks that publish, promote, upload, or
+    /// uninstall (`publish*`, `promote*`, `upload*`, `uninstall*`, ...). Off by default. Only the
     /// Settings panel changes this; no MCP tool writes it.
     pub allow_unrestricted_gradle: bool,
 }
