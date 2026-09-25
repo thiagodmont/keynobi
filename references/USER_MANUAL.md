@@ -141,6 +141,8 @@ Use **Log Mode** from the title bar when logs are the main task. It hides the pr
 
 If the device connection drops, Keynobi reconnects automatically. If it cannot reconnect, it stops and shows a **Logcat stopped** message.
 
+With **Auto-start on Connect** on, logcat starts when a device comes online: on the selected device if it is online, otherwise on the first online device.
+
 ### Filter bar
 
 - **Age**: 30s, 1m, 5m, 15m, 1h, or All.

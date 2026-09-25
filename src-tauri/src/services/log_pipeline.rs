@@ -1,5 +1,7 @@
 use crate::models::logcat::{EntryCategory, EntryFlags, LogcatKind, LogcatLevel, ProcessedEntry};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 // ── RawLogLine ────────────────────────────────────────────────────────────────
 
@@ -15,16 +17,52 @@ pub struct RawLogLine {
     pub message: String,
 }
 
+// ── IdAllocator ───────────────────────────────────────────────────────────────
+
+/// Entry and crash-group ID counters shared by every pipeline context.
+///
+/// IDs are never reset — not on reconnect, a new stream, a device switch, or
+/// a clear — so an ID names exactly one entry and orders entries by arrival.
+/// The store's binary search, the frontend's row selection and context
+/// de-duplication, and crash lookup by group all rely on this.
+#[derive(Debug)]
+pub struct IdAllocator {
+    next_entry: AtomicU64,
+    next_crash_group: AtomicU64,
+}
+
+impl IdAllocator {
+    pub fn new() -> Self {
+        IdAllocator {
+            next_entry: AtomicU64::new(1),
+            next_crash_group: AtomicU64::new(1),
+        }
+    }
+
+    pub fn next_entry_id(&self) -> u64 {
+        self.next_entry.fetch_add(1, Ordering::Relaxed)
+    }
+
+    pub fn next_crash_group_id(&self) -> u64 {
+        self.next_crash_group.fetch_add(1, Ordering::Relaxed)
+    }
+}
+
+impl Default for IdAllocator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ── PipelineContext ───────────────────────────────────────────────────────────
 
 /// Mutable context threaded through all processors for a given session.
 /// Owned by the pipeline task — no mutex required.
 pub struct PipelineContext {
-    next_id: u64,
+    ids: Arc<IdAllocator>,
     pub pid_to_package: HashMap<i32, String>,
     pub seen_packages: HashSet<String>,
     active_crash_group: Option<u64>,
-    next_crash_group: u64,
     /// Packages discovered since the last sync to `LogcatStateInner.known_packages`.
     /// Drained once per 100ms tick, avoiding iteration over the full map every tick.
     pub new_packages: Vec<String>,
@@ -33,11 +71,10 @@ pub struct PipelineContext {
 impl PipelineContext {
     pub fn new() -> Self {
         PipelineContext {
-            next_id: 1,
+            ids: Arc::new(IdAllocator::new()),
             pid_to_package: HashMap::new(),
             seen_packages: HashSet::new(),
             active_crash_group: None,
-            next_crash_group: 1,
             new_packages: Vec::new(),
         }
     }
@@ -50,42 +87,34 @@ impl PipelineContext {
         let seen_packages: HashSet<String> = pid_to_package.values().cloned().collect();
         let new_packages: Vec<String> = seen_packages.iter().cloned().collect();
         PipelineContext {
-            next_id: 1,
+            ids: Arc::new(IdAllocator::new()),
             pid_to_package,
             seen_packages,
             active_crash_group: None,
-            next_crash_group: 1,
             new_packages,
         }
     }
 
-    /// Seed the ID allocator from an existing store's highest assigned ID
-    /// (pass `store.max_id() + 1`). Keeps IDs monotonic when a fresh context
-    /// replaces the old one while entries from the previous generation are
-    /// still retained — e.g., a logcat reconnect after an ADB server restart.
-    pub fn with_next_id(mut self, next_id: u64) -> Self {
-        self.next_id = self.next_id.max(next_id);
+    /// Draw IDs from a long-lived allocator instead of this context's own, so
+    /// replacing the context never reissues an ID.
+    pub fn with_ids(mut self, ids: Arc<IdAllocator>) -> Self {
+        self.ids = ids;
         self
     }
 
     pub fn next_id(&mut self) -> u64 {
-        let id = self.next_id;
-        self.next_id += 1;
-        id
+        self.ids.next_entry_id()
     }
 
     pub fn next_crash_group_id(&mut self) -> u64 {
-        let id = self.next_crash_group;
-        self.next_crash_group += 1;
-        id
+        self.ids.next_crash_group_id()
     }
 
+    /// Reset per-session enrichment state. IDs keep counting.
     pub fn clear(&mut self) {
-        self.next_id = 1;
         self.pid_to_package.clear();
         self.seen_packages.clear();
         self.active_crash_group = None;
-        self.next_crash_group = 1;
         self.new_packages.clear();
     }
 }
@@ -899,33 +928,52 @@ mod tests {
         assert_eq!(ctx_seeded.new_packages.len(), ctx_plain.new_packages.len());
     }
 
-    #[test]
-    fn with_next_id_continues_after_seeded_value() {
-        let mut ctx = PipelineContext::new().with_next_id(43);
-        assert_eq!(ctx.next_id(), 43);
-        assert_eq!(ctx.next_id(), 44);
-    }
-
-    #[test]
-    fn with_next_id_keeps_monotonic_ids_across_context_reset() {
-        // Simulates a reconnect: entries 1..=5 already in the store from the
-        // previous generation, a fresh context must not reissue those IDs.
-        let pipeline = LogPipeline::default_pipeline();
-        let mut ctx = PipelineContext::new().with_next_id(6);
-
-        let raw = RawLogLine {
+    fn info_line(message: &str) -> RawLogLine {
+        RawLogLine {
             timestamp: "01-01 00:00:00.000".into(),
             pid: 1000,
             tid: 1000,
             level: LogcatLevel::Info,
             tag: "T".into(),
-            message: "after reconnect".into(),
+            message: message.into(),
+        }
+    }
+
+    #[test]
+    fn contexts_sharing_an_allocator_never_reissue_entry_ids() {
+        // A reconnect, a new stream, or a clear replaces the context; IDs
+        // must keep counting instead of restarting at 1.
+        let pipeline = LogPipeline::default_pipeline();
+        let ids = Arc::new(IdAllocator::new());
+
+        let mut first = PipelineContext::new().with_ids(ids.clone());
+        let a = pipeline.run(info_line("before"), &mut first);
+        let b = pipeline.run(info_line("before"), &mut first);
+
+        let mut second = PipelineContext::with_initial_pids(HashMap::new()).with_ids(ids.clone());
+        second.clear();
+        let c = pipeline.run(info_line("after"), &mut second);
+
+        assert_eq!((a.id, b.id), (1, 2));
+        assert_eq!(c.id, 3, "a replacement context must continue the sequence");
+    }
+
+    #[test]
+    fn contexts_sharing_an_allocator_never_reissue_crash_group_ids() {
+        let pipeline = LogPipeline::default_pipeline();
+        let ids = Arc::new(IdAllocator::new());
+        let fatal = || RawLogLine {
+            level: LogcatLevel::Error,
+            tag: "AndroidRuntime".into(),
+            ..info_line("FATAL EXCEPTION: main")
         };
 
-        let entry = pipeline.run(raw, &mut ctx);
-        assert_eq!(
-            entry.id, 6,
-            "first entry after reconnect must continue past existing store IDs"
-        );
+        let mut first = PipelineContext::new().with_ids(ids.clone());
+        let g1 = pipeline.run(fatal(), &mut first).crash_group_id;
+        let mut second = PipelineContext::new().with_ids(ids.clone());
+        let g2 = pipeline.run(fatal(), &mut second).crash_group_id;
+
+        assert!(g1.is_some() && g2.is_some());
+        assert_ne!(g1, g2, "separate crashes must not share a group id");
     }
 }
