@@ -224,15 +224,11 @@ pub fn run() {
             cleanup_old_logs(&log_dir, settings.advanced.log_retention_days);
 
             // Rotate build log files at startup: age, orphan, and size-cap passes.
-            {
-                let build_log_dir = services::settings_manager::data_dir().join("build-logs");
-                let history = services::build_runner::load_build_history();
-                services::build_runner::rotate_build_logs(
-                    &build_log_dir,
-                    settings.build.build_log_retention_days,
-                    settings.build.build_log_max_folder_mb,
-                    &history,
-                );
+            if let Err(e) = services::build_runner::rotate_persisted_build_logs(
+                settings.build.build_log_retention_days,
+                settings.build.build_log_max_folder_mb,
+            ) {
+                tracing::warn!("Failed to rotate build logs: {e}");
             }
 
             // Spawn monitor: polls memory + log folder size every 5s.

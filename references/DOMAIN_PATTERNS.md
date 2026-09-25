@@ -79,7 +79,9 @@ runAndDeploy()
 - `cancelBuild()` releases the waiting `runBuild()` even when the cancel request fails. Cancel is offered only while Gradle runs; install and launch cannot be cancelled.
 - **Project opens are generation-counted** (`beginProjectOpen()` in `project.store.ts`). Every open, select, and restore stops after an `await` once a newer open started, so it cannot write another project's registry entry, variant, or device. Deploy stops before APK lookup and before install when the generation changed.
 - **Each run has its own output buffer** (`BuildLogSlot::start_run`). `get_build_log` reads the latest run's; a run's history entry saves its own lines even when it finishes late.
-- Build history IDs must stay unique across restarts and clears so log filenames never collide.
+- Build history IDs must stay unique across restarts and clears so log filenames never collide. `persist_build_record_in` allocates them under the data lock, above every ID in the persisted history and in `build-logs/`.
+- A finished build is appended to the history as re-read from disk, so builds another process recorded are kept, and log rotation checks against that merged history.
+- `save_settings` (the settings UI's full snapshot) keeps `recentProjects` and `lastActiveProject` from disk; the backend owns them.
 - **Deploy installs only the requested variant's APK.** `find_output_apk` reads AGP's `output-metadata.json` (else the directory path under `apk/`) and returns an error when no APK or more than one APK matches. It never falls back to another variant's APK.
 - **Launch uses the installed APK's package name** (aapt2, else `output-metadata.json`). If neither works, deploy installs but does not launch; it never guesses from the project's `applicationId`.
 
@@ -321,8 +323,8 @@ On window close the app has a 3 s budget: cancel a running build, stop logcat, s
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
-- **Cross-process builds.** GUI and headless MCP can build at the same time; `build-history.json` is last-writer-wins. MCP builds do not appear live in the GUI.
-- **Build history IDs.** `clear_history` resets `next_id` to 1, so new log filenames can collide with retained files. `MAX_PERSISTED_HISTORY` (20) is effectively unused because load trims to 10.
+- **Cross-process builds.** GUI and headless MCP can build at the same time. MCP builds appear in the GUI's history only after the GUI's next build or restart, not live.
+- **Persisted history size.** `MAX_PERSISTED_HISTORY` (20) is effectively unused because load trims to `MAX_HISTORY` (10).
 - **Build error counts after truncation.** Once `MAX_BUILD_ERRORS` is reached, `errorCount`/`warningCount` count only the retained diagnostics, and the truncation notice itself counts as a warning. True totals would need new `BuildResult`/`BuildCompleteEvent` fields.
 - **Duplicate lint diagnostics.** With `abortOnError`, lint prints its first failure from both the report task and the failing task, so that issue is listed twice. The parser is stateless per line, and diagnostics are not de-duplicated.
 - **MCP cancel during spawn.** A build cancelled during spawn on the MCP path returns without recording history.

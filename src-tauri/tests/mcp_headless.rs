@@ -282,4 +282,45 @@ echo 'Error: Activity not started, unable to resolve Intent { act=android.intent
         "{}",
         out.text
     );
+
+#[test]
+fn two_servers_building_at_once_keep_both_builds_in_the_shared_history() {
+    let sandbox = Sandbox::new();
+    sandbox.write_gradlew("sleep 1\necho 'BUILD SUCCESSFUL in 1s'");
+    // Two processes on one data directory, like the app and a headless server.
+    let clients = [sandbox.start(), sandbox.start()];
+
+    let builds: Vec<_> = clients
+        .into_iter()
+        .map(|mut client| {
+            std::thread::spawn(move || {
+                client.call_tool("run_gradle_task", json!({ "task": "assembleDebug" }))
+            })
+        })
+        .collect();
+    for build in builds {
+        let build = build.join().unwrap();
+        assert!(!build.is_error, "{}", build.text);
+    }
+
+    let data = sandbox.home.join(".keynobi");
+    let history: Vec<serde_json::Value> =
+        serde_json::from_str(&std::fs::read_to_string(data.join("build-history.json")).unwrap())
+            .unwrap();
+    let mut ids: Vec<u64> = history.iter().filter_map(|r| r["id"].as_u64()).collect();
+    ids.sort_unstable();
+    ids.dedup();
+    assert_eq!(
+        ids.len(),
+        2,
+        "both builds recorded with distinct IDs: {history:?}"
+    );
+    for id in ids {
+        assert!(
+            data.join("build-logs")
+                .join(format!("build-{id}.jsonl"))
+                .is_file(),
+            "log of build {id} kept"
+        );
+    }
 }

@@ -1,7 +1,7 @@
 use crate::models::build::{BuildError, BuildErrorSeverity, BuildRecord, BuildResult, BuildStatus};
 use crate::services::build_parser;
 use crate::services::process_manager::{self, ProcessId, ProcessManager};
-use crate::services::settings_manager::data_dir;
+use crate::services::settings_manager::{data_dir, unique_tmp_path, with_data_lock_in};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -20,24 +20,115 @@ const MAX_PERSISTED_HISTORY: usize = 20;
 
 /// Persist the most recent build summaries to ~/.keynobi/build-history.json.
 /// Uses atomic write (temp + rename) so a crash mid-save can't corrupt the file.
-pub fn save_build_history(history: &VecDeque<BuildRecord>) {
-    let path = data_dir().join(BUILD_HISTORY_FILE);
+/// Callers hold the data lock: other processes append to the same file.
+fn save_build_history_to(dir: &Path, history: &VecDeque<BuildRecord>) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("Failed to create data directory: {e}"))?;
+    let path = dir.join(BUILD_HISTORY_FILE);
     let recent: Vec<&BuildRecord> = history.iter().rev().take(MAX_PERSISTED_HISTORY).collect();
-    if let Ok(json) = serde_json::to_string_pretty(&recent) {
-        let tmp = path.with_extension("json.tmp");
-        if std::fs::write(&tmp, &json).is_ok() {
-            let _ = std::fs::rename(&tmp, &path);
-        }
+    let json = serde_json::to_string_pretty(&recent)
+        .map_err(|e| format!("Failed to serialize build history: {e}"))?;
+    let tmp = unique_tmp_path(&path);
+    std::fs::write(&tmp, &json).map_err(|e| format!("Failed to write build history: {e}"))?;
+    std::fs::rename(&tmp, &path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("Failed to save build history: {e}")
+    })
+}
+
+/// Build IDs name the log files, so a new ID must be above every ID in the
+/// history and every log still on disk, whichever process wrote them.
+fn next_build_id(history: &VecDeque<BuildRecord>, build_log_dir: &Path) -> u32 {
+    let max_logged = std::fs::read_dir(build_log_dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| build_log_id(&entry.path()))
+        .max()
+        .unwrap_or(0);
+    let max_recorded = history.iter().map(|r| r.id).max().unwrap_or(0);
+    max_logged.max(max_recorded).saturating_add(1)
+}
+
+fn build_log_id(path: &Path) -> Option<u32> {
+    if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
+        return None;
     }
+    path.file_stem()?
+        .to_str()?
+        .strip_prefix("build-")?
+        .parse()
+        .ok()
+}
+
+/// Append `record` to the persisted history, save its log, and rotate logs, all
+/// under the data lock. The history is re-read first so records appended by
+/// another process are kept, and the record's ID is allocated here. Returns the
+/// ID and the history as persisted.
+fn persist_build_record_in(
+    dir: &Path,
+    mut record: BuildRecord,
+    raw_lines: &VecDeque<String>,
+    retention_days: u32,
+    max_folder_mb: u32,
+) -> Result<(u32, VecDeque<BuildRecord>), String> {
+    with_data_lock_in(dir, || {
+        let build_log_dir = dir.join("build-logs");
+        let mut history = load_build_history_from(dir);
+        let id = next_build_id(&history, &build_log_dir);
+        record.id = id;
+        history.push_back(record);
+        while history.len() > MAX_HISTORY {
+            history.pop_front();
+        }
+        save_build_history_to(dir, &history)?;
+        save_build_log_to(id, raw_lines, &build_log_dir);
+        rotate_build_logs(&build_log_dir, retention_days, max_folder_mb, &history);
+        Ok((id, history))
+    })?
+}
+
+/// Rotate build logs against the persisted history, under the data lock so a
+/// build another process is recording keeps its log.
+pub fn rotate_persisted_build_logs(retention_days: u32, max_folder_mb: u32) -> Result<(), String> {
+    let dir = data_dir();
+    with_data_lock_in(&dir, || {
+        let history = load_build_history_from(&dir);
+        rotate_build_logs(
+            &dir.join("build-logs"),
+            retention_days,
+            max_folder_mb,
+            &history,
+        );
+    })
+}
+
+/// Records from both sides, by ID, oldest first, capped at `MAX_HISTORY`.
+/// IDs are allocated in order under the data lock, so ID order is the order
+/// builds were recorded.
+fn merge_history(
+    memory: &VecDeque<BuildRecord>,
+    persisted: VecDeque<BuildRecord>,
+) -> VecDeque<BuildRecord> {
+    let mut by_id: std::collections::BTreeMap<u32, BuildRecord> =
+        memory.iter().map(|r| (r.id, r.clone())).collect();
+    for record in persisted {
+        by_id.insert(record.id, record);
+    }
+    let skip = by_id.len().saturating_sub(MAX_HISTORY);
+    by_id.into_values().skip(skip).collect()
 }
 
 /// Load build history from disk. Returns empty VecDeque if file is missing or corrupt.
 ///
-/// The file is written newest-first (see `save_build_history`), so we reverse
+/// The file is written newest-first (see `save_build_history_to`), so we reverse
 /// the loaded entries to restore oldest-first order — matching the invariant that
 /// `push_back` adds the newest record and `pop_front` evicts the oldest.
 pub fn load_build_history() -> VecDeque<BuildRecord> {
-    let path = data_dir().join(BUILD_HISTORY_FILE);
+    load_build_history_from(&data_dir())
+}
+
+fn load_build_history_from(dir: &Path) -> VecDeque<BuildRecord> {
+    let path = dir.join(BUILD_HISTORY_FILE);
     if !path.exists() {
         return VecDeque::new();
     }
@@ -123,8 +214,6 @@ pub struct BuildStateInner {
     pub history: VecDeque<BuildRecord>,
     /// Errors accumulated from the current (or last) build.
     pub current_errors: Vec<BuildError>,
-    /// Counter for assigning unique build IDs.
-    next_id: u32,
 }
 
 impl Default for BuildStateInner {
@@ -136,7 +225,6 @@ impl Default for BuildStateInner {
 impl BuildStateInner {
     pub fn new() -> Self {
         let history = load_build_history();
-        let next_id = history.iter().map(|r| r.id).max().unwrap_or(0) + 1;
         Self {
             current_build: None,
             starting: false,
@@ -144,7 +232,6 @@ impl BuildStateInner {
             status: BuildStatus::Idle,
             history,
             current_errors: vec![],
-            next_id,
         }
     }
 }
@@ -260,7 +347,7 @@ pub fn save_build_log_to(id: u32, raw_lines: &VecDeque<String>, build_log_dir: &
         return;
     }
     let path = build_log_dir.join(format!("build-{id}.jsonl"));
-    let tmp = build_log_dir.join(format!("build-{id}.jsonl.tmp"));
+    let tmp = unique_tmp_path(&path);
 
     let mut content = String::new();
     for raw in raw_lines.iter().take(MAX_BUILD_LOG) {
@@ -762,14 +849,16 @@ pub async fn cancel_build(build_state: &BuildState, process_manager: &ProcessMan
     was_running
 }
 
-/// Clear all build history from memory and disk.
-/// Disk persistence is best-effort; failures are silently dropped.
-/// The in-memory clear (including ID counter reset) always succeeds.
-pub async fn clear_history(build_state: &BuildState) {
-    let mut bs = build_state.inner.lock().await;
-    bs.history.clear();
-    bs.next_id = 1;
-    save_build_history(&bs.history);
+/// Clear all build history from memory and disk. The in-memory clear always
+/// happens; a failure to clear the file is returned.
+pub async fn clear_history(build_state: &BuildState) -> Result<(), String> {
+    build_state.inner.lock().await.history.clear();
+    tokio::task::spawn_blocking(|| {
+        let dir = data_dir();
+        with_data_lock_in(&dir, || save_build_history_to(&dir, &VecDeque::new()))?
+    })
+    .await
+    .map_err(|e| format!("Failed to clear build history: {e}"))?
 }
 
 /// Record the completed build result and push it to history.
@@ -805,58 +894,57 @@ pub async fn record_build_result(
         BuildStatus::Failed(result.clone())
     };
 
-    let (record_id, history_snapshot) = {
+    {
         let mut bs = build_state.inner.lock().await;
         if !bs.starting && bs.latest_run == Some(run_id) {
             bs.status = status.clone();
             bs.current_errors = errors.clone();
             bs.current_build = None;
         }
+    }
 
-        let record = BuildRecord {
-            id: bs.next_id,
-            task,
-            status,
-            errors,
-            started_at,
-            project_root,
-        };
-        let record_id = bs.next_id;
-        bs.next_id += 1;
-
-        bs.history.push_back(record);
-        while bs.history.len() > MAX_HISTORY {
-            bs.history.pop_front();
-        }
-        let history_snapshot = bs.history.clone();
-        (record_id, history_snapshot)
-        // Lock dropped here — all disk I/O happens below, off the critical
-        // section. save_build_history() used to run while holding it, blocking
-        // every other build-state reader for the duration of a file write.
+    // The ID is allocated when the record is persisted.
+    let record = BuildRecord {
+        id: 0,
+        task,
+        status,
+        errors,
+        started_at,
+        project_root,
     };
 
-    // Best-effort disk I/O, moved off the async runtime so a slow or large
-    // write cannot stall a tokio worker.
-    let history_for_io = history_snapshot.clone();
+    // Disk I/O runs off the async runtime and outside the build-state lock.
+    let record_for_io = record.clone();
     let persisted = tokio::task::spawn_blocking(move || {
-        save_build_history(&history_for_io);
-        save_build_log(record_id, &raw_lines);
         let (settings, _) = crate::services::settings_manager::load_settings();
-        let build_log_dir = data_dir().join("build-logs");
-        rotate_build_logs(
-            &build_log_dir,
+        persist_build_record_in(
+            &data_dir(),
+            record_for_io,
+            &raw_lines,
             settings.build.build_log_retention_days,
             settings.build.build_log_max_folder_mb,
-            &history_snapshot,
-        );
+        )
     })
-    .await;
+    .await
+    .map_err(|e| format!("Build persistence task failed: {e}"))
+    .and_then(|result| result);
 
-    // A panic here means build history stopped persisting. It is best-effort by
-    // design, but failing completely silently leaves the user with a history
-    // panel that quietly stops updating and no way to find out why.
-    if let Err(e) = persisted {
-        tracing::warn!("Failed to persist build artifacts for build {record_id}: {e}");
+    let mut bs = build_state.inner.lock().await;
+    match persisted {
+        Ok((_, persisted_history)) => {
+            bs.history = merge_history(&bs.history, persisted_history);
+        }
+        Err(e) => {
+            // Keep the build visible in this session even though it was not
+            // saved. A failure here used to be silent.
+            tracing::warn!("Failed to persist build history: {e}");
+            let mut record = record;
+            record.id = bs.history.iter().map(|r| r.id).max().unwrap_or(0) + 1;
+            bs.history.push_back(record);
+            while bs.history.len() > MAX_HISTORY {
+                bs.history.pop_front();
+            }
+        }
     }
 }
 
@@ -1828,7 +1916,7 @@ mod tests {
                 });
             }
         }
-        clear_history(&state).await;
+        clear_history(&state).await.unwrap();
         let bs = state.inner.lock().await;
         assert!(
             bs.history.is_empty(),
@@ -1888,6 +1976,88 @@ mod tests {
         let first: crate::models::build::BuildLine = serde_json::from_str(&lines[0]).unwrap();
         assert_eq!(first.kind, BuildLineKind::Error);
         assert!(first.content.contains("Unresolved reference"));
+    }
+
+    // ── History shared between processes ──────────────────────────────────────
+
+    fn record_named(task: &str) -> BuildRecord {
+        BuildRecord {
+            id: 0,
+            task: task.into(),
+            status: BuildStatus::Idle,
+            errors: vec![],
+            started_at: "2026-01-01T00:00:00Z".into(),
+            project_root: None,
+        }
+    }
+
+    fn persist(dir: &Path, task: &str) -> u32 {
+        let lines = VecDeque::from([format!("output of {task}")]);
+        persist_build_record_in(dir, record_named(task), &lines, 7, 100)
+            .unwrap()
+            .0
+    }
+
+    #[test]
+    fn a_build_recorded_by_another_process_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        // The headless server records a build this process never saw.
+        persist(dir.path(), "mcp build");
+        persist(dir.path(), "gui build");
+
+        let tasks: Vec<String> = load_build_history_from(dir.path())
+            .into_iter()
+            .map(|r| r.task)
+            .collect();
+        assert_eq!(tasks, ["mcp build", "gui build"]);
+    }
+
+    #[test]
+    fn build_ids_never_repeat_even_after_history_is_cleared() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = persist(dir.path(), "first");
+        let second = persist(dir.path(), "second");
+        assert!(second > first);
+
+        // Cleared history, but the earlier logs are still on disk.
+        save_build_history_to(dir.path(), &VecDeque::new()).unwrap();
+        let third = persist(dir.path(), "third");
+        assert!(third > second, "{third} reuses the ID of a retained log");
+    }
+
+    #[test]
+    fn rotation_keeps_the_log_of_a_build_another_process_recorded() {
+        let dir = tempfile::tempdir().unwrap();
+        let other = persist(dir.path(), "mcp build");
+        persist(dir.path(), "gui build");
+
+        assert!(dir
+            .path()
+            .join("build-logs")
+            .join(format!("build-{other}.jsonl"))
+            .is_file());
+    }
+
+    #[test]
+    fn merged_history_is_the_union_by_id_capped_to_the_newest() {
+        let with_ids = |ids: &[u32]| -> VecDeque<BuildRecord> {
+            ids.iter()
+                .map(|&id| BuildRecord {
+                    id,
+                    ..record_named(&format!("build {id}"))
+                })
+                .collect()
+        };
+        // Two builds of this process finished together, and the older
+        // snapshot is applied after the newer one.
+        let memory = with_ids(&(5..=14).collect::<Vec<_>>());
+        let older_snapshot = with_ids(&(3..=12).collect::<Vec<_>>());
+
+        let ids: Vec<u32> = merge_history(&memory, older_snapshot)
+            .iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(ids, (5..=14).collect::<Vec<_>>());
     }
 
     // ── rotate_build_logs tests ────────────────────────────────────────────────

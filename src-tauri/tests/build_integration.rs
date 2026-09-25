@@ -316,8 +316,21 @@ async fn record_build_result_respects_history_limit() {
         build_runner::MAX_HISTORY,
         "history must be capped at MAX_HISTORY"
     );
-    // The oldest entries (task_0, task_1) should have been evicted.
-    assert_eq!(inner.history[0].task, "task_2");
+    // History is shared with every build recorded in the data directory
+    // (other tests here run in parallel), so builds may interleave. The two
+    // oldest of this test's builds are evicted either way.
+    assert!(inner
+        .history
+        .iter()
+        .all(|r| r.task != "task_0" && r.task != "task_1"));
+    assert!(
+        inner
+            .history
+            .iter()
+            .zip(inner.history.iter().skip(1))
+            .all(|(a, b)| a.id < b.id),
+        "IDs are unique and in recording order"
+    );
     assert!(matches!(inner.status, BuildStatus::Success(_)));
 }
 

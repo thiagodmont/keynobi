@@ -65,6 +65,9 @@ All persistent app data lives under `~/.keynobi/`, resolved by `settings_manager
 | `logs/app.log.*` | Daily-rotated GUI logs, pruned by retention and folder-size settings (never the active file). |
 | `build-history.json`, `build-logs/build-{id}.jsonl` | Build history and per-build logs. |
 | `mcp-activity.jsonl`, `mcp-server.pid` | MCP activity log and headless server PID. |
+| `.lock` | Advisory lock that serializes settings and build-history writes across processes. |
+
+Every read-modify-write of `settings.json` or `build-history.json` runs under `settings_manager::with_data_lock` (a process mutex plus a file lock on `.lock`) and re-reads the file inside it, because other processes write the same files. Write atomically to a `unique_tmp_path` and rename. The lock is not reentrant; never take it inside itself.
 
 Frontend-only preferences (saved logcat filters, last query, dismissed update versions) live in WebView `localStorage`.
 
@@ -252,7 +255,8 @@ Do not log secrets, full MCP tool arguments, or raw device text at `info` or abo
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
-- **Cross-process state.** GUI and headless MCP do not share live state or a build lock, and both write `build-history.json` (last writer wins).
+- **Cross-process state.** GUI and headless MCP do not share live state or a build lock. Settings and build history are merged under the data lock, but `mcp-activity.jsonl` is still appended without it.
+- **Health check settings write.** `health_inspector` stores a detected SDK path by saving a full settings snapshot instead of `mutate_settings`, so it can revert a concurrent edit to another setting.
 - **Duplicated logic.** APK path validation exists twice (`utils/path.rs` and MCP `validate_apk_path`).
 - **`unwrap()` policy.** Enforced by review only. About 15 production `unwrap()` calls remain, mostly `Regex::new` in `build_parser.rs`. Consider `clippy::unwrap_used`.
 - **Unbounded activity log.** `mcp-activity.jsonl` is trimmed only at MCP server start.

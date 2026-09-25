@@ -27,7 +27,7 @@ What headless mode means for users and features:
 - MCP builds, logcat streams, and device selection are not visible live in the GUI.
 - Switching projects in the GUI does not change the MCP server's project until the client restarts it.
 - Headless and GUI builds are not mutually exclusive across processes.
-- Shared with the GUI: `settings.json` (`set_active_variant` writes it), `build-history.json` (last writer wins), `mcp-activity.jsonl`, and `mcp-server.pid`.
+- Shared with the GUI: `settings.json` (`set_active_variant` writes it), `build-history.json` (appended under a shared file lock), `mcp-activity.jsonl`, and `mcp-server.pid`.
 
 ## Setup
 
