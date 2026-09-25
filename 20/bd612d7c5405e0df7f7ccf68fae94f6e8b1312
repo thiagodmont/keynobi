@@ -1,0 +1,31 @@
+scripts/collect-metrics.mjs
+  s_1e114e823b9048::t_6b47cccbcd20fb 100-103,355-360,363-368,373-378,438-440
+  s_1e114e823b9048::t_bb57b90fe9c37e 347
+  s_1e114e823b9048::t_54dc96b7587b30 295-300,434
+  s_1e114e823b9048::t_887c1e1ab38264 208
+scripts/metrics-provenance.mjs
+  s_1e114e823b9048::t_6b47cccbcd20fb 91-92
+scripts/collect-metrics.test.mjs
+  s_1e114e823b9048::t_6b47cccbcd20fb 32-35,172-174,189-191,235-238
+src-tauri/examples/logcat_soak.rs
+  s_1e114e823b9048::t_11d5740bd901a7 423,428,438
+scripts/logcat-soak.mjs
+  s_1e114e823b9048::t_a9ab6a027fc69c 89-90
+  s_1e114e823b9048::t_6b47cccbcd20fb 66-70,91-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "20bd612d7c5405e0df7f7ccf68fae94f6e8b1312",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
