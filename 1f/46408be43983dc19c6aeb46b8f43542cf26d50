@@ -1,0 +1,23 @@
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_ed2b66e16ac38c 306,314,325-328,414,430,648,658,666,674,706-709,714-716
+scripts/ipc-payloads.test.mjs
+  s_1e114e823b9048::t_c62c1169ce8749 18,328-331,334
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_e9c2f04a2ee05e 250,266,853,878-879,886-887,892,899-900,907-908,917-918,924-925,953,955,960,962,965,972,974,979,981,983-985,1251-1252,1259-1260
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1f46408be43983dc19c6aeb46b8f43542cf26d50",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
