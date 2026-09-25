@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { initBuildService, resetBuildServiceForTests } from "@/services/build.service";
 
 const mockListen = vi.mocked(listen);
+const mockInvoke = vi.mocked(invoke);
 
 /** build:started, build:lines, build:complete. */
 const BUILD_EVENTS = ["build:started", "build:lines", "build:complete"];
@@ -22,6 +24,11 @@ describe("initBuildService listener lifecycle", () => {
     resetBuildServiceForTests();
     vi.clearAllMocks();
     mockListen.mockResolvedValue(() => {});
+    // Registering the listeners loads the persisted history.
+    mockInvoke.mockImplementation(async (command) => {
+      if (command === "get_build_history") return [];
+      throw new Error(`Unexpected IPC call: ${command}`);
+    });
   });
 
   // Regression: the `if (buildCompleteUnlisten) return` guard was checked

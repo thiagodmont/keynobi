@@ -182,7 +182,7 @@ export function logcatHandlers(): Record<string, (args: unknown) => unknown> {
     export_logcat: () => null,
     clear_logcat: () => {
       storedEntries = [];
-      triggerEvent("logcat:cleared", undefined);
+      triggerEvent("logcat:cleared", null);
     },
     get_logcat_entries: (args: unknown) => filterEntries(storedEntries, argsToFilter(args)),
     get_logcat_context_entries: (args: unknown) => contextEntries(args),

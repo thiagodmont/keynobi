@@ -26,7 +26,7 @@ Each reference doc ends with **Known Gaps**: rules the code does not meet yet. D
 ## Key Rules
 
 - **Layering**: components → stores/services → `src/lib/tauri-api.ts` → Tauri commands → Rust services. Only `tauri-api.ts` calls `invoke`; commands validate and delegate.
-- **IPC contract**: a command change updates the Rust handler, `generate_handler!` in `lib.rs`, the `tauri-api.ts` wrapper, and the mock backend together. After changing Rust models, run `npm run generate:bindings`; import IPC types from `@/bindings` and never edit generated files.
+- **IPC contract**: a command change updates the Rust handler, `generate_handler!` in `lib.rs`, the `tauri-api.ts` wrapper, and the mock backend together. After changing Rust models, run `npm run generate:bindings` and `npm run generate:ipc-fixtures`; import IPC types from `@/bindings` and never edit generated files.
 - **One implementation per behavior**: Tauri commands and MCP tools call the same service function. Never copy logic into `mcp_server.rs`.
 - **Process model**: `keynobi --mcp` attaches to the running app when it can (the app serves the session on its own state) and otherwise runs standalone with its own state, which the GUI does not see. See `references/MCP_SERVER.md` § Modes.
 - **Untrusted input**: validate identifiers with `utils/validation.rs` and paths with `utils/path.rs` (canonicalized, never raw `starts_with`). Arguments to `adb shell` are re-parsed by the device shell.

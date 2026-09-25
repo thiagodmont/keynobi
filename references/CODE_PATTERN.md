@@ -22,7 +22,7 @@ Frontend:
 - `src/utils/` - small browser helpers (clipboard, debounce).
 - `src/styles/` - `theme.css` tokens and `global.css`.
 - `src/bindings/` - generated TypeScript bindings; do not edit manually.
-- `src/test/` - Vitest setup (`setup.ts`), typed factories, and the mock backend used by web-mode e2e.
+- `src/test/` - Vitest setup (`setup.ts`), typed factories, the mock backend used by web-mode e2e, and `ipc-fixtures/` (payloads serialized by the Rust backend; generated).
 
 Backend:
 
@@ -32,7 +32,7 @@ Backend:
 - `src-tauri/src/services/` - Rust business logic.
 - `src-tauri/src/models/` - Rust IPC models exported with `ts-rs`, plus `AppError`.
 - `src-tauri/src/utils/` - shared helpers: `path.rs` (filesystem boundaries), `validation.rs` (identifiers), `line_reader.rs` (bounded process-output lines), `process.rs` (deadlines for one-shot commands), and `device_shell.rs` (`adb shell` quoting).
-- `src-tauri/tests/` - integration tests (`build_integration.rs`, `ipc/`, `fixtures/mock_gradlew`) and `mcp_headless.rs`, which drives the real `keynobi --mcp` binary through `headless/`, standalone and attached to a test listener.
+- `src-tauri/tests/` - integration tests (`build_integration.rs`, `ipc/`, `fixtures/mock_gradlew`), `ipc_fixtures.rs` (writes `src/test/ipc-fixtures/`), and `mcp_headless.rs`, which drives the real `keynobi --mcp` binary through `headless/`, standalone and attached to a test listener.
 - `src-tauri/benches/` - Criterion benchmarks.
 - `src-tauri/capabilities/` - Tauri permission grants.
 
@@ -41,7 +41,7 @@ Tooling:
 - `.storybook/` - Storybook configuration for the design system.
 - `e2e/` - Playwright web-mode tests: `smoke/`, `ipc/`, `fixtures/`, plus separately configured `storybook/` and `visual/` suites.
 - `vite-plugin-tauri-mock.ts` - replaces Tauri APIs with `src/test/mock-backend` when `VITE_E2E` is set.
-- `scripts/` - release, versioning, metrics, packaging, and the IPC contract test.
+- `scripts/` - release, versioning, metrics, packaging, the IPC contract and payload tests, and the MCP smoke test (`mcp-smoke.mjs`).
 
 ---
 
@@ -141,6 +141,24 @@ npm run check:bindings      # regenerate and fail on any diff
 
 `generate:bindings` runs the full Rust test suite. Check the data-dir warning in `BEST_PRACTICES.md` § Known Gaps first.
 
+A 64-bit integer crosses IPC as a JSON number, but `ts-rs` types it `bigint`. Mark new `u64`/`i64` fields `#[ts(type = "number")]`. An `Option` field with `skip_serializing_if` is absent rather than `null` on the wire; mark it `#[ts(optional)]` so the binding says so.
+
+#### Payload fixtures
+
+`src-tauri/tests/ipc_fixtures.rs` serializes sample values of every type the frontend invokes or listens for, and every event payload, into `src/test/ipc-fixtures/fixtures.ts`. It fails when that file is stale; regenerate it with:
+
+```bash
+npm run generate:ipc-fixtures
+```
+
+The fixtures are checked three ways:
+
+- **Compile time:** each sample `satisfies Wire<T>` (the binding with `bigint` read as `number`), so `tsc` fails when a binding and the serializer disagree.
+- **`scripts/ipc-payloads.test.mjs`:** each sample has exactly the fields its binding declares; every type used in an `invoke<T>`/`listen<T>` has samples; no new field is typed `bigint`; every event the frontend listens for is emitted in Rust, has a payload fixture, and is listened for with that payload type.
+- **Mock backend:** the same test calls every mock command whose response is a binding type and drives every mock event, and compares each payload's shape (keys, JSON kinds, `null`s) with the samples.
+
+When you add a command or event that returns a new type, add samples for it, with every `Option` both present and absent.
+
 ### Errors and Logging
 
 - Use `thiserror` for structured service errors (`AppError`, `FsError` in `models/error.rs`).
@@ -226,14 +244,14 @@ Render errors with `formatError(err)`, which understands `AppError` (`{ kind, me
 | `build:started` | A build started, from the app or an agent: run ID, task, `origin`. |
 | `build:lines` | Batched output of one run (every 50 ms, up to 500 lines). |
 | `build:complete` | Build finished, failed, or was cancelled, with `origin` and `cancelledBy`. |
-| `device:list_changed` | Connected device serials changed. |
+| `device:list_changed` | Connected devices changed; payload is `DeviceListChangedEvent`. |
 | `logcat:entries` | Batched processed log entries (every 100 ms, up to 500). |
 | `logcat:cleared`, `logcat:reconnecting`, `logcat:stopped` | Logcat stream lifecycle. |
 | `mcp:sessions_changed` | MCP clients attached to the app changed; payload is the full `McpAttachedSession[]`. |
 | `settings:corrupted` | Settings file was unreadable and was reset. |
-| `monitor://stats` | App memory and log-folder size, every 5 s. |
+| `monitor://stats` | App memory and log-folder size (`MonitorStats`), every 5 s. |
 
-Name new events `{domain}:{event_name}`. Always call the event `unlisten()` in cleanup.
+Name new events `{domain}:{event_name}`. Export the payload type to `@/bindings` and add the event to `src-tauri/tests/ipc_fixtures.rs` (see [Payload fixtures](#payload-fixtures)). Always call the event `unlisten()` in cleanup.
 
 ---
 
@@ -253,6 +271,7 @@ Do not use bare `registerKeybinding()` for app commands unless the shortcut is i
 
 - Tests live next to the code they cover.
 - `src/test/setup.ts` mocks Tauri APIs with `vi.mock`. Override per test with `vi.mocked(...)`.
+- Stub every IPC call a test makes (`vi.mocked(invoke).mockResolvedValueOnce(...)` or `mockImplementation`). An unstubbed `invoke` rejects and fails the test, even when the code under test catches the rejection.
 - Use factories from `src/test/factories/` for IPC-shaped data (build, devices, logcat, settings).
 - Reset mutable stores in `beforeEach` with their reset helpers.
 - Test behavior and state transitions, not internal implementation details.
@@ -271,8 +290,13 @@ Visual regression tests live under `e2e/visual/` and run through `playwright.vis
 - Unit tests live in `#[cfg(test)]` modules near the service code.
 - Use `tempfile::TempDir` for filesystem fixtures. Never read or write the real `~/.keynobi`: unit tests are isolated automatically, and integration tests in `tests/` must call `common::isolate_data_dir()` before touching persisted state.
 - Command tests should focus on validation and boundary behavior.
+- IPC payload samples live in `tests/ipc_fixtures.rs`; see [Payload fixtures](#payload-fixtures).
 - End-to-end MCP behavior goes in `tests/mcp_headless.rs`. `headless::Sandbox` gives each server process its own `HOME` (so its data dir is a temp dir, created under `/tmp` to keep the socket path short), a fake SDK whose `adb` records its arguments, and a project whose `gradlew` runs the script you give it; `Sandbox::start()` launches `keynobi --mcp` and completes the MCP handshake. `headless::TestApp::listen` serves attach requests on the sandbox's socket from the test process, standing in for the app.
 - Security validators need negative tests: traversal, symlinks, option-shaped values, and shell metacharacters.
+
+### Packaged binary
+
+`scripts/mcp-smoke.mjs <path/to/keynobi>` runs `keynobi --mcp` against a throwaway project and `HOME`, completes `initialize`, `tools/list`, and `get_project_info` over stdio, and requires a standalone session that opened the project and a clean exit. CI runs it on the debug binary after the Rust tests; the release runs it on the binary inside each DMG before publishing. `scripts/mcp-smoke.test.mjs` covers its failure modes with fake servers, and also runs it on `target/debug/keynobi` when that exists.
 
 ### Verification Gate
 
@@ -284,7 +308,7 @@ Run the checks that match your change before handoff:
 | Design system, shared styling, tokens, broad UI refactor | Frontend checks + `npm run test:ds` |
 | User flows or IPC | `npm run test:e2e` |
 | Rust | `cd src-tauri && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --lib --tests` |
-| Rust models | `npm run check:bindings` |
+| Rust models | `npm run check:bindings && npm run generate:ipc-fixtures`, then commit both |
 
 `CONTRIBUTING.md` mirrors the full CI matrix.
 
@@ -321,3 +345,6 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Uncapped output reader.** `adb_manager::download_system_image` still reads `sdkmanager` output with `AsyncBufReadExt::lines()` instead of `CappedLines`.
 - **Store naming.** `layoutViewer.store.ts` uses camelCase instead of kebab-case.
 - **Typed factories are rarely used.** Only one test imports `src/test/factories/`; most tests build IPC data inline.
+- **64-bit integers typed `bigint`.** Eleven existing fields (listed in `scripts/ipc-payloads.test.mjs`) are `bigint` in the bindings but arrive as numbers, so frontend code and mock data treat numbers as bigints. Sending one is worse: `saveProjectAppInfo` passes a `BigInt` version code, which the IPC layer cannot serialize, so saving the version code fails before it reaches Rust.
+- **Event payload types are declared by hand.** `tests/ipc_fixtures.rs` names each event's payload type; nothing ties it to the value the emit site passes.
+- **Some mock checks are vacuous.** Mock commands that return empty lists (`get_build_history`, `get_build_errors`, `get_mcp_activity`, `get_logcat_context_entries` without an anchor, and the AVD and system-image lists) have no elements to compare, and the mock never emits `logcat:reconnecting`, `logcat:stopped`, `monitor://stats`, or `settings:corrupted`.

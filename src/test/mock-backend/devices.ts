@@ -1,4 +1,4 @@
-import type { Device, AvdInfo } from "@/bindings";
+import type { Device, AvdInfo, UiHierarchySnapshot } from "@/bindings";
 import { triggerEvent } from "./events";
 
 export const mockEmulator: Device = {
@@ -48,11 +48,36 @@ export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
     wipe_avd_data_cmd: () => undefined,
     list_available_system_images_cmd: () => [],
     download_system_image_cmd: () => undefined,
-    dump_ui_hierarchy: () => ({
-      nodes: [],
-      screenWidth: 1080,
-      screenHeight: 2400,
-      screenshotHash: null,
+    dump_ui_hierarchy: (): UiHierarchySnapshot => ({
+      capturedAt: new Date().toISOString(),
+      truncated: false,
+      warnings: [],
+      root: {
+        class: "android.widget.FrameLayout",
+        resourceId: "",
+        text: "",
+        contentDesc: "",
+        package: "com.example.mockapp",
+        bounds: "[0,0][1080,2400]",
+        clickable: false,
+        enabled: true,
+        focusable: false,
+        focused: false,
+        scrollable: false,
+        longClickable: false,
+        password: false,
+        checkable: false,
+        checked: false,
+        editable: false,
+        selected: false,
+        isComposeHeuristic: false,
+        children: [],
+      },
+      screenHash: "mock",
+      interactiveCount: 0,
+      foregroundActivity: null,
+      layoutContext: {},
+      commandLog: [],
     }),
     find_apk_path: () => "/mock/app-debug.apk",
     get_package_name_from_apk: () => "com.example.mockapp.debug",

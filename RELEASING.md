@@ -36,6 +36,7 @@ The release workflow will automatically:
 - Detect the version bump
 - Code-sign and notarize Apple Silicon + Intel DMGs in parallel (requires repository secrets below)
 - Verify each DMG before publishing: the DMG signature, and for the app inside it `codesign --verify --deep --strict`, `stapler validate`, and Gatekeeper (`spctl --assess`)
+- Smoke-test each DMG before publishing: mount it, run the bundled `keynobi --mcp` on a throwaway Gradle project with a throwaway `HOME`, and complete an MCP `initialize`, `tools/list`, and `get_project_info` exchange; the server must report a standalone session on that project and exit cleanly (see [MCP smoke test](#mcp-smoke-test))
 - Create git tag `v0.1.1` on the commit CI validated
 - Publish a GitHub Release with both DMGs and `SHA256SUMS.txt` attached
 
@@ -50,6 +51,19 @@ To check a downloaded DMG against the published checksums:
 ```bash
 shasum -a 256 -c SHA256SUMS.txt --ignore-missing
 ```
+
+---
+
+## MCP smoke test
+
+`scripts/mcp-smoke.mjs` checks that a built binary serves MCP. It needs no Android SDK, device, or signing, takes a few seconds, and never touches your real `~/.keynobi` or a running Keynobi app (it runs with its own `HOME`):
+
+```bash
+node scripts/mcp-smoke.mjs src-tauri/target/debug/keynobi              # after cargo build
+node scripts/mcp-smoke.mjs /Applications/Keynobi.app/Contents/MacOS/keynobi
+```
+
+CI runs it on the debug binary on every push. The release runs it on each DMG's binary (the Intel one under Rosetta) and stops before publishing if it fails.
 
 ---
 

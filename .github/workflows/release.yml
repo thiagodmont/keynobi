@@ -216,6 +216,30 @@ jobs:
           xcrun stapler validate "$APP"
           spctl --assess --type execute --verbose=4 "$APP"
 
+      - name: Smoke-test the bundled MCP server
+        # Runs the binary inside the DMG the way an AI client does, with a
+        # throwaway HOME and project, before anything is published.
+        timeout-minutes: 5
+        env:
+          DMG: ${{ steps.dmg.outputs.path }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          # The Intel binary runs under Rosetta on Apple Silicon runners.
+          if [ "$ARCH" = "intel" ] && ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            sudo softwareupdate --install-rosetta --agree-to-license
+          fi
+          MOUNT=$(mktemp -d)
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT" >/dev/null
+          trap 'hdiutil detach "$MOUNT" -quiet || hdiutil detach "$MOUNT" -force -quiet || true' EXIT
+          APP=$(find "$MOUNT" -maxdepth 1 -name '*.app' -print -quit)
+          BIN="$APP/Contents/MacOS/keynobi"
+          if [ -z "$APP" ] || [ ! -x "$BIN" ]; then
+            echo "::error::No executable Contents/MacOS/keynobi in an .app inside $DMG"
+            exit 1
+          fi
+          node scripts/mcp-smoke.mjs "$BIN"
+
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v7
         with:

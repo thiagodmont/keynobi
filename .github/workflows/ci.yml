@@ -77,6 +77,9 @@ jobs:
             (echo "ERROR: TypeScript bindings are stale. Run: npm run generate:bindings" && exit 1)
       - name: Rust tests
         run: cd src-tauri && cargo test --lib --tests
+      - name: MCP smoke test (debug binary)
+        # The check the release runs on each DMG's binary; the tests above built it.
+        run: node scripts/mcp-smoke.mjs src-tauri/target/debug/keynobi
       - name: Rust telemetry feature (Sentry compile-time paths)
         run: |
           cd src-tauri
