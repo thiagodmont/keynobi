@@ -7,7 +7,7 @@ import { overallHealth, healthSummary } from "@/stores/health.store";
 import { buildState, isBuilding, isDeploying, buildDurationMs } from "@/stores/build.store";
 import { VariantSelectorPill } from "@/components/build/VariantSelector";
 import { setActiveTab } from "@/stores/ui.store";
-import { mcpStatusSummary } from "@/stores/mcp.store";
+import { mcpStatusSummary, mcpVersionWarning } from "@/stores/mcp.store";
 import { openMcpPanel } from "@/components/mcp/McpPanel";
 import { Icon, StatusDot } from "@/components/ui";
 import { appMemoryBytes, logFolderBytes, rotationTriggered } from "@/stores/monitor.store";
@@ -299,10 +299,11 @@ function BuildStatusIndicator(): JSX.Element {
 export function McpStatusIndicator(): JSX.Element {
   const summary = () => mcpStatusSummary();
   const connected = () => summary().tone !== "idle";
+  const versionWarning = () => mcpVersionWarning();
 
   const tooltip = () =>
     connected()
-      ? `MCP: ${summary().description} — click for activity log`
+      ? `MCP: ${summary().description}${versionWarning() ? `. ${versionWarning()}` : ""} — click for activity log`
       : "MCP — click to set up or view activity log";
 
   return (
@@ -338,10 +339,10 @@ export function McpStatusIndicator(): JSX.Element {
       <StatusDot
         size="sm"
         status={
-          summary().tone === "attached"
-            ? "ok"
-            : summary().tone === "standalone"
-              ? "warning"
+          summary().tone === "standalone" || versionWarning()
+            ? "warning"
+            : summary().tone === "attached"
+              ? "ok"
               : "idle"
         }
       />

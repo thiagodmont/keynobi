@@ -16,6 +16,7 @@ import {
   type McpSetupStatus,
   type LogStats,
 } from "@/lib/tauri-api";
+import { Alert } from "@/components/ui";
 
 // ── Panel visibility signal (module-level, like SettingsPanel) ────────────────
 
@@ -493,60 +494,70 @@ function McpSetupSection(): JSX.Element {
         >
           {client.isConfigured
             ? "Configured"
-            : client.clientFound
-              ? `${cliName} found`
-              : `${cliName} not found`}
+            : client.configuredScope
+              ? `Registered for one folder only (${client.configuredScope} scope)`
+              : client.clientFound
+                ? `${cliName} found`
+                : `${cliName} not found`}
         </span>
       </div>
 
-      <div
-        style={{
-          display: "flex",
-          "align-items": "center",
-          "justify-content": "space-between",
-          "margin-bottom": "6px",
-        }}
-      >
-        <span style={{ "font-size": "11px", color: "var(--text-muted)" }}>Setup command:</span>
-        <button
-          onClick={() => handleCopy(clientId, client.setupCommand)}
-          style={{
-            background: "none",
-            border: "1px solid var(--border)",
-            color: copiedClient() === clientId ? "var(--success)" : "var(--text-muted)",
-            "border-radius": "3px",
-            padding: "1px 8px",
-            "font-size": "10px",
-            cursor: "pointer",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color =
-              copiedClient() === clientId ? "var(--success)" : "var(--text-primary)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color =
-              copiedClient() === clientId ? "var(--success)" : "var(--text-muted)";
-          }}
-        >
-          {copiedClient() === clientId ? "Copied" : "Copy"}
-        </button>
-      </div>
-      <code
-        style={{
-          display: "block",
-          "font-family": "var(--font-mono)",
-          "font-size": "11px",
-          background: "var(--bg-primary)",
-          border: "1px solid var(--border)",
-          "border-radius": "4px",
-          padding: "8px 10px",
-          color: "var(--text-primary)",
-          "overflow-x": "auto",
-          "white-space": "nowrap",
-        }}
-      >
-        {client.setupCommand}
-      </code>
+      <Show when={client.setupCommand}>
+        {(command) => (
+          <>
+            <div
+              style={{
+                display: "flex",
+                "align-items": "center",
+                "justify-content": "space-between",
+                "margin-bottom": "6px",
+              }}
+            >
+              <span style={{ "font-size": "11px", color: "var(--text-muted)" }}>
+                Setup command:
+              </span>
+              <button
+                onClick={() => handleCopy(clientId, command())}
+                style={{
+                  background: "none",
+                  border: "1px solid var(--border)",
+                  color: copiedClient() === clientId ? "var(--success)" : "var(--text-muted)",
+                  "border-radius": "3px",
+                  padding: "1px 8px",
+                  "font-size": "10px",
+                  cursor: "pointer",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.color =
+                    copiedClient() === clientId ? "var(--success)" : "var(--text-primary)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.color =
+                    copiedClient() === clientId ? "var(--success)" : "var(--text-muted)";
+                }}
+              >
+                {copiedClient() === clientId ? "Copied" : "Copy"}
+              </button>
+            </div>
+            <code
+              style={{
+                display: "block",
+                "font-family": "var(--font-mono)",
+                "font-size": "11px",
+                background: "var(--bg-primary)",
+                border: "1px solid var(--border)",
+                "border-radius": "4px",
+                padding: "8px 10px",
+                color: "var(--text-primary)",
+                "overflow-x": "auto",
+                "white-space": "nowrap",
+              }}
+            >
+              {command()}
+            </code>
+          </>
+        )}
+      </Show>
     </div>
   );
 
@@ -623,6 +634,15 @@ function McpSetupSection(): JSX.Element {
         </Show>
 
         <Show when={status()}>
+          <Show when={status()!.locationProblem}>
+            {(problem) => (
+              <div style={{ "margin-bottom": "10px" }}>
+                <Alert variant="warning" title="Move Keynobi to Applications first">
+                  {problem()}
+                </Alert>
+              </div>
+            )}
+          </Show>
           <div style={{ display: "flex", "flex-direction": "column", gap: "10px" }}>
             {clientCard("claude", "Claude Code", "claude", status()!.claude)}
             {clientCard("codex", "Codex", "codex", status()!.codex)}

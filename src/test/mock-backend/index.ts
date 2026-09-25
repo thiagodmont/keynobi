@@ -8,6 +8,9 @@ export { MockChannel } from "./channel";
 
 type Handler = (args: unknown) => unknown;
 
+/** The app version the mock backend reports for MCP sessions. */
+export const MOCK_APP_VERSION = "1.0.0-mock";
+
 const handlers: Map<string, Handler> = new Map(
   Object.entries({
     ...settingsHandlers(),
@@ -17,22 +20,31 @@ const handlers: Map<string, Handler> = new Map(
     ...logcatHandlers(),
     get_mcp_setup_status: () => ({
       exePath: "/mock/keynobi",
-      setupCommand: "/mock/keynobi --mcp",
+      setupCommand: "'/mock/keynobi' --mcp",
+      locationProblem: null,
       claude: {
         clientFound: false,
         isConfigured: false,
         configuredCommand: null,
-        setupCommand: 'claude mcp add --transport stdio keynobi -- "/mock/keynobi" --mcp',
+        configuredScope: null,
+        setupCommand:
+          "claude mcp add --scope user --transport stdio keynobi -- '/mock/keynobi' --mcp",
       },
       codex: {
         clientFound: false,
         isConfigured: false,
         configuredCommand: null,
-        setupCommand: 'codex mcp add keynobi -- "/mock/keynobi" --mcp',
+        configuredScope: null,
+        setupCommand: "codex mcp add keynobi -- '/mock/keynobi' --mcp",
       },
     }),
     get_mcp_activity: () => [],
-    get_mcp_server_status: () => ({ listening: true, attached: [], standalone: [] }),
+    get_mcp_server_status: () => ({
+      listening: true,
+      appVersion: MOCK_APP_VERSION,
+      attached: [],
+      standalone: [],
+    }),
     clear_mcp_activity: () => undefined,
   })
 );

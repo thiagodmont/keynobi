@@ -9,7 +9,7 @@ export type McpClientSetupStatus = {
  */
 clientFound: boolean, 
 /**
- * Whether `keynobi` is already registered in this MCP client.
+ * Whether `keynobi` is registered in this MCP client for every folder.
  */
 isConfigured: boolean, 
 /**
@@ -17,6 +17,13 @@ isConfigured: boolean,
  */
 configuredCommand: string | null, 
 /**
- * Full setup command the user can copy into a terminal.
+ * Scope of the registration found (`user`, `local`, `project`, …), when
+ * the client reports one. A `local` or `project` registration only works
+ * in one folder, so it does not count as configured.
  */
-setupCommand: string, };
+configuredScope: string | null, 
+/**
+ * Full setup command the user can copy into a terminal, or `None` when
+ * the app's location must not be registered (see `location_problem`).
+ */
+setupCommand: string | null, };

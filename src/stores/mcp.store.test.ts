@@ -7,6 +7,8 @@ import {
   loadMcpActivity,
   mcpState,
   mcpStatusSummary,
+  mcpVersionMismatches,
+  mcpVersionWarning,
   resetMcpListenersForTests,
   resetMcpStateForTests,
   type McpAttachedSession,
@@ -31,16 +33,18 @@ function attached(id: number, overrides: Partial<McpAttachedSession> = {}): McpA
     project: null,
     connectedAt: "2026-01-01T00:00:00Z",
     clientName: null,
+    version: "1.0.0",
     ...overrides,
   };
 }
 
-function standalone(pid: number): McpStandaloneServer {
+function standalone(pid: number, version: string | null = "1.0.0"): McpStandaloneServer {
   return {
     pid,
     startedAt: "2026-01-01T00:00:00Z",
     project: "/p/app",
     reason: "the Keynobi app is not running",
+    version,
   };
 }
 
@@ -109,7 +113,12 @@ describe("loadMcpActivity", () => {
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "get_mcp_activity") return [];
       if (cmd === "get_mcp_server_status") {
-        return { listening: true, attached: [attached(1)], standalone: [standalone(42)] };
+        return {
+          listening: true,
+          appVersion: "1.0.0",
+          attached: [attached(1)],
+          standalone: [standalone(42)],
+        };
       }
       throw new Error(`unexpected ${cmd}`);
     });
@@ -119,6 +128,42 @@ describe("loadMcpActivity", () => {
     expect(mcpState.listening).toBe(true);
     expect(mcpState.attached).toHaveLength(1);
     expect(mcpState.standalone[0].pid).toBe(42);
+    expect(mcpState.appVersion).toBe("1.0.0");
+  });
+});
+
+describe("mcpVersionMismatches", () => {
+  it("is empty until the app version is known", () => {
+    const state = {
+      appVersion: null,
+      attached: [attached(1, { version: "0.9.0" })],
+      standalone: [],
+    };
+    expect(mcpVersionMismatches(state)).toEqual([]);
+    expect(mcpVersionWarning(state)).toBeNull();
+  });
+
+  it("is empty when every server runs the app's version", () => {
+    const state = { appVersion: "1.0.0", attached: [attached(1)], standalone: [standalone(7)] };
+    expect(mcpVersionMismatches(state)).toEqual([]);
+    expect(mcpVersionWarning(state)).toBeNull();
+  });
+
+  it("lists attached and standalone servers on another version", () => {
+    const state = {
+      appVersion: "1.1.0",
+      attached: [attached(1, { clientName: "claude-code" }), attached(2, { version: "1.1.0" })],
+      standalone: [standalone(7, null)],
+    };
+
+    expect(mcpVersionMismatches(state)).toEqual([
+      { label: "claude-code", version: "1.0.0" },
+      { label: "Standalone server (PID 7)", version: null },
+    ]);
+    expect(mcpVersionWarning(state)).toBe(
+      "2 MCP servers run a different Keynobi version (1.0.0, older) than the app (1.1.0). " +
+        "Restart your AI client to load the app's version."
+    );
   });
 });
 

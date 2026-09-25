@@ -334,7 +334,7 @@ async fn serve_connection(
             return;
         }
     };
-    let Some(id) = registry.add(request.pid, pinned.as_deref()) else {
+    let Some(id) = registry.add(request.pid, pinned.as_deref(), &request.version) else {
         let _ = write_json_line(
             &mut write_half,
             &AttachReply::reject(format!(

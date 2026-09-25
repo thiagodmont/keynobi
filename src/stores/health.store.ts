@@ -229,6 +229,18 @@ export function healthChecks(): HealthCheck[] {
           : "Cannot create ~/.keynobi/ — check file permissions",
   });
 
+  // ── 6. App location ─────────────────────────────────────────────────────────
+  const locationProblem = report?.appLocationProblem;
+  checks.push({
+    id: "app-location",
+    category: "system",
+    name: "App Location",
+    status: report ? (locationProblem ? "warning" : "ok") : "loading",
+    detail: report
+      ? (locationProblem ?? "Keynobi runs from a permanent location — AI clients can start it")
+      : "Checking…",
+  });
+
   return checks;
 }
 

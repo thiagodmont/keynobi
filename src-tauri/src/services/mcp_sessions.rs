@@ -21,6 +21,9 @@ pub const MAX_STANDALONE_RECORDS: usize = 64;
 pub const SESSIONS_CHANGED_EVENT: &str = "mcp:sessions_changed";
 
 const SESSIONS_DIR: &str = "mcp-sessions";
+/// Version of this binary, recorded for every session so the app can tell
+/// which MCP servers still run an older release.
+pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Written by releases before session records existed.
 const LEGACY_PID_FILE: &str = "mcp-server.pid";
 
@@ -41,6 +44,8 @@ pub struct McpAttachedSession {
     pub connected_at: String,
     /// The MCP client's name, once it has initialized.
     pub client_name: Option<String>,
+    /// Version of the `keynobi --mcp` binary, from its attach request.
+    pub version: String,
 }
 
 /// A `keynobi --mcp` process running with its own state, not shared with the app.
@@ -55,6 +60,10 @@ pub struct McpStandaloneServer {
     pub project: Option<String>,
     /// Why it could not attach to the app.
     pub reason: String,
+    /// Version of the binary, or `None` for records written by releases
+    /// that did not record it (older than the app reading them).
+    #[serde(default)]
+    pub version: Option<String>,
     /// The binary that wrote the record; used to tell a reused PID apart.
     /// Kept out of IPC responses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -69,6 +78,9 @@ pub struct McpStandaloneServer {
 pub struct McpServerStatus {
     /// Whether the app is accepting MCP sessions on its socket.
     pub listening: bool,
+    /// Version of the app; a session whose version differs runs another
+    /// release and needs its AI client restarted.
+    pub app_version: String,
     pub attached: Vec<McpAttachedSession>,
     pub standalone: Vec<McpStandaloneServer>,
 }
@@ -151,8 +163,9 @@ impl McpSessionRegistry {
         }
     }
 
-    /// Register a session, or `None` when [`MAX_ATTACHED_SESSIONS`] are attached.
-    pub fn add(&self, pid: Option<u32>, project: Option<&Path>) -> Option<u32> {
+    /// Register a session of a `keynobi --mcp` binary at `version`, or `None`
+    /// when [`MAX_ATTACHED_SESSIONS`] are attached.
+    pub fn add(&self, pid: Option<u32>, project: Option<&Path>, version: &str) -> Option<u32> {
         let (id, snapshot) = {
             let mut inner = self.lock();
             if inner.sessions.len() >= MAX_ATTACHED_SESSIONS {
@@ -166,6 +179,7 @@ impl McpSessionRegistry {
                 project: project.map(|p| p.to_string_lossy().into_owned()),
                 connected_at: chrono::Utc::now().to_rfc3339(),
                 client_name: None,
+                version: version.to_string(),
             });
             (id, inner.sessions.clone())
         };
@@ -257,6 +271,7 @@ pub fn write_standalone_record(project: Option<&Path>, reason: &str) {
         started_at: chrono::Utc::now().to_rfc3339(),
         project: project.map(|p| p.to_string_lossy().into_owned()),
         reason: reason.to_string(),
+        version: Some(APP_VERSION.to_string()),
         exe: std::env::current_exe()
             .ok()
             .map(|p| p.to_string_lossy().into_owned()),
@@ -386,6 +401,7 @@ mod tests {
             started_at: format!("2026-01-01T00:00:{:02}Z", pid % 60),
             project: Some("/p".into()),
             reason: "the Keynobi app is not running".into(),
+            version: Some("0.1.0".into()),
             exe: exe.map(str::to_string),
         }
     }
@@ -406,6 +422,33 @@ mod tests {
             "dead record kept"
         );
         assert!(!sessions_dir_in(dir.path()).join("300.json").exists());
+    }
+
+    #[test]
+    fn a_record_without_a_version_reads_as_an_older_release() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(sessions_dir_in(dir.path())).unwrap();
+        std::fs::write(
+            record_path_in(dir.path(), 100),
+            r#"{"pid":100,"startedAt":"2026-01-01T00:00:00Z","project":null,"reason":"r"}"#,
+        )
+        .unwrap();
+
+        let listed = list_standalone_in(dir.path(), |_| true);
+
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].version, None);
+    }
+
+    #[test]
+    fn a_standalone_record_carries_the_binary_version() {
+        write_standalone_record(None, "the Keynobi app is not running");
+        let path = record_path_in(&settings_manager::data_dir(), std::process::id());
+        let written = std::fs::read(&path).unwrap();
+        remove_standalone_record();
+
+        let server: McpStandaloneServer = serde_json::from_slice(&written).unwrap();
+        assert_eq!(server.version.as_deref(), Some(APP_VERSION));
     }
 
     #[test]
@@ -439,8 +482,10 @@ mod tests {
             move |sessions| seen.lock().unwrap().push(sessions.len())
         });
 
-        let a = registry.add(Some(1), None).unwrap();
-        let b = registry.add(Some(2), Some(Path::new("/p"))).unwrap();
+        let a = registry.add(Some(1), None, "0.1.0").unwrap();
+        let b = registry
+            .add(Some(2), Some(Path::new("/p")), "0.2.0")
+            .unwrap();
         registry.set_client_name(b, "client");
         drop(SessionGuard::new(registry.clone(), a));
 
@@ -449,6 +494,7 @@ mod tests {
         assert_eq!(sessions[0].id, b);
         assert_eq!(sessions[0].project.as_deref(), Some("/p"));
         assert_eq!(sessions[0].client_name.as_deref(), Some("client"));
+        assert_eq!(sessions[0].version, "0.2.0");
         assert_eq!(*seen.lock().unwrap(), vec![1, 2, 2, 1]);
     }
 
@@ -456,8 +502,8 @@ mod tests {
     fn registry_refuses_sessions_past_the_cap() {
         let registry = McpSessionRegistry::new();
         for _ in 0..MAX_ATTACHED_SESSIONS {
-            assert!(registry.add(None, None).is_some());
+            assert!(registry.add(None, None, APP_VERSION).is_some());
         }
-        assert_eq!(registry.add(None, None), None);
+        assert_eq!(registry.add(None, None, APP_VERSION), None);
     }
 }

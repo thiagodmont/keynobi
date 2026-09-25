@@ -60,4 +60,9 @@ lspSystemDirOk: boolean,
 /**
  * Whether the `studio` command is available on PATH (Android Studio CLI).
  */
-studioCommandFound: boolean, };
+studioCommandFound: boolean, 
+/**
+ * Why the app runs from a temporary location (a disk image or App
+ * Translocation) that AI clients cannot rely on, or `None`.
+ */
+appLocationProblem: string | null, };

@@ -83,6 +83,7 @@ export function settingsHandlers(): Record<string, (args: unknown) => unknown> {
       gradleWrapperFound: true,
       lspSystemDirOk: true,
       studioCommandFound: false,
+      appLocationProblem: null,
     }),
     send_native_sentry_test_event: () => undefined,
   };

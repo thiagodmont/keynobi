@@ -652,6 +652,7 @@ fn a_standalone_server_records_itself_while_it_runs() {
     let record: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(records.join(&names[0])).unwrap()).unwrap();
     assert_eq!(record["reason"], NOT_RUNNING);
+    assert_eq!(record["version"], env!("CARGO_PKG_VERSION"));
     drop(client);
 }
 
@@ -679,6 +680,11 @@ fn a_server_attaches_to_the_app_that_has_its_project_open() {
     assert_eq!(
         app.registry.sessions()[0].client_name.as_deref(),
         Some("keynobi-headless-test")
+    );
+    // The app learns the attached binary's version from the handshake.
+    assert_eq!(
+        app.registry.sessions()[0].version,
+        env!("CARGO_PKG_VERSION")
     );
 }
 

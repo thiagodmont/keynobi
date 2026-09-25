@@ -36,6 +36,9 @@ pub struct SystemHealthReport {
     pub lsp_system_dir_ok: bool,
     /// Whether the `studio` command is available on PATH (Android Studio CLI).
     pub studio_command_found: bool,
+    /// Why the app runs from a temporary location (a disk image or App
+    /// Translocation) that AI clients cannot rely on, or `None`.
+    pub app_location_problem: Option<String>,
 }
 
 /// Where the JDK used for Gradle builds was found.
@@ -75,6 +78,7 @@ mod tests {
             gradle_wrapper_found: true,
             lsp_system_dir_ok: true,
             studio_command_found: false,
+            app_location_problem: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("javaExecutableFound"));
