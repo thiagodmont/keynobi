@@ -109,6 +109,7 @@ src/components/logcat/logcat-row-selection.ts
   s_1e114e823b9048::t_5dbf06d96d6b45 17
 src/components/projects/ProjectInfoEditor.test.tsx
   s_1e114e823b9048::t_8ab34be25107b8 1-14,20,24-28,30-32,34-43,64-174
+  s_1e114e823b9048::t_2300e92635e53c 15-19,21-23,29,33,44-63,175
 src/stores/logcat.store.test.ts
   s_1e114e823b9048::t_5dbf06d96d6b45 7,36,52,67
 references/CODE_PATTERN.md
