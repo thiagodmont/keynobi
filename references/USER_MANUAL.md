@@ -374,6 +374,24 @@ To require the app, add `--attach-only` after `--mcp`: the MCP server then exits
 
 AI clients can change your device. `restart_app` keeps the app's data unless the client explicitly passes `clear_data: true` for a specific device. Stopping or restarting an app and granting or revoking its permissions work only on your project's app (its application ID and variants such as `.debug`) unless the client passes `allow_foreign_package: true`. Keynobi refuses to turn off Wi-Fi or turn on airplane mode on a device connected over wireless debugging, because that would disconnect it. Review what your AI client asks to run.
 
+### Driving the device UI
+
+AI clients read the screen through UI Automator, the same accessibility tree the Layout tab shows, and act on it with `adb shell input`.
+
+| Tools | What they do |
+|-------|--------------|
+| `get_ui_hierarchy`, `find_ui_elements`, `list_clickable_elements`, `find_ui_parent` | Read the screen: the whole tree, the elements matching text, content description, resource ID, class, or package, the clickable elements, or an element's parent. Each element comes with its tree path, bounds, and center. |
+| `ui_tap_element`, `ui_tap`, `ui_swipe`, `ui_scroll_until_element`, `send_ui_key` | Tap an element or a point, swipe or long-press, scroll until an element appears, and press Back, Home, Enter, the arrow keys, and a few other keys. |
+| `ui_fill_input`, `ui_type_text`, `ui_type_text_unicode`, `clear_focused_input`, `hide_soft_keyboard` | Type. `ui_fill_input` taps a field, clears it, and types; `ui_type_text` types into the focused field. Both type ASCII text, up to 1,000 bytes. `ui_type_text_unicode` pastes any text, including emoji, through the device clipboard. |
+| `wait_for_element`, `ui_wait_for_idle`, `ui_assert_element`, `compare_ui_state` | Wait for an element to appear (default 15 s, at most 30 s) or for the screen to stop changing (default 5 s, at most 30 s), check that an element exists and is enabled, checked, and so on, or tell whether the screen changed. |
+| `screenshot` | Take a PNG of the screen. |
+
+- **Tap elements, not coordinates.** `find_ui_elements` and `list_clickable_elements` return each element's tree path (child indexes from the root, such as `0.1.2`; the Layout tab uses the same paths unless **Hide boilerplate** is on). `ui_tap_element` and `ui_fill_input` read the screen again and tap the center of the element at that path, and refuse one that is missing or disabled. Tree paths describe the current screen, not a fixed element: after the screen changes, the client finds the element again. Clients can pass the `screenHash` they read as `expectScreenHash` so a tap or typing fails, instead of landing somewhere else, when the screen has changed since.
+- **Screenshots are scaled down.** A screenshot's long edge is at most 1,280 pixels unless the client asks for another `max_dimension` (256 to 8,192) or `full_size: true`. The result gives the `scale` from image pixels to device pixels: a client tapping a point it saw multiplies by it first, or better, taps the element with `ui_tap_element`.
+- **One screen read per device at a time.** A device serves one UI Automator client at a time, so Keynobi reads a device's screen one request after another; different devices are read in parallel. When the client is attached, the Layout tab's captures take turns with it too. A read fails at once with a "busy" error while a connected test run started from Keynobi uses the device, or while another UI Automator client, such as an Android Studio test run, holds it. Try again when it finishes.
+- **Deadlines.** A screen read gives up after 1 minute in total, counting the wait for the device and every retry, and each input command after 30 seconds. Tools that wait or scroll read the screen repeatedly, and each read has its own minute.
+- **Any app on screen.** These tools act on whatever is on screen; they are not limited to your project's app. Only the tools that stop or restart an app or change its permissions are (see above).
+
 Exact tools, prompts, and resources are discoverable from the MCP client.
 
 ---
@@ -483,6 +501,7 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 - Confirm the device is online and unlocked.
 - Open the screen you want to inspect, then click **Refresh**.
 - Some secure screens or OS states may return partial or empty dumps.
+- "Busy" means a connected test run or another UI Automator client, such as an Android Studio test run, is using the device. Capture again when it finishes.
 
 ### MCP cannot connect
 

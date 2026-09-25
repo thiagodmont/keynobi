@@ -24,7 +24,7 @@ Keynobi sits next to Android Studio (or any editor) and handles everything aroun
 
 ## How the AI Connection Works
 
-You register Keynobi with your agent once. The agent then starts its own background copy of Keynobi for your project; the Keynobi window does not need to be open. It uses the project you pass with `--project`; otherwise the last project you opened in Keynobi, or the folder the agent runs in. If you switch projects in Keynobi, restart the agent's Keynobi connection to follow.
+You register Keynobi with your agent once. The agent then starts a small Keynobi process in the background for the project you pass with `--project`, or else the Android project it runs in. When Keynobi is open on that project, the agent works through the app: its builds appear in the Build tab, and it shares the app's devices and logcat. Otherwise it runs on its own, falling back to the last project you opened in Keynobi, and the Keynobi window does not need to be open.
 
 ## Who It's For
 

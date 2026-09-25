@@ -157,6 +157,8 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 | `grant_runtime_permission` | W | `package`, `permission`, `allow_foreign_package?`. [Package-scoped](#package-scope). |
 | `revoke_runtime_permission` | D | `package`, `permission`, `allow_foreign_package?`. [Package-scoped](#package-scope). Can kill the app process. |
 
+A tree path (`treePath`†) is the dot-separated child indexes from the root (`0.1.2`), the indexing the Layout tab uses. The reading tools return one per element, and `ui_tap_element`, `ui_fill_input`, and `find_ui_parent` resolve it against a new capture on every call, so it names a position on the current screen, not a stable element. `ui_tap_element` and `ui_fill_input` tap the node's center and refuse a missing or disabled node (`ui_fill_input` also one that is not editable). The `ui_tap_element`, `ui_fill_input`, and `screenshot` descriptions steer models to tree paths over raw coordinates.
+
 Every `adb` input command has a 30 s timeout. A UI hierarchy capture (every tool above that reads the screen, and `expectScreenHash` checks) gives each dump attempt 25 s and the whole capture 60 s (`CAPTURE_TOTAL_DEADLINE`), counting retries and the wait for the device; the error says the total deadline was hit. Polling tools (`wait_for_element`, `ui_wait_for_idle`, `ui_scroll_until_element`) capture repeatedly, and each capture has its own 60 s.
 
 A device serves one UI Automator client at a time, so captures on one device run one after another (`services/ui_automator_lock.rs`, shared with the GUI's Layout tab when both run in one process); captures on different devices run in parallel. While a connected test run (`run_tests` with `connected`, or any `connected…` Gradle task) started by the same process is running, captures on its devices (every device, or `ANDROID_SERIAL`) fail at once with "busy: instrumentation running". When the device reports another UI Automator client ("already registered", for example a test run from an IDE), the capture fails at once with a busy error instead of retrying.
@@ -169,7 +171,7 @@ Tools that stop an app, wipe its data, or change its permissions (`stop_app`, `r
 - each of those followed by a combination of the parsed `applicationIdSuffix` values (flavor and build type, each used once), so `com.example.app.demo.debug` matches but `com.example.apple` does not,
 - the exact `applicationId` of every variant in the build outputs (`output-metadata.json`), which covers suffixes set outside the build file.
 
-A package outside the scope, or any package when no application id can be found, is rejected with `invalid_params` before any `adb` call. The message names the project's ids and tells the model to pass `allow_foreign_package: true` only when the user asked for that package. Read-only tools and `launch_app`, `open_deep_link`, and `open_app_settings` are not scoped. The check is `utils/validation.rs::check_agent_package_scope`; the scope comes from `build_inspector::project_package_scope`.
+A package outside the scope, or any package when no application id can be found, is rejected with `invalid_params` before any `adb` call. The message names the project's ids and tells the model to pass `allow_foreign_package: true` only when the user asked for that package. Read-only tools, the UI automation tools (they act on whatever is on screen), and `launch_app`, `open_deep_link`, and `open_app_settings` are not scoped. The check is `utils/validation.rs::check_agent_package_scope`; the scope comes from `build_inspector::project_package_scope`.
 
 ### Project and Health
 
@@ -223,14 +225,14 @@ Tool errors are for the model to read and recover from, so make the message acti
 ### Threats
 
 - **Prompt-injected agents.** Log lines, UI text, web pages, and project files the agent has read can steer it. Treat every tool argument as hostile.
-- **Device shell re-parsing.** `adb shell` joins its arguments and the device's `/system/bin/sh` parses them again.
+- **Device shell re-parsing.** `adb shell` joins its arguments with spaces and the device's `/system/bin/sh` parses the line again, so an unquoted `;`, `&`, `|`, `$(…)`, quote, or glob in an argument runs on the device.
 - **Gradle is code execution.** Any Gradle task runs the project's build scripts with the user's privileges. A freshly cloned repository controls its `gradlew`, its build scripts, and paths in its `gradle.properties` and `local.properties`.
 - **Destructive device actions.** Uninstalling, clearing data, cutting the network, or stopping emulators can destroy user work. On a personal phone, an agent can also target other apps (for example `com.google.android.gms`) or drop its own wireless-ADB connection.
 
 ### Rules
 
 1. Validate every string with the shared validators before acting (see `DOMAIN_PATTERNS.md` § MCP → Validation).
-2. Spawn host processes with argv only. Every non-literal argument sent through `adb shell` is quoted for the device shell with `utils::device_shell::quote_device_shell_arg`.
+2. Spawn host processes with an argument vector, never a host shell string. `adb shell` is the exception that cannot avoid a shell: the device shell parses every call, so the guarantee is quoting. Every `adb shell` argument that is not a hard-coded literal goes through `utils::device_shell::quote_device_shell_arg`, which the device shell reads back as exactly that one argument. `ui_automation::run_adb_shell` and `app_inspector::adb_cmd` quote every argument after `shell`; `adb_manager` and `device_inspector` quote each package or component they pass; the other calls (`getprop`, `pm list packages`, `dumpsys`, `wm`, `ps`, `uiautomator dump`) and every `adb exec-out` pass only literals. One call runs a shell snippet on purpose: `ui_type_text_unicode` sends `sh -c` with `am broadcast … || content insert …`, the text single-quoted inside the snippet (`'` written as `'"'"'`) and the snippet quoted as one argument. Validation of serials, packages, permissions, coordinates, and key names is defence in depth on top of quoting.
 3. Restrict filesystem access. MCP exposes no general path parameters. APK installs are limited to `.apk` files under the project's build outputs, and resources read fixed project files. Both go through the shared validators in `utils/path.rs`, which resolve symlinks and require the result inside the project, and both use the canonical path the validator returns.
 4. Make destructive behavior explicit and opt-in, and declare it with tool annotations (`destructiveHint`, `readOnlyHint`, `openWorldHint`) so clients can ask the user for confirmation.
 5. Keep responses bounded (see the limits in the tool tables).
