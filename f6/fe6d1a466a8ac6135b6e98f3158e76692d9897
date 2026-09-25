@@ -1,0 +1,27 @@
+src/components/logcat/LogcatPanel.click-filter.test.tsx
+  s_1e114e823b9048::t_3b3e4dbf998fb9 125
+src/test/mock-backend/logcat.ts
+  s_1e114e823b9048::t_3b3e4dbf998fb9 210
+src/components/logcat/LogcatPanel.clear-race.test.tsx
+  s_1e114e823b9048::t_3b3e4dbf998fb9 75
+src-tauri/src/models/logcat.rs
+  s_1e114e823b9048::t_3b3e4dbf998fb9 154
+src/bindings/LogStats.ts
+  s_1e114e823b9048::t_3b3e4dbf998fb9 32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "f6fe6d1a466a8ac6135b6e98f3158e76692d9897",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
