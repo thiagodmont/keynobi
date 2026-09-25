@@ -456,6 +456,10 @@ mod tests {
         )
         .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // Registration checks give the client a few seconds.
+        crate::utils::process::test_support::run_once(&script);
+        let _ = std::fs::remove_file(dir.join("cwd.txt"));
+        let _ = std::fs::remove_file(dir.join("args.txt"));
         script
     }
 

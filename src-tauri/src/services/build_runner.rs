@@ -3231,6 +3231,11 @@ mod tests {
         )
         .unwrap();
         std::fs::set_permissions(&gradlew, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // Run it once, released, so the first run of the new file is not
+        // what the tests below wait for.
+        std::fs::write(release, "").unwrap();
+        crate::utils::process::test_support::run_once(&gradlew);
+        std::fs::remove_file(release).unwrap();
         gradlew
     }
 

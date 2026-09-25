@@ -568,6 +568,9 @@ mod tests {
         )
         .unwrap();
         std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // So the first poll does not wait on the first-run check of a new file.
+        crate::utils::process::test_support::run_once(&adb);
+        let _ = std::fs::remove_file(dir.join("calls"));
         adb
     }
 
@@ -579,8 +582,12 @@ mod tests {
             .collect()
     }
 
+    /// Bounds a wait that only fails on a hang. Polls spawn the fake `adb`,
+    /// which a loaded machine can slow down by seconds.
+    const HANG_GUARD: Duration = Duration::from_secs(30);
+
     async fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let deadline = std::time::Instant::now() + HANG_GUARD;
         while !done() {
             assert!(std::time::Instant::now() < deadline, "timed out: {what}");
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -597,7 +604,9 @@ mod tests {
         let adb = fake_adb(dir.path(), "adb");
         let state = polling_state();
         let resolver = move || adb.clone();
-        let interval = Duration::from_millis(50);
+        // Longer than the test: a loop only polls when woken, so no poll is
+        // in flight when it is stopped.
+        let interval = Duration::from_secs(60);
 
         let first = start_polling_loop(&state, interval, resolver.clone(), |_| {})
             .await
@@ -608,6 +617,8 @@ mod tests {
                 .is_none(),
             "a start while polling must not spawn a second loop"
         );
+        // Let the first loop reach its sleep.
+        tokio::time::sleep(Duration::from_millis(50)).await;
 
         // Restart inside one interval: the old loop wakes to a polling flag
         // that is true again, but for a newer generation.
@@ -616,18 +627,19 @@ mod tests {
             .await
             .expect("restart spawns a loop");
 
-        tokio::time::timeout(Duration::from_secs(2), first)
+        tokio::time::timeout(HANG_GUARD, first)
             .await
             .expect("the stale loop keeps running after a restart")
             .unwrap();
-        tokio::time::sleep(interval * 4).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         assert!(!second.is_finished(), "the current loop must keep running");
 
         state.lock().await.stop_polling();
-        tokio::time::timeout(Duration::from_secs(2), second)
+        tokio::time::timeout(HANG_GUARD, second)
             .await
             .expect("the loop outlived its stop")
             .unwrap();
+        assert!(calls(dir.path()).is_empty(), "no loop polled");
     }
 
     #[tokio::test]
@@ -641,7 +653,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
 
         state.lock().await.stop_polling();
-        tokio::time::timeout(Duration::from_secs(2), task)
+        tokio::time::timeout(HANG_GUARD, task)
             .await
             .expect("stop waited for the 60 s interval")
             .unwrap();
@@ -670,7 +682,7 @@ mod tests {
         .await
         .unwrap();
 
-        let event = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+        let event = tokio::time::timeout(HANG_GUARD, rx.recv())
             .await
             .expect("no device:list_changed")
             .unwrap();

@@ -49,6 +49,9 @@ pub(crate) mod test_support {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
+        // Calls through it have adb deadlines.
+        crate::utils::process::test_support::run_once(&adb);
+        let _ = std::fs::remove_file(&record);
         (adb, record)
     }
 
