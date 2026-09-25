@@ -7,6 +7,7 @@ pub mod crash_inspector;
 pub mod device_inspector;
 pub mod fs_manager;
 pub mod health_inspector;
+pub mod jdk;
 pub mod log_pipeline;
 pub mod log_store;
 pub mod log_stream;

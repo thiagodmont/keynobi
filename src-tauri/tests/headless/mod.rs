@@ -38,9 +38,13 @@ impl Sandbox {
             "rootProject.name = \"sandbox\"\n",
         )
         .unwrap();
+        // A configured JDK stops the server from searching this machine's
+        // Android Studio and installed JDKs.
+        let jdk = root.join("jdk");
+        write_fake_jdk(&jdk, "17.0.9");
         std::fs::write(
             home.join(".keynobi").join("settings.json"),
-            json!({ "android": { "sdkPath": sdk } }).to_string(),
+            json!({ "android": { "sdkPath": sdk }, "java": { "home": jdk } }).to_string(),
         )
         .unwrap();
 
@@ -89,6 +93,7 @@ impl Sandbox {
             .args(["--mcp", "--project"])
             .arg(&self.project)
             .env("HOME", &self.home)
+            .env_remove("GRADLE_USER_HOME")
             .env_remove("RUST_LOG")
             .current_dir(&self.project)
             .stdin(Stdio::piped())
@@ -120,7 +125,24 @@ impl Sandbox {
     }
 }
 
+/// A JDK home whose `java -version` reports `version`.
+pub fn write_fake_jdk(home: &Path, version: &str) {
+    std::fs::create_dir_all(home.join("bin")).unwrap();
+    std::fs::write(
+        home.join("release"),
+        format!("JAVA_VERSION=\"{version}\"\n"),
+    )
+    .unwrap();
+    write_script(
+        &home.join("bin").join("java"),
+        &format!("echo 'openjdk version \"{version}\" 2025-07-15' >&2"),
+    );
+}
+
 fn write_script(path: &Path, body: &str) {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).unwrap();
+    }
     std::fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();

@@ -272,6 +272,19 @@ MCP lifecycle, tool, prompt, and resource activity is appended to `~/.keynobi/mc
 - Every settings struct uses `#[serde(default)]`; numeric settings with safe ranges are clamped on load (for example the logcat ring buffer).
 - The frontend debounces writes (500 ms). On shutdown the backend waits for a flush acknowledgement from the frontend before exiting.
 
+### JDK Resolution and Health
+
+`services/jdk.rs` is the only place that decides which JDK Gradle uses. `build_env_vars` (GUI builds, MCP builds, variant discovery), the `sdkmanager` calls, GUI Health (`run_health_checks`), and MCP `run_health_check`/`get_project_info` all call it, so the GUI and a headless MCP process pick the same JDK even when they inherit different environments. Resolution order:
+
+1. `org.gradle.java.home` in `$GRADLE_USER_HOME/gradle.properties` (default `~/.gradle`), then in the Gradle root's `gradle.properties`. This matches Gradle, where the user home file overrides the project file and the daemon runs on this JDK whatever `JAVA_HOME` says.
+2. The `java.home` setting (`~/` expanded).
+3. Android Studio's bundled runtime: `Android Studio.app`, then `Android Studio Preview.app`, in `/Applications` and `~/Applications`. A runtime whose `release` file reports a version below 17 is skipped.
+4. The newest JDK 17 or later under `/Library/Java/JavaVirtualMachines/*/Contents/Home`, by `JAVA_VERSION` in its `release` file (`1.8.0_392` is 8).
+
+`GRADLE_USER_HOME` is read from the process environment because the Gradle child inherits it, so a GUI and an MCP process with different values can still differ, exactly as Gradle would. Sources 1 and 2 are used even when the path is broken, so Health shows the misconfiguration. When nothing resolves, `JAVA_HOME` is not set for Gradle and Health probes `java` on `PATH`.
+
+The probe runs `<home>/bin/java -version` through `output_with_timeout` (`TOOL_PROBE_TIMEOUT`). Java counts as found only when it exits 0 **and** prints a version, so the macOS `/usr/bin/java` stub ("Unable to locate a Java Runtime", non-zero exit) is reported missing. Missing Java is an error; a JDK below 17 is a warning (GUI) or a `warning` field (MCP). Search roots are injected through `JdkSearchRoots`; under `cfg(test)`, `JdkSearchRoots::system()` searches nothing.
+
 ## Projects
 
 - Saved projects and `last_active_project` live in settings; `MAX_RECENT_PROJECTS` (20) caps the list.
@@ -302,3 +315,4 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **APK lookup module.** `find_output_apk` looks only under `app/build/outputs/apk`, so projects whose application module is not named `app` cannot deploy.
 - **Project App Info.** When the app module is not named `app`, the root build file is edited and success is reported even if nothing changed.
 - **Dead code.** `DevicePanel.tsx` (panel/popover modes) is not imported anywhere.
+- **JDK resolution scope.** `-Dorg.gradle.java.home` in `GRADLE_OPTS` or `JAVA_OPTS` and Gradle toolchains are not considered. The Settings **Auto-detect** button (`detect_java_path`) still prefers the process `JAVA_HOME` and a login shell's `JAVA_HOME`, which may be older than 17.

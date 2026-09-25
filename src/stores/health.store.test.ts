@@ -18,15 +18,17 @@ function report(over: Partial<SystemHealthReport> = {}): SystemHealthReport {
     adbFound: true,
     adbVersion: "1.0.41",
     emulatorFound: true,
-    javaFound: true,
-    javaVersion: "17.0.9",
-    javaBinUsed: "/usr/bin/java",
+    javaExecutableFound: true,
+    javaVersion: 'openjdk version "17.0.9"',
+    javaBinUsed: "/jdk/bin/java",
+    javaMajorVersion: 17,
+    javaHome: "/jdk",
+    javaSource: "installedJdk",
     studioCommandFound: true,
     gradleWrapperFound: true,
-    appDirWritable: true,
-    diskFreeBytes: 100_000_000_000n,
+    lspSystemDirOk: true,
     ...over,
-  } as SystemHealthReport;
+  };
 }
 
 function checkById(id: string) {
@@ -69,6 +71,56 @@ describe("health.store", () => {
   it("warns on missing ADB when an SDK path is configured", () => {
     setSystemReport(report({ adbFound: false }));
     expect(checkById("adb")?.status).toBe("warning");
+  });
+
+  it("shows the chosen JDK, its version, and where it came from", () => {
+    setSystemReport(
+      report({
+        javaExecutableFound: true,
+        javaVersion: 'openjdk version "21.0.8" 2025-07-15',
+        javaMajorVersion: 21,
+        javaHome: "/Applications/Android Studio.app/Contents/jbr/Contents/Home",
+        javaSource: "androidStudio",
+      })
+    );
+    const check = checkById("java");
+    expect(check?.status).toBe("ok");
+    expect(check?.detail).toContain('"21.0.8"');
+    expect(check?.detail).toContain("Android Studio's bundled JDK");
+    expect(check?.detail).toContain("/Applications/Android Studio.app/Contents/jbr/Contents/Home");
+    expect(check?.fix).toBeUndefined();
+  });
+
+  it("reports Java missing as an error", () => {
+    setSystemReport(
+      report({
+        javaExecutableFound: false,
+        javaVersion: null,
+        javaMajorVersion: null,
+        javaHome: null,
+        javaSource: null,
+        javaBinUsed: "java",
+      })
+    );
+    const check = checkById("java");
+    expect(check?.status).toBe("error");
+    expect(check?.detail).toContain("Not found");
+    expect(check?.fix).toBeDefined();
+  });
+
+  it("warns when the JDK is older than 17", () => {
+    setSystemReport(
+      report({
+        javaExecutableFound: true,
+        javaVersion: 'openjdk version "11.0.21"',
+        javaMajorVersion: 11,
+        javaHome: "/jdk-11",
+        javaSource: "settings",
+      })
+    );
+    const check = checkById("java");
+    expect(check?.status).toBe("warning");
+    expect(check?.detail).toContain("JDK 17 or newer");
   });
 
   it("stores the report and marks the run finished", async () => {

@@ -13,8 +13,19 @@
 import { createStore } from "solid-js/store";
 import { settingsState } from "@/stores/settings.store";
 import { runHealthChecks } from "@/lib/tauri-api";
-import type { SystemHealthReport } from "@/bindings";
+import type { JdkSource, SystemHealthReport } from "@/bindings";
 import { showToast } from "@/components/ui";
+
+/** The oldest JDK the Android Gradle Plugin 8 runs on. */
+const MIN_GRADLE_JDK_MAJOR = 17;
+
+const JDK_SOURCE_LABELS: Record<JdkSource, string> = {
+  userGradleProperties: "org.gradle.java.home in the Gradle user home gradle.properties",
+  projectGradleProperties: "org.gradle.java.home in the project gradle.properties",
+  settings: "Settings",
+  androidStudio: "Android Studio's bundled JDK",
+  installedJdk: "Newest installed JDK",
+};
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -169,25 +180,36 @@ export function healthChecks(): HealthCheck[] {
   });
 
   // ── 4. Java / JDK ──────────────────────────────────────────────────────────
-  const javaHome = settingsState.java.home;
   const javaFound = report?.javaExecutableFound;
-  const javaVersion = report?.javaVersion;
+  const javaMajor = report?.javaMajorVersion ?? null;
+  const javaTooOld = javaFound === true && javaMajor !== null && javaMajor < MIN_GRADLE_JDK_MAJOR;
+  const javaSource = report?.javaSource ? JDK_SOURCE_LABELS[report.javaSource] : null;
+  const javaWhere = report?.javaHome
+    ? `${javaSource}: ${report.javaHome}`
+    : `java on PATH (${report?.javaBinUsed ?? "java"})`;
   checks.push({
     id: "java",
     category: "environment",
     name: "Java / JDK",
     status:
-      javaFound === false ? "error" : javaFound === true ? "ok" : !javaHome ? "warning" : "loading",
+      javaFound === false
+        ? "error"
+        : javaFound === true
+          ? javaTooOld
+            ? "warning"
+            : "ok"
+          : "loading",
     detail:
       javaFound === true
-        ? (javaVersion ?? `Found at ${report?.javaBinUsed}`)
+        ? `${report?.javaVersion ?? `Java ${javaMajor}`} — ${javaWhere}` +
+          (javaTooOld
+            ? ` — Android Gradle Plugin 8+ needs JDK ${MIN_GRADLE_JDK_MAJOR} or newer`
+            : "")
         : javaFound === false
-          ? `Not found at: ${report?.javaBinUsed ?? "java"} — Gradle compilation may fail`
-          : !javaHome
-            ? "Not configured — Gradle may use an incompatible JVM"
-            : "Checking…",
+          ? `Not found — ${javaWhere}. Gradle compilation may fail`
+          : "Checking…",
     fix:
-      javaFound === false || !javaHome
+      javaFound === false || javaTooOld
         ? { label: "Open Settings", action: openSettingsAction }
         : undefined,
   });

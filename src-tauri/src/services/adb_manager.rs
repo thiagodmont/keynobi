@@ -1258,7 +1258,7 @@ pub async fn list_available_system_images(
 }
 
 fn get_java_home(settings: &AppSettings) -> String {
-    settings.java.home.clone().unwrap_or_default()
+    crate::services::jdk::java_home_for_gradle(settings, None).unwrap_or_default()
 }
 
 fn parse_sdkmanager_list(

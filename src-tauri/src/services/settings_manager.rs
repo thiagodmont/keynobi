@@ -402,7 +402,8 @@ pub async fn detect_android_sdk_from_shell() -> Option<String> {
 }
 
 /// Try to find a JDK installation on this machine.
-/// Checks process environment first, then macOS `/Library/Java/`.
+/// Checks process environment first, then Android Studio's bundled runtime,
+/// then the newest installed JDK 17 or later.
 pub fn detect_java_home() -> Option<String> {
     if let Ok(java) = std::env::var("JAVA_HOME") {
         let p = PathBuf::from(&java);
@@ -410,18 +411,8 @@ pub fn detect_java_home() -> Option<String> {
             return Some(java);
         }
     }
-    let jvm_dir = PathBuf::from("/Library/Java/JavaVirtualMachines");
-    if jvm_dir.is_dir() {
-        if let Ok(entries) = std::fs::read_dir(&jvm_dir) {
-            for entry in entries.flatten() {
-                let home = entry.path().join("Contents/Home");
-                if home.is_dir() {
-                    return Some(home.to_string_lossy().to_string());
-                }
-            }
-        }
-    }
-    None
+    crate::services::jdk::discover_jdk(&crate::services::jdk::JdkSearchRoots::system())
+        .map(|jdk| jdk.home.to_string_lossy().into_owned())
 }
 
 /// Spawn a login shell to read `JAVA_HOME` from the user's profile.

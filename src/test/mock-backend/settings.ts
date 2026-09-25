@@ -73,7 +73,10 @@ export function settingsHandlers(): Record<string, (args: unknown) => unknown> {
     run_health_checks: () => ({
       javaExecutableFound: true,
       javaVersion: 'openjdk version "17.0.0"',
-      javaBinUsed: "/mock/java",
+      javaBinUsed: "/mock/jdk/bin/java",
+      javaMajorVersion: 17,
+      javaHome: "/mock/jdk",
+      javaSource: "androidStudio",
       androidSdkValid: true,
       adbFound: true,
       adbVersion: "Android Debug Bridge version 1.0.41",

@@ -273,6 +273,15 @@ Open Health Center with `Cmd+Shift+H` or the Health status item. It checks:
 - Java / JDK
 - App Data Directory
 
+The Java / JDK check shows the JDK Gradle builds use, its version, and where it was found. Keynobi picks it in this order:
+
+1. `org.gradle.java.home` in `~/.gradle/gradle.properties`, then in the project's `gradle.properties` (the same rule Gradle follows).
+2. **JAVA_HOME** in Settings.
+3. The JDK bundled with Android Studio (including Android Studio Preview).
+4. The newest JDK 17 or later in `/Library/Java/JavaVirtualMachines`.
+
+Builds and the MCP server use the same JDK. The check is an error when Java does not run (for example, only the macOS `java` placeholder is installed), and a warning when the JDK is older than 17, which Android Gradle Plugin 8 and newer need.
+
 Health Center also shows a logcat buffer warning when relevant, and the **AI Client Integration (MCP)** section with setup commands.
 
 ---
@@ -397,7 +406,7 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 ### Build fails immediately
 
 - Open Health Center and check Java / JDK and Android SDK.
-- Confirm the project has a `gradlew` wrapper and that **JAVA_HOME** points to a JDK your Android Gradle Plugin supports.
+- Confirm the project has a `gradlew` wrapper and that the JDK shown in Health Center is one your Android Gradle Plugin supports. `org.gradle.java.home` in `gradle.properties` takes precedence over **JAVA_HOME** in Settings.
 - Try **Clean Project** from the Command Palette.
 
 ### Logcat is empty

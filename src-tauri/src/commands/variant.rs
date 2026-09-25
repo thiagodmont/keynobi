@@ -1,5 +1,5 @@
 use crate::models::variant::VariantList;
-use crate::services::{settings_manager, variant_manager};
+use crate::services::{build_runner, settings_manager, variant_manager};
 use crate::FsState;
 use std::path::PathBuf;
 use tauri::State;
@@ -96,28 +96,8 @@ pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<Va
 
     let (settings, _) = settings_manager::load_settings();
 
-    // Ensure gradlew is executable before spawning it (on macOS/Linux the file
-    // may not have execute permission set, causing Permission denied errors).
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if let Ok(meta) = std::fs::metadata(&gradlew) {
-            let mut perms = meta.permissions();
-            perms.set_mode(perms.mode() | 0o755);
-            let _ = std::fs::set_permissions(&gradlew, perms);
-        }
-    }
-
-    // Pass JAVA_HOME and Android SDK paths so gradlew can start even when
-    // they are not on the system PATH.
-    let mut env: Vec<(String, String)> = Vec::new();
-    if let Some(java_home) = settings.java.home.as_deref() {
-        env.push(("JAVA_HOME".into(), java_home.into()));
-    }
-    if let Some(sdk) = settings.android.sdk_path.as_deref() {
-        env.push(("ANDROID_HOME".into(), sdk.into()));
-        env.push(("ANDROID_SDK_ROOT".into(), sdk.into()));
-    }
+    // Same JAVA_HOME and SDK variables as builds; also makes gradlew executable.
+    let env = build_runner::build_env_vars(&settings, &gradle_root);
 
     // Try `:app:tasks --all` first (module-scoped, lists every variant task).
     // `--all` is required because newer AGP versions mark individual variant tasks
