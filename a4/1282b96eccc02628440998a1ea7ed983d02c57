@@ -1,0 +1,126 @@
+src-tauri/tests/fixtures/exit_info/android14.txt
+  s_1e114e823b9048::t_41829ffe6468e2 1-17
+src-tauri/tests/fixtures/exit_info/android15.txt
+  s_1e114e823b9048::t_45df44ce89f5e7 1-12
+src/bindings/AppExitReasons.ts
+  s_1e114e823b9048::t_3328f1308dc4b6 1-27
+src-tauri/tests/fixtures/exit_info/odd_fields.txt
+  s_1e114e823b9048::t_26d54ec3f1de95 1-14
+src-tauri/src/lib.rs
+  s_1e114e823b9048::t_2ff76c701d1274 11-12,365
+src-tauri/src/models/mod.rs
+  s_1e114e823b9048::t_23a6c155c1fc36 1,12
+src-tauri/tests/fixtures/exit_info/no_records.txt
+  s_1e114e823b9048::t_f2b67b6656cb40 1-2
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_985fcd16dcecd8 170-180
+  s_1e114e823b9048::t_29d2288ce51736 464-465
+src/bindings/index.ts
+  s_1e114e823b9048::t_1d0d7d94f2506f 51-53
+src/bindings/AppExitRecord.ts
+  s_1e114e823b9048::t_3328f1308dc4b6 1-53
+src/components/device/ExitReasonsDialog.tsx
+  s_1e114e823b9048::t_b493407bef10d4 147-150
+  s_1e114e823b9048::t_1f246baeef6978 129,225
+  s_1e114e823b9048::t_0d67a3d4c5cb93 218-219,221
+  s_1e114e823b9048::t_9386b31f8cb5fb 91-93,271
+  s_1e114e823b9048::t_770df18ef1d114 1-90,94-128,131,133-146,151-217,220,222-224,226-270,272-295
+  s_1e114e823b9048::t_3d7cf120c46315 130,132
+src-tauri/src/services/adb_manager.rs
+  s_1e114e823b9048::t_b9478a0aa90db1 428-452
+  s_1e114e823b9048::t_8a122d7cafeafd 413-416
+src/components/device/ExitReasonsDialog.test.tsx
+  s_1e114e823b9048::t_ea7ec43960cea1 1-59,63-89,92-150,153-162,164-165,170,172-173
+  s_1e114e823b9048::t_9386b31f8cb5fb 60-62,90-91
+  s_1e114e823b9048::t_d13d5cd38035be 151-152,163,166-169,171
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_8341ce63f39b05 396-428,432-466,470,475-498
+  s_1e114e823b9048::t_29e594c602b5d8 429-431
+  s_1e114e823b9048::t_45dd4ff470062a 467-469,471-474
+src/lib/tauri-api.ts
+  s_1e114e823b9048::t_d70ffaeae27397 296,307
+  s_1e114e823b9048::t_63fbe2ba55de97 358-362
+src-tauri/src/services/mod.rs
+  s_1e114e823b9048::t_431eac24074db0 2
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_f5110385da1a75 236
+  s_1e114e823b9048::t_de8ce4a2b2b181 85
+  s_1e114e823b9048::t_303717be4de8ba 132
+  s_1e114e823b9048::t_3528e3df14169f 258
+src/App.log-mode.test.tsx
+  s_1e114e823b9048::t_2cfd2eb2d39ee5 72-76
+src-tauri/src/models/app_exit.rs
+  s_1e114e823b9048::t_431eac24074db0 90
+  s_1e114e823b9048::t_e814c7eeccf750 1-89,91-138
+src-tauri/tests/fixtures/exit_info/below_api30.txt
+  s_1e114e823b9048::t_450ddb21466791 1-2
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_20af43470d94da 19
+  s_1e114e823b9048::t_fdfa5902904ec9 519-534
+  s_1e114e823b9048::t_13fac74999ec91 3341
+  s_1e114e823b9048::t_8d0f3b5c9b9276 2814-2863
+  s_1e114e823b9048::t_53a7d9b94d68fb 518
+src/test/mock-backend/devices.ts
+  s_1e114e823b9048::t_7e5064e8281dac 164-167
+  s_1e114e823b9048::t_4aebfe530776e5 1-6,9
+  s_1e114e823b9048::t_9386b31f8cb5fb 80-89,98-117
+  s_1e114e823b9048::t_9dce5cf54474a3 47-79,90-97,118-130
+src/components/device/ExitReasonsDialog.module.css
+  s_1e114e823b9048::t_43ea1e3fd10025 1-119
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_2bce233326a6b0 613-672
+  s_1e114e823b9048::t_926ba057afe245 612
+src/bindings/AppExitReason.ts
+  s_1e114e823b9048::t_3328f1308dc4b6 1-6
+src-tauri/src/services/app_exit_info.rs
+  s_1e114e823b9048::t_2ff76c701d1274 239,547-552,793-796,824-828,837-840,948-952,1028-1031,1153-1156
+  s_1e114e823b9048::t_f3b754cf933669 672-792,797-823,829-836,841-947,953-1027,1032-1152,1157-1286
+  s_1e114e823b9048::t_c112a7dfea59b5 1-93,96-212,218-238,240-546,553-671
+  s_1e114e823b9048::t_3e79919b5c4ca0 213-217
+  s_1e114e823b9048::t_431eac24074db0 94-95
+src/App.tsx
+  s_1e114e823b9048::t_c16bd08028d416 26
+  s_1e114e823b9048::t_25349cd68c9f83 372-377
+  s_1e114e823b9048::t_7d4a166b18f457 601
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_74251df70b220d 435
+  s_1e114e823b9048::t_0ebbc51e52962c 340
+  s_1e114e823b9048::t_7d3b234dae1fdc 280-288
+  s_1e114e823b9048::t_bf8b34db0e062b 445
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_64599de6c28b45 4,799-853
+src-tauri/tests/fixtures/exit_info/android12.txt
+  s_1e114e823b9048::t_b54aeae79ca1cb 1-16
+src-tauri/tests/fixtures/exit_info/android11.txt
+  s_1e114e823b9048::t_8c23ce17c4700b 1-20
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_f39ce29e52ab44 164
+src-tauri/src/commands/device.rs
+  s_1e114e823b9048::t_198a331770222c 209-218,223-230
+  s_1e114e823b9048::t_f809f68bf5925f 16
+  s_1e114e823b9048::t_2ff76c701d1274 1,219-222
+e2e/smoke/exit-reasons.spec.ts
+  s_1e114e823b9048::t_524bcf4f9ba11f 1-20
+e2e/ipc/device-commands.spec.ts
+  s_1e114e823b9048::t_99ce149370f5aa 35-50
+src-tauri/tests/fixtures/exit_info/android13.txt
+  s_1e114e823b9048::t_442e9b27178c30 1-16
+src-tauri/tests/fixtures/exit_info/README.md
+  s_1e114e823b9048::t_6bc10e05232f00 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a41282b96eccc02628440998a1ea7ed983d02c57",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
