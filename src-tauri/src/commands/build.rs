@@ -285,8 +285,7 @@ pub async fn get_build_history(
 /// Clear all build history (in-memory and on disk).
 #[tauri::command]
 pub async fn clear_build_history(build_state: State<'_, BuildState>) -> Result<(), String> {
-    build_runner::clear_history(&build_state).await;
-    Ok(())
+    build_runner::clear_history(&build_state).await
 }
 
 /// Return the structured log entries for a specific completed build.

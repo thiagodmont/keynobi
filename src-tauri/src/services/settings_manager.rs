@@ -18,7 +18,10 @@ const KNOWN_SETTINGS_FIELDS: &[&str] = &[
     "lastActiveProject",
 ];
 
-static SETTINGS_MUTATION_LOCK: LazyLock<StdMutex<()>> = LazyLock::new(|| StdMutex::new(()));
+/// Threads of this process take this before the file lock, so the file lock
+/// only ever arbitrates between processes.
+static DATA_LOCK: LazyLock<StdMutex<()>> = LazyLock::new(|| StdMutex::new(()));
+const DATA_LOCK_FILE: &str = ".lock";
 
 /// Process-wide cache for the default settings file.
 ///
@@ -142,6 +145,46 @@ fn settings_file() -> PathBuf {
     settings_dir().join("settings.json")
 }
 
+/// Run `f` while holding the data directory lock.
+///
+/// The GUI and every headless MCP server are separate processes that share
+/// settings and build history, so every read-modify-write of those files runs
+/// under this lock. Not reentrant: `f` must not take it again.
+pub fn with_data_lock<R>(f: impl FnOnce() -> R) -> Result<R, String> {
+    with_data_lock_in(&settings_dir(), f)
+}
+
+/// [`with_data_lock`] for an explicit data directory.
+pub fn with_data_lock_in<R>(dir: &std::path::Path, f: impl FnOnce() -> R) -> Result<R, String> {
+    let _process_guard = DATA_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    std::fs::create_dir_all(dir).map_err(|e| format!("Failed to create data directory: {e}"))?;
+    let lock_file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(dir.join(DATA_LOCK_FILE))
+        .map_err(|e| format!("Failed to open the data directory lock: {e}"))?;
+    lock_file
+        .lock()
+        .map_err(|e| format!("Failed to lock the data directory: {e}"))?;
+    // Released when `lock_file` is dropped.
+    Ok(f())
+}
+
+/// A temporary path next to `path` that no other writer uses, for atomic
+/// write-then-rename.
+pub fn unique_tmp_path(path: &std::path::Path) -> PathBuf {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    path.with_file_name(format!("{name}.{}.{n}.tmp", std::process::id()))
+}
+
 fn repair_corrupt_settings_file(path: &std::path::Path, defaults: &AppSettings) {
     let backup = path.with_extension("json.corrupt");
     if let Err(e) = std::fs::rename(path, &backup) {
@@ -213,16 +256,32 @@ pub fn load_settings() -> (AppSettings, bool) {
     (settings, corrupted)
 }
 
-/// Save settings to disk atomically (temp file + rename).
+/// Save a full settings snapshot (from the settings UI) atomically.
+///
+/// The project registry and the last active project are owned by the backend
+/// and change underneath the UI (project opens, pins, the MCP server storing a
+/// variant), so they are kept from disk instead of taken from the snapshot.
 pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
-    let dir = settings_dir();
-    let path = settings_file();
-    let _guard = SETTINGS_MUTATION_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let result = save_settings_to_path(&path, settings, Some(&dir));
+    let result = save_settings_snapshot_at_path(&settings_file(), settings);
     invalidate_settings_cache();
     result
+}
+
+fn save_settings_snapshot_at_path(
+    path: &std::path::Path,
+    settings: &AppSettings,
+) -> Result<(), String> {
+    let dir = path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    with_data_lock_in(&dir, || {
+        let (on_disk, _) = load_settings_from_path(path);
+        let mut merged = settings.clone();
+        merged.recent_projects = on_disk.recent_projects;
+        merged.last_active_project = on_disk.last_active_project;
+        save_settings_to_path(path, &merged, Some(&dir))
+    })?
 }
 
 fn save_settings_to_path(
@@ -246,10 +305,13 @@ fn save_settings_to_path(
     let json = serde_json::to_string_pretty(&normalized)
         .map_err(|e| format!("Failed to serialize settings: {e}"))?;
 
-    let tmp = path.with_extension("json.tmp");
+    let tmp = unique_tmp_path(path);
 
     std::fs::write(&tmp, &json).map_err(|e| format!("Failed to write settings: {e}"))?;
-    std::fs::rename(&tmp, path).map_err(|e| format!("Failed to save settings: {e}"))?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("Failed to save settings: {e}")
+    })?;
 
     Ok(())
 }
@@ -268,16 +330,20 @@ pub fn mutate_settings_at_path_with_result<R>(
     settings_path: &std::path::Path,
     mutate: impl FnOnce(&mut AppSettings) -> Result<R, String>,
 ) -> Result<R, String> {
-    let _guard = SETTINGS_MUTATION_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let (mut settings, _) = load_settings_from_path(settings_path);
-    let result = mutate(&mut settings)?;
-    save_settings_to_path(settings_path, &settings, None)?;
+    let dir = settings_path
+        .parent()
+        .map(std::path::Path::to_path_buf)
+        .unwrap_or_else(|| PathBuf::from("."));
+    let result = with_data_lock_in(&dir, || {
+        let (mut settings, _) = load_settings_from_path(settings_path);
+        let result = mutate(&mut settings)?;
+        save_settings_to_path(settings_path, &settings, None)?;
+        Ok(result)
+    })?;
     // Invalidate unconditionally: this helper is also used with explicit paths
     // in tests, and over-invalidating only costs one re-read.
     invalidate_settings_cache();
-    Ok(result)
+    result
 }
 
 pub fn mutate_settings(mutate: impl FnOnce(&mut AppSettings)) -> Result<(), String> {
@@ -780,6 +846,71 @@ mod variant_tests {
             settings.last_active_project.as_deref(),
             Some("/proj/second")
         );
+    }
+
+    #[test]
+    fn the_data_lock_holds_off_other_processes() {
+        let dir = tempfile::tempdir().unwrap();
+        // Another process opens the lock file itself; a second handle stands in for it.
+        let other_process = || {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(dir.path().join(DATA_LOCK_FILE))
+                .unwrap()
+        };
+
+        with_data_lock_in(dir.path(), || {
+            assert!(matches!(
+                other_process().try_lock(),
+                Err(std::fs::TryLockError::WouldBlock)
+            ));
+        })
+        .unwrap();
+
+        assert!(other_process().try_lock().is_ok(), "released afterwards");
+    }
+
+    #[test]
+    fn a_settings_snapshot_keeps_the_projects_the_backend_recorded() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        write_settings(&path, "{}");
+        // The settings UI loaded its snapshot before a project was opened.
+        let (mut snapshot, _) = load_settings_from_path(&path);
+        mutate_settings_at_path(&path, |settings| {
+            settings.last_active_project = Some("/proj/opened".into());
+            settings
+                .recent_projects
+                .push(crate::models::settings::ProjectEntry {
+                    id: "p1".into(),
+                    path: "/proj/opened".into(),
+                    name: "opened".into(),
+                    gradle_root: None,
+                    last_opened: "2026-01-01T00:00:00Z".into(),
+                    pinned: false,
+                    last_build_variant: Some("release".into()),
+                    last_device: None,
+                });
+        })
+        .unwrap();
+
+        snapshot.onboarding_completed = true;
+        save_settings_snapshot_at_path(&path, &snapshot).unwrap();
+
+        let (saved, _) = load_settings_from_path(&path);
+        assert!(saved.onboarding_completed, "the UI's own edit is saved");
+        assert_eq!(saved.last_active_project.as_deref(), Some("/proj/opened"));
+        assert_eq!(saved.recent_projects.len(), 1);
+        assert_eq!(
+            saved.recent_projects[0].last_build_variant.as_deref(),
+            Some("release")
+        );
+    }
+
+    #[test]
+    fn temporary_files_are_unique_per_write() {
+        let path = std::path::Path::new("/data/settings.json");
+        assert_ne!(unique_tmp_path(path), unique_tmp_path(path));
     }
 
     // ── Settings cache (M13) ─────────────────────────────────────────────────
