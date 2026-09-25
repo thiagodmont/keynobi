@@ -11,7 +11,7 @@ use crate::utils::process::{describe_failure, output_with_timeout, ADB_UNRESPONS
 use schemars::JsonSchema;
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tokio::process::Command;
 
@@ -595,7 +595,7 @@ pub struct WaitForElementParams {
 /// Poll until at least one element matching `params` appears or `timeout_ms` elapses.
 /// Returns `Ok((snapshot, matches))` on success, `Err` on timeout.
 pub async fn wait_for_element(
-    adb: &PathBuf,
+    adb: &Path,
     serial: &str,
     params: &WaitForElementParams,
 ) -> Result<(UiHierarchySnapshot, Vec<UiElementMatch>), String> {
@@ -652,16 +652,13 @@ pub async fn wait_for_element(
 }
 
 /// Capture hierarchy like the Layout tab / `get_ui_hierarchy`.
-pub async fn capture_ui_snapshot(
-    adb: &PathBuf,
-    serial: &str,
-) -> Result<UiHierarchySnapshot, String> {
+pub async fn capture_ui_snapshot(adb: &Path, serial: &str) -> Result<UiHierarchySnapshot, String> {
     ui_hierarchy::capture_ui_hierarchy_snapshot(adb, serial).await
 }
 
 /// Returns error if `expect_screen_hash` is set and does not match current screen.
 pub async fn ensure_screen_hash(
-    adb: &PathBuf,
+    adb: &Path,
     serial: &str,
     expect_screen_hash: Option<&str>,
 ) -> Result<UiHierarchySnapshot, String> {

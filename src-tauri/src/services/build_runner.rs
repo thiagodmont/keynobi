@@ -1042,6 +1042,9 @@ pub async fn run_task(
     let started_at = chrono::Utc::now().to_rfc3339();
 
     try_reserve_build_slot(build_state, task, &started_at).await?;
+    // Connected tests hold the devices' UI Automator until this run returns.
+    let _instrumentation =
+        crate::services::ui_automator_lock::begin_instrumentation_for_task(task, &env);
 
     let build_log = build_state.build_log.start_run();
 
@@ -2522,6 +2525,61 @@ mod tests {
         try_reserve_build_slot(&build_state, "assembleDebug", "2026-01-01T00:00:00Z")
             .await
             .expect("slot must be free after a failed spawn");
+    }
+
+    #[tokio::test]
+    async fn connected_tests_keep_the_device_busy_until_the_run_ends() {
+        use crate::services::ui_automator_lock::test_support::instrumentation_active_on;
+        use std::os::unix::fs::PermissionsExt;
+
+        let serial = "build-runner-connected";
+        let build_state = BuildState::new();
+        let pm = crate::services::process_manager::ProcessManager::new();
+        let dir = tempfile::tempdir().unwrap();
+        let release = dir.path().join("release");
+        let gradlew = dir.path().join("gradlew");
+        std::fs::write(
+            &gradlew,
+            format!(
+                "#!/bin/sh\nwhile [ ! -e '{}' ]; do sleep 0.05; done\necho 'BUILD SUCCESSFUL in 1s'\n",
+                release.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&gradlew, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let run = run_task(
+            "connectedDebugAndroidTest",
+            &[],
+            dir.path(),
+            &gradlew,
+            30,
+            vec![("ANDROID_SERIAL".into(), serial.into())],
+            None,
+            &build_state,
+            &pm,
+            None,
+        );
+        let observe = async {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while !instrumentation_active_on(serial) && std::time::Instant::now() < deadline {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            let seen = instrumentation_active_on(serial);
+            std::fs::write(&release, "").unwrap();
+            seen
+        };
+        let (result, seen_during_run) = tokio::join!(run, observe);
+
+        assert!(result.unwrap().success);
+        assert!(
+            seen_during_run,
+            "the device was not marked busy during the run"
+        );
+        assert!(
+            !instrumentation_active_on(serial),
+            "still busy after the run"
+        );
     }
 
     #[test]

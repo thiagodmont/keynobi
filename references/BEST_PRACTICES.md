@@ -150,6 +150,7 @@ Every long-lived collection, in memory or on disk, must have an explicit, named 
 | UI hierarchy | `MAX_XML_BYTES`, `MAX_NODES`, `MAX_DEPTH`, `MAX_ATTR_LEN` |
 | Saved logcat filters | `MAX_SAVED_FILTERS` (50) |
 | Recent projects | `MAX_RECENT_PROJECTS` (20) |
+| Devices with a UI Automator call running or waiting | `MAX_LOCKED_SERIALS` (64) |
 
 Name new caps as constants next to the data they bound.
 

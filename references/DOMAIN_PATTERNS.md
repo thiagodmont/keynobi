@@ -212,6 +212,13 @@ Presentational components should not call Tauri IPC except for narrow row action
 
 The layout viewer and MCP UI automation share the same UI Automator capture path (`capture_ui_hierarchy_snapshot`). Keep capture logic centralized in `services/ui_hierarchy.rs`, `ui_hierarchy_parse.rs`, and `ui_automation.rs` so GUI and MCP behavior stay consistent.
 
+A device accepts one UiAutomation client at a time; a second one fails on the device with "UiAutomationService … already registered". So:
+
+- Every UI Automator call takes the device's lock (`ui_automator_lock::acquire`) for the whole capture. The registry is process-wide and keyed by serial, so GUI commands and MCP tools in one process take turns on a device and never wait for another device. An entry lives only while a call holds or waits for it (`MAX_LOCKED_SERIALS`, 64).
+- Both build front doors register a connected test run (`begin_instrumentation_for_task`: a task whose name starts with `connected`) until Gradle exits. Its devices are every device, or `ANDROID_SERIAL` when set. Captures on them fail at once with "busy: instrumentation running" and send nothing to the device.
+- "already registered" from a dump that returned no XML means another client (an IDE test run, another tool) holds UiAutomation: fail at once with a busy error, do not retry.
+- A capture has a total deadline, `CAPTURE_TOTAL_DEADLINE` (60 s), across the lock wait, the shell probes, every dump attempt and fallback (25 s each), and the screenshot. Every subprocess goes through `output_with_timeout`, so a hung `uiautomator dump` or `screencap` is killed, not left holding the device.
+
 ### Bounds and Caps
 
 The hierarchy parser and automation tools keep explicit caps:
@@ -347,6 +354,7 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Duplicate lint diagnostics.** With `abortOnError`, lint prints its first failure from both the report task and the failing task, so that issue is listed twice. The parser is stateless per line, and diagnostics are not de-duplicated.
 - **MCP cancel during spawn.** A build cancelled during spawn on the MCP path returns without recording history.
 - **Unicode typing.** `ui_type_text_unicode` sets the clipboard with a Clipper broadcast, falling back to `content insert`. `am broadcast` exits 0 even when Clipper is not installed, so the fallback may not run and the paste can insert stale clipboard text. Needs verification on a device.
+- **UI Automator across processes.** The device lock and the instrumentation check are per process. A headless MCP server and the GUI (or two headless servers) can still collide on one device, and a connected test run started by one is invisible to the other; the device's "already registered" error is then reported as busy.
 - **Screen hash coverage.** `ui_swipe`, `send_ui_key`, `ui_type_text_unicode`, `clear_focused_input`, and `ui_scroll_until_element` do not accept `expectScreenHash`.
 - **Logcat clear mid-tick.** The pipeline checks `clear_epoch` at the top of each 100 ms tick but not again when it stores the batch, so lines drained just before a clear can still be stored (and emitted) just after it. They get fresh IDs, so identity is safe; at most one tick of pre-clear lines survives.
 - **MCP error model.** Coordinate, permission, and deep-link validation failures return `CallToolResult::error` instead of `McpError::invalid_params`.

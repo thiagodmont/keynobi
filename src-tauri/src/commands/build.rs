@@ -85,6 +85,10 @@ pub async fn run_gradle_task(
     // Starting it BEFORE spawning means no early line can be dropped.
     let build_log = build_state.build_log.start_run();
     let build_state_for_exit = build_state.inner().clone();
+    // Connected tests hold the devices' UI Automator until Gradle exits.
+    let instrumentation = StdMutex::new(
+        crate::services::ui_automator_lock::begin_instrumentation_for_task(&task, &env),
+    );
 
     let args_strs: Vec<String> = args;
     let args_refs: Vec<&str> = args_strs.iter().map(|s| s.as_str()).collect();
@@ -151,6 +155,9 @@ pub async fn run_gradle_task(
                 let build_state = build_state_for_exit.clone();
                 let log = build_log.clone();
                 move |run_id, termination| {
+                    if let Ok(mut run) = instrumentation.lock() {
+                        run.take();
+                    }
                     // std::sync::Mutex::lock() — safe to call from any context.
                     let errs = errors_buf.lock().map(|g| g.clone()).unwrap_or_default();
                     let dur = duration_ms.lock().map(|g| *g).unwrap_or(0);

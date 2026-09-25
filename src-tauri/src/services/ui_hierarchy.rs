@@ -1,15 +1,18 @@
 //! Capture UI Automator hierarchy XML from a device via ADB and parse it.
 
 use crate::models::ui_hierarchy::{UiHierarchySnapshot, UiLayoutContext};
+use crate::services::ui_automator_lock::{self, foreign_client_busy, reports_already_registered};
 use crate::services::ui_hierarchy_parse::{
     compute_screen_hash, count_interactive_nodes, parse_hierarchy_xml, ParseOutcome,
 };
+use crate::utils::process::{format_duration, output_with_timeout, ADB_UNRESPONSIVE_HINT};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::Utc;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::process::Output;
 use std::time::Duration;
 use tokio::process::Command;
-use tokio::time::timeout;
+use tokio::time::Instant;
 
 /// Maximum raw XML bytes read from adb (host memory bound).
 pub const MAX_XML_BYTES: usize = 4 * 1024 * 1024;
@@ -19,6 +22,10 @@ const MAX_SCREENSHOT_BYTES: usize = 8 * 1024 * 1024;
 const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(20);
 /// Wall-clock limit for a single adb dump attempt.
 pub const DUMP_TIMEOUT: Duration = Duration::from_secs(25);
+/// Wall-clock limit for one whole capture: waiting for the device's UI
+/// Automator lock, the shell probes, every dump attempt and retry, and the
+/// screenshot. Without it the fallbacks alone could run for minutes.
+pub const CAPTURE_TOTAL_DEADLINE: Duration = Duration::from_secs(60);
 /// Shorter limit for lightweight `dumpsys` / `wm` probes.
 const LAYOUT_PROBE_TIMEOUT: Duration = Duration::from_secs(12);
 /// Cap per layout-context excerpt (host memory).
@@ -52,15 +59,68 @@ fn utf8_lossy_cap(bytes: &[u8], max_bytes: usize) -> String {
     String::from_utf8_lossy(&bytes[..end]).into_owned()
 }
 
-async fn try_exec_out_uiautomator_dump(
-    adb: &PathBuf,
+/// What is left of one capture's [`CAPTURE_TOTAL_DEADLINE`].
+struct CaptureBudget {
+    deadline: Instant,
+    total: Duration,
+}
+
+impl CaptureBudget {
+    fn new(total: Duration) -> Self {
+        Self {
+            deadline: Instant::now() + total,
+            total,
+        }
+    }
+
+    /// `limit` cut to what is left of the budget; `None` once it is spent.
+    fn step(&self, limit: Duration) -> Option<Duration> {
+        let left = self.deadline.saturating_duration_since(Instant::now());
+        (!left.is_zero()).then(|| left.min(limit))
+    }
+
+    fn is_spent(&self) -> bool {
+        self.step(Duration::MAX).is_none()
+    }
+
+    fn label(&self) -> String {
+        format_duration(self.total)
+    }
+
+    fn exceeded(&self, serial: &str) -> String {
+        format!(
+            "UI hierarchy capture on {serial} did not finish within the {} total deadline \
+             (every dump attempt and retry) — {ADB_UNRESPONSIVE_HINT}",
+            self.label()
+        )
+    }
+}
+
+/// Run `adb -s <serial> <args>` for at most `limit` and what is left of the
+/// budget. `Ok(None)` when the command failed to run or timed out; `Err` once
+/// the budget is spent.
+async fn run_step(
+    adb: &Path,
     serial: &str,
-    compressed: bool,
-) -> Option<String> {
-    let args: &[&str] = if compressed {
+    args: &[&str],
+    limit: Duration,
+    budget: &CaptureBudget,
+) -> Result<Option<Output>, String> {
+    let step = budget.step(limit).ok_or_else(|| budget.exceeded(serial))?;
+    match output_with_timeout(Command::new(adb).args(["-s", serial]).args(args), step).await {
+        Ok(out) => Ok(Some(out)),
+        Err(_) if budget.is_spent() => Err(budget.exceeded(serial)),
+        Err(_) => Ok(None),
+    }
+}
+
+fn reports_foreign_client(out: &Output) -> bool {
+    reports_already_registered(&out.stdout) || reports_already_registered(&out.stderr)
+}
+
+fn exec_out_dump_args(compressed: bool) -> &'static [&'static str] {
+    if compressed {
         &[
-            "-s",
-            serial,
             "exec-out",
             "uiautomator",
             "dump",
@@ -68,88 +128,69 @@ async fn try_exec_out_uiautomator_dump(
             "/dev/tty",
         ]
     } else {
-        &["-s", serial, "exec-out", "uiautomator", "dump", "/dev/tty"]
-    };
-    let fut = Command::new(adb).args(args).output();
-    let Ok(Ok(out)) = timeout(DUMP_TIMEOUT, fut).await else {
-        return None;
-    };
-    if !out.status.success() {
-        return None;
+        &["exec-out", "uiautomator", "dump", "/dev/tty"]
     }
+}
+
+async fn try_exec_out_uiautomator_dump(
+    adb: &Path,
+    serial: &str,
+    compressed: bool,
+    budget: &CaptureBudget,
+) -> Result<Option<String>, String> {
+    let args = exec_out_dump_args(compressed);
+    let Some(out) = run_step(adb, serial, args, DUMP_TIMEOUT, budget).await? else {
+        return Ok(None);
+    };
     let raw = strip_ui_automator_noise(&out.stdout);
-    if raw.trim().is_empty() || !raw.trim_start().starts_with('<') {
-        return None;
+    if out.status.success() && raw.trim_start().starts_with('<') {
+        return Ok(Some(raw));
     }
-    Some(raw)
+    // Checked only when no XML came back: app text in a dump may contain the phrase.
+    if reports_foreign_client(&out) {
+        return Err(foreign_client_busy(serial));
+    }
+    Ok(None)
 }
 
 /// Run `uiautomator dump` and return UTF-8 XML (may be truncated to [`MAX_XML_BYTES`]).
 /// Tries `--compressed` first (smaller / faster on supported builds), then plain dump.
 /// The third tuple element lists every adb invocation attempted (for debugging).
-pub async fn dump_hierarchy_xml(
-    adb: &PathBuf,
+async fn dump_hierarchy_xml(
+    adb: &Path,
     serial: &str,
+    budget: &CaptureBudget,
 ) -> Result<(String, bool, Vec<String>), String> {
     let mut command_log = Vec::new();
 
-    // 1a) exec-out compressed (API-dependent; falls through if unsupported or empty).
-    command_log.push(format_adb_command(
-        adb,
-        serial,
-        &[
-            "exec-out",
-            "uiautomator",
-            "dump",
-            "--compressed",
-            "/dev/tty",
-        ],
-    ));
-    if let Some(raw) = try_exec_out_uiautomator_dump(adb, serial, true).await {
-        let (s, truncated) = truncate_utf8(raw, MAX_XML_BYTES);
-        return Ok((s, truncated, command_log));
-    }
-
-    // 1b) exec-out without --compressed
-    command_log.push(format_adb_command(
-        adb,
-        serial,
-        &["exec-out", "uiautomator", "dump", "/dev/tty"],
-    ));
-    if let Some(raw) = try_exec_out_uiautomator_dump(adb, serial, false).await {
-        let (s, truncated) = truncate_utf8(raw, MAX_XML_BYTES);
-        return Ok((s, truncated, command_log));
+    // 1) exec-out, compressed (API-dependent) then plain.
+    for compressed in [true, false] {
+        command_log.push(format_adb_command(
+            adb,
+            serial,
+            exec_out_dump_args(compressed),
+        ));
+        if let Some(raw) = try_exec_out_uiautomator_dump(adb, serial, compressed, budget).await? {
+            let (s, truncated) = truncate_utf8(raw, MAX_XML_BYTES);
+            return Ok((s, truncated, command_log));
+        }
     }
 
     // 2) Fallback: dump to default path on device, then cat to host (compressed then plain).
     for compressed in [true, false] {
-        let shell_args: Vec<String> = if compressed {
-            vec![
-                "-s".into(),
-                serial.into(),
-                "shell".into(),
-                "uiautomator".into(),
-                "dump".into(),
-                "--compressed".into(),
-            ]
+        let dump_args: &[&str] = if compressed {
+            &["shell", "uiautomator", "dump", "--compressed"]
         } else {
-            vec![
-                "-s".into(),
-                serial.into(),
-                "shell".into(),
-                "uiautomator".into(),
-                "dump".into(),
-            ]
+            &["shell", "uiautomator", "dump"]
         };
-        let cmd_line: Vec<&str> = shell_args.iter().map(|s| s.as_str()).collect();
-        command_log.push(format_adb_command(adb, serial, &cmd_line[2..]));
-
-        let dump_default = Command::new(adb).args(&shell_args).output();
-        let dump_ok = match timeout(DUMP_TIMEOUT, dump_default).await {
-            Ok(Ok(o)) => o.status.success(),
-            _ => false,
+        command_log.push(format_adb_command(adb, serial, dump_args));
+        let Some(dump) = run_step(adb, serial, dump_args, DUMP_TIMEOUT, budget).await? else {
+            continue;
         };
-        if !dump_ok {
+        if reports_foreign_client(&dump) {
+            return Err(foreign_client_busy(serial));
+        }
+        if !dump.status.success() {
             continue;
         }
 
@@ -157,13 +198,10 @@ pub async fn dump_hierarchy_xml(
             "/sdcard/window_dump.xml",
             "/storage/emulated/0/window_dump.xml",
         ] {
-            command_log.push(format_adb_command(adb, serial, &["exec-out", "cat", path]));
-            let cat = Command::new(adb)
-                .args(["-s", serial, "exec-out", "cat", path])
-                .output();
-
-            match timeout(DUMP_TIMEOUT, cat).await {
-                Ok(Ok(out)) if out.status.success() && !out.stdout.is_empty() => {
+            let cat_args = ["exec-out", "cat", path];
+            command_log.push(format_adb_command(adb, serial, &cat_args));
+            match run_step(adb, serial, &cat_args, DUMP_TIMEOUT, budget).await? {
+                Some(out) if out.status.success() && !out.stdout.is_empty() => {
                     let raw = strip_ui_automator_noise(&out.stdout);
                     if raw.trim_start().starts_with('<') {
                         let (s, truncated) = truncate_utf8(raw, MAX_XML_BYTES);
@@ -175,6 +213,9 @@ pub async fn dump_hierarchy_xml(
         }
     }
 
+    if budget.is_spent() {
+        return Err(budget.exceeded(serial));
+    }
     Err(
         "uiautomator dump failed (exec-out and shell dump, compressed and plain). Is the device online?"
             .to_string(),
@@ -182,7 +223,11 @@ pub async fn dump_hierarchy_xml(
 }
 
 /// Official shell excerpts: window focus, display, logical size / density.
-pub async fn probe_layout_context(adb: &PathBuf, serial: &str) -> (UiLayoutContext, Vec<String>) {
+async fn probe_layout_context(
+    adb: &Path,
+    serial: &str,
+    budget: &CaptureBudget,
+) -> (UiLayoutContext, Vec<String>) {
     let mut command_log = Vec::new();
 
     let w_args = ["-s", serial, "shell", "dumpsys", "window", "windows"];
@@ -194,24 +239,25 @@ pub async fn probe_layout_context(adb: &PathBuf, serial: &str) -> (UiLayoutConte
     let den_args = ["-s", serial, "shell", "wm", "density"];
     command_log.push(format_adb_command(adb, serial, &den_args[2..]));
 
-    let win_fut = Command::new(adb).args(w_args).output();
-    let disp_fut = Command::new(adb).args(d_args).output();
-    let sz_fut = Command::new(adb).args(sz_args).output();
-    let den_fut = Command::new(adb).args(den_args).output();
-
-    let probe = async { tokio::join!(win_fut, disp_fut, sz_fut, den_fut) };
-    let (win_o, disp_o, sz_o, den_o) = match timeout(LAYOUT_PROBE_TIMEOUT, probe).await {
-        Ok(quads) => quads,
-        Err(_) => {
-            let err = || {
-                Err(std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "layout probe timeout",
-                ))
-            };
-            (err(), err(), err(), err())
-        }
+    // Best-effort context: skipped once the capture's budget is spent.
+    let Some(limit) = budget.step(LAYOUT_PROBE_TIMEOUT) else {
+        return (UiLayoutContext::default(), command_log);
     };
+    let mut win_cmd = Command::new(adb);
+    win_cmd.args(w_args);
+    let mut disp_cmd = Command::new(adb);
+    disp_cmd.args(d_args);
+    let mut sz_cmd = Command::new(adb);
+    sz_cmd.args(sz_args);
+    let mut den_cmd = Command::new(adb);
+    den_cmd.args(den_args);
+
+    let (win_o, disp_o, sz_o, den_o) = tokio::join!(
+        output_with_timeout(&mut win_cmd, limit),
+        output_with_timeout(&mut disp_cmd, limit),
+        output_with_timeout(&mut sz_cmd, limit),
+        output_with_timeout(&mut den_cmd, limit),
+    );
 
     let window_excerpt = match win_o {
         Ok(o) if o.status.success() && !o.stdout.is_empty() => {
@@ -252,14 +298,18 @@ pub async fn probe_layout_context(adb: &PathBuf, serial: &str) -> (UiLayoutConte
 /// Capture a PNG screenshot via `adb exec-out screencap -p`.
 /// Returns base64-encoded PNG on success, `None` if the command fails or the output
 /// is too large / clearly not a PNG.
-pub async fn capture_screenshot_b64(adb: &PathBuf, serial: &str) -> Option<String> {
-    let cmd_fut = Command::new(adb)
-        .args(["-s", serial, "exec-out", "screencap", "-p"])
-        .output();
-    let out = match timeout(SCREENSHOT_TIMEOUT, cmd_fut).await {
-        Ok(Ok(o)) => o,
-        _ => return None,
-    };
+async fn capture_screenshot_b64(
+    adb: &Path,
+    serial: &str,
+    budget: &CaptureBudget,
+) -> Option<String> {
+    let limit = budget.step(SCREENSHOT_TIMEOUT)?;
+    let out = output_with_timeout(
+        Command::new(adb).args(["-s", serial, "exec-out", "screencap", "-p"]),
+        limit,
+    )
+    .await
+    .ok()?;
     if !out.status.success() || out.stdout.is_empty() {
         return None;
     }
@@ -275,30 +325,44 @@ pub async fn capture_screenshot_b64(adb: &PathBuf, serial: &str) -> Option<Strin
 }
 
 /// Single pipeline: resumed activity, layout shell context, hierarchy XML, screenshot, snapshot.
+///
+/// Holds the device's UI Automator lock for the whole capture, so GUI and MCP
+/// calls on one device run one at a time, and gives up after
+/// [`CAPTURE_TOTAL_DEADLINE`], counting the wait for the lock.
 pub async fn capture_ui_hierarchy_snapshot(
-    adb: &PathBuf,
+    adb: &Path,
     serial: &str,
 ) -> Result<UiHierarchySnapshot, String> {
+    capture_within(adb, serial, CAPTURE_TOTAL_DEADLINE).await
+}
+
+async fn capture_within(
+    adb: &Path,
+    serial: &str,
+    total: Duration,
+) -> Result<UiHierarchySnapshot, String> {
+    let budget = CaptureBudget::new(total);
+    let _device = ui_automator_lock::acquire(serial, budget.deadline, &budget.label()).await?;
+
     let mut command_log = vec![format_adb_command(
         adb,
         serial,
         &["shell", "dumpsys", "activity", "activities"],
     )];
-    let fg = probe_foreground_activity(adb, serial).await;
+    let fg = probe_foreground_activity(adb, serial, &budget).await;
 
-    let (layout_ctx, mut layout_cmds) = probe_layout_context(adb, serial).await;
+    let (layout_ctx, mut layout_cmds) = probe_layout_context(adb, serial, &budget).await;
     command_log.append(&mut layout_cmds);
 
-    let (xml, xml_truncated, mut dump_cmds) = dump_hierarchy_xml(adb, serial).await?;
+    let (xml, xml_truncated, mut dump_cmds) = dump_hierarchy_xml(adb, serial, &budget).await?;
     command_log.append(&mut dump_cmds);
 
-    // Screenshot is best-effort and runs concurrently with nothing (already sequential here).
     command_log.push(format_adb_command(
         adb,
         serial,
         &["exec-out", "screencap", "-p"],
     ));
-    let screenshot_b64 = capture_screenshot_b64(adb, serial).await;
+    let screenshot_b64 = capture_screenshot_b64(adb, serial, &budget).await;
 
     Ok(build_snapshot(
         &xml,
@@ -311,14 +375,18 @@ pub async fn capture_ui_hierarchy_snapshot(
 }
 
 /// Best-effort foreground activity / resumed component line.
-pub async fn probe_foreground_activity(adb: &PathBuf, serial: &str) -> Option<String> {
-    let out = Command::new(adb)
-        .args(["-s", serial, "shell", "dumpsys", "activity", "activities"])
-        .output();
-
-    let Ok(Ok(output)) = timeout(DUMP_TIMEOUT, out).await else {
-        return None;
-    };
+async fn probe_foreground_activity(
+    adb: &Path,
+    serial: &str,
+    budget: &CaptureBudget,
+) -> Option<String> {
+    let limit = budget.step(DUMP_TIMEOUT)?;
+    let output = output_with_timeout(
+        Command::new(adb).args(["-s", serial, "shell", "dumpsys", "activity", "activities"]),
+        limit,
+    )
+    .await
+    .ok()?;
     if !output.status.success() {
         return None;
     }
@@ -498,5 +566,208 @@ mod tests {
         let s = r#"<hierarchy bounds="[0,0][1>2]"/>"#;
         let end = find_self_closing_hierarchy_end(s, 0).expect("closed");
         assert_eq!(&s[..end], s);
+    }
+
+    // ── Device lock, deadlines, and busy devices ──────────────────────────────
+    //
+    // Each test uses its own serials: the lock and instrumentation registries
+    // are process-wide and tests run in parallel.
+
+    use crate::services::ui_automator_lock::test_support::begin_instrumentation_on;
+    use std::path::PathBuf;
+    use std::time::Instant as StdInstant;
+
+    const SAMPLE_XML: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/services/fixtures/ui_hierarchy_sample.xml"
+    );
+    const ALREADY_REGISTERED_LINE: &str = "java.lang.IllegalStateException: UiAutomationService \
+         android.accessibilityservice.IAccessibilityServiceClient@1 already registered!";
+
+    /// An `adb` that records `$*` per call in `calls`, answers shell probes
+    /// with nothing, and runs `uiautomator_arm` for any `uiautomator` call.
+    /// In the arm, `$D` is the test directory and `$2` the serial.
+    fn scripted_adb(dir: &Path, uiautomator_arm: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let adb = dir.join("adb");
+        std::fs::write(
+            &adb,
+            format!(
+                "#!/bin/sh\nD='{}'\necho \"$*\" >> \"$D/calls\"\ncase \"$*\" in\n\
+                 *uiautomator*)\n{uiautomator_arm}\n;;\n*) exit 0 ;;\nesac\n",
+                dir.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        adb
+    }
+
+    fn lines(path: &Path) -> Vec<String> {
+        std::fs::read_to_string(path)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn uiautomator_calls(dir: &Path) -> usize {
+        lines(&dir.join("calls"))
+            .iter()
+            .filter(|c| c.contains("uiautomator"))
+            .count()
+    }
+
+    fn is_alive(pid: &str) -> bool {
+        std::process::Command::new("kill")
+            .args(["-0", pid])
+            .stderr(std::process::Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+    }
+
+    #[tokio::test]
+    async fn a_hung_dump_is_killed_when_the_total_deadline_passes() {
+        let dir = tempfile::tempdir().unwrap();
+        // `exec` keeps the recorded pid as the child we spawn.
+        let adb = scripted_adb(dir.path(), "echo $$ >> \"$D/pids\"; exec sleep 30");
+
+        let start = StdInstant::now();
+        let err = capture_within(&adb, "hier-hung", Duration::from_secs(2))
+            .await
+            .unwrap_err();
+        assert!(err.contains("2 s total deadline"), "{err}");
+        assert!(start.elapsed() < Duration::from_secs(8));
+
+        let pids = lines(&dir.path().join("pids"));
+        assert!(!pids.is_empty(), "the dump never ran");
+        let deadline = StdInstant::now() + Duration::from_secs(5);
+        while pids.iter().any(|p| is_alive(p)) && StdInstant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        for pid in &pids {
+            assert!(
+                !is_alive(pid),
+                "uiautomator dump {pid} outlived the capture"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn retries_stop_at_the_total_deadline() {
+        let dir = tempfile::tempdir().unwrap();
+        // Four failing attempts would take 2.4 s without a total deadline.
+        let adb = scripted_adb(dir.path(), "sleep 0.6; exit 1");
+
+        let start = StdInstant::now();
+        let err = capture_within(&adb, "hier-retries", Duration::from_secs(1))
+            .await
+            .unwrap_err();
+        let elapsed = start.elapsed();
+
+        assert!(err.contains("1 s total deadline"), "{err}");
+        assert!(elapsed < Duration::from_millis(2000), "took {elapsed:?}");
+        assert!(uiautomator_calls(dir.path()) < 4);
+    }
+
+    #[tokio::test]
+    async fn concurrent_captures_on_one_device_take_turns() {
+        let dir = tempfile::tempdir().unwrap();
+        // Like a device: a second UiAutomation client is refused while one is registered.
+        let arm = format!(
+            "if ! mkdir \"$D/registered-$2\" 2>/dev/null; then echo '{ALREADY_REGISTERED_LINE}' >&2; exit 1; fi\n\
+             sleep 0.3; cat '{SAMPLE_XML}'; rmdir \"$D/registered-$2\""
+        );
+        let adb = scripted_adb(dir.path(), &arm);
+
+        let (a, b) = tokio::join!(
+            capture_within(&adb, "hier-same", Duration::from_secs(10)),
+            capture_within(&adb, "hier-same", Duration::from_secs(10)),
+        );
+        assert!(a.is_ok(), "{:?}", a.err());
+        assert!(b.is_ok(), "{:?}", b.err());
+        assert_eq!(uiautomator_calls(dir.path()), 2);
+    }
+
+    #[tokio::test]
+    async fn captures_on_different_devices_do_not_wait_for_each_other() {
+        let dir = tempfile::tempdir().unwrap();
+        // Each dump waits up to 3 s to see the other device's dump running.
+        let arm = format!(
+            "touch \"$D/inside-$2\"; i=0\n\
+             while [ $i -lt 30 ]; do\n\
+               if [ \"$(ls \"$D\" | grep -c '^inside-')\" -ge 2 ]; then echo \"$2\" >> \"$D/overlaps\"; break; fi\n\
+               sleep 0.1; i=$((i+1))\n\
+             done\n\
+             cat '{SAMPLE_XML}'"
+        );
+        let adb = scripted_adb(dir.path(), &arm);
+
+        let (a, b) = tokio::join!(
+            capture_within(&adb, "hier-par-a", Duration::from_secs(10)),
+            capture_within(&adb, "hier-par-b", Duration::from_secs(10)),
+        );
+        assert!(a.is_ok() && b.is_ok());
+        assert_eq!(
+            lines(&dir.path().join("overlaps")).len(),
+            2,
+            "each dump should have run while the other was running"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_instrumentation_run_makes_the_device_busy_without_touching_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = scripted_adb(dir.path(), &format!("cat '{SAMPLE_XML}'"));
+
+        let run = begin_instrumentation_on("hier-instr");
+        let err = capture_within(&adb, "hier-instr", Duration::from_secs(10))
+            .await
+            .unwrap_err();
+        assert!(err.contains("busy: instrumentation running"), "{err}");
+        assert!(
+            lines(&dir.path().join("calls")).is_empty(),
+            "a busy device must not be sent any command"
+        );
+
+        capture_within(&adb, "hier-instr-other", Duration::from_secs(10))
+            .await
+            .expect("other devices stay usable");
+
+        drop(run);
+        capture_within(&adb, "hier-instr", Duration::from_secs(10))
+            .await
+            .expect("the device is free once the run ends");
+    }
+
+    #[tokio::test]
+    async fn another_ui_automation_client_fails_fast_as_busy() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = scripted_adb(
+            dir.path(),
+            &format!("echo '{ALREADY_REGISTERED_LINE}'; exit 1"),
+        );
+
+        let err = capture_within(&adb, "hier-foreign", Duration::from_secs(10))
+            .await
+            .unwrap_err();
+        assert!(err.contains("another UI Automator client"), "{err}");
+        assert_eq!(uiautomator_calls(dir.path()), 1, "no retries");
+    }
+
+    #[tokio::test]
+    async fn app_text_mentioning_already_registered_is_not_a_busy_device() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = scripted_adb(
+            dir.path(),
+            &format!("sed 's/text=\"Hello\"/text=\"Email already registered\"/' '{SAMPLE_XML}'"),
+        );
+
+        let snap = capture_within(&adb, "hier-app-text", Duration::from_secs(10))
+            .await
+            .expect("a dump is a dump");
+        let tree = serde_json::to_string(&snap.root).unwrap();
+        assert!(tree.contains("Email already registered"), "{tree}");
     }
 }
