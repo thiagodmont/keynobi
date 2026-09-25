@@ -151,6 +151,7 @@ pub struct LogStats {
     pub dropped_lines: u64,
     /// Lines read from the device but not yet processed when the pipeline's
     /// last batch ended. Stays near zero while the pipeline keeps up.
+    #[ts(type = "number")]
     pub backlog_lines: u64,
 }
 

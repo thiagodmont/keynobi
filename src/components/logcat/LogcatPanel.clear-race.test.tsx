@@ -72,7 +72,7 @@ function installMocks(options: { deferMountBackfill?: boolean } = {}) {
           bufferUsagePct: 0,
           bufferEntryCount: BigInt(stored.length),
           droppedLines: 0n,
-          backlogLines: 0n,
+          backlogLines: 0,
         } satisfies LogStats;
       case "clear_logcat":
         stored = [];

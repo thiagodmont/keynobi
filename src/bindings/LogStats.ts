@@ -29,4 +29,4 @@ droppedLines: bigint,
  * Lines read from the device but not yet processed when the pipeline's
  * last batch ended. Stays near zero while the pipeline keeps up.
  */
-backlogLines: bigint, };
+backlogLines: number, };

@@ -122,7 +122,7 @@ function installLogcatPanelMocks(entries: ProcessedEntry[]): {
           bufferUsagePct: 0,
           bufferEntryCount: BigInt(storedEntries.length),
           droppedLines: 0n,
-          backlogLines: 0n,
+          backlogLines: 0,
         } satisfies LogStats;
       case "set_logcat_filter": {
         const payload = args as { filterSpec?: LogcatFilterSpec };
