@@ -204,6 +204,7 @@ async fn record(
 async fn record_build_result_success_updates_state() {
     use keynobi_lib::models::build::BuildStatus;
 
+    let _history = common::lock_history().await;
     let state = common::isolated_build_state();
     // Capture history length before recording — startup may load persisted history from disk.
     let initial_len = state.inner.lock().await.history.len();
@@ -249,6 +250,7 @@ async fn record_build_result_success_updates_state() {
 async fn record_build_result_failure_updates_state() {
     use keynobi_lib::models::build::{BuildError, BuildErrorSeverity, BuildStatus};
 
+    let _history = common::lock_history().await;
     let state = common::isolated_build_state();
     let result = BuildResult {
         success: false,
@@ -288,6 +290,7 @@ async fn record_build_result_failure_updates_state() {
 async fn record_build_result_respects_history_limit() {
     use keynobi_lib::models::build::BuildStatus;
 
+    let _history = common::lock_history().await;
     let state = common::isolated_build_state();
 
     // Record MAX_HISTORY + 2 builds — the ring buffer should evict the oldest.
@@ -316,21 +319,8 @@ async fn record_build_result_respects_history_limit() {
         build_runner::MAX_HISTORY,
         "history must be capped at MAX_HISTORY"
     );
-    // History is shared with every build recorded in the data directory
-    // (other tests here run in parallel), so builds may interleave. The two
-    // oldest of this test's builds are evicted either way.
-    assert!(inner
-        .history
-        .iter()
-        .all(|r| r.task != "task_0" && r.task != "task_1"));
-    assert!(
-        inner
-            .history
-            .iter()
-            .zip(inner.history.iter().skip(1))
-            .all(|(a, b)| a.id < b.id),
-        "IDs are unique and in recording order"
-    );
+    // The oldest entries (task_0, task_1) should have been evicted.
+    assert_eq!(inner.history[0].task, "task_2");
     assert!(matches!(inner.status, BuildStatus::Success(_)));
 }
 
@@ -340,6 +330,7 @@ async fn record_build_result_respects_history_limit() {
 /// get_build_history can return only builds for the active project.
 #[tokio::test]
 async fn record_build_result_stamps_project_root() {
+    let _history = common::lock_history().await;
     let state = common::isolated_build_state();
     let result = BuildResult {
         success: true,
@@ -370,6 +361,7 @@ async fn record_build_result_stamps_project_root() {
 /// Records with no project_root (e.g. from MCP run_task paths) store None.
 #[tokio::test]
 async fn record_build_result_stores_none_project_root_when_not_provided() {
+    let _history = common::lock_history().await;
     let state = common::isolated_build_state();
     let result = BuildResult {
         success: true,
@@ -400,6 +392,7 @@ async fn record_build_result_stores_none_project_root_when_not_provided() {
 /// history holds all records, and filtering by project_root is what scopes them.
 #[tokio::test]
 async fn history_records_retain_distinct_project_roots() {
+    let _history = common::lock_history().await;
     let state = common::isolated_build_state();
     let make_result = || BuildResult {
         success: true,

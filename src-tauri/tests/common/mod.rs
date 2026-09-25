@@ -31,3 +31,12 @@ pub fn isolated_build_state() -> BuildState {
     isolate_data_dir();
     BuildState::new()
 }
+
+/// Integration tests share one data directory, so builds recorded by tests
+/// running in parallel land in the same persisted history. Tests that record
+/// builds and assert on the history hold this for their whole body.
+#[allow(dead_code)] // Not every test crate records builds.
+pub async fn lock_history() -> tokio::sync::MutexGuard<'static, ()> {
+    static HISTORY: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    HISTORY.lock().await
+}
