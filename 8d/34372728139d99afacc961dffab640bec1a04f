@@ -1,0 +1,32 @@
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_7a66c9fc830b31 97-100
+src-tauri/src/services/adb_manager.rs
+  s_1e114e823b9048::t_1fb155151d47c8 1459
+  s_1e114e823b9048::t_0634d884e5f426 1460-1464,1479-1480,1483-1505
+  s_1e114e823b9048::t_a17fd187c9c1b7 16
+src-tauri/src/lib.rs
+  s_1e114e823b9048::t_1fb155151d47c8 290
+src-tauri/src/commands/device.rs
+  s_1e114e823b9048::t_2315a5c7e680d3 311
+  s_1e114e823b9048::t_36669f059145b7 22
+  s_1e114e823b9048::t_333765684705ac 549-686
+  s_1e114e823b9048::t_8de4a6a3f59d7a 214-223,230,234-310
+  s_1e114e823b9048::t_f687e9589140a9 12,17-18
+  s_1e114e823b9048::t_6f264bd241e2d7 462
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8d34372728139d99afacc961dffab640bec1a04f",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
