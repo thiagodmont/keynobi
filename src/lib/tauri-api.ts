@@ -127,7 +127,7 @@ export async function detectJavaPath(): Promise<string | null> {
 
 // ── Health checks ─────────────────────────────────────────────────────────────
 
-import type { SystemHealthReport } from "@/bindings";
+import type { AppError, SystemHealthReport } from "@/bindings";
 
 /** Run system-level health probes (Java, SDK, Gradle, disk). */
 export async function runHealthChecks(): Promise<SystemHealthReport> {
@@ -157,6 +157,11 @@ export function formatError(err: unknown): string {
     }
   }
   return String(err);
+}
+
+/** The command failed with this `AppError` kind (`{ kind, message }`). */
+export function isAppErrorKind(err: unknown, kind: AppError["kind"]): boolean {
+  return !!err && typeof err === "object" && (err as { kind?: unknown }).kind === kind;
 }
 
 // ── Build system ──────────────────────────────────────────────────────────────
@@ -210,6 +215,7 @@ export async function clearBuildHistory(): Promise<void> {
   return invoke<void>("clear_build_history");
 }
 
+/** The saved log of a past build. Rejects with `notFound` once log rotation removed it. */
 export async function getBuildLogEntries(id: number): Promise<BuildLine[]> {
   return invoke<BuildLine[]>("get_build_log_entries", { id });
 }

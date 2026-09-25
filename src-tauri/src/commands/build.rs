@@ -140,26 +140,10 @@ pub async fn clear_build_history(build_state: State<'_, BuildState>) -> Result<(
 }
 
 /// Return the structured log entries for a specific completed build.
-/// Reads ~/.keynobi/build-logs/build-{id}.jsonl and returns up to 10,000 entries.
-/// Returns an empty vec if the file does not exist (build predates the feature or was rotated).
+/// `NotFound` when log rotation removed the build's log.
 #[tauri::command]
-pub async fn get_build_log_entries(id: u32) -> Result<Vec<BuildLine>, String> {
-    use crate::services::settings_manager::data_dir;
-    let path = data_dir()
-        .join("build-logs")
-        .join(format!("build-{id}.jsonl"));
-    let content = match tokio::fs::read_to_string(&path).await {
-        Ok(c) => c,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
-        Err(e) => return Err(e.to_string()),
-    };
-    let entries: Vec<BuildLine> = content
-        .lines()
-        .filter(|l| !l.trim().is_empty())
-        .filter_map(|l| serde_json::from_str(l).ok())
-        .take(10_000)
-        .collect();
-    Ok(entries)
+pub async fn get_build_log_entries(id: u32) -> Result<Vec<BuildLine>, AppError> {
+    build_runner::read_build_log_in(&settings_manager::data_dir().join("build-logs"), id).await
 }
 
 /// Extract the package name from an APK using `aapt2 dump packagename`.
