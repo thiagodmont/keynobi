@@ -383,8 +383,9 @@ async fn try_resolve_launcher(adb: &Path, serial: &str, package: &str) -> Option
 /// Find the effective installed package name when the caller only knows the
 /// base `applicationId` (without build-type / flavor suffixes).
 ///
-/// Runs `adb shell pm list packages` and collects every package whose name
-/// starts with `base_package`. Returns the match if there is exactly one,
+/// Runs `adb shell pm list packages` and collects `base_package` and every
+/// package extending it at a `.` or `:` boundary (`com.example.app.debug`, not
+/// `com.example.apple`). Returns the match if there is exactly one,
 /// so we can resolve the correct package for builds like `demoDebug` where the
 /// installed package is `com.example.app.demo.debug` but the stored ID is
 /// `com.example.app`.
@@ -401,23 +402,73 @@ async fn discover_effective_package(
     .map_err(|e| tracing::warn!("adb pm list packages on {serial}: {e}"))
     .ok()?;
     let stdout = String::from_utf8_lossy(&out.stdout);
-    // Each line is "package:<name>". Collect names starting with base_package.
-    let matches: Vec<String> = stdout
-        .lines()
-        .filter_map(|l| l.strip_prefix("package:"))
-        .map(str::trim)
-        .filter(|name| name.starts_with(base_package))
-        .map(str::to_string)
-        .collect();
+    let matches = variant_packages(&stdout, base_package);
     // If there is exactly one candidate (or an exact match), use it.
-    if matches.len() == 1 {
-        return Some(matches.into_iter().next().unwrap());
+    if let [only] = matches.as_slice() {
+        return Some(only.clone());
     }
     // If the base_package itself is among the candidates, prefer the exact match.
     if matches.iter().any(|m| m == base_package) {
         return Some(base_package.to_string());
     }
     None
+}
+
+/// Packages in `pm list packages` output (`package:<name>` lines) that are
+/// `base_package` or extend it at a `.` or `:` boundary.
+fn variant_packages(pm_list_output: &str, base_package: &str) -> Vec<String> {
+    pm_list_output
+        .lines()
+        .filter_map(|l| l.strip_prefix("package:"))
+        .map(str::trim)
+        .filter(|name| {
+            name.strip_prefix(base_package)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with(['.', ':']))
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+/// The line in `am start` output that reports a failure, if any.
+///
+/// `am start` usually exits 0 even when nothing started ("Error: Activity not
+/// started, unable to resolve Intent"), so its output must be checked too.
+pub fn am_start_failure(output: &str) -> Option<String> {
+    output
+        .lines()
+        .map(str::trim)
+        .find(|line| {
+            line.get(..5)
+                .is_some_and(|head| head.eq_ignore_ascii_case("error"))
+                || line.starts_with("Security exception")
+                || line.starts_with("java.lang.")
+                || line.starts_with("Exception occurred while executing")
+        })
+        .map(str::to_string)
+}
+
+/// `Ok(combined output)` when `am start` succeeded, else `Err` with the failure.
+fn check_am_start(out: &std::process::Output) -> Result<String, String> {
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let combined = format!("{stdout}{stderr}").trim().to_owned();
+    if out.status.success() && am_start_failure(&combined).is_none() {
+        Ok(combined)
+    } else {
+        Err(combined)
+    }
+}
+
+/// Whether `serial` is an adb-over-network device (`host:port`, or an mDNS
+/// name such as `adb-XXXX._adb-tls-connect._tcp`). Such a device is reached
+/// through its own network connection.
+pub fn is_wireless_adb_serial(serial: &str) -> bool {
+    if serial.contains("._adb-tls-connect._tcp") || serial.contains("._adb._tcp") {
+        return true;
+    }
+    serial.rsplit_once(':').is_some_and(|(host, port)| {
+        !host.is_empty() && !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit())
+    })
 }
 
 /// Launch an app on a device.
@@ -452,13 +503,9 @@ pub async fn launch_app(
         let out = output_with_timeout(Command::new(adb).args(args), ADB_LAUNCH_TIMEOUT)
             .await
             .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))?;
-        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-        let combined = format!("{stdout}{stderr}").trim().to_owned();
-        if out.status.success() && !stdout.contains("Error") && !stdout.contains("error") {
-            return Ok(format!("am start OK: {combined}"));
-        }
-        return Err(format!("am start failed: {combined}"));
+        return check_am_start(&out)
+            .map(|combined| format!("am start OK: {combined}"))
+            .map_err(|combined| format!("am start failed: {combined}"));
     }
 
     // Step 1: ask the device for the LAUNCHER activity of the given package name.
@@ -477,13 +524,8 @@ pub async fn launch_app(
         )
         .await
         .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))?;
-        let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-        if !stdout.contains("Error") {
-            let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-            return Ok(format!(
-                "am start OK ({component}): {}",
-                format!("{stdout}{stderr}").trim()
-            ));
+        if let Ok(combined) = check_am_start(&out) {
+            return Ok(format!("am start OK ({component}): {combined}"));
         }
     }
 
@@ -509,13 +551,8 @@ pub async fn launch_app(
             )
             .await
             .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))?;
-            let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-            if !stdout.contains("Error") {
-                let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-                return Ok(format!(
-                    "am start OK ({component}): {}",
-                    format!("{stdout}{stderr}").trim()
-                ));
+            if let Ok(combined) = check_am_start(&out) {
+                return Ok(format!("am start OK ({component}): {combined}"));
             }
         }
     }
@@ -565,16 +602,11 @@ pub async fn launch_app(
     .await
     .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))?;
 
-    let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
-    let combined = format!("{stdout}{stderr}").trim().to_owned();
-
-    if out.status.success() && !stdout.contains("Error:") {
-        Ok(format!("am start (intent) OK: {combined}"))
-    } else {
-        Err(format!(
+    match check_am_start(&out) {
+        Ok(combined) => Ok(format!("am start (intent) OK: {combined}")),
+        Err(combined) => Err(format!(
             "processFailed: {monkey_combined} | intent: {combined}"
-        ))
+        )),
     }
 }
 
@@ -1529,6 +1561,90 @@ mod tests {
 
     /// Longer than the deadlines below, much shorter than the hung adb.
     const TEST_GUARD: Duration = Duration::from_secs(10);
+
+    #[test]
+    fn variant_packages_match_only_at_a_package_boundary() {
+        let pm = "package:com.example.app.debug\npackage:com.example.apple\n\
+                  package:com.example.app\npackage:com.example.application.demo\n";
+        assert_eq!(
+            variant_packages(pm, "com.example.app"),
+            vec!["com.example.app.debug", "com.example.app"]
+        );
+        assert!(variant_packages("package:com.example.apple\n", "com.example.app").is_empty());
+    }
+
+    #[test]
+    fn am_start_failure_detects_errors_despite_exit_zero() {
+        for output in [
+            "Starting: Intent { act=android.intent.action.VIEW dat=myapp://x }\n\
+             Error: Activity not started, unable to resolve Intent { act=android.intent.action.VIEW }",
+            "Error type 3\nError: Activity class {com.example.app/.Missing} does not exist.",
+            "Security exception: Permission Denial: starting Intent",
+            "Exception occurred while executing 'start':\njava.lang.SecurityException: Permission Denial",
+            "error: device offline",
+        ] {
+            assert!(am_start_failure(output).is_some(), "{output}");
+        }
+    }
+
+    #[test]
+    fn am_start_failure_accepts_successful_starts() {
+        for output in [
+            "Starting: Intent { act=android.intent.action.VIEW dat=myapp://Error/42 }",
+            "Starting: Intent { cmp=com.example.app/.Main }\n\
+             Warning: Activity not started, intent has been delivered to currently running top-most instance.",
+            "",
+        ] {
+            assert_eq!(am_start_failure(output), None, "{output}");
+        }
+    }
+
+    #[test]
+    fn wireless_serials_are_detected() {
+        for serial in [
+            "192.168.1.5:5555",
+            "localhost:5555",
+            "[fe80::1]:37000",
+            "adb-R58M12ABCDE-a1b2c3._adb-tls-connect._tcp",
+            "adb-R58M12ABCDE-a1b2c3._adb-tls-connect._tcp.",
+            "adb-R58M12ABCDE._adb._tcp",
+        ] {
+            assert!(is_wireless_adb_serial(serial), "{serial}");
+        }
+        for serial in [
+            "emulator-5554",
+            "R58M12ABCDE",
+            "0123456789ABCDEF",
+            "device:",
+            ":5555",
+        ] {
+            assert!(!is_wireless_adb_serial(serial), "{serial}");
+        }
+    }
+
+    /// An `adb` that answers every call with `stdout` and exit status 0.
+    fn adb_printing(dir: &Path, stdout: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let adb = dir.join("adb");
+        std::fs::write(&adb, format!("#!/bin/sh\necho '{stdout}'\n")).unwrap();
+        std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        adb
+    }
+
+    #[tokio::test]
+    async fn launch_app_reports_an_unresolved_activity_as_a_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = adb_printing(
+            dir.path(),
+            "Error: Activity class {com.example.app/.Missing} does not exist.",
+        );
+
+        let err = launch_app(&adb, "emulator-5554", "com.example.app", Some(".Missing"))
+            .await
+            .unwrap_err();
+
+        assert!(err.contains("does not exist"), "{err}");
+    }
 
     #[tokio::test]
     async fn list_devices_gives_up_on_a_hung_adb() {

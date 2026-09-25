@@ -183,6 +183,12 @@ impl McpClient {
     /// Send a request and wait for the response with the same id, skipping
     /// notifications. Panics on a JSON-RPC error or timeout.
     pub fn request(&mut self, method: &str, params: Value) -> Value {
+        self.request_result(method, params)
+            .unwrap_or_else(|error| panic!("{method} failed: {error}"))
+    }
+
+    /// Like [`McpClient::request`], but returns a JSON-RPC error instead of panicking.
+    pub fn request_result(&mut self, method: &str, params: Value) -> Result<Value, Value> {
         let id = self.next_id;
         self.next_id += 1;
         self.send(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
@@ -198,9 +204,9 @@ impl McpClient {
                 continue;
             }
             if let Some(error) = message.get("error") {
-                panic!("{method} failed: {error}");
+                return Err(error.clone());
             }
-            return message["result"].clone();
+            return Ok(message["result"].clone());
         }
     }
 
@@ -232,6 +238,18 @@ impl McpClient {
         ToolOutput {
             text,
             is_error: result["isError"].as_bool().unwrap_or(false),
+        }
+    }
+
+    /// Call a tool that must be rejected with a JSON-RPC error (invalid
+    /// arguments); returns the error message.
+    pub fn call_tool_rejected(&mut self, name: &str, arguments: Value) -> String {
+        match self.request_result(
+            "tools/call",
+            json!({ "name": name, "arguments": arguments }),
+        ) {
+            Ok(result) => panic!("{name} was not rejected: {result}"),
+            Err(error) => error["message"].as_str().unwrap_or_default().to_string(),
         }
     }
 

@@ -203,6 +203,109 @@ pub fn check_agent_gradle_task(task: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Max `applicationIdSuffix` values considered when matching variant packages.
+pub const MAX_PACKAGE_SUFFIXES: usize = 16;
+
+/// The package names the open project's app installs as.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectPackageScope {
+    /// Base application ids: the default config's and any flavor overrides.
+    pub application_ids: Vec<String>,
+    /// `applicationIdSuffix` values from build types and product flavors.
+    pub suffixes: Vec<String>,
+    /// Exact ids of variants that were built (read from the build outputs).
+    pub built_ids: Vec<String>,
+}
+
+impl ProjectPackageScope {
+    pub fn is_empty(&self) -> bool {
+        self.application_ids.is_empty() && self.built_ids.is_empty()
+    }
+
+    /// Whether `package` is a base id, a base id followed by a combination
+    /// of the parsed suffixes (flavor then build type, each used once), or a
+    /// built variant's id. `com.example.app` does not cover `com.example.apple`.
+    pub fn contains(&self, package: &str) -> bool {
+        if self.built_ids.iter().any(|id| id == package) {
+            return true;
+        }
+        let suffixes: Vec<String> = self
+            .suffixes
+            .iter()
+            .filter_map(|s| normalize_suffix(s))
+            .take(MAX_PACKAGE_SUFFIXES)
+            .collect();
+        self.application_ids.iter().any(|id| {
+            package
+                .strip_prefix(id.as_str())
+                .is_some_and(|rest| rest.is_empty() || consumed_by_suffixes(rest, &suffixes, 0))
+        })
+    }
+}
+
+/// AGP adds the separating `.` when a suffix does not start with one.
+fn normalize_suffix(suffix: &str) -> Option<String> {
+    let s = suffix.trim();
+    match s.trim_start_matches('.') {
+        "" => None,
+        rest => Some(format!(".{rest}")),
+    }
+}
+
+/// Whether `rest` is exactly a concatenation of distinct `suffixes`.
+fn consumed_by_suffixes(rest: &str, suffixes: &[String], used: u32) -> bool {
+    if rest.is_empty() {
+        return true;
+    }
+    suffixes.iter().enumerate().any(|(i, s)| {
+        used & (1 << i) == 0
+            && rest
+                .strip_prefix(s.as_str())
+                .is_some_and(|tail| consumed_by_suffixes(tail, suffixes, used | (1 << i)))
+    })
+}
+
+/// Refuse a destructive or permission-changing MCP call on a package that is
+/// not the open project's app. `tool` names the calling tool in the message.
+///
+/// Callers skip this check when the client passed `allow_foreign_package: true`.
+pub fn check_agent_package_scope(
+    tool: &str,
+    package: &str,
+    scope: &ProjectPackageScope,
+) -> Result<(), String> {
+    if scope.is_empty() {
+        return Err(format!(
+            "{tool} refused '{package}': the open project's applicationId could not be \
+             determined, so Keynobi cannot confirm this package belongs to it. Open the \
+             Android project (or start the server with --project), or pass \
+             allow_foreign_package: true if the user explicitly asked to act on '{package}'."
+        ));
+    }
+    if scope.contains(package) {
+        return Ok(());
+    }
+    let mut known: Vec<&str> = scope
+        .application_ids
+        .iter()
+        .chain(scope.built_ids.iter())
+        .map(String::as_str)
+        .collect();
+    known.sort_unstable();
+    known.dedup();
+    Err(format!(
+        "{tool} refused '{package}': it is not the open project's app ({}; variant \
+         suffixes: {}). Use the project's package, or pass allow_foreign_package: true \
+         only if the user explicitly asked to act on '{package}'.",
+        known.join(", "),
+        if scope.suffixes.is_empty() {
+            "none found".to_string()
+        } else {
+            scope.suffixes.join(", ")
+        }
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -376,5 +479,69 @@ mod tests {
         for pkg in ["", "noDotsHere", "com.example; rm -rf /", "com example"] {
             assert!(validate_package_name(pkg).is_err(), "should reject {pkg}");
         }
+    }
+
+    // ── Package scope ────────────────────────────────────────────────────────
+
+    fn scope(ids: &[&str], suffixes: &[&str], built: &[&str]) -> ProjectPackageScope {
+        let owned = |v: &[&str]| v.iter().map(|s| s.to_string()).collect();
+        ProjectPackageScope {
+            application_ids: owned(ids),
+            suffixes: owned(suffixes),
+            built_ids: owned(built),
+        }
+    }
+
+    #[test]
+    fn package_scope_allows_the_application_id_and_its_variant_suffixes() {
+        let s = scope(&["com.example.app"], &[".debug", "demo", ".full"], &[]);
+        for pkg in [
+            "com.example.app",
+            "com.example.app.debug",
+            "com.example.app.demo",
+            "com.example.app.demo.debug",
+            "com.example.app.full.debug",
+        ] {
+            assert!(
+                check_agent_package_scope("stop_app", pkg, &s).is_ok(),
+                "{pkg}"
+            );
+        }
+    }
+
+    #[test]
+    fn package_scope_rejects_lookalikes_and_foreign_packages() {
+        let s = scope(&["com.example.app"], &[".debug"], &[]);
+        for pkg in [
+            "com.example.apple",
+            "com.example.app.debugger",
+            "com.example.app.debug.debug",
+            "com.example.app.other",
+            "com.example",
+            "com.google.android.gms",
+        ] {
+            let err = check_agent_package_scope("stop_app", pkg, &s).unwrap_err();
+            assert!(err.contains("allow_foreign_package: true"), "{err}");
+            assert!(err.contains("com.example.app"), "{err}");
+        }
+    }
+
+    #[test]
+    fn package_scope_accepts_built_variant_ids_exactly() {
+        let s = scope(&[], &[], &["com.example.app.staging"]);
+        assert!(check_agent_package_scope("t", "com.example.app.staging", &s).is_ok());
+        assert!(check_agent_package_scope("t", "com.example.app", &s).is_err());
+    }
+
+    #[test]
+    fn package_scope_refuses_everything_when_the_project_id_is_unknown() {
+        let err = check_agent_package_scope(
+            "revoke_runtime_permission",
+            "com.example.app",
+            &scope(&[], &[], &[]),
+        )
+        .unwrap_err();
+        assert!(err.contains("could not be determined"), "{err}");
+        assert!(err.contains("allow_foreign_package: true"), "{err}");
     }
 }

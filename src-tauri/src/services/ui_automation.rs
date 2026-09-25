@@ -3,6 +3,7 @@
 //! Used by MCP tools. Hierarchy capture reuses [`crate::services::ui_hierarchy`].
 
 use crate::models::ui_hierarchy::{UiHierarchySnapshot, UiNode};
+use crate::services::adb_manager::{am_start_failure, is_wireless_adb_serial};
 use crate::services::ui_hierarchy;
 use crate::services::ui_hierarchy_parse::center_from_bounds;
 use crate::utils::device_shell::quote_device_shell_arg;
@@ -287,14 +288,37 @@ pub struct SetDeviceOrientationParams {
 pub struct SetNetworkStateParams {
     #[schemars(description = "ADB device serial. Uses first online device if omitted.")]
     pub device_serial: Option<String>,
-    #[schemars(description = "Enable or disable Wi-Fi with `svc wifi`.")]
+    #[schemars(
+        description = "Enable or disable Wi-Fi with `svc wifi`. Turning Wi-Fi off is refused on wireless-ADB devices (host:port or mDNS serials)."
+    )]
     pub wifi: Option<bool>,
     #[schemars(description = "Enable or disable mobile data with `svc data`.")]
     pub mobile_data: Option<bool>,
     #[schemars(
-        description = "Enable or disable airplane mode with `cmd connectivity airplane-mode`."
+        description = "Enable or disable airplane mode with `cmd connectivity airplane-mode`. Turning it on is refused on wireless-ADB devices (host:port or mDNS serials)."
     )]
     pub airplane_mode: Option<bool>,
+}
+
+/// Network toggles as read from the device's global settings before a change.
+/// `None` when not requested or unreadable.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkState {
+    pub wifi: Option<bool>,
+    pub mobile_data: Option<bool>,
+    pub airplane_mode: Option<bool>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkStateChange {
+    /// The state before the change; pass it back to revert.
+    pub previous: NetworkState,
+    pub steps: Vec<AdbShellStep>,
+    /// Every step succeeded; a failed `cmd` airplane-mode step counts only
+    /// through the fallback steps that replace it.
+    pub success: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -528,6 +552,15 @@ pub struct GrantRuntimePermissionParams {
     pub package: String,
     #[schemars(description = "Android permission, e.g. android.permission.CAMERA")]
     pub permission: String,
+    #[schemars(
+        description = "Set true to act on a package that is not the open project's app (its applicationId or a variant of it). Only when the user explicitly asked for that package. Default false."
+    )]
+    #[serde(
+        rename = "allow_foreign_package",
+        alias = "allowForeignPackage",
+        default
+    )]
+    pub allow_foreign_package: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
@@ -1580,20 +1613,9 @@ pub fn build_network_state_steps(
     let mut steps = Vec::new();
     if let Some(enabled) = p.airplane_mode {
         let cmd_state = if enabled { "enable" } else { "disable" };
-        let setting_state = if enabled { "1" } else { "0" };
         steps.push(AdbShellStepSpec {
             label: "airplaneMode",
             args: vec!["cmd", "connectivity", "airplane-mode", cmd_state],
-        });
-        steps.push(AdbShellStepSpec {
-            label: "airplaneModeFallbackSetting",
-            args: vec![
-                "settings",
-                "put",
-                "global",
-                "airplane_mode_on",
-                setting_state,
-            ],
         });
     }
     if let Some(enabled) = p.wifi {
@@ -1609,6 +1631,72 @@ pub fn build_network_state_steps(
         });
     }
     Ok(steps)
+}
+
+/// For devices without `cmd connectivity airplane-mode`: write the setting,
+/// then broadcast the change so the radios follow it.
+pub fn airplane_mode_fallback_steps(enabled: bool) -> Vec<AdbShellStepSpec> {
+    vec![
+        AdbShellStepSpec {
+            label: "airplaneModeFallbackSetting",
+            args: vec![
+                "settings",
+                "put",
+                "global",
+                "airplane_mode_on",
+                if enabled { "1" } else { "0" },
+            ],
+        },
+        AdbShellStepSpec {
+            label: "airplaneModeFallbackBroadcast",
+            args: vec![
+                "am",
+                "broadcast",
+                "-a",
+                "android.intent.action.AIRPLANE_MODE",
+                "--ez",
+                "state",
+                if enabled { "true" } else { "false" },
+            ],
+        },
+    ]
+}
+
+/// Refuse changes that would drop the connection adb itself runs over.
+pub fn check_network_change_keeps_adb(
+    serial: &str,
+    p: &SetNetworkStateParams,
+) -> Result<(), String> {
+    if !is_wireless_adb_serial(serial) {
+        return Ok(());
+    }
+    let change = match (p.wifi, p.airplane_mode) {
+        (_, Some(true)) => "turn airplane mode on",
+        (Some(false), _) => "turn Wi-Fi off",
+        _ => return Ok(()),
+    };
+    Err(format!(
+        "Refusing to {change} on {serial}: the device is connected over wireless ADB, so the \
+         change would drop the connection and nothing could restore it. Use a USB-connected \
+         device or an emulator, or toggle mobileData only."
+    ))
+}
+
+/// Parse `settings get global <key>` output for a network toggle. `wifi_on`
+/// uses 2 for "on while in airplane mode" and 3 for "off by airplane mode".
+fn parse_network_setting(output: &str) -> Option<bool> {
+    match output.trim() {
+        "1" | "2" => Some(true),
+        "0" | "3" => Some(false),
+        _ => None,
+    }
+}
+
+async fn read_network_setting(adb: &PathBuf, serial: &str, key: &str) -> Option<bool> {
+    let out = run_adb_shell(adb, serial, &["settings", "get", "global", key])
+        .await
+        .ok()?;
+    parse_network_setting(&out)
 }
 
 async fn run_adb_shell_owned(
@@ -1652,7 +1740,15 @@ pub async fn adb_open_deep_link(
     // Validation trims; do the same here, since quoting would otherwise keep
     // the padding as part of the URI.
     let args = build_open_deep_link_args(uri.trim(), package);
-    run_adb_shell_owned(adb, serial, &args).await
+    let output = run_adb_shell_owned(adb, serial, &args).await?;
+    if let Some(failure) = am_start_failure(&output) {
+        let target = package.map_or("an installed app".to_string(), |p| format!("'{p}'"));
+        return Err(format!(
+            "The deep link was not opened: {failure}. Check that {target} is installed and \
+             declares an intent filter matching this URI's scheme and host."
+        ));
+    }
+    Ok(output)
 }
 
 pub async fn adb_open_app_settings(
@@ -1662,7 +1758,14 @@ pub async fn adb_open_app_settings(
     panel: Option<&str>,
 ) -> Result<String, String> {
     let args = build_open_app_settings_args(package, panel.unwrap_or("appInfo"))?;
-    run_adb_shell_owned(adb, serial, &args).await
+    let output = run_adb_shell_owned(adb, serial, &args).await?;
+    if let Some(failure) = am_start_failure(&output) {
+        return Err(format!(
+            "The settings screen for '{package}' was not opened: {failure}. Check that the \
+             package is installed (dump_app_info)."
+        ));
+    }
+    Ok(output)
 }
 
 pub async fn adb_set_device_orientation(
@@ -1716,13 +1819,92 @@ pub async fn adb_set_network_state(
     adb: &PathBuf,
     serial: &str,
     p: &SetNetworkStateParams,
-) -> Result<Vec<AdbShellStep>, String> {
+) -> Result<NetworkStateChange, String> {
     let step_specs = build_network_state_steps(p)?;
-    let mut steps = Vec::with_capacity(step_specs.len());
-    for spec in step_specs {
-        steps.push(run_adb_shell_step(adb, serial, spec.label, &spec.args).await);
+    check_network_change_keeps_adb(serial, p)?;
+
+    let mut previous = NetworkState::default();
+    if p.wifi.is_some() {
+        previous.wifi = read_network_setting(adb, serial, "wifi_on").await;
     }
-    Ok(steps)
+    if p.mobile_data.is_some() {
+        previous.mobile_data = read_network_setting(adb, serial, "mobile_data").await;
+    }
+    if p.airplane_mode.is_some() {
+        previous.airplane_mode = read_network_setting(adb, serial, "airplane_mode_on").await;
+    }
+
+    let mut steps = Vec::with_capacity(step_specs.len() + 3);
+    for spec in step_specs {
+        let mut step = run_adb_shell_step(adb, serial, spec.label, &spec.args).await;
+        let airplane = spec.label == "airplaneMode";
+        if airplane && shell_output_reports_failure(&step.output) {
+            step.success = false;
+        }
+        let use_fallback = airplane && !step.success;
+        steps.push(step);
+        if let (true, Some(enabled)) = (use_fallback, p.airplane_mode) {
+            steps.extend(
+                set_airplane_mode_fallback(adb, serial, enabled, previous.airplane_mode).await,
+            );
+        }
+    }
+    let success = steps.iter().all(|s| s.success || s.label == "airplaneMode");
+    Ok(NetworkStateChange {
+        previous,
+        steps,
+        success,
+    })
+}
+
+/// `cmd` and `am` can exit 0 while printing that the service, subcommand, or
+/// permission is missing.
+fn shell_output_reports_failure(output: &str) -> bool {
+    let lower = output.to_ascii_lowercase();
+    lower.contains("unknown command")
+        || lower.contains("can't find service")
+        || am_start_failure(output).is_some()
+}
+
+/// Write the airplane-mode setting and broadcast it. If the broadcast is
+/// refused, restore the previous setting so it does not disagree with the radios.
+async fn set_airplane_mode_fallback(
+    adb: &PathBuf,
+    serial: &str,
+    enabled: bool,
+    previous: Option<bool>,
+) -> Vec<AdbShellStep> {
+    let mut steps = Vec::with_capacity(3);
+    for spec in airplane_mode_fallback_steps(enabled) {
+        let mut step = run_adb_shell_step(adb, serial, spec.label, &spec.args).await;
+        if shell_output_reports_failure(&step.output) {
+            step.success = false;
+        }
+        let failed = !step.success;
+        steps.push(step);
+        if failed {
+            break;
+        }
+    }
+    let broadcast_failed = steps.len() == 2 && !steps[1].success;
+    if let (true, Some(prev)) = (broadcast_failed, previous) {
+        steps.push(
+            run_adb_shell_step(
+                adb,
+                serial,
+                "airplaneModeFallbackRevert",
+                &[
+                    "settings",
+                    "put",
+                    "global",
+                    "airplane_mode_on",
+                    if prev { "1" } else { "0" },
+                ],
+            )
+            .await,
+        );
+    }
+    steps
 }
 
 pub async fn adb_hide_soft_keyboard(
@@ -1882,6 +2064,164 @@ mod tests {
             recorded_calls(&record),
             vec![build_open_deep_link_args(uri, Some("com.example.app"))]
         );
+    }
+
+    /// An `adb` that records `$*` per call and runs `body` (a `case "$*"` arm list).
+    fn scripted_adb(dir: &std::path::Path, body: &str) -> (PathBuf, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let record = dir.join("calls");
+        let adb = dir.join("adb");
+        std::fs::write(
+            &adb,
+            format!(
+                "#!/bin/sh\necho \"$*\" >> '{}'\ncase \"$*\" in\n{body}\nesac\n",
+                record.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (adb, record)
+    }
+
+    fn calls(record: &std::path::Path) -> Vec<String> {
+        std::fs::read_to_string(record)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn deep_link_that_resolves_to_no_activity_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let (adb, _) = scripted_adb(
+            dir.path(),
+            "*) echo 'Starting: Intent { act=android.intent.action.VIEW dat=myapp://x }'\n   \
+             echo 'Error: Activity not started, unable to resolve Intent { act=android.intent.action.VIEW }' ;;",
+        );
+
+        let err = adb_open_deep_link(&adb, "emulator-5554", "myapp://x", Some("com.example.app"))
+            .await
+            .unwrap_err();
+
+        assert!(err.contains("unable to resolve Intent"), "{err}");
+        assert!(err.contains("com.example.app"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn app_settings_for_a_missing_package_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let (adb, _) = scripted_adb(
+            dir.path(),
+            "*) echo 'Error: Activity not started, unable to resolve Intent' ;;",
+        );
+
+        let err = adb_open_app_settings(&adb, "emulator-5554", "com.example.app", None)
+            .await
+            .unwrap_err();
+
+        assert!(err.contains("com.example.app"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn airplane_fallback_runs_only_when_cmd_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let (adb, record) = scripted_adb(dir.path(), "*'settings get'*) echo 0 ;;");
+        let p = SetNetworkStateParams {
+            airplane_mode: Some(true),
+            ..Default::default()
+        };
+
+        let change = adb_set_network_state(&adb, "emulator-5554", &p)
+            .await
+            .unwrap();
+
+        assert_eq!(change.previous.airplane_mode, Some(false));
+        assert!(
+            !calls(&record).iter().any(|c| c.contains("settings put")),
+            "{:?}",
+            calls(&record)
+        );
+        assert_eq!(change.steps.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn airplane_fallback_writes_the_setting_and_broadcasts_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let (adb, record) = scripted_adb(
+            dir.path(),
+            "*'cmd connectivity'*) echo 'Unknown command: airplane-mode' ;;\n\
+             *'settings get'*) echo 0 ;;",
+        );
+        let p = SetNetworkStateParams {
+            airplane_mode: Some(true),
+            ..Default::default()
+        };
+
+        let change = adb_set_network_state(&adb, "emulator-5554", &p)
+            .await
+            .unwrap();
+
+        let labels: Vec<&str> = change.steps.iter().map(|s| s.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            vec![
+                "airplaneMode",
+                "airplaneModeFallbackSetting",
+                "airplaneModeFallbackBroadcast"
+            ]
+        );
+        assert!(!change.steps[0].success);
+        let calls = calls(&record);
+        assert!(calls
+            .iter()
+            .any(|c| c.ends_with("settings put global airplane_mode_on 1")));
+        assert!(calls
+            .iter()
+            .any(|c| c
+                .ends_with("am broadcast -a android.intent.action.AIRPLANE_MODE --ez state true")));
+    }
+
+    #[tokio::test]
+    async fn refused_broadcast_restores_the_previous_airplane_setting() {
+        let dir = tempfile::tempdir().unwrap();
+        let (adb, record) = scripted_adb(
+            dir.path(),
+            "*'cmd connectivity'*) exit 255 ;;\n\
+             *'am broadcast'*) echo 'Security exception: Permission Denial: not allowed to send broadcast' ;;\n\
+             *'settings get'*) echo 0 ;;",
+        );
+        let p = SetNetworkStateParams {
+            airplane_mode: Some(true),
+            ..Default::default()
+        };
+
+        let change = adb_set_network_state(&adb, "emulator-5554", &p)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            change.steps.last().map(|s| s.label.as_str()),
+            Some("airplaneModeFallbackRevert")
+        );
+        assert!(calls(&record)
+            .last()
+            .is_some_and(|c| c.ends_with("settings put global airplane_mode_on 0")));
+    }
+
+    #[tokio::test]
+    async fn wireless_adb_device_is_never_sent_a_wifi_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let (adb, record) = scripted_adb(dir.path(), "*) ;;");
+        let p = SetNetworkStateParams {
+            wifi: Some(false),
+            ..Default::default()
+        };
+
+        assert!(adb_set_network_state(&adb, "192.168.1.5:5555", &p)
+            .await
+            .is_err());
+        assert!(calls(&record).is_empty());
     }
 
     #[tokio::test]
@@ -2264,15 +2604,52 @@ mod tests {
         };
         let steps = build_network_state_steps(&params).unwrap();
 
-        assert_eq!(steps.len(), 4);
+        assert_eq!(steps.len(), 3);
         assert_eq!(steps[0].label, "airplaneMode");
         assert_eq!(
             steps[0].args,
             vec!["cmd", "connectivity", "airplane-mode", "disable"]
         );
-        assert_eq!(steps[1].label, "airplaneModeFallbackSetting");
-        assert_eq!(steps[2].args, vec!["svc", "wifi", "disable"]);
-        assert_eq!(steps[3].args, vec!["svc", "data", "enable"]);
+        assert_eq!(steps[1].args, vec!["svc", "wifi", "disable"]);
+        assert_eq!(steps[2].args, vec!["svc", "data", "enable"]);
+    }
+
+    #[test]
+    fn network_changes_that_drop_wireless_adb_are_refused() {
+        let wifi_off = SetNetworkStateParams {
+            wifi: Some(false),
+            ..Default::default()
+        };
+        let airplane_on = SetNetworkStateParams {
+            airplane_mode: Some(true),
+            wifi: Some(true),
+            ..Default::default()
+        };
+        for serial in ["192.168.1.5:5555", "adb-R58M._adb-tls-connect._tcp"] {
+            let err = check_network_change_keeps_adb(serial, &wifi_off).unwrap_err();
+            assert!(err.contains("wireless ADB"), "{err}");
+            let err = check_network_change_keeps_adb(serial, &airplane_on).unwrap_err();
+            assert!(err.contains("airplane mode"), "{err}");
+        }
+
+        let harmless = SetNetworkStateParams {
+            wifi: Some(true),
+            mobile_data: Some(false),
+            airplane_mode: Some(false),
+            ..Default::default()
+        };
+        assert!(check_network_change_keeps_adb("192.168.1.5:5555", &harmless).is_ok());
+        assert!(check_network_change_keeps_adb("emulator-5554", &wifi_off).is_ok());
+        assert!(check_network_change_keeps_adb("emulator-5554", &airplane_on).is_ok());
+    }
+
+    #[test]
+    fn network_settings_parse_wifi_airplane_states() {
+        assert_eq!(parse_network_setting("1\n"), Some(true));
+        assert_eq!(parse_network_setting("2"), Some(true));
+        assert_eq!(parse_network_setting("0"), Some(false));
+        assert_eq!(parse_network_setting("3"), Some(false));
+        assert_eq!(parse_network_setting("null"), None);
     }
 
     #[test]

@@ -327,7 +327,7 @@ Your AI client starts its own Keynobi MCP process in the background. It does not
 - **Builds and logcat**: builds and logcat started by an AI client do not appear live in the Build and Logcat tabs. They can appear in build history the next time Keynobi starts.
 - **Activity**: the **MCP Activity** panel (`Cmd+Shift+M`) shows setup status, whether a server is running, and recent tool calls from AI clients.
 
-AI clients can change your device. `restart_app` keeps the app's data unless the client explicitly passes `clear_data: true` for a specific device. Review what your AI client asks to run.
+AI clients can change your device. `restart_app` keeps the app's data unless the client explicitly passes `clear_data: true` for a specific device. Stopping or restarting an app and granting or revoking its permissions work only on your project's app (its application ID and variants such as `.debug`) unless the client passes `allow_foreign_package: true`. Keynobi refuses to turn off Wi-Fi or turn on airplane mode on a device connected over wireless debugging, because that would disconnect it. Review what your AI client asks to run.
 
 Exact tools, prompts, and resources are discoverable from the MCP client.
 

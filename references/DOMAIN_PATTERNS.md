@@ -104,6 +104,13 @@ AVD lifecycle commands go through Android SDK tools. `create_avd_device` and `de
 - `pickDevice` and `selectVariant` update the selection before the backend confirms it and roll back if the backend rejects it. Each call takes a revision number; a response from a call that is no longer the latest neither rolls back nor persists project meta, so it cannot undo a newer selection.
 - Activity names passed to `am start` must be validated (`validate_activity_name`).
 
+### Device Commands
+
+- `am start` usually exits 0 even when nothing started ("Error: Activity not started, unable to resolve Intent"). Every `am start` path (launch, restart, deep links, app settings) checks the output with `adb_manager::am_start_failure` and reports a failure.
+- Resolving an installed variant from a base `applicationId` matches the id exactly or at a `.`/`:` boundary: `com.example.app` covers `com.example.app.debug`, never `com.example.apple`.
+- A wireless-ADB device (`adb_manager::is_wireless_adb_serial`: `host:port` or an `._adb-tls-connect._tcp` / `._adb._tcp` mDNS name) is reached over its own network. Never turn its Wi-Fi off or airplane mode on; nothing could restore the connection.
+- Network toggles read the previous state first and return it. Airplane mode falls back to `settings put global airplane_mode_on` plus the `AIRPLANE_MODE` broadcast only when `cmd connectivity airplane-mode` fails.
+
 ---
 
 ## Logcat
@@ -236,7 +243,7 @@ Validate every external string before acting, using the shared validators:
 | Input | Validator |
 |-------|-----------|
 | Gradle task | `utils/validation.rs::validate_gradle_task` (no leading `-`); MCP also applies `check_agent_gradle_task` unless `mcp.allowUnrestrictedGradle` is on |
-| Package name | `utils/validation.rs::validate_package_name` |
+| Package name | `utils/validation.rs::validate_package_name`; tools that stop an app or change its data or permissions also apply `check_agent_package_scope` unless the call passes `allow_foreign_package: true` |
 | Device serial | `utils/validation.rs::validate_device_serial` |
 | APK path | `utils/path.rs::validate_apk_within_build_outputs` |
 | Activity name | `validate_activity_name` |
@@ -314,5 +321,6 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Activity log.** `mcp-activity.jsonl` is trimmed only at server start (over 1,000 lines → last 500), and summaries are not redacted.
 - **APK lookup module.** `find_output_apk` looks only under `app/build/outputs/apk`, so projects whose application module is not named `app` cannot deploy.
 - **Project App Info.** When the app module is not named `app`, the root build file is edited and success is reported even if nothing changed.
+- **Airplane-mode fallback.** On devices without `cmd connectivity airplane-mode`, the fallback broadcast is a protected broadcast that a non-root shell is normally refused; the setting is then restored and the step reported as failed. Needs verification on a device.
 - **Dead code.** `DevicePanel.tsx` (panel/popover modes) is not imported anywhere.
 - **JDK resolution scope.** `-Dorg.gradle.java.home` in `GRADLE_OPTS` or `JAVA_OPTS` and Gradle toolchains are not considered. The Settings **Auto-detect** button (`detect_java_path`) still prefers the process `JAVA_HOME` and a login shell's `JAVA_HOME`, which may be older than 17.
