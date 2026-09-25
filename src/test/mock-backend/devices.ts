@@ -11,6 +11,18 @@ export const mockEmulator: Device = {
   androidVersion: "14",
 };
 
+export const mockPhone: Device = {
+  serial: "28151FDH2000Q4",
+  name: "panther",
+  model: "Pixel 7",
+  deviceKind: "physical",
+  connectionState: "online",
+  apiLevel: 35,
+  androidVersion: "15",
+};
+
+const mockDevices = [mockEmulator, mockPhone];
+
 export const mockAvd: AvdInfo = {
   name: "Pixel_6_API_34",
   displayName: "Pixel 6 API 34",
@@ -24,10 +36,10 @@ let selectedDevice: string | null = null;
 
 export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
   return {
-    list_adb_devices: () => [mockEmulator],
+    list_adb_devices: () => [...mockDevices],
     refresh_devices: () => {
-      triggerEvent("device:list_changed", { devices: [mockEmulator] });
-      return [mockEmulator];
+      triggerEvent("device:list_changed", { devices: [...mockDevices] });
+      return [...mockDevices];
     },
     select_device: (args: unknown) => {
       selectedDevice = (args as { serial: string }).serial;

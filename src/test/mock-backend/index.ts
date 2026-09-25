@@ -1,7 +1,7 @@
 import { settingsHandlers } from "./settings";
 import { projectHandlers } from "./projects";
 import { devicesHandlers } from "./devices";
-import { buildHandlers, startMockBuild } from "./build";
+import { addMockPastBuild, buildHandlers, setMockAppBuildLineDelay, startMockBuild } from "./build";
 import { logcatHandlers } from "./logcat";
 import { triggerEvent } from "./events";
 export { MockChannel } from "./channel";
@@ -68,5 +68,8 @@ if (import.meta.env.VITE_E2E === "true") {
         { kind: "agent", sessionId: 1, clientName, standalone: false },
         lineDelayMs
       ),
+    /** A build already in the history; returns its history ID. */
+    addPastBuild: addMockPastBuild,
+    setAppBuildLineDelay: setMockAppBuildLineDelay,
   };
 }
