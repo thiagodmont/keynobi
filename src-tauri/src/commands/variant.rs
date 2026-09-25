@@ -1,5 +1,5 @@
 use crate::models::variant::VariantList;
-use crate::services::{build_runner, settings_manager, variant_manager};
+use crate::services::{build_runner, gradle_modules, settings_manager, variant_manager};
 use crate::FsState;
 use std::path::PathBuf;
 use tauri::State;
@@ -35,9 +35,10 @@ fn restore_active(list: VariantList) -> VariantList {
 
 // ── Commands ──────────────────────────────────────────────────────────────────
 
-/// Fast variant preview — parsed from `app/build.gradle(.kts)` without
-/// running Gradle.  Returns only variants that are **explicitly declared**
-/// in the build script; no hardcoded defaults are injected.
+/// Fast variant preview — parsed from the application module's
+/// `build.gradle(.kts)` without running Gradle.  Returns only variants that
+/// are **explicitly declared** in the build script; no hardcoded defaults are
+/// injected. Errors when the project has several application modules.
 ///
 /// This resolves instantly and is used to populate the UI while the
 /// authoritative Gradle query runs in the background.
@@ -45,12 +46,7 @@ fn restore_active(list: VariantList) -> VariantList {
 pub async fn get_variants_preview(fs_state: State<'_, FsState>) -> Result<VariantList, String> {
     let gradle_root = resolve_gradle_root(&fs_state).await?;
 
-    let candidates = [
-        gradle_root.join("app").join("build.gradle.kts"),
-        gradle_root.join("app").join("build.gradle"),
-        gradle_root.join("build.gradle.kts"),
-        gradle_root.join("build.gradle"),
-    ];
+    let candidates = gradle_modules::application_build_files(&gradle_root)?;
 
     for path in &candidates {
         if !path.is_file() {
@@ -76,10 +72,11 @@ pub async fn get_variants_preview(fs_state: State<'_, FsState>) -> Result<Varian
 }
 
 /// Authoritative variant list — obtained by running
-/// `./gradlew :app:tasks --console=plain`.
+/// `./gradlew <application module>:tasks --all --console=plain`.
 ///
-/// Scoped to the `:app` module (where all build variants live) and does not
-/// use `--all` or `--group` flags that vary by Gradle version.
+/// Scoped to the application module (where the build variants live), or the
+/// whole build's `tasks` when there is no single application module, and does
+/// not use `--group` flags that vary by Gradle version.
 /// The output includes all `assemble*` and `install*` tasks for every variant
 /// the project defines, regardless of how complex its configuration is.
 ///
@@ -114,12 +111,16 @@ pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<Va
     // gradlew executable.
     let env = build_runner::trusted_gradle_env(&settings, &trust_root, &gradle_root)?;
 
-    // Try `:app:tasks --all` first (module-scoped, lists every variant task).
+    // Try `<module>:tasks --all` first (module-scoped, lists every variant task).
     // `--all` is required because newer AGP versions mark individual variant tasks
     // (e.g. assembleDebug, assembleRelease) as "non-public" and they are hidden
     // from the plain `tasks` output without it.
-    // Scoping to `:app` keeps the output small and fast.
-    for task_arg in [":app:tasks", "tasks"] {
+    // Scoping to the application module keeps the output small and fast.
+    let module_tasks = gradle_modules::resolve_application_module(&gradle_root, None)
+        .ok()
+        .filter(|m| m.path != ":")
+        .map(|m| format!("{}:tasks", m.path));
+    for task_arg in module_tasks.iter().map(String::as_str).chain(["tasks"]) {
         let mut cmd = tokio::process::Command::new(&gradlew);
         cmd.args([task_arg, "--all", "--console=plain"])
             .current_dir(&gradle_root)

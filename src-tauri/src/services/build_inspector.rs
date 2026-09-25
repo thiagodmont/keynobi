@@ -81,31 +81,40 @@ pub fn parse_build_config(gradle_root: &Path, module: &str) -> Result<BuildConfi
     })
 }
 
-/// The package names the project's app installs as: the `app` module's
-/// `applicationId` (AGP falls back to `namespace`), flavor overrides, the
-/// parsed `applicationIdSuffix` values, and the ids of variants already built.
+/// The package names the project's apps install as: each application
+/// module's `applicationId` (AGP falls back to `namespace`), flavor
+/// overrides, the parsed `applicationIdSuffix` values, and the ids of
+/// variants already built. The root build file stands in when no application
+/// module is found.
 pub fn project_package_scope(gradle_root: &Path) -> ProjectPackageScope {
     let mut scope = ProjectPackageScope {
         built_ids: crate::services::build_runner::built_application_ids(gradle_root),
         ..Default::default()
     };
-    let Ok(config) =
-        parse_build_config(gradle_root, "app").or_else(|_| parse_build_config(gradle_root, "."))
-    else {
-        return scope;
+    let modules = crate::services::gradle_modules::application_modules(gradle_root);
+    let configs: Vec<BuildConfig> = if modules.is_empty() {
+        parse_build_config(gradle_root, ".").into_iter().collect()
+    } else {
+        modules
+            .iter()
+            .filter_map(|m| parse_build_config(gradle_root, &m.relative_dir(gradle_root)).ok())
+            .collect()
     };
-    scope
-        .application_ids
-        .extend(config.application_id.or(config.namespace));
-    for flavor in &config.product_flavors {
-        scope.application_ids.extend(flavor.application_id.clone());
-        scope.suffixes.extend(flavor.application_id_suffix.clone());
-    }
-    for build_type in &config.build_types {
+    for config in configs {
         scope
-            .suffixes
-            .extend(build_type.application_id_suffix.clone());
+            .application_ids
+            .extend(config.application_id.or(config.namespace));
+        for flavor in &config.product_flavors {
+            scope.application_ids.extend(flavor.application_id.clone());
+            scope.suffixes.extend(flavor.application_id_suffix.clone());
+        }
+        for build_type in &config.build_types {
+            scope
+                .suffixes
+                .extend(build_type.application_id_suffix.clone());
+        }
     }
+    scope.application_ids.sort();
     scope.application_ids.dedup();
     scope.suffixes.sort();
     scope.suffixes.dedup();
@@ -856,6 +865,42 @@ android {
             project_package_scope(dir.path()).application_ids,
             vec!["com.example.ns"]
         );
+    }
+
+    #[test]
+    fn package_scope_reads_every_application_module_and_no_library() {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = dir.path().join(rel);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, text).unwrap();
+        };
+        write(
+            "settings.gradle.kts",
+            "include(\":app\", \":mobile\", \":wear\")\n",
+        );
+        write(
+            "app/build.gradle.kts",
+            "plugins { id(\"com.android.library\") }\nandroid {\n    namespace = \"com.example.lib\"\n}\n",
+        );
+        write(
+            "mobile/build.gradle.kts",
+            "plugins { alias(libs.plugins.android.application) }\n\
+             android {\n    defaultConfig {\n        applicationId = \"com.example.phone\"\n    }\n}\n",
+        );
+        write(
+            "wear/build.gradle",
+            "plugins { id 'com.android.application' }\n\
+             android {\n    defaultConfig {\n        applicationId \"com.example.watch\"\n    }\n}\n",
+        );
+
+        let scope = project_package_scope(dir.path());
+
+        assert_eq!(
+            scope.application_ids,
+            vec!["com.example.phone", "com.example.watch"]
+        );
+        assert!(!scope.contains("com.example.lib"));
     }
 
     #[test]

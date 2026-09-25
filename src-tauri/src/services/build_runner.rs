@@ -5,6 +5,7 @@ use crate::models::build::{
 use crate::models::error::AppError;
 use crate::services::build_lock::{self, BuildLock};
 use crate::services::build_parser;
+use crate::services::gradle_modules::{self, GradleModule};
 use crate::services::process_manager::{self, ProcessId, ProcessManager, ProcessTermination};
 use crate::services::settings_manager::{data_dir, unique_tmp_path, with_data_lock_in};
 use std::collections::VecDeque;
@@ -612,7 +613,7 @@ fn walk_dir_for_apk(base: &Path, max_depth: u32) -> Vec<PathBuf> {
     results
 }
 
-/// One installable APK under `app/build/outputs/apk`, and the variant it belongs to.
+/// One installable APK under `<module>/build/outputs/apk`, and the variant it belongs to.
 struct ApkCandidate {
     path: PathBuf,
     /// From `output-metadata.json` when present, else the directory segments
@@ -620,20 +621,18 @@ struct ApkCandidate {
     variant: String,
 }
 
-/// Directory holding the APK outputs of the `app` module.
-fn apk_outputs_dir(gradle_root: &Path) -> PathBuf {
-    gradle_root
-        .join("app")
-        .join("build")
-        .join("outputs")
-        .join("apk")
+/// Directory holding a module's APK outputs.
+fn apk_outputs_dir(module_dir: &Path) -> PathBuf {
+    module_dir.join("build").join("outputs").join("apk")
 }
 
-/// [`apk_outputs_dir`], unless a symlinked `app`, `build`, `outputs`, or `apk`
-/// directory moves it outside the project. A missing directory is fine.
-fn apk_outputs_dir_within(gradle_root: &Path) -> Result<PathBuf, String> {
-    let base = apk_outputs_dir(gradle_root);
-    match crate::utils::path::validate_within_root(gradle_root, "app/build/outputs/apk") {
+/// [`apk_outputs_dir`] of `module`, unless a symlinked module, `build`,
+/// `outputs`, or `apk` directory moves it outside the project. A missing
+/// directory is fine.
+fn apk_outputs_dir_within(gradle_root: &Path, module: &GradleModule) -> Result<PathBuf, String> {
+    let base = apk_outputs_dir(&module.dir);
+    let relative = format!("{}/build/outputs/apk", module.relative_dir(gradle_root));
+    match crate::utils::path::validate_within_root(gradle_root, &relative) {
         Err(AppError::PermissionDenied(_)) => Err(format!(
             "{} resolves outside the project; its APKs are not used.",
             base.display()
@@ -673,14 +672,14 @@ pub fn application_id_from_output_metadata(apk: &Path) -> Option<String> {
 /// Max built variants read when collecting application IDs from the build outputs.
 const MAX_BUILT_APPLICATION_IDS: usize = 64;
 
-/// The application IDs AGP recorded for every variant built into the `app`
-/// module's APK outputs, including any `applicationIdSuffix`.
+/// The application IDs AGP recorded for every variant built into the APK
+/// outputs of the project's application modules, including any
+/// `applicationIdSuffix`.
 pub fn built_application_ids(gradle_root: &Path) -> Vec<String> {
-    let Ok(base) = apk_outputs_dir_within(gradle_root) else {
-        return Vec::new();
-    };
-    let mut dirs: Vec<PathBuf> = walk_dir_for_apk(&base, 6)
-        .into_iter()
+    let mut dirs: Vec<PathBuf> = gradle_modules::application_modules(gradle_root)
+        .iter()
+        .filter_map(|module| apk_outputs_dir_within(gradle_root, module).ok())
+        .flat_map(|base| walk_dir_for_apk(&base, 6))
         .filter(|p| p.file_name().and_then(|n| n.to_str()) == Some("output-metadata.json"))
         .filter_map(|p| p.parent().map(Path::to_path_buf))
         .collect();
@@ -744,12 +743,14 @@ fn collect_apk_candidates(base: &Path) -> Vec<ApkCandidate> {
     candidates
 }
 
-/// Resolve the APK that building `variant_name` produced.
+/// Resolve the APK that building `variant_name` produced in the application
+/// module (see [`gradle_modules::resolve_application_module`]: `module` names
+/// it, or a task in it, and is required when the project has several).
 ///
 /// Standard AGP layout:
-///   `{gradle_root}/app/build/outputs/apk/{buildType}/app-{buildType}.apk`
+///   `{module}/build/outputs/apk/{buildType}/{module}-{buildType}.apk`
 ///   or with flavors:
-///   `{gradle_root}/app/build/outputs/apk/{flavor}/{buildType}/app-{flavor}-{buildType}.apk`
+///   `{module}/build/outputs/apk/{flavor}/{buildType}/{module}-{flavor}-{buildType}.apk`
 ///
 /// A directory's `output-metadata.json` (written by AGP) decides the variant
 /// and file; without it the directory segments below `apk/` must spell the
@@ -761,10 +762,16 @@ fn collect_apk_candidates(base: &Path) -> Vec<ApkCandidate> {
 /// An empty `variant_name` accepts the single APK present, if there is exactly one.
 ///
 /// # Errors
-/// An actionable message when there are no outputs, no APK for the variant,
-/// or more than one candidate (for example split APKs).
-pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Result<PathBuf, String> {
-    let base = apk_outputs_dir_within(gradle_root)?;
+/// An actionable message when the application module cannot be determined,
+/// there are no outputs, no APK for the variant, or more than one candidate
+/// (for example split APKs).
+pub fn find_output_apk(
+    gradle_root: &Path,
+    module: Option<&str>,
+    variant_name: &str,
+) -> Result<PathBuf, String> {
+    let module = gradle_modules::resolve_application_module(gradle_root, module)?;
+    let base = apk_outputs_dir_within(gradle_root, &module)?;
     // An `outputFile` in the metadata or a symlink can point anywhere; only
     // APKs that resolve inside the build outputs are this project's.
     let candidates: Vec<ApkCandidate> = collect_apk_candidates(&base)
@@ -2060,7 +2067,7 @@ mod tests {
         let apk = apk_dir.join("app-release.apk");
         std::fs::write(&apk, b"").unwrap();
 
-        let found = find_output_apk(&tmp, "release");
+        let found = find_output_apk(&tmp, None, "release");
         assert_eq!(found.unwrap(), apk);
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -2078,7 +2085,7 @@ mod tests {
         let apk = apk_dir.join("app-release-unsigned.apk");
         std::fs::write(&apk, b"").unwrap();
 
-        let found = find_output_apk(&tmp, "release");
+        let found = find_output_apk(&tmp, None, "release");
         assert_eq!(found.unwrap(), apk, "should find unsigned APK");
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -2098,7 +2105,7 @@ mod tests {
         std::fs::write(&unsigned, b"").unwrap();
         std::fs::write(&signed, b"").unwrap();
 
-        let found = find_output_apk(&tmp, "release");
+        let found = find_output_apk(&tmp, None, "release");
         assert_eq!(found.unwrap(), signed, "signed should take priority");
         std::fs::remove_dir_all(&tmp).ok();
     }
@@ -2117,14 +2124,14 @@ mod tests {
         let unaligned = apk_dir.join("app-release-unaligned.apk");
         std::fs::write(&unaligned, b"").unwrap();
 
-        let found = find_output_apk(&tmp, "release");
+        let found = find_output_apk(&tmp, None, "release");
         assert!(found.is_err(), "unaligned APK must be excluded");
         std::fs::remove_dir_all(&tmp).ok();
     }
 
     /// Create `app/build/outputs/apk/<rel>` under `root` as an empty file.
     fn apk_at(root: &Path, rel: &str) -> PathBuf {
-        let path = apk_outputs_dir(root).join(rel);
+        let path = apk_outputs_dir(&root.join("app")).join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, b"").unwrap();
         path
@@ -2136,7 +2143,10 @@ mod tests {
         let paid = apk_at(root.path(), "paid/debug/app-paid-debug.apk");
         apk_at(root.path(), "free/debug/app-free-debug.apk");
 
-        assert_eq!(find_output_apk(root.path(), "paidDebug").unwrap(), paid);
+        assert_eq!(
+            find_output_apk(root.path(), None, "paidDebug").unwrap(),
+            paid
+        );
     }
 
     /// With only a stale output of another flavor present, the old fallback
@@ -2147,7 +2157,7 @@ mod tests {
         apk_at(root.path(), "free/debug/app-free-debug.apk");
         apk_at(root.path(), "release/app-release.apk");
 
-        let err = find_output_apk(root.path(), "paidDebug").unwrap_err();
+        let err = find_output_apk(root.path(), None, "paidDebug").unwrap_err();
         assert!(err.contains("paidDebug"), "{err}");
         assert!(
             err.contains("freedebug") && err.contains("release"),
@@ -2166,8 +2176,11 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(find_output_apk(root.path(), "demoDebug").unwrap(), apk);
-        assert!(find_output_apk(root.path(), "demo").is_err());
+        assert_eq!(
+            find_output_apk(root.path(), None, "demoDebug").unwrap(),
+            apk
+        );
+        assert!(find_output_apk(root.path(), None, "demo").is_err());
         assert_eq!(
             application_id_from_output_metadata(&apk).as_deref(),
             Some("com.example.app.debug"),
@@ -2208,7 +2221,7 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         let foreign = outside.path().join("foreign.apk");
         std::fs::write(&foreign, b"").unwrap();
-        let dir = apk_outputs_dir(root.path()).join("debug");
+        let dir = apk_outputs_dir(&root.path().join("app")).join("debug");
         std::fs::create_dir_all(&dir).unwrap();
         let escape = format!(
             "{}{}",
@@ -2226,7 +2239,7 @@ mod tests {
             )
             .unwrap();
 
-            let err = find_output_apk(root.path(), "debug").unwrap_err();
+            let err = find_output_apk(root.path(), None, "debug").unwrap_err();
 
             assert!(err.contains("No APK found"), "{output_file}: {err}");
         }
@@ -2252,7 +2265,7 @@ mod tests {
         )
         .unwrap();
 
-        let err = find_output_apk(root.path(), "debug").unwrap_err();
+        let err = find_output_apk(root.path(), None, "debug").unwrap_err();
 
         assert!(err.contains("outside the project"), "{err}");
         assert!(built_application_ids(root.path()).is_empty());
@@ -2270,8 +2283,8 @@ mod tests {
         std::os::unix::fs::symlink(&real, root.path().join("app/build")).unwrap();
 
         assert_eq!(
-            find_output_apk(root.path(), "debug").unwrap(),
-            apk_outputs_dir(root.path()).join("debug/app-debug.apk")
+            find_output_apk(root.path(), None, "debug").unwrap(),
+            apk_outputs_dir(&root.path().join("app")).join("debug/app-debug.apk")
         );
     }
 
@@ -2281,7 +2294,7 @@ mod tests {
         apk_at(root.path(), "debug/app-arm64-v8a-debug.apk");
         apk_at(root.path(), "debug/app-x86_64-debug.apk");
 
-        let err = find_output_apk(root.path(), "debug").unwrap_err();
+        let err = find_output_apk(root.path(), None, "debug").unwrap_err();
         assert!(err.contains("More than one APK"), "{err}");
     }
 
@@ -2289,17 +2302,117 @@ mod tests {
     fn empty_variant_accepts_only_a_single_apk() {
         let root = tempfile::tempdir().unwrap();
         let debug = apk_at(root.path(), "debug/app-debug.apk");
-        assert_eq!(find_output_apk(root.path(), "").unwrap(), debug);
+        assert_eq!(find_output_apk(root.path(), None, "").unwrap(), debug);
 
         apk_at(root.path(), "release/app-release.apk");
-        assert!(find_output_apk(root.path(), "").is_err());
+        assert!(find_output_apk(root.path(), None, "").is_err());
     }
 
     #[test]
     fn missing_outputs_dir_is_an_actionable_error() {
         let root = tempfile::tempdir().unwrap();
-        let err = find_output_apk(root.path(), "debug").unwrap_err();
+        std::fs::create_dir(root.path().join("app")).unwrap();
+        let err = find_output_apk(root.path(), None, "debug").unwrap_err();
         assert!(err.contains("Build the variant first"), "{err}");
+    }
+
+    const APPLICATION_PLUGIN: &str = "plugins {\n    id(\"com.android.application\")\n}\n";
+
+    fn write_file(root: &Path, rel: &str, text: &str) {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+
+    /// Create `<module>/build/outputs/apk/<rel>` under `root` as an empty file.
+    fn module_apk_at(root: &Path, module: &str, rel: &str) -> PathBuf {
+        let path = apk_outputs_dir(&root.join(module)).join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, b"").unwrap();
+        path.canonicalize().unwrap()
+    }
+
+    #[test]
+    fn the_apk_comes_from_an_application_module_not_named_app() {
+        let root = tempfile::tempdir().unwrap();
+        write_file(root.path(), "settings.gradle.kts", "include(\":mobile\")\n");
+        write_file(root.path(), "mobile/build.gradle.kts", APPLICATION_PLUGIN);
+        let apk = module_apk_at(root.path(), "mobile", "debug/mobile-debug.apk");
+
+        assert_eq!(find_output_apk(root.path(), None, "debug").unwrap(), apk);
+    }
+
+    #[test]
+    fn a_library_named_app_does_not_hide_the_application_module() {
+        let root = tempfile::tempdir().unwrap();
+        write_file(
+            root.path(),
+            "settings.gradle",
+            "include ':app', ':androidApp'\n",
+        );
+        write_file(
+            root.path(),
+            "app/build.gradle",
+            "apply plugin: 'com.android.library'\n",
+        );
+        write_file(
+            root.path(),
+            "androidApp/build.gradle",
+            "apply plugin: 'com.android.application'\n",
+        );
+        module_apk_at(root.path(), "app", "debug/app-debug.apk");
+        let apk = module_apk_at(root.path(), "androidApp", "debug/androidApp-debug.apk");
+
+        assert_eq!(find_output_apk(root.path(), None, "debug").unwrap(), apk);
+    }
+
+    #[test]
+    fn several_application_modules_need_one_to_be_named() {
+        let root = tempfile::tempdir().unwrap();
+        write_file(
+            root.path(),
+            "settings.gradle.kts",
+            "include(\":mobile\", \":wear\")\n",
+        );
+        write_file(root.path(), "mobile/build.gradle.kts", APPLICATION_PLUGIN);
+        write_file(root.path(), "wear/build.gradle.kts", APPLICATION_PLUGIN);
+        module_apk_at(root.path(), "mobile", "debug/mobile-debug.apk");
+        let wear = module_apk_at(root.path(), "wear", "debug/wear-debug.apk");
+
+        let err = find_output_apk(root.path(), None, "debug").unwrap_err();
+        assert!(err.contains(":mobile, :wear"), "{err}");
+        assert_eq!(
+            find_output_apk(root.path(), Some(":wear:assembleDebug"), "debug").unwrap(),
+            wear
+        );
+    }
+
+    #[test]
+    fn built_application_ids_cover_every_application_module() {
+        let root = tempfile::tempdir().unwrap();
+        write_file(
+            root.path(),
+            "settings.gradle.kts",
+            "include(\":mobile\", \":wear\")\n",
+        );
+        write_file(root.path(), "mobile/build.gradle.kts", APPLICATION_PLUGIN);
+        write_file(root.path(), "wear/build.gradle.kts", APPLICATION_PLUGIN);
+        for (module, id) in [
+            ("mobile", "com.example.phone"),
+            ("wear", "com.example.watch"),
+        ] {
+            let apk = module_apk_at(root.path(), module, "debug/out.apk");
+            std::fs::write(
+                apk.parent().unwrap().join("output-metadata.json"),
+                format!(r#"{{"applicationId":"{id}","variantName":"debug","elements":[]}}"#),
+            )
+            .unwrap();
+        }
+
+        assert_eq!(
+            built_application_ids(root.path()),
+            vec!["com.example.phone", "com.example.watch"]
+        );
     }
 
     // ── parse_build_duration tests ─────────────────────────────────────────────

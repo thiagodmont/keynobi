@@ -533,12 +533,7 @@ fn infer_default_from_gradle_content(content: &str, valid: &HashSet<String>) -> 
 }
 
 fn read_first_app_gradle(gradle_root: &Path) -> Option<String> {
-    let candidates = [
-        gradle_root.join("app").join("build.gradle.kts"),
-        gradle_root.join("app").join("build.gradle"),
-        gradle_root.join("build.gradle.kts"),
-        gradle_root.join("build.gradle"),
-    ];
+    let candidates = crate::services::gradle_modules::application_build_files(gradle_root).ok()?;
     for p in &candidates {
         if p.is_file() {
             if let Ok(s) = std::fs::read_to_string(p) {

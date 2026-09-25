@@ -169,6 +169,52 @@ fn write_app_module(sandbox: &Sandbox) {
     .unwrap();
 }
 
+/// A project whose only application module is `:mobile`, with a built debug APK.
+#[test]
+fn apk_tools_and_package_scope_use_an_application_module_not_named_app() {
+    let sandbox = Sandbox::new();
+    std::fs::write(
+        sandbox.project.join("settings.gradle.kts"),
+        "rootProject.name = \"sandbox\"\ninclude(\":mobile\")\n",
+    )
+    .unwrap();
+    let mobile = sandbox.project.join("mobile");
+    std::fs::create_dir_all(mobile.join("build/outputs/apk/debug")).unwrap();
+    std::fs::write(
+        mobile.join("build.gradle.kts"),
+        r#"plugins {
+    alias(libs.plugins.android.application)
+}
+android {
+    defaultConfig {
+        applicationId = "com.example.phone"
+    }
+}
+"#,
+    )
+    .unwrap();
+    let apk = mobile.join("build/outputs/apk/debug/mobile-debug.apk");
+    std::fs::write(&apk, b"apk").unwrap();
+    sandbox.write_adb("echo Success");
+    let mut client = sandbox.start();
+
+    let found = client.call_tool_json("find_apk_path", json!({ "variant": "debug" }));
+    assert_eq!(found["found"], json!(true), "{found}");
+    assert_eq!(found["path"], json!(apk.to_string_lossy()), "{found}");
+
+    let installed = client.call_tool(
+        "install_apk",
+        json!({ "device_serial": "emulator-5554", "apk_path": apk.to_string_lossy() }),
+    );
+    assert!(!installed.is_error, "{}", installed.text);
+
+    let stopped = client.call_tool(
+        "stop_app",
+        json!({ "device_serial": "emulator-5554", "package": "com.example.phone" }),
+    );
+    assert!(!stopped.is_error, "{}", stopped.text);
+}
+
 #[test]
 fn stop_app_refuses_a_foreign_package_without_touching_the_device() {
     let sandbox = Sandbox::new();

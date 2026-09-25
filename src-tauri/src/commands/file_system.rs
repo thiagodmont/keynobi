@@ -155,7 +155,7 @@ pub async fn get_gradle_root(state: State<'_, FsState>) -> Result<Option<String>
         .map(|p| p.to_string_lossy().to_string()))
 }
 
-/// Try to read the `applicationId` from the app-level build.gradle(.kts).
+/// Try to read the `applicationId` from the application module's build.gradle(.kts).
 /// Called once on project open so the frontend can resolve `package:mine`.
 #[tauri::command]
 pub async fn get_application_id(state: State<'_, FsState>) -> Result<Option<String>, String> {
@@ -169,12 +169,7 @@ pub async fn get_application_id(state: State<'_, FsState>) -> Result<Option<Stri
 
     let Some(root) = root else { return Ok(None) };
 
-    let candidates = [
-        root.join("app").join("build.gradle.kts"),
-        root.join("app").join("build.gradle"),
-        root.join("build.gradle.kts"),
-        root.join("build.gradle"),
-    ];
+    let candidates = crate::services::gradle_modules::application_build_files(&root)?;
 
     for path in &candidates {
         if path.is_file() {

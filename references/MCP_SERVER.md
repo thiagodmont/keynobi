@@ -106,9 +106,9 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 | `cancel_build` | W | Cancels the running build, whoever started it. Recorded as cancelled by this agent (session and client name). |
 | `list_build_variants` | R | |
 | `set_active_variant` | W | Persists to settings (shared with the GUI). |
-| `find_apk_path` | R | `variant?`. Matches the variant exactly, using `output-metadata.json` when present. Returns `found: false` with a `reason` when no APK or more than one APK matches. |
+| `find_apk_path` | R | `variant?`, `module?` (`:mobile`, or the task that built it, `:mobile:assembleDebug`). Looks in the application module (see `DOMAIN_PATTERNS.md` § Application Module); `module` is required when the project has several. Matches the variant exactly, using `output-metadata.json` when present. Returns `found: false` with a `reason` when the module cannot be determined, or when no APK or more than one APK matches. |
 | `run_tests` | O | `test_type`. Custom tasks go through the same policy as `run_gradle_task`, including the trust check. Reports progress and honors request cancellation like `run_gradle_task`. |
-| `get_build_config` | R | `module?`; rejects `/`, `\`, and `..`. |
+| `get_build_config` | R | `module?` (a directory name; rejects `/`, `\`, and `..`). Defaults to the application module; a tool error lists the modules when there are several. |
 
 ### Logcat and Crashes
 
@@ -129,7 +129,7 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 | `list_devices`, `get_device_info` | R | |
 | `screenshot` | R | `device_serial`, `max_dimension?` (long edge, default 1,280, 256–8,192), `full_size?`. Returns the PNG, then a JSON text item with `deviceWidth`/`deviceHeight` (the capture's size: the screen in its current rotation, the space `ui_tap` uses), `imageWidth`/`imageHeight`, `scale` (device pixels per image pixel), and a hint to multiply image coordinates by `scale` or use `ui_tap_element`. Larger captures are area-averaged down on the host and re-encoded; a capture that already fits, or `full_size: true`, is returned byte for byte. Passing both parameters, or a `max_dimension` out of range, is `invalid_params`. Captures over 32 MiB or 16 Mpx, and output that is not a PNG, are tool errors. 30 s timeout. |
 | `dump_app_info`, `get_memory_info`, `get_app_runtime_state` | R | |
-| `install_apk` | D | `device_serial`, `apk_path` (must resolve to an `.apk` under the build outputs, which must resolve inside the project). The resolved canonical path is installed. |
+| `install_apk` | D | `device_serial`, `apk_path` (must resolve to an `.apk` under an application module's build outputs, which must resolve inside the project). The resolved canonical path is installed. |
 | `launch_app` | W | `device_serial`, `package`, `activity?`. Fails when `am start` reports an error, even with exit code 0. |
 | `stop_app` | D | `device_serial`, `package`, `allow_foreign_package?`. [Package-scoped](#package-scope). |
 | `restart_app` | D | `package`, `device_serial?`, `clear_data?`, `allow_foreign_package?`. [Package-scoped](#package-scope). Force-stops and relaunches; app data is preserved. `clear_data: true` runs `pm clear` first (wipes data and runtime permissions) and requires `device_serial`. The removed `cold` parameter returns an error. |
@@ -167,9 +167,9 @@ A device serves one UI Automator client at a time, so captures on one device run
 
 Tools that stop an app, wipe its data, or change its permissions (`stop_app`, `restart_app`, `grant_runtime_permission`, `revoke_runtime_permission`) act only on the open project's app unless the call passes `allow_foreign_package: true` (snake_case on every tool). The project's packages are:
 
-- the `app` module's `applicationId` (or `namespace` when it has none) and any product-flavor `applicationId`,
+- each application module's `applicationId` (or `namespace` when it has none) and any product-flavor `applicationId` (the root build file's when no application module is found),
 - each of those followed by a combination of the parsed `applicationIdSuffix` values (flavor and build type, each used once), so `com.example.app.demo.debug` matches but `com.example.apple` does not,
-- the exact `applicationId` of every variant in the build outputs (`output-metadata.json`), which covers suffixes set outside the build file.
+- the exact `applicationId` of every variant in the application modules' build outputs (`output-metadata.json`), which covers suffixes set outside the build file.
 
 A package outside the scope, or any package when no application id can be found, is rejected with `invalid_params` before any `adb` call. The message names the project's ids and tells the model to pass `allow_foreign_package: true` only when the user asked for that package. Read-only tools, the UI automation tools (they act on whatever is on screen), and `launch_app`, `open_deep_link`, and `open_app_settings` are not scoped. The check is `utils/validation.rs::check_agent_package_scope`; the scope comes from `build_inspector::project_package_scope`.
 
@@ -203,8 +203,8 @@ Resources (no templates or subscriptions; unknown URIs return `resource_not_foun
 | URI | Listed when |
 |-----|-------------|
 | `android://project-info`, `android://health` | Always |
-| `android://manifest` | `app/src/main/AndroidManifest.xml` exists |
-| `android://app-build-gradle` | `app/build.gradle.kts` exists |
+| `android://manifest` | The project has one application module and its `src/main/AndroidManifest.xml` exists |
+| `android://app-build-gradle` | The project has one application module and its `build.gradle.kts` exists |
 | `android://build-gradle` | Root `build.gradle.kts` exists |
 | `android://gradle-settings` | `settings.gradle.kts` exists |
 
@@ -233,7 +233,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 1. Validate every string with the shared validators before acting (see `DOMAIN_PATTERNS.md` § MCP → Validation).
 2. Spawn host processes with an argument vector, never a host shell string. `adb shell` is the exception that cannot avoid a shell: the device shell parses every call, so the guarantee is quoting. Every `adb shell` argument that is not a hard-coded literal goes through `utils::device_shell::quote_device_shell_arg`, which the device shell reads back as exactly that one argument. `ui_automation::run_adb_shell` and `app_inspector::adb_cmd` quote every argument after `shell`; `adb_manager` and `device_inspector` quote each package or component they pass; the other calls (`getprop`, `pm list packages`, `dumpsys`, `wm`, `ps`, `uiautomator dump`) and every `adb exec-out` pass only literals. One call runs a shell snippet on purpose: `ui_type_text_unicode` sends `sh -c` with `am broadcast … || content insert …`, the text single-quoted inside the snippet (`'` written as `'"'"'`) and the snippet quoted as one argument. Validation of serials, packages, permissions, coordinates, and key names is defence in depth on top of quoting.
-3. Restrict filesystem access. MCP exposes no general path parameters. APK installs are limited to `.apk` files under the project's build outputs, and resources read fixed project files. Both go through the shared validators in `utils/path.rs`, which resolve symlinks and require the result inside the project, and both use the canonical path the validator returns.
+3. Restrict filesystem access. MCP exposes no general path parameters. APK installs are limited to `.apk` files under an application module's build outputs, and resources read fixed project files. Both go through the shared validators in `utils/path.rs`, which resolve symlinks and require the result inside the project, and both use the canonical path the validator returns.
 4. Make destructive behavior explicit and opt-in, and declare it with tool annotations (`destructiveHint`, `readOnlyHint`, `openWorldHint`) so clients can ask the user for confirmation.
 5. Keep responses bounded (see the limits in the tool tables).
 6. Never write to stdout except MCP JSON-RPC.
@@ -315,14 +315,14 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Ignored parameter.** `run_gradle_task` accepts `variant` but ignores it.
 - **Parameter casing.** UI tools use camelCase on the wire, while their descriptions and all other tools use snake_case.
 - **Instructions drift.** The `instructions` string omits 15 tools (for example `cancel_build`, `stop_app`, `wait_for_element`, AVD tools).
-- **Groovy projects.** Resources check only `.kts` files and hard-code the `app` module. APK validation also hard-codes `app`.
+- **Groovy projects.** Resources check only `.kts` files.
 - **Progress and cancellation elsewhere.** Only `run_gradle_task` and `run_tests` report progress and honor request cancellation. Other long tools (`wait_for_element`, `ui_scroll_until_element`, `launch_avd`, `install_apk`) ignore the request context and run until they end or time out.
 - **Unredacted activity log.** Activity summaries are not redacted.
 - **Check then use.** `install_apk` and resource reads open the validated canonical path again. A directory replaced by a symlink between the check and the use is not caught.
 - **`list_build_variants` reads by joined path.** It reads the build file without the resource checks: through a symlink that leaves the project and without a size cap.
 - **Build lock is best effort.** When the lock file cannot be created or read (for example, an unwritable data directory), the build runs without it and a warning is logged.
 - **Pinned-session check is per call.** A pinned session checks the app's project when a tool starts; switching projects while a tool runs does not stop it.
-- **Package scope sources.** The scope reads only the `app` module (or the root build file). An `applicationIdSuffix` set in a convention plugin or through a variable is known only after that variant is built; until then its package needs `allow_foreign_package: true`.
+- **Package scope sources.** The scope reads the application modules' build files (or the root build file). An `applicationIdSuffix` set in a convention plugin or through a variable is known only after that variant is built; until then its package needs `allow_foreign_package: true`.
 - **Screenshot coordinate space.** `screenshot` takes `deviceWidth`/`deviceHeight` from the capture itself. With a `wm size` override or on a multi-display device, the capture may not match the space `ui_tap` uses, so `scale` would be off.
 - **UI Automator across processes.** The per-device lock and the instrumentation check live in one process. A headless `keynobi --mcp` and the GUI, or two headless servers, can still collide on one device; the loser gets the busy error from the device.
 - **No end-to-end test.** No test drives JSON-RPC (initialize → `tools/list` → `tools/call`).

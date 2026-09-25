@@ -190,7 +190,8 @@ pub async fn get_package_name_from_apk(
 /// Find the output APK path for the given variant after a successful build.
 ///
 /// Errors (with the reason and the variants that do have outputs) instead of
-/// returning another variant's APK.
+/// returning another variant's APK, and when the project has several
+/// application modules.
 #[tauri::command]
 pub async fn find_apk_path(
     variant: String,
@@ -204,7 +205,7 @@ pub async fn find_apk_path(
             .cloned()
             .ok_or("No project open")?
     };
-    find_output_apk(&gradle_root, &variant).map(|p| p.to_string_lossy().into_owned())
+    find_output_apk(&gradle_root, None, &variant).map(|p| p.to_string_lossy().into_owned())
 }
 
 #[cfg(test)]

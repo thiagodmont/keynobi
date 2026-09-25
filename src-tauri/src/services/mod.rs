@@ -8,6 +8,7 @@ pub mod build_runner;
 pub mod crash_inspector;
 pub mod device_inspector;
 pub mod fs_manager;
+pub mod gradle_modules;
 pub mod health_inspector;
 pub mod jdk;
 pub mod log_pipeline;
