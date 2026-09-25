@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { openProjectFolder } from "@/services/project.service";
+import { openProjectFolder, selectProject } from "@/services/project.service";
 import { projectState, setProjectState } from "@/stores/project.store";
 import { projectsState, setActiveProjectId, setProjects } from "@/stores/projects.store";
 import { resetBuildState } from "@/stores/build.store";
@@ -139,5 +139,73 @@ describe("project.service", () => {
     await firstOpen;
 
     expect(projectState.projectRoot).toBe(fast);
+  });
+  it("does not restore a superseded project's variant into the newer project", async () => {
+    const entryFor = (path: string, id: string, variant: string): ProjectEntry => ({
+      id,
+      path,
+      name: id,
+      gradleRoot: path,
+      lastOpened: "2026-01-01T00:00:00Z",
+      pinned: false,
+      lastBuildVariant: variant,
+      lastDevice: null,
+    });
+    const first = entryFor("/projects/first", "first-id", "release");
+    const second = entryFor("/projects/second", "second-id", "debug");
+    const variants = {
+      variants: [{ name: "debug" }, { name: "release" }],
+      active: null,
+      defaultVariant: null,
+    };
+
+    let backendRoot = "";
+    let releaseFirstList: () => void = () => {};
+    let listCalls = 0;
+    mockInvoke.mockImplementation((command, args) => {
+      switch (command) {
+        case "open_project":
+          backendRoot = (args as { path: string }).path;
+          return Promise.resolve(backendRoot);
+        case "get_project_root":
+        case "get_gradle_root":
+          return Promise.resolve(backendRoot);
+        case "get_application_id":
+          return Promise.resolve(null);
+        case "list_projects": {
+          listCalls += 1;
+          // The first project's registry read is slow.
+          if (listCalls === 1) {
+            return new Promise((resolve) => {
+              releaseFirstList = () => resolve([first, second]);
+            });
+          }
+          return Promise.resolve([first, second]);
+        }
+        case "get_variants_preview":
+        case "get_variants_from_gradle":
+          return Promise.resolve(variants);
+        case "get_build_history":
+        case "refresh_devices":
+        case "list_avd_devices":
+          return Promise.resolve([]);
+        default:
+          return Promise.resolve(undefined);
+      }
+    });
+
+    const firstSelect = selectProject(first);
+    await vi.waitFor(() => expect(listCalls).toBe(1));
+    await selectProject(second);
+
+    releaseFirstList();
+    await firstSelect;
+
+    const variantWrites = mockInvoke.mock.calls
+      .filter(([cmd]) => cmd === "set_active_variant")
+      .map(([, args]) => (args as { variant: string }).variant);
+    expect(variantWrites).not.toContain("release");
+    expect(projectsState.activeProjectId).toBe("second-id");
+    expect(projectState.projectRoot).toBe("/projects/second");
   });
 });

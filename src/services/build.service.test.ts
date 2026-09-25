@@ -12,7 +12,7 @@ import { buildState, resetBuildState, startBuild } from "@/stores/build.store";
 import { resetDeviceState } from "@/stores/device.store";
 import { resetVariantState, selectVariant } from "@/stores/variant.store";
 import { updateSetting } from "@/stores/settings.store";
-import { setApplicationId } from "@/stores/project.store";
+import { beginProjectOpen, setApplicationId } from "@/stores/project.store";
 
 const devicePickerMock = vi.hoisted(() => ({
   showDevicePicker: vi.fn<() => Promise<string | null>>(),
@@ -221,6 +221,7 @@ describe("late cancelled completion event after a timeout", () => {
     // The dying Gradle process emits a late cancelled completion event.
     handlers.get("build:complete")!({
       payload: {
+        runId: 1,
         success: false,
         cancelled: true,
         durationMs: 121_000,
@@ -260,6 +261,7 @@ describe("late cancelled completion event after a timeout", () => {
 
     handlers.get("build:complete")!({
       payload: {
+        runId: 1,
         success: false,
         cancelled: true,
         durationMs: 5_000,
@@ -272,7 +274,7 @@ describe("late cancelled completion event after a timeout", () => {
     expect(buildState.phase).toBe("cancelled");
   });
 
-  it("absorbs a stale cancelled event that arrives after a later build started", async () => {
+  it("ignores a late completion from a timed-out run after a later build started", async () => {
     vi.useFakeTimers();
     const handlers = new Map<string, (e: { payload: unknown }) => void>();
     vi.mocked(listen).mockImplementation(async (event, cb) => {
@@ -285,40 +287,120 @@ describe("late cancelled completion event after a timeout", () => {
     // dispatch below would no-op and the test would pass vacuously.
     expect(handlers.has("build:complete")).toBe(true);
     updateSetting("mcp", "buildTimeoutSec", 120);
+    let nextRunId = 1;
     mockInvoke.mockImplementation((cmd) => {
-      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      if (cmd === "run_gradle_task") return Promise.resolve(nextRunId++);
       if (cmd === "cancel_build") return Promise.resolve(undefined);
       if (cmd === "get_build_history") return Promise.resolve([]);
       return Promise.resolve(undefined);
     });
 
-    // Build A times out; its process is killed but slow to die.
+    // Build A (run 1) times out; its process is killed but slow to die.
     const buildA = runBuild();
     const expectationA = expect(buildA).rejects.toThrow(/timed out/);
     await vi.advanceTimersByTimeAsync(121 * 1000);
     await expectationA;
     expect(buildState.phase).toBe("failed");
 
-    // Build B starts before A's completion event has been delivered.
-    void runBuild();
+    // Build B (run 2) starts before A's completion event has been delivered.
+    const buildB = runBuild();
     await vi.advanceTimersByTimeAsync(0);
     expect(buildState.phase).toBe("running");
 
-    // A's stale cancelled event must NOT cancel build B.
+    // A's late events, cancelled or not, must not finish build B.
+    for (const cancelled of [true, false]) {
+      handlers.get("build:complete")!({
+        payload: {
+          runId: 1,
+          success: !cancelled,
+          cancelled,
+          durationMs: 121_000,
+          errorCount: 0,
+          warningCount: 0,
+          task: "assembleDebug",
+        },
+      });
+    }
+    expect(buildState.phase).toBe("running");
+
     handlers.get("build:complete")!({
       payload: {
-        success: false,
-        cancelled: true,
-        durationMs: 121_000,
+        runId: 2,
+        success: true,
+        cancelled: false,
+        durationMs: 3_000,
         errorCount: 0,
+        warningCount: 0,
+        task: "assembleDebug",
+      },
+    });
+    await buildB;
+    expect(buildState.phase).toBe("success");
+  });
+
+  it("applies a completion that arrives before run_gradle_task returns its run ID", async () => {
+    const handlers = new Map<string, (e: { payload: unknown }) => void>();
+    vi.mocked(listen).mockImplementation(async (event, cb) => {
+      handlers.set(String(event), cb as unknown as (e: { payload: unknown }) => void);
+      return () => {};
+    });
+    await initBuildService();
+    expect(handlers.has("build:complete")).toBe(true);
+
+    let returnRunId: (id: number) => void = () => {};
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "run_gradle_task") {
+        return new Promise<number>((resolve) => {
+          returnRunId = resolve;
+        });
+      }
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    const build = runBuild();
+    expect(buildState.phase).toBe("running");
+
+    // A build that fails fast can finish before the spawn call returns.
+    handlers.get("build:complete")!({
+      payload: {
+        runId: 7,
+        success: false,
+        cancelled: false,
+        durationMs: 200,
+        errorCount: 1,
         warningCount: 0,
         task: "assembleDebug",
       },
     });
     expect(buildState.phase).toBe("running");
 
-    // A genuine cancellation of B still lands in the cancelled phase.
-    await cancelBuild();
+    returnRunId(7);
+    await build;
+    expect(buildState.phase).toBe("failed");
+  });
+
+  it("unblocks the running build when the cancel request fails", async () => {
+    vi.useFakeTimers();
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      if (cmd === "cancel_build") return Promise.reject("backend unavailable");
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    let settled = false;
+    const build = runBuild().finally(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    await expect(cancelBuild()).rejects.toBe("backend unavailable");
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Resolved by the cancel, not left waiting for a timer that was cleared.
+    expect(settled).toBe(true);
+    await build;
     expect(buildState.phase).toBe("cancelled");
   });
 });
@@ -377,6 +459,7 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
 
     handlers.get("build:complete")!({
       payload: {
+        runId: 1,
         success: true,
         cancelled: false,
         durationMs: 1_000,
@@ -445,5 +528,19 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     );
     expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "launch_app_on_device")).toHaveLength(0);
     setApplicationId(null);
+  });
+  it("stops before installing when the project changes while the APK is looked up", async () => {
+    const error = await deployThroughSuccessfulBuild({
+      find_apk_path: () => {
+        // The user opens another project; the backend now answers for it.
+        beginProjectOpen();
+        return Promise.resolve("/other-project/app/build/outputs/apk/debug/app-debug.apk");
+      },
+    });
+
+    expect(String(error)).toContain("The project changed during deploy");
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "install_apk_on_device")).toHaveLength(
+      0
+    );
   });
 });

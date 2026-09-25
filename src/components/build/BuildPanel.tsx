@@ -223,7 +223,7 @@ export function BuildPanel(): JSX.Element {
         >
           {/* Run App button (build + install + launch) */}
           <Show
-            when={isBuilding() || isDeploying()}
+            when={isBuilding()}
             fallback={
               <IconButton
                 size="sm"

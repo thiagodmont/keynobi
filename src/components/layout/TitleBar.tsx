@@ -2,7 +2,7 @@ import { type JSX, Show, createSignal, onMount } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { projectState } from "@/stores/project.store";
 import { toggleLogMode, uiState } from "@/stores/ui.store";
-import { isBuilding, isDeploying } from "@/stores/build.store";
+import { buildState, isBuilding, isDeploying } from "@/stores/build.store";
 import { runAndDeploy, cancelBuild } from "@/services/build.service";
 import { formatError } from "@/lib/tauri-api";
 import { Icon, showToast } from "@/components/ui";
@@ -23,7 +23,9 @@ export function TitleBar(): JSX.Element {
   let userChangedAlwaysOnTop = false;
   const buildActive = () => uiState.activeTab === "build";
   const runInFlight = () => isBuilding() || isDeploying();
-  const runDisabled = () => !projectState.projectRoot && !runInFlight();
+  // Only Gradle can be cancelled; install and launch run to completion.
+  const deployingAfterBuild = () => isDeploying() && !isBuilding();
+  const runDisabled = () => deployingAfterBuild() || (!projectState.projectRoot && !runInFlight());
 
   onMount(() => {
     getCurrentWindow()
@@ -37,7 +39,8 @@ export function TitleBar(): JSX.Element {
   });
 
   async function handleBuildButtonClick() {
-    if (runInFlight()) {
+    if (deployingAfterBuild()) return;
+    if (isBuilding()) {
       await cancelBuild().catch((err) => {
         console.error(err);
         showToast(`Failed to cancel build: ${formatError(err)}`, "error");
@@ -53,7 +56,10 @@ export function TitleBar(): JSX.Element {
   }
 
   const buildButtonTitle = () => {
-    if (runInFlight()) return "Cancel build";
+    if (isBuilding()) return "Cancel build";
+    if (buildState.deployPhase === "installing") return "Installing APK…";
+    if (buildState.deployPhase === "launching") return "Launching app…";
+    if (deployingAfterBuild()) return "Deploying…";
     if (!projectState.projectRoot) return "Open a project to run";
     return "Run App — build, install & launch (Cmd+R)";
   };
@@ -202,7 +208,7 @@ export function TitleBar(): JSX.Element {
           opacity: runDisabled() ? "0.5" : "1",
         }}
       >
-        <Show when={runInFlight()} fallback={<Icon name="play" size={13} color="var(--success)" />}>
+        <Show when={isBuilding()} fallback={<Icon name="play" size={13} color="var(--success)" />}>
           <Icon name="stop" size={13} color="var(--error)" />
         </Show>
         Build

@@ -78,7 +78,7 @@ Sidebars and bars:
 
 - **Projects sidebar** on the left: saved Android projects.
 - **Devices sidebar** on the right: physical devices and emulators.
-- **Title bar**: **Run App** (becomes **Cancel build** while building), **Log Mode** to focus the window on Logcat, and **Keep window on top** to keep Keynobi above other apps. Keep on top resets when you relaunch.
+- **Title bar**: **Run App** (becomes **Cancel build** while Gradle builds; install and launch cannot be cancelled), **Log Mode** to focus the window on Logcat, and **Keep window on top** to keep Keynobi above other apps. Keep on top resets when you relaunch.
 - **Status bar** at the bottom: settings, project, health, build status, MCP status, update (when available), active variant, app memory, and log folder size.
 
 ---
