@@ -471,10 +471,13 @@ impl LogProcessor for CrashAnalyzer {
             if !is_fatal && !is_anr && !is_native && !is_stack_line {
                 // Keep grouping only while we're still seeing exception output.
                 // If message doesn't look like exception content, close the group.
+                // AndroidRuntime prints `Process: <package>, PID: <pid>`
+                // between `FATAL EXCEPTION` and the exception itself.
                 let looks_like_trace = msg.contains("Exception")
                     || msg.contains("Error")
                     || msg.contains("Caused by")
-                    || msg.contains("...");
+                    || msg.contains("...")
+                    || msg.starts_with("Process: ");
                 if !looks_like_trace {
                     ctx.active_crash_group = None;
                 }
@@ -837,6 +840,33 @@ mod tests {
 
         assert!(e1.crash_group_id.is_some());
         assert_eq!(e1.crash_group_id, e2.crash_group_id);
+    }
+
+    #[test]
+    fn crash_analyzer_keeps_the_process_line_and_the_exception_in_the_group() {
+        let pipeline = LogPipeline::default_pipeline();
+        let mut ctx = PipelineContext::new();
+        let line = |message: &str| RawLogLine {
+            timestamp: "01-01 00:00:00.000".into(),
+            pid: 1,
+            tid: 1,
+            level: LogcatLevel::Error,
+            tag: "AndroidRuntime".into(),
+            message: message.into(),
+        };
+
+        let groups: Vec<Option<u64>> = [
+            "FATAL EXCEPTION: main",
+            "Process: com.example.app, PID: 1",
+            "java.lang.RuntimeException: boom",
+            "\tat a.a.onCreate(SourceFile:1)",
+        ]
+        .into_iter()
+        .map(|message| pipeline.run(line(message), &mut ctx).crash_group_id)
+        .collect();
+
+        assert!(groups[0].is_some());
+        assert!(groups.iter().all(|g| *g == groups[0]), "{groups:?}");
     }
 
     // ── JsonExtractor ─────────────────────────────────────────────────────────
