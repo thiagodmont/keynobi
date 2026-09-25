@@ -75,6 +75,8 @@ let result = do_io(&root).await?;
 
 Do not hold a Mutex across I/O, process execution, event emission, or `await`. Use `std::sync::Mutex` only for short, synchronous critical sections inside callbacks.
 
+The exception is a tokio mutex whose job is to serialize the work itself, such as the per-device UI Automator lock (`ui_automator_lock::acquire`): it is held across the whole operation on purpose, bounded by a deadline, and says so where it is defined.
+
 ### Commands
 
 Tauri commands:
@@ -308,7 +310,7 @@ Run the checks that match your change before handoff:
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
-- **One-shot commands without the timeout helper.** `logcat::seed_pid_map_from_ps` has no deadline. `ui_hierarchy.rs`, the login-shell probes in `settings_manager.rs`, and `commands/mcp.rs` wrap `.output()` in `tokio::time::timeout` without `kill_on_drop`, so a timed-out child keeps running. `commands/variant.rs` has its own equivalent of the helper.
+- **One-shot commands without the timeout helper.** `logcat::seed_pid_map_from_ps` has no deadline. The login-shell probes in `settings_manager.rs` and `commands/mcp.rs` wrap `.output()` in `tokio::time::timeout` without `kill_on_drop`, so a timed-out child keeps running. `commands/variant.rs` has its own equivalent of the helper.
 - **`String` errors.** Most commands still return `Result<_, String>`; only about 16 return `AppError`.
 - **Effective-root resolution is repeated.** The `gradle_root`-or-`project_root` lookup is copied inline in `commands/variant.rs`, `build.rs`, `device.rs`, and `health.rs` instead of one shared helper.
 - **Data directory rebuilt by hand.** `lib.rs` joins `~/.keynobi/logs` itself instead of calling `settings_manager::data_dir()`.

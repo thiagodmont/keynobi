@@ -126,7 +126,9 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 | `grant_runtime_permission` | W | `package`, `permission`, `allow_foreign_package?`. [Package-scoped](#package-scope). |
 | `revoke_runtime_permission` | D | `package`, `permission`, `allow_foreign_package?`. [Package-scoped](#package-scope). Can kill the app process. |
 
-Every `adb` input command has a 30 s timeout; UI Automator dumps have 25 s.
+Every `adb` input command has a 30 s timeout. A UI hierarchy capture (every tool above that reads the screen, and `expectScreenHash` checks) gives each dump attempt 25 s and the whole capture 60 s (`CAPTURE_TOTAL_DEADLINE`), counting retries and the wait for the device; the error says the total deadline was hit. Polling tools (`wait_for_element`, `ui_wait_for_idle`, `ui_scroll_until_element`) capture repeatedly, and each capture has its own 60 s.
+
+A device serves one UI Automator client at a time, so captures on one device run one after another (`services/ui_automator_lock.rs`, shared with the GUI's Layout tab when both run in one process); captures on different devices run in parallel. While a connected test run (`run_tests` with `connected`, or any `connected…` Gradle task) started by the same process is running, captures on its devices (every device, or `ANDROID_SERIAL`) fail at once with "busy: instrumentation running". When the device reports another UI Automator client ("already registered", for example a test run from an IDE), the capture fails at once with a busy error instead of retrying.
 
 #### Package Scope
 
@@ -279,4 +281,5 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Unbounded activity log.** The activity log grows without limit during a session, and summaries are not redacted.
 - **Package scope sources.** The scope reads only the `app` module (or the root build file). An `applicationIdSuffix` set in a convention plugin or through a variable is known only after that variant is built; until then its package needs `allow_foreign_package: true`.
 - **Screenshot coordinate space.** `screenshot` takes `deviceWidth`/`deviceHeight` from the capture itself. With a `wm size` override or on a multi-display device, the capture may not match the space `ui_tap` uses, so `scale` would be off.
+- **UI Automator across processes.** The per-device lock and the instrumentation check live in one process. A headless `keynobi --mcp` and the GUI, or two headless servers, can still collide on one device; the loser gets the busy error from the device.
 - **No end-to-end test.** No test drives JSON-RPC (initialize → `tools/list` → `tools/call`).

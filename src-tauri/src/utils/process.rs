@@ -70,7 +70,8 @@ pub fn describe_failure(what: &str, err: &io::Error, hint: &str) -> String {
     }
 }
 
-fn format_duration(d: Duration) -> String {
+/// A deadline for people: `5 min`, `90 s`, `200 ms`.
+pub fn format_duration(d: Duration) -> String {
     let secs = d.as_secs();
     if secs >= 60 && secs.is_multiple_of(60) {
         format!("{} min", secs / 60)
