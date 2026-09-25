@@ -1,0 +1,165 @@
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_27cf9ce3adf018 435-436
+  s_1e114e823b9048::t_d1f3b222a76863 68-69,73-82
+  s_1e114e823b9048::t_a9417e73fb66b0 165
+  s_1e114e823b9048::t_f2336e6e997e1e 83
+src/components/build/LaunchTimingSummary.test.tsx
+  s_1e114e823b9048::t_4618d7f70292e7 1-5,12-82
+  s_1e114e823b9048::t_befc6f6ee4b4fd 6-11
+src/components/build/BuildHistoryPanel.test.ts
+  s_1e114e823b9048::t_ac0dbfbf2c9293 39
+src/components/build/LaunchTimingSummary.module.css
+  s_1e114e823b9048::t_2ef697e9024ef8 1-11
+e2e/smoke/build-flow.spec.ts
+  s_1e114e823b9048::t_378475c455522a 54
+  s_1e114e823b9048::t_befc6f6ee4b4fd 55-58
+  s_1e114e823b9048::t_6696e8e0d9838f 51-53,59-63
+  s_1e114e823b9048::t_21b9dd08bc7b1b 1
+  s_1e114e823b9048::t_13e36ea30da9fc 29-50
+src/bindings/BuildCompleteEvent.ts
+  s_1e114e823b9048::t_82d979e16e02cc 11-15
+src/test/factories/build.ts
+  s_1e114e823b9048::t_6908ff3fdb3bef 41-54
+  s_1e114e823b9048::t_c10d75146e17eb 1
+e2e/smoke/keyboard-access.spec.ts
+  s_1e114e823b9048::t_913b1e4357a30c 270
+src-tauri/src/commands/device.rs
+  s_1e114e823b9048::t_eb2333f1692d8d 135-136,142-145,153,155-192
+  s_1e114e823b9048::t_cf5d957f6a3c8f 1
+  s_1e114e823b9048::t_2ec1d9c807dfaf 12-13,15
+src/services/build.service.ts
+  s_1e114e823b9048::t_80ab3c8248b887 38
+  s_1e114e823b9048::t_9f80125c851240 432,439
+  s_1e114e823b9048::t_471ca273cc970e 317,341
+  s_1e114e823b9048::t_3a3e13ec7d16c5 550-555,557-568
+  s_1e114e823b9048::t_45e69b2a09bfc3 46
+  s_1e114e823b9048::t_3343bf0b3c6804 271
+  s_1e114e823b9048::t_3c8d572c8dd465 612
+  s_1e114e823b9048::t_e8657379134f71 298
+  s_1e114e823b9048::t_c1fb445905a02a 493
+  s_1e114e823b9048::t_71501a96c96ae9 329
+  s_1e114e823b9048::t_a4bcf61fb93079 406,408
+  s_1e114e823b9048::t_2cac93b6d58620 110-111
+  s_1e114e823b9048::t_c3516420e9abc5 338-340
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_dada6617876319 133
+  s_1e114e823b9048::t_04669b9066a4b8 135
+src/test/mock-backend/devices.ts
+  s_1e114e823b9048::t_5c2cdb6559ad33 56,58-67,69-70
+  s_1e114e823b9048::t_1cb536b44dd721 1-2,57,68
+src/bindings/LaunchTiming.ts
+  s_1e114e823b9048::t_7513a1dc5b453c 1-35
+src/lib/launch-timing.test.ts
+  s_1e114e823b9048::t_369831a2c3906b 1-98
+src/bindings/LaunchResult.ts
+  s_1e114e823b9048::t_7513a1dc5b453c 1-15
+src/bindings/index.ts
+  s_1e114e823b9048::t_56a6e08a0b6e3f 37-39
+src/bindings/LaunchState.ts
+  s_1e114e823b9048::t_7513a1dc5b453c 1-6
+src/test/mock-backend/build.ts
+  s_1e114e823b9048::t_7ff2b4b6c40c46 95-96
+  s_1e114e823b9048::t_c751b7fd688ca6 109-110,114,125-126
+  s_1e114e823b9048::t_6ecb7284ec51ca 8,72,85,92-94,97-98,171,184
+src/services/build.service.test.ts
+  s_1e114e823b9048::t_10d06757498879 22
+  s_1e114e823b9048::t_302e58c7ad120c 462-464,477,484
+  s_1e114e823b9048::t_f1ad5821041b7d 416-418
+  s_1e114e823b9048::t_8c475eda513d6d 520-587
+  s_1e114e823b9048::t_c5d006e624f553 440-441,444
+src/components/build/LaunchTimingSummary.tsx
+  s_1e114e823b9048::t_b6c6ad2f59143b 1-43
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_c2b42e73e29560 515,517-527,530-552
+  s_1e114e823b9048::t_d4efb90b145859 593
+  s_1e114e823b9048::t_975c6e2cae0e81 202-226
+src-tauri/src/services/app_inspector.rs
+  s_1e114e823b9048::t_d0d69ca08be5af 114-117,120-121,127,129,135-137
+  s_1e114e823b9048::t_2ce8da868f1ad4 237-244
+  s_1e114e823b9048::t_7d753774a6d9b2 320-327
+  s_1e114e823b9048::t_1f3a26788f09cd 343
+  s_1e114e823b9048::t_6d602ffa539174 407-433
+  s_1e114e823b9048::t_30e28c9d15b22d 1-2,5-6
+  s_1e114e823b9048::t_bee563f8c9b373 262
+  s_1e114e823b9048::t_cd14bea05145c3 250
+  s_1e114e823b9048::t_9a2c1e4aeff9d4 32-37
+  s_cc10fab120827c::t_37ac37479800df 319
+src-tauri/src/models/build.rs
+  s_1e114e823b9048::t_06a762c40e1c90 152-201,233-234,273
+src/lib/launch-timing.ts
+  s_1e114e823b9048::t_222c3e664d83e6 1-69
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_984e0b4fff078c 336-377
+  s_1e114e823b9048::t_d5f5581fd03f0b 335
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_4bdb29e45f5e73 931
+  s_1e114e823b9048::t_a77faa1a0e0f4a 2826
+  s_1e114e823b9048::t_c6a17532f68ef8 2853-2855
+src/stores/build.store.test.ts
+  s_1e114e823b9048::t_82ed06aeb5b0fb 129,151,172
+scripts/ipc-payloads.test.mjs
+  s_1e114e823b9048::t_aa715dc33fa761 312
+src/bindings/BuildRecord.ts
+  s_1e114e823b9048::t_82d979e16e02cc 5,23-27
+src/lib/tauri-api.ts
+  s_1e114e823b9048::t_cd2ed260322a6f 295,305
+  s_1e114e823b9048::t_aae7a13f56385b 335-338,342-344,347-348
+src-tauri/src/services/build_runner.rs
+  s_1e114e823b9048::t_c8f04d1f54e264 3289-3293
+  s_1e114e823b9048::t_3222ba668ac33d 903,916,923
+  s_1e114e823b9048::t_903db7a6ff092a 2972
+  s_1e114e823b9048::t_51ebd6eaa154a4 1163,1165,1172-1173,1178-1191,1196-1201,1203-1217,1219-1238
+  s_1e114e823b9048::t_3076d91ea47afb 1109,1115
+  s_1e114e823b9048::t_cf5d957f6a3c8f 1192-1195
+  s_1e114e823b9048::t_d60206206dff01 2906-2971,2973-3015
+  s_1e114e823b9048::t_afb0e21b6f0e62 3
+  s_1e114e823b9048::t_f7e4cd68db192c 1127
+  s_1e114e823b9048::t_a66aeec2e6aabe 2728,2749,2781,2809,2895,3104
+src/components/build/BuildHistoryPanel.tsx
+  s_1e114e823b9048::t_e7290576cc0646 6
+  s_1e114e823b9048::t_a108abc137cbb6 259-263
+src/components/build/BuildHistoryView.tsx
+  s_1e114e823b9048::t_1860f3046c7263 9
+  s_1e114e823b9048::t_7bedc3e1886d52 32,43-47
+  s_1e114e823b9048::t_fa4bb6df72fa8a 42
+  s_1e114e823b9048::t_0072af50392f38 30-31
+  s_1e114e823b9048::t_75e97e272b010d 48
+src-tauri/src/services/adb_manager.rs
+  s_1e114e823b9048::t_96a7f6e08f5fa7 490-597
+  s_1e114e823b9048::t_d4d51cd7bf9bf8 609-610,616,619,621,627,629-632
+  s_1e114e823b9048::t_94e5ba7b121c0a 644,646-649
+  s_1e114e823b9048::t_175272b9f53397 677-680
+  s_1e114e823b9048::t_cf5d957f6a3c8f 1,1876-1882,1974-1975
+  s_1e114e823b9048::t_6da7da8361f9bf 703-706
+  s_1e114e823b9048::t_0192a18127fd47 1888-1973,1976-2089
+  s_1e114e823b9048::t_1a1b076783a840 2090
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_cadbfbf2dcfc58 145
+  s_1e114e823b9048::t_f46f585b70f5e8 132
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_82d979e16e02cc 17-19,352,369,389,412,445,457-510,513-556,655,671,693,715,727,1218,1234,1256,1278,1290
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0a133deaec9d5517aab0707bc9c4d1adcd6813de",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    },
+    "s_cc10fab120827c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "505312a4-569f-45c1-8212-11530a451d9c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
