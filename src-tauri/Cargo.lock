@@ -2358,6 +2358,7 @@ dependencies = [
  "dirs 7.0.0",
  "futures-util",
  "libc",
+ "png 0.18.1",
  "regex",
  "rmcp",
  "roxmltree",

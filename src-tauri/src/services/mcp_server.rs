@@ -243,6 +243,20 @@ pub struct DeviceSerialParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ScreenshotParams {
+    #[schemars(description = "ADB device serial, e.g. emulator-5554 (from list_devices)")]
+    pub device_serial: String,
+    #[schemars(
+        description = "Longest image edge in pixels (default 1280, min 256, max 8192). Larger captures are downscaled; a value at or above the screen's long edge returns it unchanged."
+    )]
+    pub max_dimension: Option<u32>,
+    #[schemars(
+        description = "Return the capture at the device's full resolution (costs more context). Do not combine with max_dimension."
+    )]
+    pub full_size: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct LaunchAvdParams {
     #[schemars(description = "AVD name from list_avds, e.g. Pixel_8_API_35")]
     pub name: String,
@@ -2337,7 +2351,7 @@ impl AndroidMcpServer {
 
     /// Capture a screenshot from a connected device.
     #[tool(
-        description = "Capture a screenshot from a connected Android device. Returns the image inline.",
+        description = "Capture a screenshot from a connected Android device. Returns a PNG whose long edge is at most max_dimension (default 1280), followed by JSON geometry: deviceWidth/deviceHeight (the pixel space ui_tap uses), imageWidth/imageHeight, and scale (device pixels per image pixel). To tap something you see, prefer ui_tap_element with a treePath from find_ui_elements or list_clickable_elements; for ui_tap, multiply image coordinates by scale first. full_size: true returns the original resolution.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -2346,19 +2360,36 @@ impl AndroidMcpServer {
     )]
     async fn screenshot(
         &self,
-        Parameters(p): Parameters<DeviceSerialParams>,
+        Parameters(p): Parameters<ScreenshotParams>,
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.device_serial)?;
+        let max_dimension = device_inspector::screenshot_max_dimension(
+            p.max_dimension,
+            p.full_size.unwrap_or(false),
+        )
+        .map_err(|e| McpError::invalid_params(e, None))?;
 
         let adb = {
             let (s, _) = settings_manager::load_settings();
             adb_manager::get_adb_path(&s)
         };
-        match device_inspector::take_screenshot(&adb, &p.device_serial).await {
-            Ok(bytes) => Ok(CallToolResult::success(vec![ContentBlock::image(
-                BASE64.encode(&bytes),
-                "image/png",
-            )])),
+        match device_inspector::take_screenshot_scaled(&adb, &p.device_serial, max_dimension).await
+        {
+            Ok(shot) => {
+                let g = shot.geometry;
+                let geometry = json!({
+                    "deviceWidth": g.device_width,
+                    "deviceHeight": g.device_height,
+                    "imageWidth": g.image_width,
+                    "imageHeight": g.image_height,
+                    "scale": g.scale,
+                    "hint": "Multiply image coordinates by scale before ui_tap, or prefer ui_tap_element with a treePath.",
+                });
+                Ok(CallToolResult::success(vec![
+                    ContentBlock::image(BASE64.encode(&shot.png), "image/png"),
+                    ContentBlock::text(geometry.to_string()),
+                ]))
+            }
             Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
                 "Screenshot failed: {e}"
             ))])),
