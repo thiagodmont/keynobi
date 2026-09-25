@@ -629,6 +629,19 @@ fn apk_outputs_dir(gradle_root: &Path) -> PathBuf {
         .join("apk")
 }
 
+/// [`apk_outputs_dir`], unless a symlinked `app`, `build`, `outputs`, or `apk`
+/// directory moves it outside the project. A missing directory is fine.
+fn apk_outputs_dir_within(gradle_root: &Path) -> Result<PathBuf, String> {
+    let base = apk_outputs_dir(gradle_root);
+    match crate::utils::path::validate_within_root(gradle_root, "app/build/outputs/apk") {
+        Err(AppError::PermissionDenied(_)) => Err(format!(
+            "{} resolves outside the project; its APKs are not used.",
+            base.display()
+        )),
+        _ => Ok(base),
+    }
+}
+
 /// The AGP `output-metadata.json` written next to a variant's APKs.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -663,7 +676,10 @@ const MAX_BUILT_APPLICATION_IDS: usize = 64;
 /// The application IDs AGP recorded for every variant built into the `app`
 /// module's APK outputs, including any `applicationIdSuffix`.
 pub fn built_application_ids(gradle_root: &Path) -> Vec<String> {
-    let mut dirs: Vec<PathBuf> = walk_dir_for_apk(&apk_outputs_dir(gradle_root), 6)
+    let Ok(base) = apk_outputs_dir_within(gradle_root) else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<PathBuf> = walk_dir_for_apk(&base, 6)
         .into_iter()
         .filter(|p| p.file_name().and_then(|n| n.to_str()) == Some("output-metadata.json"))
         .filter_map(|p| p.parent().map(Path::to_path_buf))
@@ -748,8 +764,15 @@ fn collect_apk_candidates(base: &Path) -> Vec<ApkCandidate> {
 /// An actionable message when there are no outputs, no APK for the variant,
 /// or more than one candidate (for example split APKs).
 pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Result<PathBuf, String> {
-    let base = apk_outputs_dir(gradle_root);
-    let candidates = collect_apk_candidates(&base);
+    let base = apk_outputs_dir_within(gradle_root)?;
+    // An `outputFile` in the metadata or a symlink can point anywhere; only
+    // APKs that resolve inside the build outputs are this project's.
+    let candidates: Vec<ApkCandidate> = collect_apk_candidates(&base)
+        .into_iter()
+        .filter(|c| {
+            crate::utils::path::validate_apk_within_build_outputs(gradle_root, &c.path).is_ok()
+        })
+        .collect();
     if candidates.is_empty() {
         return Err(format!(
             "No APK found under {}. Build the variant first (for example assembleDebug).",
@@ -2176,6 +2199,79 @@ mod tests {
                 "com.example.app.debug",
                 "com.example.app.paid.debug"
             ]
+        );
+    }
+
+    #[test]
+    fn output_metadata_cannot_point_outside_the_build_outputs() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let foreign = outside.path().join("foreign.apk");
+        std::fs::write(&foreign, b"").unwrap();
+        let dir = apk_outputs_dir(root.path()).join("debug");
+        std::fs::create_dir_all(&dir).unwrap();
+        let escape = format!(
+            "{}{}",
+            "../".repeat(dir.canonicalize().unwrap().components().count()),
+            foreign.display()
+        );
+        for output_file in [foreign.display().to_string(), escape] {
+            std::fs::write(
+                dir.join("output-metadata.json"),
+                serde_json::json!({
+                    "variantName": "debug",
+                    "elements": [{ "type": "SINGLE", "outputFile": output_file }],
+                })
+                .to_string(),
+            )
+            .unwrap();
+
+            let err = find_output_apk(root.path(), "debug").unwrap_err();
+
+            assert!(err.contains("No APK found"), "{output_file}: {err}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apk_outputs_linked_outside_the_project_are_not_used() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let foreign = outside.path().join("outputs/apk/debug/app-debug.apk");
+        std::fs::create_dir_all(foreign.parent().unwrap()).unwrap();
+        std::fs::write(&foreign, b"").unwrap();
+        std::fs::write(
+            foreign.parent().unwrap().join("output-metadata.json"),
+            r#"{"applicationId":"com.foreign","variantName":"debug","elements":[]}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.path().join("app/build")).unwrap();
+        std::os::unix::fs::symlink(
+            outside.path().join("outputs"),
+            root.path().join("app/build/outputs"),
+        )
+        .unwrap();
+
+        let err = find_output_apk(root.path(), "debug").unwrap_err();
+
+        assert!(err.contains("outside the project"), "{err}");
+        assert!(built_application_ids(root.path()).is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_build_dir_linked_inside_the_project_still_finds_its_apk() {
+        let root = tempfile::tempdir().unwrap();
+        let real = root.path().join("build-cache/app");
+        let apk = real.join("outputs/apk/debug/app-debug.apk");
+        std::fs::create_dir_all(apk.parent().unwrap()).unwrap();
+        std::fs::write(&apk, b"").unwrap();
+        std::fs::create_dir_all(root.path().join("app")).unwrap();
+        std::os::unix::fs::symlink(&real, root.path().join("app/build")).unwrap();
+
+        assert_eq!(
+            find_output_apk(root.path(), "debug").unwrap(),
+            apk_outputs_dir(root.path()).join("debug/app-debug.apk")
         );
     }
 

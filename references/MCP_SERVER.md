@@ -129,7 +129,7 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 | `list_devices`, `get_device_info` | R | |
 | `screenshot` | R | `device_serial`, `max_dimension?` (long edge, default 1,280, 256–8,192), `full_size?`. Returns the PNG, then a JSON text item with `deviceWidth`/`deviceHeight` (the capture's size: the screen in its current rotation, the space `ui_tap` uses), `imageWidth`/`imageHeight`, `scale` (device pixels per image pixel), and a hint to multiply image coordinates by `scale` or use `ui_tap_element`. Larger captures are area-averaged down on the host and re-encoded; a capture that already fits, or `full_size: true`, is returned byte for byte. Passing both parameters, or a `max_dimension` out of range, is `invalid_params`. Captures over 32 MiB or 16 Mpx, and output that is not a PNG, are tool errors. 30 s timeout. |
 | `dump_app_info`, `get_memory_info`, `get_app_runtime_state` | R | |
-| `install_apk` | D | `device_serial`, `apk_path` (must be an `.apk` under the build outputs). |
+| `install_apk` | D | `device_serial`, `apk_path` (must resolve to an `.apk` under the build outputs, which must resolve inside the project). The resolved canonical path is installed. |
 | `launch_app` | W | `device_serial`, `package`, `activity?`. Fails when `am start` reports an error, even with exit code 0. |
 | `stop_app` | D | `device_serial`, `package`, `allow_foreign_package?`. [Package-scoped](#package-scope). |
 | `restart_app` | D | `package`, `device_serial?`, `clear_data?`, `allow_foreign_package?`. [Package-scoped](#package-scope). Force-stops and relaunches; app data is preserved. `clear_data: true` runs `pm clear` first (wipes data and runtime permissions) and requires `device_serial`. The removed `cold` parameter returns an error. |
@@ -206,6 +206,8 @@ Resources (no templates or subscriptions; unknown URIs return `resource_not_foun
 | `android://build-gradle` | Root `build.gradle.kts` exists |
 | `android://gradle-settings` | `settings.gradle.kts` exists |
 
+A project file is listed and read only when its canonical path is a regular file inside the canonical project root (`utils/path.rs::resolve_project_file`). One that a symlink takes outside the project is not listed, and reading it is refused with `invalid_request`. Reads return at most `MAX_RESOURCE_BYTES` (512 KiB); a longer file is cut there and ends with a `[truncated: the file is N bytes; …]` note. Invalid UTF-8 is replaced with U+FFFD.
+
 ## Error Model
 
 | Situation | Return | Example |
@@ -229,7 +231,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 1. Validate every string with the shared validators before acting (see `DOMAIN_PATTERNS.md` § MCP → Validation).
 2. Spawn host processes with argv only. Every non-literal argument sent through `adb shell` is quoted for the device shell with `utils::device_shell::quote_device_shell_arg`.
-3. Restrict filesystem access. MCP exposes no general path parameters. APK installs are limited to `.apk` files under the project's build outputs, and resources read fixed project files.
+3. Restrict filesystem access. MCP exposes no general path parameters. APK installs are limited to `.apk` files under the project's build outputs, and resources read fixed project files. Both go through the shared validators in `utils/path.rs`, which resolve symlinks and require the result inside the project, and both use the canonical path the validator returns.
 4. Make destructive behavior explicit and opt-in, and declare it with tool annotations (`destructiveHint`, `readOnlyHint`, `openWorldHint`) so clients can ask the user for confirmation.
 5. Keep responses bounded (see the limits in the tool tables).
 6. Never write to stdout except MCP JSON-RPC.
@@ -294,7 +296,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 ## Testing and Debugging
 
-- Unit tests live in `mcp_server.rs` (validators, build slot, logcat state, session modes), `mcp_attach.rs` (handshake rules, socket binding, relay, standalone fallback), `mcp_relay.rs` (request tracking, replay), `mcp_sessions.rs`, `mcp_activity.rs`, `commands/mcp.rs`, `utils/validation.rs`, and `ui_automation.rs`. `tests/mcp_headless.rs` covers standalone and attached sessions end to end, including builds that outlive their client, two standalone servers sharing a project, the app cancelling an agent's build, build progress notifications, request cancellation, and the app quitting mid-request. `src/stores/mcp.store.test.ts`, `src/components/layout/StatusBar.test.tsx`, and `src/components/mcp/McpPanel.test.tsx` cover the frontend; `services/app_location.rs` covers the install-path rules.
+- Unit tests live in `mcp_server.rs` (validators, build slot, logcat state, session modes), `mcp_attach.rs` (handshake rules, socket binding, relay, standalone fallback), `mcp_relay.rs` (request tracking, replay), `mcp_sessions.rs`, `mcp_activity.rs`, `commands/mcp.rs`, `utils/validation.rs`, and `ui_automation.rs`. `tests/mcp_headless.rs` covers standalone and attached sessions end to end, including builds that outlive their client, two standalone servers sharing a project, the app cancelling an agent's build, build progress notifications, request cancellation, the app quitting mid-request, and the project boundary for `install_apk` and resources (symlinked build directories and files, oversized files). `src/stores/mcp.store.test.ts`, `src/components/layout/StatusBar.test.tsx`, and `src/components/mcp/McpPanel.test.tsx` cover the frontend; `services/app_location.rs` covers the install-path rules.
 - Try tools interactively with the MCP Inspector:
 
   ```bash
@@ -314,6 +316,8 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Groovy projects.** Resources check only `.kts` files and hard-code the `app` module. APK validation also hard-codes `app`.
 - **Progress and cancellation elsewhere.** Only `run_gradle_task` and `run_tests` report progress and honor request cancellation. Other long tools (`wait_for_element`, `ui_scroll_until_element`, `launch_avd`, `install_apk`) ignore the request context and run until they end or time out.
 - **Unredacted activity log.** Activity summaries are not redacted.
+- **Check then use.** `install_apk` and resource reads open the validated canonical path again. A directory replaced by a symlink between the check and the use is not caught.
+- **`list_build_variants` reads by joined path.** It reads the build file without the resource checks: through a symlink that leaves the project and without a size cap.
 - **Build lock is best effort.** When the lock file cannot be created or read (for example, an unwritable data directory), the build runs without it and a warning is logged.
 - **Pinned-session check is per call.** A pinned session checks the app's project when a tool starts; switching projects while a tool runs does not stop it.
 - **Package scope sources.** The scope reads only the `app` module (or the root build file). An `applicationIdSuffix` set in a convention plugin or through a variable is known only after that variant is built; until then its package needs `allow_foreign_package: true`.

@@ -55,11 +55,26 @@ pub fn validate_within_root(root: &Path, untrusted: &str) -> Result<PathBuf, App
     Ok(canonical_file)
 }
 
-/// Validate that an APK path resolves inside `{root}/app/build/outputs`.
+/// Resolve a fixed project file, such as `app/build.gradle.kts`, and require
+/// the canonical file to be a regular file inside the canonical `root`.
+///
+/// Symlinks inside the project are followed; one that leads outside it (at the
+/// file or at any directory above it) is `PermissionDenied`.
+pub fn resolve_project_file(root: &Path, relative: &str) -> Result<PathBuf, AppError> {
+    let file = validate_within_root(root, relative)?;
+    if !file.is_file() {
+        return Err(AppError::NotFound(format!("Not a file: {relative}")));
+    }
+    Ok(file)
+}
+
+/// Validate that an APK path resolves inside `{root}/app/build/outputs`, and
+/// that the outputs directory itself resolves inside `root`.
 ///
 /// Unlike [`validate_within_root`], this accepts absolute paths because APK
 /// paths returned by build discovery are absolute. Canonicalization still
 /// enforces the project/build-output boundary and catches symlink escapes.
+/// Install the returned canonical path, not `untrusted`.
 pub fn validate_apk_within_build_outputs(
     root: &Path,
     untrusted: impl AsRef<Path>,
@@ -68,9 +83,18 @@ pub fn validate_apk_within_build_outputs(
         .canonicalize()
         .map_err(|e| AppError::io(root.display(), e))?;
     let build_outputs = canonical_root.join("app").join("build").join("outputs");
-    let canonical_outputs = build_outputs
-        .canonicalize()
-        .map_err(|_| AppError::NotFound("Build outputs directory not found".to_string()))?;
+    let canonical_outputs = build_outputs.canonicalize().map_err(|_| {
+        AppError::NotFound(
+            "Build outputs directory (app/build/outputs) not found. Run a build first.".to_string(),
+        )
+    })?;
+    // A symlinked `app`, `app/build`, or `app/build/outputs` must not move the
+    // boundary outside the project.
+    if !canonical_outputs.starts_with(&canonical_root) {
+        return Err(AppError::PermissionDenied(
+            "app/build/outputs resolves outside the project".to_string(),
+        ));
+    }
 
     let untrusted = untrusted.as_ref();
     let canonical_apk = untrusted
@@ -189,5 +213,160 @@ mod tests {
         let result = validate_apk_within_build_outputs(tmp.path(), &link);
 
         assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    }
+
+    fn write_file(path: &Path) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, b"x").unwrap();
+    }
+
+    /// For each directory above the APK, a project whose directory is a
+    /// symlink to an outside tree holding the rest of the outputs layout.
+    #[cfg(unix)]
+    #[test]
+    fn apk_validation_rejects_an_ancestor_linked_outside_the_project() {
+        use std::os::unix::fs::symlink;
+
+        for (linked, rest) in [
+            ("app", "build/outputs/apk/debug/app-debug.apk"),
+            ("app/build", "outputs/apk/debug/app-debug.apk"),
+            ("app/build/outputs", "apk/debug/app-debug.apk"),
+        ] {
+            let project = TempDir::new().unwrap();
+            let outside = TempDir::new().unwrap();
+            write_file(&outside.path().join(rest));
+            let link = project.path().join(linked);
+            std::fs::create_dir_all(link.parent().unwrap()).unwrap();
+            symlink(outside.path(), &link).unwrap();
+            let apk = project
+                .path()
+                .join("app/build/outputs/apk/debug/app-debug.apk");
+            assert!(apk.is_file(), "{linked}: setup");
+
+            let result = validate_apk_within_build_outputs(project.path(), &apk);
+
+            assert!(
+                matches!(result, Err(AppError::PermissionDenied(_))),
+                "{linked}: {result:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn apk_validation_rejects_dot_dot_traversal() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("app/build/outputs/apk")).unwrap();
+        write_file(&tmp.path().join("outside.apk"));
+        let apk = tmp
+            .path()
+            .join("app/build/outputs/apk/../../../../outside.apk");
+
+        let result = validate_apk_within_build_outputs(tmp.path(), &apk);
+
+        assert!(matches!(result, Err(AppError::PermissionDenied(_))));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apk_validation_follows_symlinks_that_stay_inside_the_project() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = TempDir::new().unwrap();
+        let real_build = tmp.path().join("build-cache/app");
+        let apk = real_build.join("outputs/apk/debug/app-debug.apk");
+        write_file(&apk);
+        std::fs::create_dir_all(tmp.path().join("app")).unwrap();
+        symlink(&real_build, tmp.path().join("app/build")).unwrap();
+        let latest = tmp.path().join("app/build/outputs/apk/debug/latest.apk");
+        symlink("app-debug.apk", &latest).unwrap();
+
+        let result = validate_apk_within_build_outputs(tmp.path(), &latest).unwrap();
+
+        assert_eq!(result, apk.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn project_file_resolves_to_the_canonical_file() {
+        let tmp = TempDir::new().unwrap();
+        write_file(&tmp.path().join("app/build.gradle.kts"));
+
+        let file = resolve_project_file(tmp.path(), "app/build.gradle.kts").unwrap();
+
+        assert_eq!(
+            file,
+            tmp.path()
+                .join("app/build.gradle.kts")
+                .canonicalize()
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn project_file_rejects_traversal_and_directories() {
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("app")).unwrap();
+
+        assert!(matches!(
+            resolve_project_file(tmp.path(), "../outside.kts"),
+            Err(AppError::PermissionDenied(_))
+        ));
+        assert!(matches!(
+            resolve_project_file(tmp.path(), "app"),
+            Err(AppError::NotFound(_))
+        ));
+        assert!(matches!(
+            resolve_project_file(tmp.path(), "missing.kts"),
+            Err(AppError::NotFound(_))
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_file_rejects_a_symlink_outside_the_project() {
+        use std::os::unix::fs::symlink;
+
+        let project = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        write_file(&outside.path().join("secret"));
+        write_file(&outside.path().join("app/build.gradle.kts"));
+        symlink(
+            outside.path().join("secret"),
+            project.path().join("build.gradle.kts"),
+        )
+        .unwrap();
+        symlink(outside.path().join("app"), project.path().join("app")).unwrap();
+
+        for relative in ["build.gradle.kts", "app/build.gradle.kts"] {
+            let result = resolve_project_file(project.path(), relative);
+            assert!(
+                matches!(result, Err(AppError::PermissionDenied(_))),
+                "{relative}: {result:?}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_file_follows_a_symlink_inside_the_project() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = TempDir::new().unwrap();
+        write_file(&tmp.path().join("gradle/app.gradle.kts"));
+        std::fs::create_dir_all(tmp.path().join("app")).unwrap();
+        symlink(
+            "../gradle/app.gradle.kts",
+            tmp.path().join("app/build.gradle.kts"),
+        )
+        .unwrap();
+
+        let file = resolve_project_file(tmp.path(), "app/build.gradle.kts").unwrap();
+
+        assert_eq!(
+            file,
+            tmp.path()
+                .join("gradle/app.gradle.kts")
+                .canonicalize()
+                .unwrap()
+        );
     }
 }
