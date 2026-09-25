@@ -92,7 +92,7 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 
 | Tool | Kind | Notes |
 |------|------|-------|
-| `run_gradle_task` | O | `task`; `variant` is accepted but ignored. Refused with `invalid_params` unless the user trusted the project in the app (see [Project Trust](#project-trust)). Times out after `mcp.buildTimeoutSec` (default 600 s). Task names starting with `-` (Gradle options) are rejected. Unless `mcp.allowUnrestrictedGradle` is on, tasks matching `publish*`, `promote*`, `upload*`, `uninstall*`, `closeAndRelease*`, `*ToMavenCentral`, or `*PlayStore*` are refused, including Gradle abbreviations such as `pRB`. Runs through the build service the app uses (`build_runner::start_build`); the build does not depend on the call, so it finishes and is recorded even if the client disconnects. Refused while another build runs in this process, or while another process builds the same project. A cancelled build answers `BUILD CANCELLED — task 'x' was cancelled <by whom>`; a timed-out build is stopped and recorded as failed with the reason. |
+| `run_gradle_task` | O | `task`; `variant` is accepted but ignored. Refused with `invalid_params` unless the user trusted the project in the app (see [Project Trust](#project-trust)). Times out after `mcp.buildTimeoutSec` (default 600 s). Task names starting with `-` (Gradle options) are rejected. Unless `mcp.allowUnrestrictedGradle` is on, tasks matching `publish*`, `promote*`, `upload*`, `uninstall*`, `closeAndRelease*`, `*ToMavenCentral`, or `*PlayStore*` are refused, including Gradle abbreviations such as `pRB`. Runs through the build service the app uses (`build_runner::start_build`); the build does not depend on the call, so it finishes and is recorded even if the client disconnects. Refused while another build runs in this process, or while another process builds the same project. A cancelled build answers `BUILD CANCELLED — task 'x' was cancelled <by whom>`; a timed-out build is stopped and recorded as failed with the reason. When the request carries `_meta.progressToken`, sends `notifications/progress` every `BUILD_PROGRESS_INTERVAL` (2 s): `progress` is the seconds elapsed, `message` the elapsed time and the current `> Task :…`. Cancelling the request (`notifications/cancelled`) cancels the build it started, and only that one, recorded as cancelled by this agent; a client that disconnects does not cancel it. |
 | `get_build_status` | R | `status`, `summary`, `origin` and `cancelled_by` (`{"kind":"app"}`, `{"kind":"appQuit"}`, or `{"kind":"agent","session_id":…,"client_name":…,"standalone":…}`), `mode`, `standalone_reason`. |
 | `get_build_errors` | R | Errors without a recognised location are returned with the message only. |
 | `get_build_log` | R | `lines`: default `mcp.defaultBuildLogLines` (200), max 2,000. |
@@ -100,7 +100,7 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 | `list_build_variants` | R | |
 | `set_active_variant` | W | Persists to settings (shared with the GUI). |
 | `find_apk_path` | R | `variant?`. Matches the variant exactly, using `output-metadata.json` when present. Returns `found: false` with a `reason` when no APK or more than one APK matches. |
-| `run_tests` | O | `test_type`. Custom tasks go through the same policy as `run_gradle_task`, including the trust check. |
+| `run_tests` | O | `test_type`. Custom tasks go through the same policy as `run_gradle_task`, including the trust check. Reports progress and honors request cancellation like `run_gradle_task`. |
 | `get_build_config` | R | `module?`; rejects `/`, `\`, and `..`. |
 
 ### Logcat and Crashes
@@ -287,7 +287,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 ## Testing and Debugging
 
-- Unit tests live in `mcp_server.rs` (validators, build slot, logcat state, session modes), `mcp_attach.rs` (handshake rules, socket binding, relay, standalone fallback), `mcp_relay.rs` (request tracking, replay), `mcp_sessions.rs`, `mcp_activity.rs`, `commands/mcp.rs`, `utils/validation.rs`, and `ui_automation.rs`. `tests/mcp_headless.rs` covers standalone and attached sessions end to end, including builds that outlive their client, two standalone servers sharing a project, the app cancelling an agent's build, and the app quitting mid-request. `src/stores/mcp.store.test.ts` and `src/components/layout/StatusBar.test.tsx` cover the frontend.
+- Unit tests live in `mcp_server.rs` (validators, build slot, logcat state, session modes), `mcp_attach.rs` (handshake rules, socket binding, relay, standalone fallback), `mcp_relay.rs` (request tracking, replay), `mcp_sessions.rs`, `mcp_activity.rs`, `commands/mcp.rs`, `utils/validation.rs`, and `ui_automation.rs`. `tests/mcp_headless.rs` covers standalone and attached sessions end to end, including builds that outlive their client, two standalone servers sharing a project, the app cancelling an agent's build, build progress notifications, request cancellation, and the app quitting mid-request. `src/stores/mcp.store.test.ts` and `src/components/layout/StatusBar.test.tsx` cover the frontend.
 - Try tools interactively with the MCP Inspector:
 
   ```bash
@@ -305,7 +305,7 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Parameter casing.** UI tools use camelCase on the wire, while their descriptions and all other tools use snake_case.
 - **Instructions drift.** The `instructions` string omits 15 tools (for example `cancel_build`, `stop_app`, `wait_for_element`, AVD tools).
 - **Groovy projects.** Resources check only `.kts` files and hard-code the `app` module. APK validation also hard-codes `app`.
-- **No progress or cancellation.** `run_gradle_task` and `run_tests` send no progress notifications, and cancelling the request does not cancel its build (use `cancel_build`). A long Gradle run blocks until it ends or times out.
+- **Progress and cancellation elsewhere.** Only `run_gradle_task` and `run_tests` report progress and honor request cancellation. Other long tools (`wait_for_element`, `ui_scroll_until_element`, `launch_avd`, `install_apk`) ignore the request context and run until they end or time out.
 - **Unredacted activity log.** Activity summaries are not redacted.
 - **Build lock is best effort.** When the lock file cannot be created or read (for example, an unwritable data directory), the build runs without it and a warning is logged.
 - **Pinned-session check is per call.** A pinned session checks the app's project when a tool starts; switching projects while a tool runs does not stop it.

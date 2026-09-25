@@ -1190,6 +1190,8 @@ pub const BUILD_LINES_FLUSH_INTERVAL: std::time::Duration = std::time::Duration:
 pub const MAX_LINES_PER_BATCH: usize = 500;
 /// Most lines waiting for the next flush; past it the oldest are dropped.
 pub const MAX_PENDING_BUILD_LINES: usize = 10_000;
+/// Longest task name a run reports as its current task.
+const MAX_CURRENT_TASK_BYTES: usize = 256;
 
 /// A Gradle build to run.
 pub struct BuildRequest {
@@ -1255,9 +1257,15 @@ pub struct BuildOutcome {
 pub struct BuildHandle {
     pub run_id: ProcessId,
     outcome: watch::Receiver<Option<BuildOutcome>>,
+    current_task: watch::Receiver<Option<String>>,
 }
 
 impl BuildHandle {
+    /// The Gradle task the run started last (`:app:compileDebugKotlin`), if any.
+    pub fn current_task(&self) -> Option<String> {
+        self.current_task.borrow().clone()
+    }
+
     /// Wait for the run to be recorded.
     pub async fn wait(&mut self) -> BuildOutcome {
         if let Ok(outcome) = self.outcome.wait_for(Option::is_some).await {
@@ -1333,6 +1341,7 @@ pub async fn start_build(
     // This run's own log. Starting it before the spawn means no line is lost.
     let log = build_state.build_log.start_run();
     let collector = Arc::new(RunCollector::new(app_handle.is_some()));
+    let current_task_rx = collector.current_task.subscribe();
     let (exit_tx, exit_rx) = tokio::sync::oneshot::channel::<ProcessTermination>();
     let exit_tx = StdMutex::new(Some(exit_tx));
 
@@ -1432,7 +1441,25 @@ pub async fn start_build(
     Ok(BuildHandle {
         run_id,
         outcome: outcome_rx,
+        current_task: current_task_rx,
     })
+}
+
+/// Cancel `run` only: a no-op when another build (or none) is running.
+/// For a caller that stops wanting the build it started.
+pub async fn cancel_run(
+    build_state: &BuildState,
+    process_manager: &ProcessManager,
+    run: ProcessId,
+    by: BuildActor,
+) -> bool {
+    stop_build(
+        build_state,
+        process_manager,
+        Some(run),
+        StopReason::Cancelled(by),
+    )
+    .await
 }
 
 /// Stop the running build because the wait of the caller that started it
@@ -1477,6 +1504,8 @@ struct RunCollector {
     duration_ms: std::sync::atomic::AtomicU64,
     /// Lines waiting for the next `build:lines`; `None` with no app to send them to.
     pending: Option<StdMutex<VecDeque<BuildLine>>>,
+    /// The last `> Task :…` line's task, for progress reports.
+    current_task: watch::Sender<Option<String>>,
 }
 
 impl RunCollector {
@@ -1486,6 +1515,7 @@ impl RunCollector {
             succeeded: Default::default(),
             duration_ms: Default::default(),
             pending: stream_to_app.then(StdMutex::default),
+            current_task: watch::channel(None).0,
         }
     }
 
@@ -1510,6 +1540,17 @@ impl RunCollector {
                     },
                 );
             }
+        }
+        if line.kind == BuildLineKind::TaskStart {
+            let mut task = line.content.clone();
+            if task.len() > MAX_CURRENT_TASK_BYTES {
+                let mut end = MAX_CURRENT_TASK_BYTES;
+                while !task.is_char_boundary(end) {
+                    end -= 1;
+                }
+                task.truncate(end);
+            }
+            self.current_task.send_replace(Some(task));
         }
         if line.kind == BuildLineKind::Summary {
             self.duration_ms
@@ -3121,6 +3162,67 @@ mod tests {
         let bs = build_state.inner.lock().await;
         assert_eq!(bs.status_cancelled_by, Some(agent("Claude Code")));
         assert_eq!(bs.status_origin, Some(BuildActor::App));
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_run_leaves_a_later_build_alone() {
+        let _history = PERSISTED_HISTORY.lock().await;
+        let build_state = BuildState::new();
+        let pm = crate::services::process_manager::ProcessManager::new();
+        let (first_dir, second_dir) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let release = first_dir.path().join("release");
+        let first_gradlew = gradlew_waiting_for(first_dir.path(), &release);
+        let second_gradlew =
+            gradlew_waiting_for(second_dir.path(), &second_dir.path().join("never"));
+        let task = format!("cancelRun{}", std::process::id());
+
+        let mut first = start_build(
+            &build_state,
+            &pm,
+            None,
+            request(first_dir.path(), &first_gradlew, "first", agent("A")),
+        )
+        .await
+        .unwrap();
+        std::fs::write(&release, "").unwrap();
+        assert!(first.wait().await.success);
+        let mut second = start_build(
+            &build_state,
+            &pm,
+            None,
+            request(second_dir.path(), &second_gradlew, &task, BuildActor::App),
+        )
+        .await
+        .unwrap();
+
+        // The first caller cancels late: the build now running is not its own.
+        assert!(!cancel_run(&build_state, &pm, first.run_id, agent("A")).await);
+        assert!(build_state.inner.lock().await.current_build.is_some());
+
+        assert!(cancel_run(&build_state, &pm, second.run_id, agent("B")).await);
+        let outcome = second.wait().await;
+        assert!(outcome.cancelled);
+        assert_eq!(outcome.cancelled_by, Some(agent("B")));
+        let record = history_record(&build_state, &task).await.unwrap();
+        assert_eq!(record.cancelled_by, Some(agent("B")));
+    }
+
+    #[test]
+    fn a_run_reports_the_task_it_is_running() {
+        let collector = RunCollector::new(false);
+        let current = collector.current_task.subscribe();
+        let log = BuildLog::default();
+        collector.on_line(&log, "Starting a Gradle Daemon".into());
+        assert_eq!(*current.borrow(), None);
+        collector.on_line(&log, "> Task :app:compileDebugKotlin".into());
+        collector.on_line(&log, "w: something".into());
+        assert_eq!(current.borrow().as_deref(), Some(":app:compileDebugKotlin"));
+
+        collector.on_line(&log, format!("> Task :{}", "x".repeat(1_000)));
+        assert_eq!(
+            current.borrow().as_ref().unwrap().len(),
+            MAX_CURRENT_TASK_BYTES
+        );
     }
 
     /// Regression: a build cancelled while Gradle was still being spawned was
