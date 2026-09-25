@@ -24,3 +24,26 @@ test("running a build shows build lines then success indicator", async ({ page }
 
   await expect(page.getByText(/BUILD SUCCESSFUL in 4s/i)).toBeVisible({ timeout: 10_000 });
 });
+
+test("an agent's build shows who started it and can be cancelled from the app", async ({
+  page,
+}) => {
+  await selectMockProject(page);
+  await page.getByRole("tab", { name: "Build" }).click();
+
+  // Slow enough to act on while it runs.
+  await page.evaluate(() => window.__e2e__.startAgentBuild("assembleDebug", "Claude Code", 5_000));
+
+  await expect(page.getByText(/Started by an agent \(Claude Code\)/).first()).toBeVisible({
+    timeout: 5_000,
+  });
+  await expect(
+    page.getByTitle("A build started by an agent (Claude Code) is running")
+  ).toBeDisabled();
+
+  await page.getByTitle("Cancel the build started by an agent (Claude Code)").first().click();
+
+  await expect(
+    page.getByText("Build cancelled · Started by an agent (Claude Code) · Cancelled in Keynobi")
+  ).toBeVisible({ timeout: 5_000 });
+});

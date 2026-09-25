@@ -11,6 +11,7 @@ import {
   setBuildHistory,
   resetBuildState,
   setLastLaunchedAt,
+  isAgentBuilding,
 } from "@/stores/build.store";
 import type { BuildLine } from "@/bindings";
 
@@ -123,6 +124,8 @@ describe("build.store", () => {
         errors: [],
         startedAt: new Date().toISOString(),
         projectRoot: "/home/user/my-app",
+        origin: null,
+        cancelledBy: null,
       },
     ]);
     expect(buildState.history).toHaveLength(1);
@@ -142,6 +145,8 @@ describe("build.store", () => {
         errors: [],
         startedAt: new Date().toISOString(),
         projectRoot: "/home/user/my-app",
+        origin: null,
+        cancelledBy: null,
       },
     ]);
     startBuild("assembleDebug");
@@ -160,6 +165,8 @@ describe("build.store", () => {
         errors: [],
         startedAt: new Date().toISOString(),
         projectRoot: "/home/user/my-app",
+        origin: null,
+        cancelledBy: null,
       },
     ]);
     startBuild("assembleDebug");
@@ -352,5 +359,43 @@ describe("lastLaunchedAt", () => {
     setLastLaunchedAt(1_000_000);
     setLastLaunchedAt(2_000_000);
     expect(buildState.lastLaunchedAt).toBe(2_000_000);
+  });
+
+  describe("who started and cancelled the build", () => {
+    const agent = { kind: "agent" as const, sessionId: 1, clientName: "Codex", standalone: false };
+
+    it("a build started without an origin is the app's", () => {
+      startBuild("assembleDebug");
+      expect(buildState.origin).toEqual({ kind: "app" });
+      expect(isAgentBuilding()).toBe(false);
+    });
+
+    it("an agent's running build is reported until it ends", () => {
+      startBuild("assembleDebug", agent);
+      expect(isAgentBuilding()).toBe(true);
+
+      setBuildResult({ success: true, durationMs: 1 });
+      expect(isAgentBuilding()).toBe(false);
+      expect(buildState.origin).toEqual(agent);
+    });
+
+    it("records who cancelled, the app by default", () => {
+      startBuild("assembleDebug", agent);
+      cancelBuildState();
+      expect(buildState.cancelledBy).toEqual({ kind: "app" });
+
+      startBuild("assembleDebug", agent);
+      expect(buildState.cancelledBy).toBeNull();
+      cancelBuildState(agent);
+      expect(buildState.cancelledBy).toEqual(agent);
+    });
+
+    it("clearBuild forgets both", () => {
+      startBuild("assembleDebug", agent);
+      cancelBuildState(agent);
+      clearBuild();
+      expect(buildState.origin).toBeNull();
+      expect(buildState.cancelledBy).toBeNull();
+    });
   });
 });

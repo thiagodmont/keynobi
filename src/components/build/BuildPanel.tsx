@@ -4,6 +4,7 @@ import {
   buildLogStore,
   isBuilding,
   isDeploying,
+  isAgentBuilding,
   clearBuildHistory,
   lineToLogEntry,
 } from "@/stores/build.store";
@@ -24,6 +25,13 @@ import { BuildHistoryPanel, relativeTime } from "@/components/build/BuildHistory
 import { projectState } from "@/stores/project.store";
 import { settingsState } from "@/stores/settings.store";
 import { formatError, getBuildLogEntries } from "@/lib/tauri-api";
+import {
+  buildRunningLabel,
+  cancelBuildTitle,
+  cancelledByLabel,
+  isAgent,
+  startedByLabel,
+} from "@/lib/build-actor";
 
 type ViewMode = "log" | "problems";
 
@@ -108,7 +116,7 @@ export function BuildPanel(): JSX.Element {
     }
   });
 
-  const summaryLabel = createMemo(() => {
+  const phaseLabel = () => {
     if (deployPhase() === "installing") return "Installing APK…";
     if (deployPhase() === "launching") return "Launching app…";
     switch (phase()) {
@@ -123,6 +131,19 @@ export function BuildPanel(): JSX.Element {
       default:
         return null;
     }
+  };
+
+  /** Who started the build, when an agent did, and who cancelled it. */
+  const summaryLabel = createMemo(() => {
+    const base = phaseLabel();
+    if (!base || deployPhase()) return base;
+    const agentBuild = isAgent(buildState.origin);
+    const parts = [base];
+    if (agentBuild) parts.push(startedByLabel(buildState.origin) ?? "");
+    if (phase() === "cancelled" && (agentBuild || buildState.cancelledBy?.kind !== "app")) {
+      parts.push(cancelledByLabel(buildState.cancelledBy) ?? "");
+    }
+    return parts.filter(Boolean).join(" · ");
   });
 
   const busy = () => running() || isDeploying();
@@ -246,18 +267,28 @@ export function BuildPanel(): JSX.Element {
               </IconButton>
             }
           >
-            <IconButton size="sm" title="Cancel" onClick={handleCancel}>
+            <IconButton
+              size="sm"
+              title={cancelBuildTitle(buildState.origin)}
+              onClick={handleCancel}
+            >
               <Icon name="stop" size={13} color="var(--error)" />
             </IconButton>
           </Show>
 
-          {/* Build Only button */}
-          <Show when={!isBuilding() && !isDeploying()}>
+          {/* Build Only button — shown disabled while an agent builds, to say who */}
+          <Show when={(!isBuilding() || isAgentBuilding()) && !isDeploying()}>
             <IconButton
               size="sm"
-              title={safeMode() ? SAFE_MODE_BUILD_TITLE : "Build only — no install (Cmd+Shift+R)"}
+              title={
+                isAgentBuilding()
+                  ? buildRunningLabel(buildState.origin)
+                  : safeMode()
+                    ? SAFE_MODE_BUILD_TITLE
+                    : "Build only — no install (Cmd+Shift+R)"
+              }
               onClick={handleBuildOnly}
-              disabled={busy() || safeMode()}
+              disabled={busy() || safeMode() || isAgentBuilding()}
             >
               <Icon name="hammer" size={13} color="var(--text-secondary)" />
             </IconButton>

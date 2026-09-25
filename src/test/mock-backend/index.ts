@@ -1,7 +1,7 @@
 import { settingsHandlers } from "./settings";
 import { projectHandlers } from "./projects";
 import { devicesHandlers } from "./devices";
-import { buildHandlers } from "./build";
+import { buildHandlers, startMockBuild } from "./build";
 import { logcatHandlers } from "./logcat";
 import { triggerEvent } from "./events";
 export { MockChannel } from "./channel";
@@ -49,5 +49,12 @@ if (import.meta.env.VITE_E2E === "true") {
   (window as typeof window & { __e2e__: unknown }).__e2e__ = {
     invoke: handleInvoke,
     triggerEvent,
+    /** A build an attached agent starts, streamed to the app like any other. */
+    startAgentBuild: (task: string, clientName: string | null, lineDelayMs?: number) =>
+      startMockBuild(
+        task,
+        { kind: "agent", sessionId: 1, clientName, standalone: false },
+        lineDelayMs
+      ),
   };
 }

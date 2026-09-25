@@ -2,7 +2,12 @@ import { fireEvent, render, screen, cleanup } from "@solidjs/testing-library";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { BuildPanel } from "./BuildPanel";
-import { resetBuildState, setBuildHistory } from "@/stores/build.store";
+import {
+  cancelBuildState,
+  resetBuildState,
+  setBuildHistory,
+  startBuild,
+} from "@/stores/build.store";
 import { setProject, setProjectState } from "@/stores/project.store";
 import { setProjects } from "@/stores/projects.store";
 import { makeBuildLine, makeBuildRecord } from "@/test/factories/build";
@@ -156,5 +161,83 @@ describe("BuildPanel in Safe Mode", () => {
     const run = screen.getByTitle(/Run App/) as HTMLButtonElement;
     expect(run.disabled).toBe(false);
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("BuildPanel with a build an agent started", () => {
+  const agent = {
+    kind: "agent" as const,
+    sessionId: 1,
+    clientName: "Claude Code",
+    standalone: false,
+  };
+
+  beforeEach(() => {
+    if (!window.ResizeObserver) {
+      class MockResizeObserver {
+        observe = vi.fn();
+        unobserve = vi.fn();
+        disconnect = vi.fn();
+      }
+      window.ResizeObserver = MockResizeObserver as any;
+    }
+    resetBuildState();
+    setProject("/mock/android-project", "android-project");
+    registerProject(true);
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockResolvedValue(undefined);
+    resetBuildState();
+    setProjectState({ projectRoot: null, gradleRoot: null, projectName: null, loading: false });
+    setProjects([]);
+  });
+
+  it("says who is building, disables Build, and offers Cancel", () => {
+    startBuild("assembleDebug", agent);
+    render(() => <BuildPanel />);
+
+    expect(screen.getAllByText(/Started by an agent \(Claude Code\)/).length).toBeGreaterThan(0);
+    const build = screen.getByTitle(
+      "A build started by an agent (Claude Code) is running"
+    ) as HTMLButtonElement;
+    expect(build.disabled).toBe(true);
+
+    const cancel = screen.getByTitle("Cancel the build started by an agent (Claude Code)");
+    fireEvent.click(cancel);
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "cancel_build")).toHaveLength(1);
+  });
+
+  it("shows who cancelled an agent's build", () => {
+    startBuild("assembleDebug", agent);
+    cancelBuildState(agent);
+    render(() => <BuildPanel />);
+
+    expect(
+      screen.getByText(
+        "Build cancelled · Started by an agent (Claude Code) · Cancelled by an agent (Claude Code)"
+      )
+    ).not.toBeNull();
+  });
+
+  it("lists who started and cancelled past builds in the history", () => {
+    setBuildHistory([
+      makeBuildRecord({
+        id: 2,
+        task: "assembleRelease",
+        status: { state: "cancelled" },
+        origin: agent,
+        cancelledBy: { kind: "appQuit" },
+      }),
+      makeBuildRecord({ id: 1, task: "assembleDebug" }),
+    ]);
+    render(() => <BuildPanel />);
+
+    expect(screen.getByText("Started by an agent (Claude Code)")).not.toBeNull();
+    expect(screen.getByText("Cancelled because Keynobi quit")).not.toBeNull();
+    // A plain app build says nothing extra.
+    expect(screen.queryByText("Started in Keynobi")).toBeNull();
   });
 });

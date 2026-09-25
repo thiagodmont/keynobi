@@ -218,12 +218,14 @@ Render errors with `formatError(err)`, which understands `AppError` (`{ kind, me
 ### Commands, Events, and Channels
 
 - **Commands** are request/response.
-- **Channels** carry a stream owned by one request: build output (`Channel<BuildLine>`), SDK image download progress.
+- **Channels** carry a stream owned by one request: SDK image download progress. Build output is an event stream instead, because the app shows builds it did not request (an agent's).
 - **Events** carry app-wide notifications and batched streams not tied to one request.
 
 | Event | Payload / purpose |
 |-------|-------------------|
-| `build:complete` | Build finished, failed, or was cancelled. |
+| `build:started` | A build started, from the app or an agent: run ID, task, `origin`. |
+| `build:lines` | Batched output of one run (every 50 ms, up to 500 lines). |
+| `build:complete` | Build finished, failed, or was cancelled, with `origin` and `cancelledBy`. |
 | `device:list_changed` | Connected device serials changed. |
 | `logcat:entries` | Batched processed log entries (every 100 ms, up to 500). |
 | `logcat:cleared`, `logcat:reconnecting`, `logcat:stopped` | Logcat stream lifecycle. |

@@ -6,9 +6,15 @@ import {
   installApkOnDevice,
   launchAppOnDevice,
   getBuildHistory,
+  listenBuildStarted,
+  listenBuildLines,
   listenBuildComplete,
   formatError,
+  type BuildActor,
+  type BuildCompleteEvent,
   type BuildLine,
+  type BuildLinesEvent,
+  type BuildStartedEvent,
 } from "@/lib/tauri-api";
 import {
   startBuild,
@@ -20,6 +26,7 @@ import {
   setDeployPhase,
   setLastLaunchedAt,
   buildState,
+  isAgentBuilding,
 } from "@/stores/build.store";
 import { variantState } from "@/stores/variant.store";
 import { deviceState } from "@/stores/device.store";
@@ -27,9 +34,10 @@ import { setActiveTab } from "@/stores/ui.store";
 import { projectState, currentProjectGeneration } from "@/stores/project.store";
 import { settingsState } from "@/stores/settings.store";
 import { isActiveProjectTrusted } from "@/stores/projects.store";
+import { buildRunningLabel } from "@/lib/build-actor";
 import type { BuildError } from "@/bindings";
 
-let buildCompleteUnlisten: (() => void) | null = null;
+let buildUnlisteners: Array<() => void> | null = null;
 // Held so concurrent callers await the SAME registration. A plain
 // `if (unlisten) return` guard is checked before the await, so two interleaved
 // calls both register and the second orphans the first's unlisten.
@@ -43,11 +51,11 @@ interface RunBuildOptions {
 
 // ── Registration ──────────────────────────────────────────────────────────────
 
-/** Call once on app startup to register the build:complete event listener. */
+/** Call once on app startup to register the build event listeners. */
 export function initBuildService(): Promise<void> {
   if (buildListenerInit) return buildListenerInit;
 
-  buildListenerInit = registerBuildCompleteListener().catch((err) => {
+  buildListenerInit = registerBuildListeners().catch((err) => {
     // Allow a later retry rather than wedging the service permanently.
     buildListenerInit = null;
     throw err;
@@ -57,41 +65,35 @@ export function initBuildService(): Promise<void> {
 
 /** Test-only teardown, mirroring resetMcpListenersForTests. */
 export function resetBuildServiceForTests(): void {
-  buildCompleteUnlisten?.();
-  buildCompleteUnlisten = null;
+  buildUnlisteners?.forEach((unlisten) => unlisten());
+  buildUnlisteners = null;
   buildListenerInit = null;
   activeRun = null;
+  observedRun = null;
   earlyCompletions.clear();
+  clearEarlyLines();
   clearBuildCompleteTimer();
 }
 
-async function registerBuildCompleteListener(): Promise<void> {
-  const unlisten = await listenBuildComplete((e) => {
-    // Rust records history before emitting build:complete, so this fetch sees
-    // the completed record without a frontend finalize step.
-    getBuildHistory()
-      .then(setBuildHistory)
-      .catch((err) => {
-        console.error("[build] Failed to reload build history:", err);
-      });
+async function registerBuildListeners(): Promise<void> {
+  const registrations = await Promise.allSettled([
+    listenBuildStarted(onBuildStarted),
+    listenBuildLines(onBuildLines),
+    listenBuildComplete(onBuildComplete),
+  ]);
+  const unlisteners = registrations.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+  const failed = registrations.find((r) => r.status === "rejected");
+  if (failed) {
+    unlisteners.forEach((unlisten) => unlisten());
+    throw failed.reason;
+  }
 
-    // Only the run this window is waiting on may change the build state. Late
-    // events from cancelled, timed-out, or replaced runs are ignored.
-    if (!activeRun) return;
-    if (activeRun.runId === null) {
-      // run_gradle_task has not returned the run's ID yet.
-      if (earlyCompletions.size < MAX_EARLY_COMPLETIONS) earlyCompletions.set(e.runId, e);
-      return;
-    }
-    if (activeRun.runId === e.runId) completeActiveRun(e);
-  });
-
-  if (buildCompleteUnlisten) {
+  if (buildUnlisteners) {
     // A reset landed while we were awaiting — drop this registration.
-    unlisten();
+    unlisteners.forEach((unlisten) => unlisten());
     return;
   }
-  buildCompleteUnlisten = unlisten;
+  buildUnlisteners = unlisteners;
 
   // Load persisted history on startup so previous sessions are visible immediately.
   getBuildHistory()
@@ -101,38 +103,165 @@ async function registerBuildCompleteListener(): Promise<void> {
     });
 }
 
-type BuildCompleteEvent = Parameters<Parameters<typeof listenBuildComplete>[0]>[0];
-
 interface BuildCompletion {
   success: boolean;
   durationMs: number;
 }
 
 interface ActiveRun {
-  /** Null until run_gradle_task returns it. */
+  /** Null until build:started or run_gradle_task names it. */
   runId: number | null;
   resolve: (result: BuildCompletion) => void;
+}
+
+/** A build this window did not start, typically an agent's. */
+interface ObservedRun {
+  runId: number;
+  task: string;
+  origin: BuildActor;
+  /** The project generation it started under; a project switch drops it. */
+  generation: number;
+  /** Shown in the Build panel. Held back while this window's own build or deploy runs. */
+  shown: boolean;
+  /** Output received while not shown. */
+  hiddenLines: BuildLine[];
 }
 
 // The build this window started and is waiting on. Cleared on completion,
 // cancellation, timeout, or spawn failure.
 let activeRun: ActiveRun | null = null;
-// Completions received while activeRun.runId was still unknown.
+let observedRun: ObservedRun | null = null;
+// Completions and output received while activeRun.runId was still unknown.
 const earlyCompletions = new Map<number, BuildCompleteEvent>();
 const MAX_EARLY_COMPLETIONS = 8;
+const earlyLines = new Map<number, BuildLine[]>();
+let earlyLineCount = 0;
+const MAX_EARLY_LINES = 2_000;
+/** Output of an observed build kept while it is not shown. */
+const MAX_HIDDEN_LINES = 5_000;
 let _buildCompleteTimer: ReturnType<typeof setTimeout> | null = null;
+
+function onBuildStarted(e: BuildStartedEvent): void {
+  if (activeRun?.runId === e.runId) return;
+  if (activeRun && activeRun.runId === null && e.origin.kind === "app") {
+    // Only this window starts builds for the app, so this is the one it awaits.
+    adoptRunId(activeRun, e.runId);
+    return;
+  }
+  observedRun = {
+    runId: e.runId,
+    task: e.task,
+    origin: e.origin,
+    generation: currentProjectGeneration(),
+    shown: false,
+    hiddenLines: [],
+  };
+  showObservedRunWhenIdle();
+}
+
+function onBuildLines(e: BuildLinesEvent): void {
+  if (activeRun) {
+    if (activeRun.runId === e.runId) {
+      e.lines.forEach(addBuildLine);
+      return;
+    }
+    if (activeRun.runId === null && earlyLineCount + e.lines.length <= MAX_EARLY_LINES) {
+      earlyLines.set(e.runId, [...(earlyLines.get(e.runId) ?? []), ...e.lines]);
+      earlyLineCount += e.lines.length;
+    }
+  }
+  const run = observedRun;
+  if (run?.runId !== e.runId) return;
+  if (run.shown) {
+    e.lines.forEach(addBuildLine);
+  } else {
+    run.hiddenLines.push(...e.lines);
+    if (run.hiddenLines.length > MAX_HIDDEN_LINES) {
+      run.hiddenLines.splice(0, run.hiddenLines.length - MAX_HIDDEN_LINES);
+    }
+  }
+}
+
+function onBuildComplete(e: BuildCompleteEvent): void {
+  // Rust records history before emitting build:complete, so this fetch sees
+  // the completed record without a frontend finalize step.
+  getBuildHistory()
+    .then(setBuildHistory)
+    .catch((err) => {
+      console.error("[build] Failed to reload build history:", err);
+    });
+
+  // Only the run this window is waiting on may finish it. Late events from
+  // cancelled, timed-out, or replaced runs are ignored.
+  if (activeRun) {
+    if (activeRun.runId === null) {
+      // run_gradle_task has not returned the run's ID yet.
+      if (earlyCompletions.size < MAX_EARLY_COMPLETIONS) earlyCompletions.set(e.runId, e);
+    } else if (activeRun.runId === e.runId) {
+      completeActiveRun(e);
+    }
+  }
+
+  const run = observedRun;
+  if (run?.runId !== e.runId) return;
+  observedRun = null;
+  // A build that finished unseen is in the history list. A project switch
+  // resets the panel, so a build shown before it is not brought back.
+  if (!run.shown || run.generation !== currentProjectGeneration()) return;
+  flushPendingLines();
+  if (e.cancelled) {
+    cancelBuildState(e.cancelledBy);
+  } else {
+    setBuildResult({ success: e.success, durationMs: e.durationMs });
+  }
+}
+
+/** Learn the run ID of this window's own build and apply what arrived early. */
+function adoptRunId(run: ActiveRun, runId: number): void {
+  run.runId = runId;
+  const lines = earlyLines.get(runId) ?? [];
+  clearEarlyLines();
+  lines.forEach(addBuildLine);
+  const early = earlyCompletions.get(runId);
+  earlyCompletions.clear();
+  if (early) completeActiveRun(early);
+}
+
+function clearEarlyLines(): void {
+  earlyLines.clear();
+  earlyLineCount = 0;
+}
+
+/** This window is running its own build or deploy. */
+function ownFlowBusy(): boolean {
+  return activeRun !== null || currentBuildPromise !== null || deployInFlight;
+}
+
+/** Show the observed build in the Build panel unless this window's own flow is using it. */
+function showObservedRunWhenIdle(): void {
+  const run = observedRun;
+  if (!run || run.shown || ownFlowBusy()) return;
+  if (run.generation !== currentProjectGeneration()) {
+    observedRun = null;
+    return;
+  }
+  run.shown = true;
+  startBuild(run.task, run.origin);
+  run.hiddenLines.splice(0).forEach(addBuildLine);
+}
 
 function completeActiveRun(e: BuildCompleteEvent): void {
   const run = activeRun;
   if (!run) return;
   activeRun = null;
   earlyCompletions.clear();
+  clearEarlyLines();
   clearBuildCompleteTimer();
 
   // Flush any lines still in the 50ms buffer before updating phase.
   flushPendingLines();
   if (e.cancelled) {
-    cancelBuildState();
+    cancelBuildState(e.cancelledBy);
   } else {
     setBuildResult({ success: e.success, durationMs: e.durationMs });
   }
@@ -144,6 +273,11 @@ function clearBuildCompleteTimer(): void {
     clearTimeout(_buildCompleteTimer);
     _buildCompleteTimer = null;
   }
+}
+
+/** Why a new build cannot start while one runs, naming an agent that started it. */
+function buildRunningMessage(fallback: string): string {
+  return isAgentBuilding() ? `${buildRunningLabel(buildState.origin)}.` : fallback;
 }
 
 // ── Build actions ─────────────────────────────────────────────────────────────
@@ -182,8 +316,8 @@ async function runBuildGuarded(
   if (deployInFlight && !allowDuringDeploy) {
     throw new Error("A build or deploy is already running.");
   }
-  if (currentBuildPromise || buildState.phase === "running") {
-    throw new Error("A build is already running.");
+  if (currentBuildPromise || buildState.phase === "running" || observedRun) {
+    throw new Error(buildRunningMessage("A build is already running."));
   }
 
   const promise = runBuildInternal(task, opts);
@@ -194,6 +328,7 @@ async function runBuildGuarded(
     if (currentBuildPromise === promise) {
       currentBuildPromise = null;
     }
+    showObservedRunWhenIdle();
   }
 }
 
@@ -236,22 +371,20 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   });
   activeRun = run;
   earlyCompletions.clear();
+  clearEarlyLines();
 
   try {
-    const runId = await runGradleTask(effectiveTask, (line: BuildLine) => {
-      addBuildLine(line);
-    });
-    if (activeRun === run) {
-      run.runId = runId;
-      const early = earlyCompletions.get(runId);
-      earlyCompletions.clear();
-      if (early) completeActiveRun(early);
-    }
+    const runId = await runGradleTask(effectiveTask);
+    // build:started usually names the run first.
+    if (activeRun === run && run.runId === null) adoptRunId(run, runId);
   } catch (e) {
-    // Process-level spawn failure (e.g. gradlew not found).
+    // Spawn failure (e.g. gradlew not found), or another build holds the slot.
     if (activeRun === run) activeRun = null;
     clearBuildCompleteTimer();
+    clearEarlyLines();
     const msg = formatError(e);
+    // The build that won the slot takes over the panel once this flow ends.
+    if (observedRun) throw e;
     addBuildLine({
       kind: "error",
       content: `Failed to start Gradle: ${msg}`,
@@ -311,9 +444,10 @@ export async function runAndDeploy(): Promise<void> {
     deployInFlight ||
     currentBuildPromise ||
     buildState.phase === "running" ||
-    buildState.deployPhase
+    buildState.deployPhase ||
+    observedRun
   ) {
-    throw new Error("A build or deploy is already running.");
+    throw new Error(buildRunningMessage("A build or deploy is already running."));
   }
 
   deployInFlight = true;
@@ -422,12 +556,21 @@ export async function runAndDeploy(): Promise<void> {
   } finally {
     setDeployPhase(null);
     deployInFlight = false;
+    showObservedRunWhenIdle();
   }
 }
 
-/** Cancel the currently running build. No-op if no build is running. */
+/** Cancel the running build, whoever started it. No-op if no build is running. */
 export async function cancelBuild(): Promise<void> {
   if (buildState.phase !== "running") return;
+
+  if (!activeRun && observedRun?.shown) {
+    // Another client's build: its build:complete confirms the outcome.
+    flushPendingLines();
+    cancelBuildState();
+    await cancelBuildApi();
+    return;
+  }
 
   const run = activeRun;
   activeRun = null;

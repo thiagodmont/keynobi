@@ -286,25 +286,47 @@ echo 'Error: Activity not started, unable to resolve Intent { act=android.intent
     );
 }
 
+/// Two standalone servers on one data directory (like the app and a headless
+/// server) do not build one project at once, and both builds are kept in the
+/// shared history.
 #[test]
-fn two_servers_building_at_once_keep_both_builds_in_the_shared_history() {
+fn two_standalone_servers_take_turns_building_one_project() {
     let sandbox = Sandbox::new();
-    sandbox.write_gradlew("sleep 1\necho 'BUILD SUCCESSFUL in 1s'");
-    // Two processes on one data directory, like the app and a headless server.
-    let clients = [sandbox.start(), sandbox.start()];
+    let started = sandbox.home.join("first-build-started");
+    let release = sandbox.home.join("release-build");
+    sandbox.write_gradlew(&format!(
+        "touch '{}'\n\
+         while [ ! -e '{}' ]; do sleep 0.05; done\n\
+         echo 'BUILD SUCCESSFUL in 1s'",
+        started.display(),
+        release.display()
+    ));
+    let [first, mut second] = [sandbox.start(), sandbox.start()];
 
-    let builds: Vec<_> = clients
-        .into_iter()
-        .map(|mut client| {
-            std::thread::spawn(move || {
-                client.call_tool("run_gradle_task", json!({ "task": "assembleDebug" }))
-            })
-        })
-        .collect();
-    for build in builds {
-        let build = build.join().unwrap();
-        assert!(!build.is_error, "{}", build.text);
+    let building = build_in_background(first, "assembleDebug");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !started.exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the first build never started"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
+    let busy = second.call_tool("run_gradle_task", json!({ "task": "assembleRelease" }));
+    assert!(busy.is_error, "{}", busy.text);
+    assert!(
+        busy.text.starts_with(
+            "A Gradle build is already running for this project in another Keynobi process"
+        ),
+        "{}",
+        busy.text
+    );
+
+    std::fs::write(&release, "").unwrap();
+    let (_first, done) = building.join().unwrap();
+    assert!(!done.is_error, "{}", done.text);
+    let after = second.call_tool("run_gradle_task", json!({ "task": "assembleRelease" }));
+    assert!(!after.is_error, "{}", after.text);
 
     let data = sandbox.home.join(".keynobi");
     let history: Vec<serde_json::Value> =
@@ -318,6 +340,11 @@ fn two_servers_building_at_once_keep_both_builds_in_the_shared_history() {
         2,
         "both builds recorded with distinct IDs: {history:?}"
     );
+    for record in &history {
+        assert_eq!(record["origin"]["kind"], "agent", "{record}");
+        assert_eq!(record["origin"]["standalone"], true, "{record}");
+        assert_eq!(record["origin"]["clientName"], "keynobi-headless-test");
+    }
     for id in ids {
         assert!(
             data.join("build-logs")
@@ -841,6 +868,255 @@ fn the_app_and_attached_sessions_share_one_build_slot() {
     let (_first, done) = building.join().unwrap();
     assert!(!done.is_error, "{}", done.text);
     assert!(done.text.contains("mode: attached"), "{}", done.text);
+}
+
+/// A fake gradlew that prints a task line, waits for `release` to exist,
+/// then succeeds.
+fn gradlew_waiting_for(sandbox: &Sandbox) -> std::path::PathBuf {
+    let release = sandbox.home.join("release-build");
+    sandbox.write_gradlew(&format!(
+        "echo '> Task :app:compileDebugKotlin'\n\
+         while [ ! -e '{}' ]; do sleep 0.05; done\n\
+         echo 'BUILD SUCCESSFUL in 1s'",
+        release.display()
+    ));
+    release
+}
+
+/// A client that disconnects while its build runs does not take the build
+/// with it: the build finishes, is recorded, and frees the slot.
+#[test]
+fn a_build_outlives_the_attached_client_that_started_it() {
+    let sandbox = Sandbox::new();
+    let release = gradlew_waiting_for(&sandbox);
+    let app = TestApp::listen(&sandbox, Some(&sandbox.project));
+    app.trust(&sandbox.project);
+    let mut client = sandbox.start();
+    app.wait_for_sessions(1);
+    let task = format!("assembleOutlives{}", std::process::id());
+
+    let pid = client.pid();
+    let waiting = {
+        let task = task.clone();
+        std::thread::spawn(move || {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                client.call_tool("run_gradle_task", json!({ "task": task }))
+            }));
+        })
+    };
+    app.wait_for_build("the agent's build to start", |bs| {
+        bs.current_build.is_some()
+    });
+    // The client goes away mid-build.
+    std::process::Command::new("kill")
+        .args(["-9", &pid.to_string()])
+        .status()
+        .unwrap();
+    let _ = waiting.join();
+    app.wait_for_sessions(0);
+
+    std::fs::write(&release, "").unwrap();
+    app.wait_for_build("the build to be recorded", |bs| {
+        bs.history.iter().any(|r| r.task == task) && bs.current_build.is_none()
+    });
+    let status = app.build_state.inner.blocking_lock().status.clone();
+    assert!(
+        matches!(status, keynobi_lib::models::build::BuildStatus::Success(_)),
+        "{status:?}"
+    );
+    let origin = app
+        .build_state
+        .inner
+        .blocking_lock()
+        .history
+        .iter()
+        .find(|r| r.task == task)
+        .and_then(|r| r.origin.clone());
+    assert!(
+        matches!(
+            origin,
+            Some(keynobi_lib::models::build::BuildActor::Agent(_))
+        ),
+        "{origin:?}"
+    );
+}
+
+/// Start `task` from `client` on another thread; returns the thread, which
+/// hands back the client and the tool's result.
+fn build_in_background(
+    mut client: headless::McpClient,
+    task: &str,
+) -> std::thread::JoinHandle<(headless::McpClient, headless::ToolOutput)> {
+    let task = task.to_string();
+    std::thread::spawn(move || {
+        let out = client.call_tool("run_gradle_task", json!({ "task": task }));
+        (client, out)
+    })
+}
+
+/// A build an agent starts is the app's build: same record, with the agent
+/// as its origin, and the app can cancel it; the agent hears who did.
+#[test]
+fn the_app_sees_and_can_cancel_an_attached_agents_build() {
+    use keynobi_lib::models::build::{BuildActor, BuildStatus};
+    use keynobi_lib::services::build_runner;
+
+    let sandbox = Sandbox::new();
+    let _release = gradlew_waiting_for(&sandbox);
+    let app = TestApp::listen(&sandbox, Some(&sandbox.project));
+    app.trust(&sandbox.project);
+    let client = sandbox.start();
+    let mut watcher = sandbox.start();
+    app.wait_for_sessions(2);
+    let session_id = app.registry.sessions()[0].id;
+    let task = format!("assembleCancelled{}", std::process::id());
+
+    let building = build_in_background(client, &task);
+    app.wait_for_build("the agent's build to start", |bs| {
+        bs.current_build.is_some()
+    });
+    let origin = app.build_state.inner.blocking_lock().status_origin.clone();
+    let Some(BuildActor::Agent(agent)) = origin else {
+        panic!("{origin:?}")
+    };
+    assert_eq!(agent.client_name.as_deref(), Some("keynobi-headless-test"));
+    assert!(!agent.standalone);
+    assert_eq!(agent.session_id, Some(session_id));
+    let status = watcher.call_tool_json("get_build_status", json!({}));
+    assert_eq!(status["status"], "running", "{status}");
+    assert_eq!(status["origin"]["kind"], "agent", "{status}");
+
+    // The user cancels it in the app.
+    assert!(app.block_on(build_runner::cancel_build(
+        &app.build_state,
+        &app.process_manager,
+        BuildActor::App,
+    )));
+    let (_client, out) = building.join().unwrap();
+    assert!(out.is_error, "{}", out.text);
+    assert!(
+        out.text.contains("was cancelled in the Keynobi app"),
+        "{}",
+        out.text
+    );
+    app.wait_for_build("the build to be recorded", |bs| {
+        bs.history.iter().any(|r| r.task == task)
+    });
+    let record = app
+        .build_state
+        .inner
+        .blocking_lock()
+        .history
+        .iter()
+        .find(|r| r.task == task)
+        .cloned()
+        .unwrap();
+    assert!(matches!(record.status, BuildStatus::Cancelled));
+    assert_eq!(record.cancelled_by, Some(BuildActor::App));
+    let Some(BuildActor::Agent(agent)) = record.origin else {
+        panic!("{:?}", record.origin)
+    };
+    assert_eq!(agent.session_id, Some(session_id));
+
+    let status = watcher.call_tool_json("get_build_status", json!({}));
+    assert_eq!(status["status"], "cancelled", "{status}");
+    assert_eq!(status["cancelled_by"]["kind"], "app", "{status}");
+}
+
+/// Quitting the app cancels an agent's build (recorded as cancelled because
+/// Keynobi quit), answers the agent, and the agent's next call is served
+/// standalone.
+#[test]
+fn quitting_the_app_answers_the_agent_and_it_continues_standalone() {
+    use keynobi_lib::models::build::BuildActor;
+
+    let sandbox = Sandbox::new();
+    let release = gradlew_waiting_for(&sandbox);
+    let app = TestApp::listen(&sandbox, Some(&sandbox.project));
+    app.trust(&sandbox.project);
+    let mut client = sandbox.start();
+    app.wait_for_sessions(1);
+    let task = format!("assembleQuit{}", std::process::id());
+
+    let id = client.send_request(
+        "tools/call",
+        json!({ "name": "run_gradle_task", "arguments": { "task": task } }),
+    );
+    app.wait_for_build("the agent's build to start", |bs| {
+        bs.current_build.is_some()
+    });
+    app.quit();
+    // The build's own answer, or the app's quit error: either way an error
+    // that says Keynobi quit.
+    let answer = client.wait_response(id);
+    let text = match &answer {
+        Ok(result) => {
+            assert_eq!(result["isError"], true, "{result}");
+            result["content"][0]["text"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string()
+        }
+        Err(error) => error["message"].as_str().unwrap_or_default().to_string(),
+    };
+    assert!(
+        text.contains("because Keynobi quit") || text.contains("Keynobi is quitting"),
+        "{text}"
+    );
+    let record = app
+        .build_state
+        .inner
+        .blocking_lock()
+        .history
+        .iter()
+        .find(|r| r.task == task)
+        .cloned()
+        .expect("the cancelled build is recorded before quitting");
+    assert_eq!(record.cancelled_by, Some(BuildActor::AppQuit));
+    app.wait_for_sessions(0);
+
+    let info = client.call_tool_json("get_project_info", json!({}));
+    assert_eq!(info["mode"], "standalone", "{info}");
+    assert_eq!(info["standalone_reason"], "the Keynobi app quit", "{info}");
+    let devices = client.call_tool("list_devices", json!({}));
+    assert!(!devices.is_error, "{}", devices.text);
+    std::fs::write(&release, "").unwrap();
+}
+
+/// When the app goes away without answering (it crashed), the relay answers
+/// the request in flight itself and the session continues standalone.
+#[test]
+fn an_app_that_vanishes_mid_request_leaves_the_agent_an_error_and_a_standalone_server() {
+    let sandbox = Sandbox::new();
+    let release = gradlew_waiting_for(&sandbox);
+    let app = TestApp::listen(&sandbox, Some(&sandbox.project));
+    app.trust(&sandbox.project);
+    let mut client = sandbox.start();
+    app.wait_for_sessions(1);
+
+    let id = client.send_request(
+        "tools/call",
+        json!({ "name": "run_gradle_task", "arguments": { "task": "assembleDebug" } }),
+    );
+    app.wait_for_build("the agent's build to start", |bs| {
+        bs.current_build.is_some()
+    });
+    drop(app);
+
+    let error = client
+        .wait_response(id)
+        .expect_err("the relay answers with an error");
+    let message = error["message"].as_str().unwrap_or_default();
+    assert!(
+        message.contains("closed the MCP session before answering"),
+        "{message}"
+    );
+    let info = client.call_tool_json("get_project_info", json!({}));
+    assert_eq!(info["mode"], "standalone", "{info}");
+    assert_eq!(info["standalone_reason"], "the Keynobi app quit", "{info}");
+    assert!(client.tool_names().contains(&"run_gradle_task".to_string()));
+    // The app's orphaned build can end now.
+    std::fs::write(&release, "").unwrap();
 }
 
 #[test]

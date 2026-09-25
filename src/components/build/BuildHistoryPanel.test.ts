@@ -34,6 +34,8 @@ function makeRecord(state: BuildStatus["state"], durationMs = 0, errors: any[] =
     errors,
     startedAt: new Date().toISOString(),
     projectRoot: null,
+    origin: null,
+    cancelledBy: null,
   };
 }
 

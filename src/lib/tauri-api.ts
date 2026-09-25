@@ -161,20 +161,33 @@ export function formatError(err: unknown): string {
 
 // ── Build system ──────────────────────────────────────────────────────────────
 
-import type { BuildLine, BuildError, BuildStatus, BuildRecord } from "@/bindings";
+import type {
+  BuildLine,
+  BuildError,
+  BuildStatus,
+  BuildRecord,
+  BuildActor,
+  BuildStartedEvent,
+  BuildLinesEvent,
+  BuildCompleteEvent,
+} from "@/bindings";
 import { Channel } from "@tauri-apps/api/core";
 
-export type { BuildLine, BuildError, BuildStatus, BuildRecord };
+export type {
+  BuildLine,
+  BuildError,
+  BuildStatus,
+  BuildRecord,
+  BuildActor,
+  BuildStartedEvent,
+  BuildLinesEvent,
+  BuildCompleteEvent,
+};
 
-/** Start a Gradle task and stream output via a Channel.
- *  Returns a process ID that can be used to cancel. */
-export async function runGradleTask(
-  task: string,
-  onLine: (line: BuildLine) => void
-): Promise<number> {
-  const channel = new Channel<BuildLine>();
-  channel.onmessage = onLine;
-  return invoke<number>("run_gradle_task", { task, onLine: channel });
+/** Start a Gradle task. Resolves with its run ID once Gradle runs; its output
+ *  arrives as `build:lines` and its result as `build:complete`. */
+export async function runGradleTask(task: string): Promise<number> {
+  return invoke<number>("run_gradle_task", { task });
 }
 
 export async function cancelBuild(): Promise<void> {
@@ -215,26 +228,18 @@ export async function getPackageNameFromApk(apkPath: string): Promise<string> {
   return invoke<string>("get_package_name_from_apk", { apkPath });
 }
 
-export function listenBuildComplete(
-  cb: (e: {
-    runId: number;
-    success: boolean;
-    cancelled: boolean;
-    durationMs: number;
-    errorCount: number;
-    warningCount: number;
-    task: string;
-  }) => void
-): Promise<UnlistenFn> {
-  return listen<{
-    runId: number;
-    success: boolean;
-    cancelled: boolean;
-    durationMs: number;
-    errorCount: number;
-    warningCount: number;
-    task: string;
-  }>("build:complete", (event) => cb(event.payload));
+/** A build started, whoever started it (the app or an agent). */
+export function listenBuildStarted(cb: (e: BuildStartedEvent) => void): Promise<UnlistenFn> {
+  return listen<BuildStartedEvent>("build:started", (event) => cb(event.payload));
+}
+
+/** Batched output of a running build. */
+export function listenBuildLines(cb: (e: BuildLinesEvent) => void): Promise<UnlistenFn> {
+  return listen<BuildLinesEvent>("build:lines", (event) => cb(event.payload));
+}
+
+export function listenBuildComplete(cb: (e: BuildCompleteEvent) => void): Promise<UnlistenFn> {
+  return listen<BuildCompleteEvent>("build:complete", (event) => cb(event.payload));
 }
 
 // ── Variants ──────────────────────────────────────────────────────────────────

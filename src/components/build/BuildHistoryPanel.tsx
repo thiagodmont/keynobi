@@ -2,6 +2,7 @@ import { type JSX, For, Show } from "solid-js";
 import type { BuildRecord, BuildResult, BuildStatus } from "@/bindings";
 import { buildState } from "@/stores/build.store";
 import { Icon } from "@/components/ui";
+import { cancelledByLabel, isAgent, startedByLabel } from "@/lib/build-actor";
 
 export interface BuildHistoryPanelProps {
   /** ID of the currently selected history entry. null = current build. */
@@ -40,6 +41,17 @@ export function durationLabel(status: BuildStatus): string {
 
 export function errorCount(record: BuildRecord): number {
   return record.errors.filter((e) => e.severity === "error").length;
+}
+
+/** "Started by an agent (…)" and who cancelled it; nothing for a plain app build. */
+function actorLabels(record: BuildRecord): string[] {
+  const agentBuild = isAgent(record.origin);
+  const labels: string[] = [];
+  if (agentBuild) labels.push(startedByLabel(record.origin) ?? "");
+  if (record.cancelledBy && (agentBuild || record.cancelledBy.kind !== "app")) {
+    labels.push(cancelledByLabel(record.cancelledBy) ?? "");
+  }
+  return labels.filter(Boolean);
 }
 
 export function relativeTime(isoString: string): string {
@@ -151,6 +163,11 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
             </span>
           </div>
           <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>running…</div>
+          <Show when={isAgent(buildState.origin)}>
+            <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>
+              {startedByLabel(buildState.origin)}
+            </div>
+          </Show>
         </button>
       </Show>
 
@@ -163,6 +180,7 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
           const errs = errorCount(record);
           const rel = relativeTime(record.startedAt);
           const selected = () => props.selectedId === record.id;
+          const who = actorLabels(record);
 
           return (
             <button
@@ -211,6 +229,11 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
                   {errs} error{errs !== 1 ? "s" : ""}
                 </div>
               </Show>
+              <For each={who}>
+                {(label) => (
+                  <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>{label}</div>
+                )}
+              </For>
             </button>
           );
         }}

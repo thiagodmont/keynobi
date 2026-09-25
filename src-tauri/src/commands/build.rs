@@ -1,16 +1,11 @@
-use crate::models::build::{
-    BuildError, BuildErrorSeverity, BuildLine, BuildLineKind, BuildRecord, BuildStatus,
-};
+use crate::models::build::{BuildError, BuildLine, BuildRecord, BuildStatus};
 use crate::models::error::AppError;
-use crate::services::build_runner::{self, find_output_apk, BuildState};
-use crate::services::process_manager::{self, ProcessManager, ProcessTermination, SpawnOptions};
+use crate::services::build_runner::{self, find_output_apk, BuildActor, BuildState};
+use crate::services::process_manager::ProcessManager;
 use crate::services::settings_manager;
 use crate::FsState;
-use chrono::Utc;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex as StdMutex};
-use tauri::ipc::Channel;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 // Build finalization lives in `build_runner` so the Tauri command layer and the
 // MCP server share one implementation. Re-exported for existing call sites.
@@ -27,15 +22,13 @@ fn validate_gradle_task(task: &str) -> Result<(), AppError> {
 
 // ── Build commands ─────────────────────────────────────────────────────────────
 
-/// Run a Gradle task, streaming output via a Tauri Channel.
+/// Start a Gradle task and return its run ID once Gradle is running.
 ///
-/// Lines are emitted via `on_line` as they arrive. When the process exits,
-/// the backend records history and emits a `build:complete` event on the
-/// AppHandle so the frontend can update completion state.
+/// Output arrives as `build:lines` events and the result as `build:complete`,
+/// the same events every build emits, whoever started it.
 #[tauri::command]
 pub async fn run_gradle_task(
     task: String,
-    on_line: Channel<BuildLine>,
     app_handle: AppHandle,
     fs_state: State<'_, FsState>,
     build_state: State<'_, BuildState>,
@@ -64,190 +57,39 @@ pub async fn run_gradle_task(
     let gradlew = build_runner::find_gradlew(&gradle_root)
         .ok_or_else(|| AppError::NotFound("gradlew not found at project root".into()))?;
 
-    let args = vec![task.clone(), "--console=plain".to_owned()];
-
     let env = build_runner::trusted_gradle_env(&settings, &trust_root, &gradle_root)
         .map_err(AppError::PermissionDenied)?;
-    let started_at = Utc::now().to_rfc3339();
 
-    // Shared with the MCP path so both front doors enforce one build at a time.
-    build_runner::try_reserve_build_slot(&build_state, &task, &started_at)
-        .await
-        .map_err(AppError::InvalidInput)?;
-
-    // Use std::sync::Mutex (not tokio) for these accumulators — they are
-    // accessed only from sync callbacks (on_line / on_exit) and must never
-    // use blocking_lock on a tokio mutex inside an async task.
-    let errors_buf: Arc<StdMutex<Vec<BuildError>>> = Arc::new(StdMutex::new(vec![]));
-    let duration_ms: Arc<StdMutex<u64>> = Arc::new(StdMutex::new(0));
-    let success_flag: Arc<StdMutex<bool>> = Arc::new(StdMutex::new(false));
-    // This run's own log; the on_line callback pushes into it directly.
-    // Starting it BEFORE spawning means no early line can be dropped.
-    let build_log = build_state.build_log.start_run();
-    let build_state_for_exit = build_state.inner().clone();
-    // Connected tests hold the devices' UI Automator until Gradle exits.
-    let instrumentation = StdMutex::new(
-        crate::services::ui_automator_lock::begin_instrumentation_for_task(&task, &env),
-    );
-
-    let args_strs: Vec<String> = args;
-    let args_refs: Vec<&str> = args_strs.iter().map(|s| s.as_str()).collect();
-
-    let spawn_result = process_manager::spawn(
-        &process_manager.0,
-        gradlew.to_str().unwrap_or("./gradlew"),
-        &args_refs,
-        gradle_root.clone(),
-        env,
-        SpawnOptions {
-            on_line: Box::new({
-                let errors_buf = errors_buf.clone();
-                let duration_ms = duration_ms.clone();
-                let success_flag = success_flag.clone();
-                let build_log = build_log.clone();
-                move |proc_line| {
-                    // Push every raw line into the persistent build log.
-                    build_runner::push_build_log(&build_log, proc_line.text.clone());
-
-                    let line = build_runner::parse_build_line(&proc_line.text);
-
-                    // Collect structured errors / warnings (including those without file locations).
-                    if matches!(line.kind, BuildLineKind::Error | BuildLineKind::Warning) {
-                        let severity = if line.kind == BuildLineKind::Error {
-                            BuildErrorSeverity::Error
-                        } else {
-                            BuildErrorSeverity::Warning
-                        };
-                        if let Ok(mut errs) = errors_buf.lock() {
-                            build_runner::push_build_error(
-                                &mut errs,
-                                BuildError {
-                                    message: line.content.clone(),
-                                    file: line.file.clone(),
-                                    line: line.line,
-                                    col: line.col,
-                                    severity,
-                                },
-                            );
-                        }
-                    }
-
-                    // Extract duration and success flag from the summary line.
-                    if line.kind == BuildLineKind::Summary {
-                        let dur = build_runner::parse_build_duration(&line.content);
-                        if let Ok(mut d) = duration_ms.lock() {
-                            *d = dur;
-                        }
-                        let is_success = line.content.contains("BUILD SUCCESSFUL");
-                        if let Ok(mut s) = success_flag.lock() {
-                            *s = is_success;
-                        }
-                    }
-
-                    let _ = on_line.send(line);
-                }
-            }),
-            on_exit: Box::new({
-                let app = app_handle.clone();
-                let task_name = task.clone();
-                let started_at = started_at.clone();
-                let project_root = project_root_for_history.clone();
-                let build_state = build_state_for_exit.clone();
-                let log = build_log.clone();
-                move |run_id, termination| {
-                    if let Ok(mut run) = instrumentation.lock() {
-                        run.take();
-                    }
-                    // std::sync::Mutex::lock() — safe to call from any context.
-                    let errs = errors_buf.lock().map(|g| g.clone()).unwrap_or_default();
-                    let dur = duration_ms.lock().map(|g| *g).unwrap_or(0);
-                    let flag = success_flag.lock().map(|g| *g).unwrap_or(false);
-
-                    let cancelled = matches!(termination, ProcessTermination::Cancelled);
-                    // Exit code is authoritative — `||` let stray "BUILD
-                    // SUCCESSFUL" text in the output override a non-zero exit.
-                    let success = !cancelled
-                        && matches!(termination, ProcessTermination::ExitCode(0))
-                        && flag;
-
-                    let app = app.clone();
-                    let task_name = task_name.clone();
-                    let started_at = started_at.clone();
-                    let project_root = project_root.clone();
-                    let build_state = build_state.clone();
-                    let log = log.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let event = finalize_completed_build(
-                            &build_state,
-                            BuildFinalization {
-                                run_id,
-                                log,
-                                task: task_name,
-                                started_at,
-                                project_root,
-                                success,
-                                cancelled,
-                                duration_ms: dur,
-                                errors: errs,
-                            },
-                        )
-                        .await;
-                        let _ = app.emit("build:complete", event);
-                    });
-                }
-            }),
+    let handle = build_runner::start_build(
+        &build_state,
+        &process_manager,
+        Some(&app_handle),
+        build_runner::BuildRequest {
+            task,
+            extra_args: vec![],
+            gradle_root,
+            gradlew,
+            env,
+            project_root: project_root_for_history,
+            origin: BuildActor::App,
         },
     )
-    .await;
-
-    let id = match spawn_result {
-        Ok(id) => id,
-        Err(e) => {
-            let mut bs = build_state.inner.lock().await;
-            mark_build_spawn_failed(&mut bs);
-            return Err(AppError::ProcessFailed(e));
-        }
-    };
-
-    // Register immediately (sync, no `.await` before this) so cancel always has a ProcessId.
-    build_state.set_active_process_id(Some(id));
-
-    // Mark build as running in the managed state and clear the log for this run.
-    let cancel_after_spawn = {
-        let mut bs = build_state.inner.lock().await;
-        bs.latest_run = Some(id);
-        if matches!(bs.status, BuildStatus::Cancelled) {
-            // User cancelled in the window after spawn but before this lock — Gradle may already be gone.
-            bs.starting = false;
-            true
-        } else {
-            bs.starting = false;
-            bs.status = BuildStatus::Running {
-                task: task.clone(),
-                started_at: started_at.clone(),
-            };
-            bs.current_build = Some(id);
-            bs.current_errors.clear();
-            false
-        }
-    };
-
-    if cancel_after_spawn {
-        let _ = build_state.take_active_process_id();
-        process_manager::cancel(&process_manager.0, id).await;
-        return Ok(id);
-    }
-
-    Ok(id)
+    .await
+    .map_err(|e| match e {
+        build_runner::StartBuildError::Busy(msg)
+        | build_runner::StartBuildError::BusyElsewhere(msg) => AppError::InvalidInput(msg),
+        build_runner::StartBuildError::Spawn(msg) => AppError::ProcessFailed(msg),
+    })?;
+    Ok(handle.run_id)
 }
 
-/// Cancel the currently running build.
+/// Cancel the running build, whoever started it. Recorded as cancelled in the app.
 #[tauri::command]
 pub async fn cancel_build(
     build_state: State<'_, BuildState>,
     process_manager: State<'_, ProcessManager>,
 ) -> Result<(), String> {
-    build_runner::cancel_build(&build_state, &process_manager).await;
+    build_runner::cancel_build(&build_state, &process_manager, BuildActor::App).await;
     Ok(())
 }
 
@@ -384,6 +226,7 @@ pub async fn find_apk_path(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::build::BuildErrorSeverity;
 
     #[test]
     fn valid_gradle_tasks_pass() {
@@ -457,6 +300,8 @@ mod tests {
                 cancelled: false,
                 duration_ms: 1234,
                 errors,
+                origin: Some(BuildActor::App),
+                cancelled_by: None,
             },
         )
         .await;

@@ -36,6 +36,8 @@ export function makeBuildRecord(overrides: Partial<BuildRecord> = {}): BuildReco
     errors: [],
     startedAt: new Date().toISOString(),
     projectRoot: "/mock/android-project",
+    origin: null,
+    cancelledBy: null,
     ...overrides,
   };
 }

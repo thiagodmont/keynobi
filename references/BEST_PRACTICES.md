@@ -54,7 +54,7 @@ Keynobi runs as these kinds of process, which do **not** share memory:
 | `keynobi --mcp`, attached | An MCP client, while the app is running and has the requested project open (or none was requested) | No state of its own: it relays the client's stdio to the app, which serves the session. |
 | `keynobi --mcp`, standalone | An MCP client, when attaching fails | Its own fresh copies of the same state. One process per client. |
 
-Standalone servers coordinate with the app only through files in the data directory (below): there is no cross-process build lock, and the app does not see a standalone server's builds, logcat stream, or selected device. Attached sessions share the app's state, but their builds are not yet streamed into the Build panel. Design features and write docs with this boundary in mind; do not promise shared live state that the code does not provide. See `MCP_SERVER.md` § Modes.
+Standalone servers coordinate with the app only through files in the data directory (below), including a per-project build lock, so two processes never build one project at once. The app does not see a standalone server's builds, logcat stream, or selected device. Attached sessions share the app's state, and every build the app runs, whoever started it, streams into the Build panel. Design features and write docs with this boundary in mind; do not promise shared live state that the code does not provide. See `MCP_SERVER.md` § Modes.
 
 ### Data Directory
 
@@ -69,6 +69,7 @@ All persistent app data lives under `~/.keynobi/`, resolved by `settings_manager
 | `mcp.sock` | Socket the app serves attached MCP sessions on (`0600`; the data directory is `0700`). |
 | `mcp-sessions/<pid>.json` | One record per running standalone MCP server. |
 | `.lock` | Advisory lock that serializes settings and build-history writes across processes. |
+| `build-locks/<hash>.lock` | One per project being built, held for the whole build and naming the building process's pid, so two processes never build one project at once. |
 
 Every read-modify-write of `settings.json` or `build-history.json` runs under `settings_manager::with_data_lock` (a process mutex plus a file lock on `.lock`) and re-reads the file inside it, because other processes write the same files. Write atomically to a `unique_tmp_path` and rename. The lock is not reentrant; never take it inside itself.
 
@@ -265,7 +266,7 @@ Do not log secrets, full MCP tool arguments, or raw device text at `info` or abo
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
-- **Cross-process state.** The app and standalone MCP servers do not share live state or a build lock. Settings, build history, and the MCP activity log are merged under the data lock.
+- **Cross-process state.** The app and standalone MCP servers do not share live state. Settings, build history, and the MCP activity log are merged under the data lock; builds of one project are exclusive through the build lock.
 - **Health check settings write.** `health_inspector` stores a detected SDK path by saving a full settings snapshot instead of `mutate_settings`, so it can revert a concurrent edit to another setting.
 - **Duplicated logic.** APK path validation exists twice (`utils/path.rs` and MCP `validate_apk_path`).
 - **`unwrap()` policy.** Enforced by review only. About 15 production `unwrap()` calls remain, mostly `Regex::new` in `build_parser.rs`. Consider `clippy::unwrap_used`.

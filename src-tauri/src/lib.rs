@@ -273,10 +273,21 @@ pub fn run() {
                         )
                         .await;
 
-                        // Cancel any running Gradle build.
+                        // Cancel any running Gradle build (whoever started
+                        // it), then answer attached agents and close their
+                        // sessions; they continue standalone.
                         let build_state = app.state::<BuildState>();
                         let process_manager = app.state::<ProcessManager>();
-                        services::build_runner::cancel_build(&build_state, &process_manager).await;
+                        let registry = app
+                            .state::<services::mcp_sessions::McpSessionRegistry>()
+                            .inner()
+                            .clone();
+                        services::mcp_attach::quit_sessions(
+                            &build_state,
+                            &process_manager,
+                            &registry,
+                        )
+                        .await;
 
                         // Stop logcat streaming (best-effort).
                         let logcat_state = app.state::<services::logcat::LogcatState>();

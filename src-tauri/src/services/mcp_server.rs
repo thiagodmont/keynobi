@@ -18,7 +18,7 @@
 use crate::services::adb_manager::{self, DeviceState};
 use crate::services::app_inspector;
 use crate::services::build_inspector;
-use crate::services::build_runner::{self, BuildState};
+use crate::services::build_runner::{self, AgentActor, BuildActor, BuildState};
 use crate::services::crash_inspector;
 use crate::services::device_inspector;
 use crate::services::health_inspector;
@@ -174,6 +174,8 @@ pub struct AndroidMcpServer {
     /// How the project was chosen; `None` when no project was found.
     project_selection: Option<ProjectSelection>,
     mode: SessionMode,
+    /// The app's id for this session, when attached.
+    session_id: Option<u32>,
     tool_router: ToolRouter<Self>,
     prompt_router: PromptRouter<Self>,
 }
@@ -197,6 +199,7 @@ impl AndroidMcpServer {
             mode: SessionMode::Attached {
                 pinned_project: None,
             },
+            session_id: None,
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
@@ -222,6 +225,7 @@ impl AndroidMcpServer {
             mode: SessionMode::Standalone {
                 reason: "not attached to the Keynobi app".into(),
             },
+            session_id: None,
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
@@ -241,6 +245,21 @@ impl AndroidMcpServer {
     pub fn with_mode(mut self, mode: SessionMode) -> Self {
         self.mode = mode;
         self
+    }
+
+    /// The app's registry id of the attached session this server serves.
+    pub fn with_session_id(mut self, id: u32) -> Self {
+        self.session_id = Some(id);
+        self
+    }
+
+    /// This session as the starter or canceller of a build.
+    fn agent(&self, peer: &rmcp::Peer<RoleServer>) -> BuildActor {
+        BuildActor::Agent(AgentActor {
+            session_id: self.session_id,
+            client_name: peer.peer_info().map(|i| i.client_info.name.clone()),
+            standalone: matches!(self.mode, SessionMode::Standalone { .. }),
+        })
     }
 
     /// For a session pinned to a project the app no longer has open, the
@@ -531,119 +550,14 @@ impl AndroidMcpServer {
     async fn run_gradle_task(
         &self,
         Parameters(p): Parameters<RunGradleTaskParams>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        validate_gradle_task(&p.task)?;
-        if !settings_manager::load_settings()
-            .0
-            .mcp
-            .allow_unrestricted_gradle
-        {
-            crate::utils::validation::check_agent_gradle_task(&p.task)
-                .map_err(|e| McpError::invalid_params(e, None))?;
-        }
-
-        // Snapshot both roots under a single FsState lock (mirroring the UI
-        // path in commands/build.rs) so a project switch mid-request cannot
-        // pair one project's gradle_root with another's history root.
-        let (gradle_root, project_root_for_history, trust_root) = {
-            let fs = self.fs_state.0.lock().await;
-            let root = fs
-                .gradle_root
-                .clone()
-                .or_else(|| fs.project_root.clone())
-                .ok_or_else(|| {
-                    McpError::invalid_params(
-                        "No project open. Open an Android project first.",
-                        None,
-                    )
-                })?;
-            let history_root = fs
-                .project_root
-                .as_ref()
-                .map(|p| p.to_string_lossy().into_owned());
-            let trust_root = fs.project_root.clone().unwrap_or_else(|| root.clone());
-            (root, history_root, trust_root)
-        };
-
-        let (settings, _) = settings_manager::load_settings();
-        let env = build_runner::trusted_gradle_env(&settings, &trust_root, &gradle_root)
-            .map_err(|e| McpError::invalid_params(e, None))?;
-
-        let gradlew = build_runner::find_gradlew(&gradle_root).ok_or_else(|| {
-            McpError::invalid_params("gradlew not found. Is this an Android project?", None)
-        })?;
-
-        let mode = self.mode.summary();
-        let result = match build_runner::run_task(
-            &p.task,
-            &[],
-            &gradle_root,
-            &gradlew,
-            settings.mcp.build_timeout_sec as u64,
-            env,
-            project_root_for_history,
-            &self.build_state,
-            &self.process_manager,
-            // Emit build:complete when a GUI is attached so the Build panel
-            // reflects agent-triggered builds instead of going stale.
-            self.app_handle.as_ref(),
-        )
-        .await
-        {
-            Ok(result) => result,
-            // The app and every attached session share one build slot.
-            Err(e) if e == build_runner::BUILD_ALREADY_RUNNING => {
-                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                    "{e}. Wait for it (get_build_status) or cancel it (cancel_build), \
-                     then try again.\n[{mode}]"
-                ))]));
-            }
-            Err(e) => return Err(McpError::internal_error(e, None)),
-        };
-
-        if result.timed_out {
-            return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                "Build timed out after {}s — task '{}'. Build has been cancelled.\n[{mode}]",
-                settings.mcp.build_timeout_sec, p.task
-            ))]));
-        }
-
-        let issue_lines = build_runner::format_build_issues(&result.errors);
-
-        if result.success {
-            let msg = if result.errors.is_empty() {
-                format!(
-                    "BUILD SUCCESSFUL — task '{}' ({}ms)\n[{mode}]",
-                    p.task, result.duration_ms
-                )
-            } else {
-                format!(
-                    "BUILD SUCCESSFUL (with {} warning(s)) — task '{}' ({}ms)\n{}\n[{mode}]",
-                    result.errors.len(),
-                    p.task,
-                    result.duration_ms,
-                    issue_lines.join("\n")
-                )
-            };
-            Ok(CallToolResult::success(vec![ContentBlock::text(msg)]))
-        } else {
-            let msg = format!(
-                "BUILD FAILED — task '{}'\n{} issue(s):\n{}\n[{mode}]",
-                p.task,
-                result.errors.len(),
-                if result.errors.is_empty() {
-                    "Check get_build_log for details.".to_owned()
-                } else {
-                    issue_lines.join("\n")
-                }
-            );
-            Ok(CallToolResult::error(vec![ContentBlock::text(msg)]))
-        }
+        self.run_build(p.task, self.agent(&ctx.peer)).await
     }
 
     /// Get the current build status.
     #[tool(
-        description = "Get the current Gradle build status: idle, running (with task name), success, failed, or cancelled.",
+        description = "Get the current Gradle build status: idle, running (with task name), success, failed, or cancelled, who started it (origin: the Keynobi app or an agent), and who cancelled it (cancelled_by).",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -694,6 +608,8 @@ impl AndroidMcpServer {
             "status": state_str,
             "details": details,
             "summary": summary,
+            "origin": bs.status_origin,
+            "cancelled_by": bs.status_cancelled_by,
             "mode": self.mode.name(),
             "standalone_reason": self.mode.standalone_reason(),
         })))
@@ -783,22 +699,18 @@ impl AndroidMcpServer {
 
     /// Cancel a running Gradle build.
     #[tool(
-        description = "Cancel the currently running Gradle build. Returns immediately if no build is running.",
+        description = "Cancel the currently running Gradle build, whoever started it (the Keynobi app or an agent). Returns immediately if no build is running.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
             open_world_hint = false
         )
     )]
-    async fn cancel_build(&self) -> Result<CallToolResult, McpError> {
-        let was_running =
-            build_runner::cancel_build(&self.build_state, &self.process_manager).await;
-        let msg = if was_running {
-            "Build cancelled."
-        } else {
-            "No build was running."
-        };
-        Ok(CallToolResult::success(vec![ContentBlock::text(msg)]))
+    async fn cancel_build(
+        &self,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        self.cancel_build_as(self.agent(&ctx.peer)).await
     }
 
     /// List available build variants.
@@ -944,21 +856,10 @@ impl AndroidMcpServer {
     async fn run_tests(
         &self,
         Parameters(p): Parameters<RunTestsParams>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        let task = match p.test_type.as_str() {
-            "unit" => "testDebug".to_owned(),
-            "connected" => "connectedAndroidTest".to_owned(),
-            other => {
-                validate_gradle_task(other)?;
-                other.to_owned()
-            }
-        };
-        // Delegate to run_gradle_task with the resolved task name.
-        let params = RunGradleTaskParams {
-            task,
-            variant: None,
-        };
-        self.run_gradle_task(Parameters(params)).await
+        self.run_build(test_task(&p.test_type)?, self.agent(&ctx.peer))
+            .await
     }
 
     /// Get a parsed crash stack trace from the in-memory logcat buffer.
@@ -3513,6 +3414,172 @@ impl AndroidMcpServer {
         fs.gradle_root.clone().or_else(|| fs.project_root.clone())
     }
 
+    /// `run_gradle_task` and `run_tests`: start `task` for `origin` through
+    /// the shared build service and wait for it. The wait is bounded by
+    /// `mcp.buildTimeoutSec`; when it runs out the build is stopped and
+    /// recorded as timed out. The build does not depend on this call: if the
+    /// client goes away, it still finishes and is recorded.
+    async fn run_build(
+        &self,
+        task: String,
+        origin: BuildActor,
+    ) -> Result<CallToolResult, McpError> {
+        validate_gradle_task(&task)?;
+        if !settings_manager::load_settings()
+            .0
+            .mcp
+            .allow_unrestricted_gradle
+        {
+            crate::utils::validation::check_agent_gradle_task(&task)
+                .map_err(|e| McpError::invalid_params(e, None))?;
+        }
+
+        // Snapshot both roots under a single FsState lock (mirroring the UI
+        // path in commands/build.rs) so a project switch mid-request cannot
+        // pair one project's gradle_root with another's history root.
+        let (gradle_root, project_root_for_history, trust_root) = {
+            let fs = self.fs_state.0.lock().await;
+            let root = fs
+                .gradle_root
+                .clone()
+                .or_else(|| fs.project_root.clone())
+                .ok_or_else(|| {
+                    McpError::invalid_params(
+                        "No project open. Open an Android project first.",
+                        None,
+                    )
+                })?;
+            let history_root = fs
+                .project_root
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned());
+            let trust_root = fs.project_root.clone().unwrap_or_else(|| root.clone());
+            (root, history_root, trust_root)
+        };
+
+        let (settings, _) = settings_manager::load_settings();
+        let env = build_runner::trusted_gradle_env(&settings, &trust_root, &gradle_root)
+            .map_err(|e| McpError::invalid_params(e, None))?;
+
+        let gradlew = build_runner::find_gradlew(&gradle_root).ok_or_else(|| {
+            McpError::invalid_params("gradlew not found. Is this an Android project?", None)
+        })?;
+
+        let mode = self.mode.summary();
+        let started = build_runner::start_build(
+            &self.build_state,
+            &self.process_manager,
+            // Streams the build into the app's Build panel when attached.
+            self.app_handle.as_ref(),
+            build_runner::BuildRequest {
+                task: task.clone(),
+                extra_args: vec![],
+                gradle_root,
+                gradlew,
+                env,
+                project_root: project_root_for_history,
+                origin,
+            },
+        )
+        .await;
+        let mut handle = match started {
+            Ok(handle) => handle,
+            Err(build_runner::StartBuildError::Busy(e)) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "{e}. Wait for it (get_build_status) or cancel it (cancel_build), \
+                     then try again.\n[{mode}]"
+                ))]));
+            }
+            Err(build_runner::StartBuildError::BusyElsewhere(e)) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "{e}. Wait for it to finish, then try again.\n[{mode}]"
+                ))]));
+            }
+            Err(build_runner::StartBuildError::Spawn(e)) => {
+                return Err(McpError::internal_error(
+                    format!("Failed to spawn Gradle: {e}"),
+                    None,
+                ))
+            }
+        };
+
+        let timeout_sec = settings.mcp.build_timeout_sec as u64;
+        let waited =
+            tokio::time::timeout(std::time::Duration::from_secs(timeout_sec), handle.wait()).await;
+        let result = match waited {
+            Ok(result) => result,
+            Err(_) => {
+                build_runner::time_out_build(
+                    &self.build_state,
+                    &self.process_manager,
+                    Some(handle.run_id),
+                    timeout_sec,
+                )
+                .await;
+                // Let the run record the timeout before answering.
+                let _ = tokio::time::timeout(TIMEOUT_RECORD_GRACE, handle.wait()).await;
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "Build timed out after {timeout_sec}s — task '{task}'. Build has been cancelled.\n[{mode}]"
+                ))]));
+            }
+        };
+
+        if result.cancelled {
+            let by = result
+                .cancelled_by
+                .as_ref()
+                .map(|by| format!(" {}", build_runner::describe_canceller(by)))
+                .unwrap_or_default();
+            return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "BUILD CANCELLED — task '{task}' was cancelled{by}.\n[{mode}]"
+            ))]));
+        }
+
+        let issue_lines = build_runner::format_build_issues(&result.errors);
+
+        if result.success {
+            let msg = if result.errors.is_empty() {
+                format!(
+                    "BUILD SUCCESSFUL — task '{}' ({}ms)\n[{mode}]",
+                    task, result.duration_ms
+                )
+            } else {
+                format!(
+                    "BUILD SUCCESSFUL (with {} warning(s)) — task '{}' ({}ms)\n{}\n[{mode}]",
+                    result.errors.len(),
+                    task,
+                    result.duration_ms,
+                    issue_lines.join("\n")
+                )
+            };
+            Ok(CallToolResult::success(vec![ContentBlock::text(msg)]))
+        } else {
+            let msg = format!(
+                "BUILD FAILED — task '{}'\n{} issue(s):\n{}\n[{mode}]",
+                task,
+                result.errors.len(),
+                if result.errors.is_empty() {
+                    "Check get_build_log for details.".to_owned()
+                } else {
+                    issue_lines.join("\n")
+                }
+            );
+            Ok(CallToolResult::error(vec![ContentBlock::text(msg)]))
+        }
+    }
+
+    /// `cancel_build`: cancel whatever build runs, recorded as cancelled by `by`.
+    async fn cancel_build_as(&self, by: BuildActor) -> Result<CallToolResult, McpError> {
+        let was_running =
+            build_runner::cancel_build(&self.build_state, &self.process_manager, by).await;
+        let msg = if was_running {
+            "Build cancelled."
+        } else {
+            "No build was running."
+        };
+        Ok(CallToolResult::success(vec![ContentBlock::text(msg)]))
+    }
+
     /// Refuse a destructive or permission-changing call on a package outside
     /// the open project unless the client opted in with `allow_foreign_package`.
     async fn check_package_scope(
@@ -3603,6 +3670,22 @@ fn resolve_variant(explicit: Option<&str>, persisted: Option<&str>) -> String {
         Some(v) if !v.trim().is_empty() => v.trim().to_string(),
         _ => "debug".to_string(),
     }
+}
+
+/// How long a timed-out build call waits for the stopped build to be
+/// recorded before answering. Gradle is killed 5 s after being asked to stop.
+const TIMEOUT_RECORD_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// The Gradle task `run_tests` runs for `test_type`.
+fn test_task(test_type: &str) -> Result<String, McpError> {
+    Ok(match test_type {
+        "unit" => "testDebug".to_owned(),
+        "connected" => "connectedAndroidTest".to_owned(),
+        other => {
+            validate_gradle_task(other)?;
+            other.to_owned()
+        }
+    })
 }
 
 fn capitalize_first(s: &str) -> String {
@@ -3827,7 +3910,9 @@ fn select_headless_project(
 /// stdio standalone. Returns the process exit code.
 ///
 /// Called from `main.rs`. Never launches the app. With `attach_only`, a
-/// failed attach exits non-zero instead of running standalone.
+/// failed attach exits non-zero instead of running standalone. When the app
+/// closes an attached session (it quit), the session continues standalone,
+/// or, with `attach_only`, exits non-zero.
 pub async fn run_mcp(project_path: Option<PathBuf>, attach_only: bool) -> i32 {
     use crate::services::mcp_attach;
 
@@ -3851,6 +3936,13 @@ pub async fn run_mcp(project_path: Option<PathBuf>, attach_only: bool) -> i32 {
             .map(|(root, _)| mcp_attach::attach_project_key(root)),
         requested.as_ref().map(|(_, how)| *how),
     );
+    let standalone_project = move || {
+        requested.or_else(|| {
+            select_headless_project(None, None, || {
+                settings_manager::load_settings().0.last_active_project
+            })
+        })
+    };
 
     let reason = match mcp_attach::try_attach(
         &mcp_attach::socket_path(),
@@ -3864,15 +3956,30 @@ pub async fn run_mcp(project_path: Option<PathBuf>, attach_only: bool) -> i32 {
                 "Attached to the Keynobi app (version {})",
                 attached.reply.version
             );
-            let end = mcp_attach::forward(attached, tokio::io::stdin(), tokio::io::stdout()).await;
-            return match end {
+            let mut stdout = tokio::io::stdout();
+            return match mcp_attach::forward(attached, tokio::io::stdin(), &mut stdout).await {
                 mcp_attach::ForwardEnd::ClientClosed => 0,
-                mcp_attach::ForwardEnd::AppClosed => {
+                mcp_attach::ForwardEnd::AppClosed(_) if attach_only => {
                     eprintln!(
                         "keynobi: the Keynobi app closed the MCP session (it may have quit). \
                          Restart the MCP server in your AI client to reconnect."
                     );
                     1
+                }
+                mcp_attach::ForwardEnd::AppClosed(resume) => {
+                    eprintln!(
+                        "keynobi: the Keynobi app closed the MCP session (it may have quit); \
+                         continuing standalone."
+                    );
+                    let (server, relay) = tokio::io::duplex(STANDALONE_PIPE_BYTES);
+                    let serving = tokio::spawn(run_standalone(
+                        standalone_project(),
+                        APP_QUIT_REASON.to_string(),
+                        tokio::io::split(server),
+                    ));
+                    let (from_server, to_server) = tokio::io::split(relay);
+                    mcp_attach::resume_with(resume, &mut stdout, from_server, to_server).await;
+                    serving.await.unwrap_or(1)
                 }
             };
         }
@@ -3884,16 +3991,29 @@ pub async fn run_mcp(project_path: Option<PathBuf>, attach_only: bool) -> i32 {
         return 2;
     }
 
-    let selection = requested.or_else(|| {
-        select_headless_project(None, None, || {
-            settings_manager::load_settings().0.last_active_project
-        })
-    });
-    run_standalone(selection, reason).await
+    run_standalone(
+        standalone_project(),
+        reason,
+        (tokio::io::stdin(), tokio::io::stdout()),
+    )
+    .await
 }
 
-/// Serve MCP on stdio with this process's own state.
-async fn run_standalone(selection: Option<(PathBuf, ProjectSelection)>, reason: String) -> i32 {
+/// Why a session that was attached continues standalone.
+pub const APP_QUIT_REASON: &str = "the Keynobi app quit";
+/// Buffer between the stdio relay and a standalone server that took over a session.
+const STANDALONE_PIPE_BYTES: usize = 64 * 1024;
+
+/// Serve MCP on `transport` with this process's own state.
+async fn run_standalone<R, W>(
+    selection: Option<(PathBuf, ProjectSelection)>,
+    reason: String,
+    transport: (R, W),
+) -> i32
+where
+    R: tokio::io::AsyncRead + Send + Unpin + 'static,
+    W: tokio::io::AsyncWrite + Send + Unpin + 'static,
+{
     use crate::services::{fs_manager, mcp_sessions};
 
     let project_selection = selection.as_ref().map(|(_, how)| *how);
@@ -3935,16 +4055,15 @@ async fn run_standalone(selection: Option<(PathBuf, ProjectSelection)>, reason: 
 
     let server = LoggingMcpServer::new(
         AndroidMcpServer::new_headless(
-            build_state,
+            build_state.clone(),
             device_state,
             logcat_state,
             fs_state,
-            process_manager,
+            process_manager.clone(),
             project_selection,
         )
         .with_mode(SessionMode::Standalone { reason }),
     );
-    let transport = rmcp::transport::stdio();
     let code = match server.serve(transport).await {
         Ok(running) => {
             if let Err(e) = running.waiting().await {
@@ -3960,9 +4079,29 @@ async fn run_standalone(selection: Option<(PathBuf, ProjectSelection)>, reason: 
             1
         }
     };
+    finish_builds(&build_state, &process_manager).await;
     mcp_activity::log_activity(&McpActivityEntry::lifecycle("Server stopped (standalone)"));
     mcp_sessions::remove_standalone_record();
     code
+}
+
+/// A build keeps running after the client that started it leaves. Before a
+/// standalone server exits, let its build finish and be recorded, for at most
+/// `mcp.buildTimeoutSec`; then stop it, recorded as timed out.
+async fn finish_builds(build_state: &BuildState, process_manager: &ProcessManager) {
+    if build_state.wait_for_runs(std::time::Duration::ZERO).await {
+        return;
+    }
+    let timeout_sec = settings_manager::load_settings().0.mcp.build_timeout_sec as u64;
+    info!("Waiting up to {timeout_sec}s for the running build before exiting");
+    if build_state
+        .wait_for_runs(std::time::Duration::from_secs(timeout_sec))
+        .await
+    {
+        return;
+    }
+    build_runner::time_out_build(build_state, process_manager, None, timeout_sec).await;
+    build_state.wait_for_runs(TIMEOUT_RECORD_GRACE).await;
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -4243,10 +4382,7 @@ mod tests {
         let server = headless_server();
         for task in ["publishReleaseBundle", "pRB", ":app:uninstallAll"] {
             let err = server
-                .run_gradle_task(Parameters(RunGradleTaskParams {
-                    task: task.into(),
-                    variant: None,
-                }))
+                .run_build(task.into(), BuildActor::App)
                 .await
                 .unwrap_err();
             assert!(
@@ -4256,11 +4392,9 @@ mod tests {
             );
         }
 
-        // run_tests delegates to run_gradle_task, so it is covered too.
+        // run_tests goes through the same build path, so it is covered too.
         let err = server
-            .run_tests(Parameters(RunTestsParams {
-                test_type: "publish".into(),
-            }))
+            .run_build(test_task("publish").unwrap(), BuildActor::App)
             .await
             .unwrap_err();
         assert!(
@@ -4271,10 +4405,7 @@ mod tests {
 
         // Ordinary tasks pass the policy and fail later only for lack of a project.
         let err = server
-            .run_gradle_task(Parameters(RunGradleTaskParams {
-                task: "assembleDebug".into(),
-                variant: None,
-            }))
+            .run_build("assembleDebug".into(), BuildActor::App)
             .await
             .unwrap_err();
         assert!(err.message.contains("No project open"), "{}", err.message);
@@ -4321,9 +4452,9 @@ mod tests {
         }
     }
 
-    /// The UI and the MCP server share one build slot. Previously run_task had
-    /// no guard at all, so an agent could start a second Gradle process against
-    /// the same project and orphan the first.
+    /// The UI and the MCP server share one build slot. Without it, an agent
+    /// could start a second Gradle process against the same project and
+    /// orphan the first.
     #[tokio::test]
     async fn mcp_build_is_refused_while_a_ui_build_is_running() {
         let server = headless_server();
@@ -4408,7 +4539,7 @@ mod tests {
     #[tokio::test]
     async fn cancel_build_reports_when_nothing_is_running() {
         let server = headless_server();
-        let result = server.cancel_build().await.unwrap();
+        let result = server.cancel_build_as(BuildActor::App).await.unwrap();
         // Must not panic or wedge state when idle.
         assert!(!format!("{:?}", result).is_empty());
         let bs = server.build_state.inner.lock().await;
@@ -4566,10 +4697,7 @@ mod tests {
     async fn run_gradle_task_rejects_an_invalid_task_name() {
         let server = headless_server();
         let err = server
-            .run_gradle_task(Parameters(RunGradleTaskParams {
-                task: "assembleDebug; rm -rf /".to_string(),
-                variant: None,
-            }))
+            .run_build("assembleDebug; rm -rf /".to_string(), BuildActor::App)
             .await;
         assert!(err.is_err(), "shell metacharacters must be rejected");
     }

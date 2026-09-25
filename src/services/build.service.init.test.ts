@@ -4,6 +4,9 @@ import { initBuildService, resetBuildServiceForTests } from "@/services/build.se
 
 const mockListen = vi.mocked(listen);
 
+/** build:started, build:lines, build:complete. */
+const BUILD_EVENTS = ["build:started", "build:lines", "build:complete"];
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -36,14 +39,15 @@ describe("initBuildService listener lifecycle", () => {
     gate.resolve(() => {});
     await Promise.all([first, second]);
 
-    expect(mockListen).toHaveBeenCalledTimes(1);
+    expect(mockListen).toHaveBeenCalledTimes(BUILD_EVENTS.length);
+    expect(mockListen.mock.calls.map(([event]) => event)).toEqual(BUILD_EVENTS);
   });
 
   it("registers exactly one listener when called twice sequentially", async () => {
     await initBuildService();
     await initBuildService();
 
-    expect(mockListen).toHaveBeenCalledTimes(1);
+    expect(mockListen).toHaveBeenCalledTimes(BUILD_EVENTS.length);
   });
 
   it("allows a retry after a failed registration", async () => {
@@ -53,7 +57,17 @@ describe("initBuildService listener lifecycle", () => {
     mockListen.mockResolvedValue(() => {});
     await initBuildService();
 
-    expect(mockListen).toHaveBeenCalledTimes(2);
+    expect(mockListen).toHaveBeenCalledTimes(2 * BUILD_EVENTS.length);
+  });
+
+  it("drops the listeners that did register when one fails", async () => {
+    const unlisten = vi.fn();
+    mockListen.mockResolvedValue(unlisten);
+    mockListen.mockRejectedValueOnce(new Error("ipc down"));
+
+    await expect(initBuildService()).rejects.toThrow("ipc down");
+
+    expect(unlisten).toHaveBeenCalledTimes(BUILD_EVENTS.length - 1);
   });
 
   it("disposes the listener on reset", async () => {
@@ -63,6 +77,6 @@ describe("initBuildService listener lifecycle", () => {
     await initBuildService();
     resetBuildServiceForTests();
 
-    expect(unlisten).toHaveBeenCalledTimes(1);
+    expect(unlisten).toHaveBeenCalledTimes(BUILD_EVENTS.length);
   });
 });

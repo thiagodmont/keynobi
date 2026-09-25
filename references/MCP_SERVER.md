@@ -10,7 +10,8 @@ Update this file when a tool, prompt, resource, limit, or security rule changes.
 |-------------|------|
 | `src-tauri/src/main.rs` | `keynobi --mcp [--project <path>] [--attach-only]` runs `mcp_server::run_mcp`. Any other invocation opens the GUI. |
 | `services/mcp_server.rs` | Owns the MCP server, tool definitions, prompts, resources, MCP-specific validation, session modes, and the `--mcp` launcher (attach, else standalone). |
-| `services/mcp_attach.rs` | The app's socket listener, the attach handshake and its rules, and the stdio relay `keynobi --mcp` runs when attached. |
+| `services/mcp_attach.rs` | The app's socket listener, the attach handshake and its rules, the stdio relay `keynobi --mcp` runs when attached, and what happens to sessions when the app quits. |
+| `services/mcp_relay.rs` | Line relay for attached sessions. It tracks requests in flight and the client's `initialize`, so a closing app can answer what it has not, and a standalone server can take the session over. |
 | `services/mcp_sessions.rs` | Live sessions: the app's registry of attached sessions and the standalone server records. |
 | `utils/validation.rs`, `utils/path.rs` | Shared validators used by both MCP tools and Tauri commands. |
 | `services/mcp_activity.rs` | Appends activity entries to the JSONL log and rotates it. |
@@ -33,12 +34,15 @@ Every MCP client runs `keynobi --mcp`. That process first picks the project it w
 - Rules (`mcp_attach::decide_attach`): an unknown `attach` version is refused, naming both versions. `project: null` is accepted and the session follows the app's project (`selected_by: app`). A project is accepted only when the app has that project open (canonical path equal to the app's Gradle root or project root); the session is then pinned to it. Otherwise the reason names the app's project or says none is open. The app never changes its open project for an agent. At most `MAX_ATTACHED_SESSIONS` (16) sessions are served.
 - A pinned session whose project the app has since closed returns a tool error for every tool not in `PROJECT_INDEPENDENT_TOOLS` ("Keynobi now has B open; this session is for A …"); project resources are refused the same way. Device, UI, logcat, `get_project_info`, and `run_health_check` keep working.
 - `--attach-only`: if attaching fails, print the reason to stderr and exit with status 2 instead of running standalone.
-- When the app closes the socket (for example, it quits), the relay exits with status 1 and a message on stderr.
+- When the app quits (`mcp_attach::quit_sessions`), it first cancels a running build, recorded as cancelled because Keynobi quit, and waits up to `QUIT_BUILD_TIMEOUT` (1.5 s) for it to be recorded. Then it answers every request still in flight with a JSON-RPC error (`-32603`, saying whether the build was cancelled) and closes the sessions.
+- `keynobi --mcp` then continues as a standalone server in the same process, with reason "the Keynobi app quit". It replays the client's `initialize` and `initialized` to the new server and drops the second `initialize` response, so the client keeps its session. If the app goes away without answering (for example, it crashed), the relay answers the requests left open itself ("The Keynobi app closed the MCP session before answering …") and falls back the same way. With `--attach-only` it exits with status 1 instead.
+- A client that disconnects does not stop a build it started: the build finishes and is recorded. A standalone server that loses its client waits for its build, up to `mcp.buildTimeoutSec`, before it exits.
 
 ### What each mode means for users and features
 
-- Attached sessions share the app's single build slot: the app, and every attached agent, get the same `A Gradle build is already running` answer while a build runs (a tool error for agents, `AppError::InvalidInput` for the GUI). Their builds emit `build:complete`, but their output is not streamed into the Build panel.
-- Standalone builds, logcat streams, and device selection are not visible in the app, and standalone and app builds are not mutually exclusive.
+- Attached sessions share the app's single build slot: the app, and every attached agent, get the same `A Gradle build is already running` answer while a build runs (a tool error for agents, `AppError::InvalidInput` for the GUI). Every build, whoever started it, streams into the Build panel (`build:started`, `build:lines`, `build:complete`), labelled "Started by an agent (<client>)" when an agent started it. The app can cancel an agent's build; the app never installs or launches one.
+- Builds record who started them (`origin`) and who cancelled them (`cancelled_by`) in the build history: the app, an agent (its session id, client name, and whether it was standalone), or Keynobi quitting.
+- Standalone builds, logcat streams, and device selection are not visible in the app. Builds of the same project are still exclusive across processes: each build holds `<data dir>/build-locks/<hash>.lock` (see `DOMAIN_PATTERNS.md` § Build), so a standalone server building a project refuses while the app or another server builds it, naming that process.
 - Trust is shared through `settings.json` and read on every build, so trusting or revoking a project in the app applies to a running MCP server without a restart.
 - Shared with the app through the data directory: `settings.json` (`set_active_variant` writes it), `build-history.json` (appended under a shared file lock), `mcp-activity.jsonl`, and `mcp-sessions/`.
 
@@ -46,7 +50,7 @@ Every MCP client runs `keynobi --mcp`. That process first picks the project it w
 
 - `initialize`: `serverInfo` is `keynobi` with the binary's version, titled "Keynobi (attached to the app)" or "Keynobi (standalone)"; `instructions` starts with the mode and, when standalone, why, and that its builds and logcat are not visible in the app.
 - `get_project_info`: `mode` (`attached` or `standalone`), `standalone_reason`, `follows_app`, and `pinned_project`. A pinned session whose project the app closed reports `open: false`, `app_project`, and the mismatch in `hint`.
-- `run_gradle_task` and `run_tests` end their text with `[mode: …]`; `get_build_status` includes `mode` and `standalone_reason`.
+- `run_gradle_task` and `run_tests` end their text with `[mode: …]`; `get_build_status` includes `mode` and `standalone_reason`, plus the build's `origin` and `cancelled_by`.
 - The activity log's lifecycle entries say `Server started (standalone: <reason>)`, or `Client attached (pid N) — project: …` and `Client detached` for attached sessions.
 
 ## Setup
@@ -88,11 +92,11 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 
 | Tool | Kind | Notes |
 |------|------|-------|
-| `run_gradle_task` | O | `task`; `variant` is accepted but ignored. Refused with `invalid_params` unless the user trusted the project in the app (see [Project Trust](#project-trust)). Times out after `mcp.buildTimeoutSec` (default 600 s). Task names starting with `-` (Gradle options) are rejected. Unless `mcp.allowUnrestrictedGradle` is on, tasks matching `publish*`, `promote*`, `upload*`, `uninstall*`, `closeAndRelease*`, `*ToMavenCentral`, or `*PlayStore*` are refused, including Gradle abbreviations such as `pRB`. |
-| `get_build_status` | R | |
+| `run_gradle_task` | O | `task`; `variant` is accepted but ignored. Refused with `invalid_params` unless the user trusted the project in the app (see [Project Trust](#project-trust)). Times out after `mcp.buildTimeoutSec` (default 600 s). Task names starting with `-` (Gradle options) are rejected. Unless `mcp.allowUnrestrictedGradle` is on, tasks matching `publish*`, `promote*`, `upload*`, `uninstall*`, `closeAndRelease*`, `*ToMavenCentral`, or `*PlayStore*` are refused, including Gradle abbreviations such as `pRB`. Runs through the build service the app uses (`build_runner::start_build`); the build does not depend on the call, so it finishes and is recorded even if the client disconnects. Refused while another build runs in this process, or while another process builds the same project. A cancelled build answers `BUILD CANCELLED — task 'x' was cancelled <by whom>`; a timed-out build is stopped and recorded as failed with the reason. |
+| `get_build_status` | R | `status`, `summary`, `origin` and `cancelled_by` (`{"kind":"app"}`, `{"kind":"appQuit"}`, or `{"kind":"agent","session_id":…,"client_name":…,"standalone":…}`), `mode`, `standalone_reason`. |
 | `get_build_errors` | R | Errors without a recognised location are returned with the message only. |
 | `get_build_log` | R | `lines`: default `mcp.defaultBuildLogLines` (200), max 2,000. |
-| `cancel_build` | W | |
+| `cancel_build` | W | Cancels the running build, whoever started it. Recorded as cancelled by this agent (session and client name). |
 | `list_build_variants` | R | |
 | `set_active_variant` | W | Persists to settings (shared with the GUI). |
 | `find_apk_path` | R | `variant?`. Matches the variant exactly, using `output-metadata.json` when present. Returns `found: false` with a `reason` when no APK or more than one APK matches. |
@@ -242,7 +246,8 @@ Tool errors are for the model to read and recover from, so make the message acti
 | `app_inspector.rs` | Direct | Reads app runtime state and performs app restart flows with launch timing. |
 | `build_inspector.rs` | Direct | Parses Gradle files for SDK levels, application id, build types, and product flavors without running Gradle. |
 | `build_parser.rs` | Indirect | Converts Gradle output (Kotlin, KSP, Java, lint, AAPT2, R8, configuration cache) into structured build lines and the diagnostics `get_build_errors` returns. |
-| `build_runner.rs` | Direct | Runs Gradle tasks, tracks build state/history, captures build logs, and finds output APKs. |
+| `build_lock.rs` | Indirect | The cross-process lock that keeps two Keynobi processes from building one project at once. |
+| `build_runner.rs` | Direct | Runs Gradle tasks for the app and agents alike, tracks build state/history, captures build logs, and finds output APKs. |
 | `crash_inspector.rs` | Direct | Groups and parses logcat crash entries into exception, message, stack frames, and causes. |
 | `device_inspector.rs` | Direct | Collects screenshots, device properties, app package details, and memory information. |
 | `fs_manager.rs` | Headless setup | Detects the Gradle root for a selected project path. |
@@ -253,7 +258,8 @@ Tool errors are for the model to read and recover from, so make the message acti
 | `log_stream.rs` | Indirect | Applies backend-side stream filters before logcat batches reach the frontend. |
 | `logcat.rs` | Direct | Starts/stops logcat streaming and owns logcat state, filters, known packages, and buffer access. |
 | `mcp_activity.rs` | Direct | Persists MCP lifecycle, tool, prompt, and resource activity and rotates the log. |
-| `mcp_attach.rs` | Core | Serves attached sessions on the app's socket, decides the attach handshake, and relays stdio for `keynobi --mcp`. |
+| `mcp_attach.rs` | Core | Serves attached sessions on the app's socket, decides the attach handshake, relays stdio for `keynobi --mcp`, and closes sessions when the app quits. |
+| `mcp_relay.rs` | Core | Relays attached sessions line by line and tracks requests in flight, so none is left unanswered when the app goes away. |
 | `mcp_server.rs` | Core | Defines the MCP server, tools, prompts, resources, session modes, the `--mcp` launcher, validation, and activity instrumentation. |
 | `mcp_sessions.rs` | Direct | Tracks attached sessions and standalone server records for `get_mcp_server_status`. |
 | `monitor.rs` | Not exposed | Monitors app memory and app log folder size for the GUI status bar. |
@@ -281,7 +287,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 ## Testing and Debugging
 
-- Unit tests live in `mcp_server.rs` (validators, build slot, logcat state, session modes), `mcp_attach.rs` (handshake rules, socket binding, relay), `mcp_sessions.rs`, `mcp_activity.rs`, `commands/mcp.rs`, `utils/validation.rs`, and `ui_automation.rs`. `tests/mcp_headless.rs` covers standalone and attached sessions end to end. `src/stores/mcp.store.test.ts` and `src/components/layout/StatusBar.test.tsx` cover the frontend.
+- Unit tests live in `mcp_server.rs` (validators, build slot, logcat state, session modes), `mcp_attach.rs` (handshake rules, socket binding, relay, standalone fallback), `mcp_relay.rs` (request tracking, replay), `mcp_sessions.rs`, `mcp_activity.rs`, `commands/mcp.rs`, `utils/validation.rs`, and `ui_automation.rs`. `tests/mcp_headless.rs` covers standalone and attached sessions end to end, including builds that outlive their client, two standalone servers sharing a project, the app cancelling an agent's build, and the app quitting mid-request. `src/stores/mcp.store.test.ts` and `src/components/layout/StatusBar.test.tsx` cover the frontend.
 - Try tools interactively with the MCP Inspector:
 
   ```bash
@@ -299,12 +305,9 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Parameter casing.** UI tools use camelCase on the wire, while their descriptions and all other tools use snake_case.
 - **Instructions drift.** The `instructions` string omits 15 tools (for example `cancel_build`, `stop_app`, `wait_for_element`, AVD tools).
 - **Groovy projects.** Resources check only `.kts` files and hard-code the `app` module. APK validation also hard-codes `app`.
-- **No progress or cancellation.** Tools ignore the request context. A long Gradle run blocks until it ends or times out.
+- **No progress or cancellation.** `run_gradle_task` and `run_tests` send no progress notifications, and cancelling the request does not cancel its build (use `cancel_build`). A long Gradle run blocks until it ends or times out.
 - **Unredacted activity log.** Activity summaries are not redacted.
-- **Attached builds in the Build panel.** Builds an attached agent starts share the app's build slot and state, but the Build panel does not stream their output or adopt a build it did not start.
-- **Who cancelled a build.** Neither the app nor an agent can tell whether the other cancelled a build.
-- **App quitting with clients attached.** Quitting the app cancels the running build (an agent's too), but the agent gets no result for it: its session just ends. Attached clients do not fall back to standalone mid-session; the relay exits (status 1, message on stderr) and the client must restart the MCP server.
-- **Standalone build slot.** Standalone servers and the app can still build the same project at the same time; there is no cross-process build lock.
+- **Build lock is best effort.** When the lock file cannot be created or read (for example, an unwritable data directory), the build runs without it and a warning is logged.
 - **Pinned-session check is per call.** A pinned session checks the app's project when a tool starts; switching projects while a tool runs does not stop it.
 - **Package scope sources.** The scope reads only the `app` module (or the root build file). An `applicationIdSuffix` set in a convention plugin or through a variable is known only after that variant is built; until then its package needs `allow_foreign_package: true`.
 - **Screenshot coordinate space.** `screenshot` takes `deviceWidth`/`deviceHeight` from the capture itself. With a `wm size` override or on a multi-display device, the capture may not match the space `ui_tap` uses, so `scale` would be off.
