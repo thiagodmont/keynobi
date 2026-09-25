@@ -1,0 +1,97 @@
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_b0d1573bafa2cb 24
+  s_1e114e823b9048::t_047b23a1b549a6 2875
+  s_1e114e823b9048::t_1bb3c92c8f4d4b 2940
+  s_1e114e823b9048::t_755de4b8604ff7 2957
+  s_1e114e823b9048::t_d688551bcd1ad5 2883-2895,2898-2899,2906,2914
+src-tauri/src/services/adb_manager.rs
+  s_1e114e823b9048::t_346fb963685707 1261
+src/bindings/JdkSource.ts
+  s_1e114e823b9048::t_207b9944a2d6e6 1-6
+src-tauri/src/services/mod.rs
+  s_1e114e823b9048::t_704c134bd19454 10
+src-tauri/src/services/build_runner.rs
+  s_1e114e823b9048::t_3338e026011bb7 847-849
+  s_1e114e823b9048::t_06b79778ccc572 1140-1143
+  s_1e114e823b9048::t_efb1f5ff87e111 1101-1139,1144-1146
+src-tauri/src/commands/variant.rs
+  s_1e114e823b9048::t_521daa40b05cf1 2
+  s_1e114e823b9048::t_9193402e0004d8 99-100
+src-tauri/tests/headless/mod.rs
+  s_1e114e823b9048::t_1d3c5fc81b1dc1 96
+  s_1e114e823b9048::t_8ee798d5fc3cb1 41-44,47
+  s_1e114e823b9048::t_f3a3df7d4cc565 128-141,143-145
+src-tauri/src/services/health_inspector.rs
+  s_1e114e823b9048::t_309f31b1897628 2
+  s_1e114e823b9048::t_df52e5ab1f2861 60
+  s_1e114e823b9048::t_b556d26cbac3d7 9,22,26-27,36
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_06b79778ccc572 122-124
+  s_1e114e823b9048::t_5b3b855bcb9ebb 94-121,125-138
+  s_1e114e823b9048::t_8f126710abebaf 93
+src-tauri/src/services/settings_manager.rs
+  s_1e114e823b9048::t_94be617e4a455a 405-406,414-415
+src/bindings/index.ts
+  s_1e114e823b9048::t_673e80f0951f3f 21
+src/test/mock-backend/settings.ts
+  s_1e114e823b9048::t_2d87f0766e5282 76-79
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_ea6a2268ea97b6 284
+  s_1e114e823b9048::t_956a49c39a3b7a 318
+  s_1e114e823b9048::t_fcbe8f743d3e58 275-283,285-287
+src/bindings/SystemHealthReport.ts
+  s_1e114e823b9048::t_207b9944a2d6e6 2,12,16,23-35
+src/components/settings/ToolStatus.tsx
+  s_1e114e823b9048::t_729d06c5ec631c 245
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_1bac47a465db47 206
+  s_1e114e823b9048::t_04f9f4187d3d06 137-138
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_2cfd189cc7eaae 409
+  s_1e114e823b9048::t_74019c4db8ce5a 276-284
+src-tauri/src/services/jdk.rs
+  s_1e114e823b9048::t_71081f2aa21368 85-89
+  s_1e114e823b9048::t_565abad28c147d 263-272
+  s_1e114e823b9048::t_8d40669c034afc 330-331,333-335
+  s_1e114e823b9048::t_b79c323ad46ad5 138-142
+  s_1e114e823b9048::t_8f3cf0589adaa6 1-81,83-84,90-102,104-137,143-220,225-262,273-329,332,336-726
+  s_1e114e823b9048::t_5074dd5f5150ab 103
+  s_1e114e823b9048::t_06b79778ccc572 221-224
+  s_1e114e823b9048::t_78071d8af337c2 82
+src-tauri/src/models/health.rs
+  s_1e114e823b9048::t_f994a995f52ded 12,14,18-24
+  s_1e114e823b9048::t_848bc3b622f5d7 68-70
+  s_1e114e823b9048::t_95d22c47c75eb5 41-57
+  s_1e114e823b9048::t_c667c16d006fb8 83-84
+src-tauri/src/commands/health.rs
+  s_1e114e823b9048::t_66154f8c5da89b 2-3,7
+  s_1e114e823b9048::t_0fb269d6d350bc 148,154-176,178-188,191-235
+  s_1e114e823b9048::t_3338e026011bb7 48
+  s_1e114e823b9048::t_be4d2251e8554d 131-140
+  s_1e114e823b9048::t_d1083d091ac448 31-35,37-38,40-47
+src/stores/health.store.test.ts
+  s_1e114e823b9048::t_ab81e7326b41cc 21-26,29,31
+  s_1e114e823b9048::t_b3bc6ed8cf2e38 76-125
+src/stores/health.store.ts
+  s_1e114e823b9048::t_a9220123df74ef 185-189
+  s_1e114e823b9048::t_bb1c375faca78c 195-201
+  s_1e114e823b9048::t_0769035ad5e4d9 184,204-207,209-210,212
+  s_1e114e823b9048::t_18152275765407 16,19-28
+  s_1e114e823b9048::t_1c755147855060 29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "28e8e43dbfb986c907fe4dc1066237db7a42ee21",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
