@@ -37,7 +37,7 @@ The app and agents start builds through one service, `build_runner::start_build(
 | Front door | Origin | Waits for |
 |------------|--------|-----------|
 | Tauri `run_gradle_task` (`commands/build.rs`) | `BuildActor::App` | Nothing: returns the run ID once Gradle spawned; the frontend follows the events. |
-| MCP `run_gradle_task` / `run_tests` (`AndroidMcpServer::run_build`) | `BuildActor::Agent` (session id, client name, standalone) | `BuildHandle::wait()`, bounded by `mcp.buildTimeoutSec`; then `time_out_build`. |
+| MCP `run_gradle_task` / `run_tests` (`AndroidMcpServer::run_build`) | `BuildActor::Agent` (session id, client name, standalone) | `BuildHandle::wait()`, bounded by `mcp.buildTimeoutSec`; then `time_out_build`. Meanwhile it reports progress (`BuildHandle::current_task`) when the client asked, and a cancelled request stops this run only (`cancel_run`). |
 
 `start_build`, in order: takes the project's cross-process lock (`build_lock::try_acquire` on `<data dir>/build-locks/<hash of the canonical Gradle root>.lock`, reused by later builds in the same process), reserves the slot (`try_reserve_build_slot`), starts the run's log buffer, spawns Gradle, and emits `build:started`. A detached task then streams output (`build:lines`, batched every `BUILD_LINES_FLUSH_INTERVAL` of 50 ms, at most `MAX_LINES_PER_BATCH` (500) per event and `MAX_PENDING_BUILD_LINES` (10,000) held), and on exit records history and emits `build:complete`. Finalization does not depend on the caller: a client that disconnects, or a GUI call that returns early, still gets its build recorded. Events are emitted only when an `AppHandle` exists (the app and its attached sessions).
 
