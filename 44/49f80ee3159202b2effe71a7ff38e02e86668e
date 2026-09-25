@@ -1,0 +1,83 @@
+src/components/onboarding/OnboardingWizard.tsx
+  s_1e114e823b9048::t_5b8985ceacc8cd 13
+  s_1e114e823b9048::t_41263c84b188cf 134
+src/components/build/VariantSelector.tsx
+  s_1e114e823b9048::t_9b70d00525d37d 149-152
+  s_1e114e823b9048::t_b04b6ed9582b05 5
+src/components/projects/ProjectInfoEditor.tsx
+  s_1e114e823b9048::t_3af5b180bc49a8 12
+  s_1e114e823b9048::t_f22d56e6cc4216 147-150
+src/components/ui/CommandPalette/CommandPalette.tsx
+  s_1e114e823b9048::t_95d5325bed6fdb 5
+  s_1e114e823b9048::t_3735f6634a67c1 94
+src/components/device/DevicePickerDialog.test.tsx
+  s_1e114e823b9048::t_e8f1df22bc0f99 58
+  s_1e114e823b9048::t_07cb23254ea4a0 1-57,59-67
+src/components/health/HealthPanel.tsx
+  s_1e114e823b9048::t_6363ce02813a34 19
+  s_1e114e823b9048::t_c861095b2d5db6 752
+src/components/device/DownloadSystemImageDialog.tsx
+  s_1e114e823b9048::t_ad69982c0325f2 128-137
+  s_1e114e823b9048::t_2bc77827fd111d 13
+src/components/device/CreateDeviceDialog.tsx
+  s_1e114e823b9048::t_79f3fd51189bd7 11
+  s_1e114e823b9048::t_2b38eda19d51ae 124-127
+src/components/mcp/McpPanel.tsx
+  s_1e114e823b9048::t_d4d68d6085d4f6 11
+  s_1e114e823b9048::t_88213ee3e342fd 252
+src/components/device/DeviceSidebar.module.css
+  s_1e114e823b9048::t_9c661550c4e814 1-17
+src/components/settings/SettingsPanel.tsx
+  s_1e114e823b9048::t_4a20b1d9f4663e 67
+  s_1e114e823b9048::t_e0b56c08873770 13
+src/components/projects/ProjectSidebar.test.tsx
+  s_1e114e823b9048::t_47516f8a982965 1-116
+src/components/device/DeviceSidebar.tsx
+  s_1e114e823b9048::t_af0328da2f8557 651
+  s_1e114e823b9048::t_30ce0cdb9038ce 14-19
+  s_1e114e823b9048::t_3ee721ea27ef57 833
+  s_1e114e823b9048::t_ca828593feee62 61-67
+  s_1e114e823b9048::t_7cbe81015be694 341-342,344
+  s_1e114e823b9048::t_71567ac75c9da8 735,739,741,745,747-748,752-754,761,763-787,789-831
+  s_1e114e823b9048::t_0a7267d580f2c2 326-338,347
+  s_1e114e823b9048::t_83cfe61fe52332 455-475
+  s_1e114e823b9048::t_8f212e22943634 598,605
+  s_1e114e823b9048::t_e0858fadd5a27e 78
+  s_1e114e823b9048::t_7649ef4bfad06c 731-734
+  s_1e114e823b9048::t_91e7c44ba5ff2c 13,68,476
+src/components/device/DeviceSidebar.test.tsx
+  s_1e114e823b9048::t_f6616804915bee 1-103
+src/components/device/DevicePickerDialog.tsx
+  s_1e114e823b9048::t_fbf056de6638b9 142
+  s_1e114e823b9048::t_51b05d5eb20ed7 10
+  s_1e114e823b9048::t_3dd2ef3ca6dd18 115-118
+src/components/projects/ProjectSidebar.tsx
+  s_1e114e823b9048::t_ef4c6e61c03581 12
+  s_1e114e823b9048::t_0b683abefc7d6b 97-101
+  s_1e114e823b9048::t_7a733600e33242 26-33
+  s_1e114e823b9048::t_7eb9246b188724 315
+  s_1e114e823b9048::t_5ad696cce3f16c 86-88,95,108,112,120,125-129
+  s_1e114e823b9048::t_c346a72737a972 488-497,508
+  s_1e114e823b9048::t_e65a0e4c607b07 562-567,569-571,573,584,593
+  s_1e114e823b9048::t_ac1ff6731e08b9 500-501,503-505
+  s_1e114e823b9048::t_bd4fbdc448a635 350-352,357,360-378,380
+  s_1e114e823b9048::t_b5f5aa4ee6e8fc 272,285
+  s_1e114e823b9048::t_b6ada318636c9e 460
+  s_1e114e823b9048::t_fe80b50250b2a7 96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4449f80ee3159202b2effe71a7ff38e02e86668e",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
