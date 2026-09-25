@@ -246,6 +246,8 @@ Use `registerAction()` for command-palette actions without shortcuts.
 
 Do not use bare `registerKeybinding()` for app commands unless the shortcut is intentionally hidden from the command palette. Update the shortcut table in `USER_MANUAL.md` in the same change.
 
+Registered shortcuts do not run while a modal dialog (`aria-modal="true"`) or a menu (`role="menu"`) is open; the key is still `preventDefault`ed so the webview does not act on it. A new overlay must carry those attributes, or shortcuts will run behind it (see `DESIGN_SYSTEM.md` § Keyboard Contract).
+
 ---
 
 ## Testing Patterns

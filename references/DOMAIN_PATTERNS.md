@@ -70,6 +70,14 @@ runAndDeploy()
   -> finally: clear deployPhase
 ```
 
+### Viewing a Past Build
+
+The Build panel describes one build at a time: the live build, or a past build picked in the Builds list. `buildState.viewedHistoryId` holds the choice (`viewHistoryBuild`, `viewLiveBuild`), and `viewedBuild()` in `build.store.ts` is the only source the panel reads for task, status, duration, start time, errors, warnings, origin, and cancelledBy. Never read `buildState.errors` or `phase` directly for something the panel shows next to a past build's log.
+
+- **Arriving builds.** `startBuild` with origin `app` (a build this window started) returns the panel to the live build. Any other origin leaves a past build on screen; the panel says a build is running and offers **Show running build**. Install and launch progress belongs to the live build only.
+- **Resets.** A project switch (`resetBuildState`, and the panel's own project effect) and **Clear build history** return to the live build. A viewed build that leaves the history (`MAX_HISTORY`) is reported as missing, not replaced by another.
+- **Saved logs.** `get_build_log_entries` returns the lines of the saved log, empty when Gradle printed nothing, and `AppError::NotFound` when rotation removed the file (every recorded build writes one). `createHistoricalLog` (`components/build/build-history-log.ts`) turns that into `loading`, `loaded`, `expired`, or `failed`, drops responses for a build no longer selected, and reloads only when the viewed ID changes.
+
 ### Output Parsing
 
 `services/build_parser.rs` turns each output line into a `BuildLine`. Error and warning lines become the diagnostics that the Problems view and MCP `get_build_errors` show. Both front doors parse the same way.
@@ -120,7 +128,7 @@ AVD lifecycle commands go through Android SDK tools. `create_avd_device` and `de
 
 ### Frontend
 
-- `DeviceSidebar` is the device management surface; `DevicePickerDialog` handles "choose a device" during run flows.
+- `DeviceSidebar` is the device management surface; `DevicePickerDialog` handles "choose a device" during run flows. Connected devices are a `Listbox`: offline devices take focus but cannot be selected, and a running emulator's row menu (Shift+F10) offers **Stop Emulator**.
 - Device-picking flows must validate that `selectedSerial` is still online before using it (`resolveDevice` in `build.service.ts`).
 - `pickDevice` and `selectVariant` update the selection before the backend confirms it and roll back if the backend rejects it. Each call takes a revision number; a response from a call that is no longer the latest neither rolls back nor persists project meta, so it cannot undo a newer selection.
 - Activity names passed to `am start` must be validated (`validate_activity_name`).
@@ -376,6 +384,7 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 
 - **Cross-process builds.** The app and a standalone MCP server can still build different projects at the same time (the build lock is per project). Standalone builds are not streamed to the app and appear in its history only after its next build or restart. The build lock is best effort: when its file cannot be created or read, the build runs without it.
 - **Persisted history size.** `MAX_PERSISTED_HISTORY` (20) is effectively unused because load trims to `MAX_HISTORY` (10).
+- **Past builds lack variant and device.** `BuildRecord` does not store the variant or the target device, so a past build is described by its task (which names the variant) and not by the device it was installed on, and a past cancelled build shows no duration. The live build's install and launch steps are not recorded either.
 - **Build error counts after truncation.** Once `MAX_BUILD_ERRORS` is reached, `errorCount`/`warningCount` count only the retained diagnostics, and the truncation notice itself counts as a warning. True totals would need new `BuildResult`/`BuildCompleteEvent` fields.
 - **Duplicate lint diagnostics.** With `abortOnError`, lint prints its first failure from both the report task and the failing task, so that issue is listed twice. The parser is stateless per line, and diagnostics are not de-duplicated.
 - **Unicode typing.** `ui_type_text_unicode` sets the clipboard with a Clipper broadcast, falling back to `content insert`. `am broadcast` exits 0 even when Clipper is not installed, so the fallback may not run and the paste can insert stale clipboard text. Needs verification on a device.

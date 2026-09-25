@@ -22,10 +22,10 @@ Every primitive has its own folder: `ui/{Name}/{Name}.tsx`, `{Name}.stories.tsx`
 | Group | Primitives |
 |-------|------------|
 | Actions | `Button`, `IconButton`, `Toolbar`, `ControlStrip`, `FilterChip` |
-| Forms | `Input`, `Textarea`, `Select`, `Checkbox`, `Toggle`, `FormField`, `TagInput` |
+| Forms | `Input`, `Textarea`, `Select`, `Checkbox`, `Toggle`, `FormField`, `TagInput`, `Listbox` |
 | Feedback | `Badge`, `StatusDot`, `Alert`, `ProgressBar`, `Spinner`, `EmptyState`, `Toast` (`showToast`, `dismissToast`) |
 | Surfaces | `Panel`, `DockedPanel`, `Tabs`, `MetadataGrid`, `ScrollArea`, `Resizable`, `VirtualList` |
-| Overlays | `Popover`, `Dropdown`, `MenuList`, `Tooltip`, `Dialog` (`DialogHost`, `showDialog`), `CommandPalette` (`openPalette`, `closePalette`) |
+| Overlays | `Popover`, `Dropdown`, `MenuList`, `ContextMenu`, `Tooltip`, `Dialog` (`DialogHost`, `showDialog`, `modalFocus`), `CommandPalette` (`openPalette`, `closePalette`) |
 | Supporting | `Kbd`, `CopyableText`, `Separator`, `Icon` |
 
 Add a new primitive only when at least two feature areas need the same behavior, or when a local implementation would duplicate accessibility, density, or token rules the design system already owns.
@@ -54,7 +54,10 @@ Use this map before adding local markup or styles in a feature folder. **Status*
 | Panel surface | `Panel` | Use for framed app sections, not nested page decoration. | Stable |
 | Bottom/detail readout | `DockedPanel` | Pair with `MetadataGrid` for compact details. | Stable |
 | Metadata readout | `MetadataGrid` / `MetadataCell` | Use clickable cells only when they perform a clear filter/jump action. | Stable |
-| Simple option menu | `Dropdown` with `items: MenuItem[]` | Use for static action lists; mark destructive items with `destructive: true`. | Needs work: menu roles, focus |
+| Simple option menu | `Dropdown` with `items: MenuItem[]` | Use for static action lists; mark destructive items with `destructive: true`. | Needs work: focus |
+| Pick the active item of a list (project, device, build) | `Listbox` | Selection is explicit (Enter/Space or click), never on arrow keys, because selecting can start work such as opening a project. Children get an accessor that follows the latest item for its key. | Stable |
+| Actions for one row (right-click, Shift+F10) | `ContextMenu` + `MenuListItem` | Render only while open; open it from `Listbox`'s `onContextMenu`. | Stable |
+| Custom modal panel | `role="dialog"`, `aria-modal="true"`, and `ref={(el) => modalFocus(el, { onEscape })}` | For modals that cannot use `showDialog` (Settings, pickers, wizards). Pass `onEscape` unless the panel already handles Escape; `initialFocus` picks the first control. | Stable |
 | Custom popover content | `Popover` + `MenuList` | Use for search, rename, section headers, or custom rows. Controlled through `open` / `onOpenChange`. | Needs work: Escape, focus return |
 | Custom menu rows | `MenuList`, `MenuListItem`, `MenuSectionHeader`, `MenuEmptyState` | Clickable rows get `role="menuitem"` and Enter/Space. | Needs work: container role |
 | Tabs | `Tabs` | Use when switching views inside the same surface. | Needs work: arrow keys |
@@ -139,10 +142,16 @@ White text on an `--accent` fill is 4.5:1, the minimum. Keep button labels at le
 | `Button`, `IconButton`, `FilterChip`, `Toggle`, `Checkbox` | Enter/Space activates. |
 | `Dropdown`, `MenuList` | Arrow keys move real focus (or `aria-activedescendant`) between items; Enter/Space selects; Escape closes; focus returns to the trigger. Trigger exposes `aria-haspopup` and `aria-expanded`. |
 | `Popover` | Escape closes; focus returns to the trigger; clicking outside closes. |
-| `Dialog` | Focus moves into the dialog on open and is trapped while it is open; Escape cancels; focus returns to the previously focused element on close. |
+| `Dialog`, and every custom modal (`modalFocus`) | Focus moves into the dialog on open and is trapped while it is open; Escape cancels; focus returns to the previously focused element on close. |
+| `Listbox` | One tab stop (roving tabindex: the focused, else selected, else first option). Up/Down, Home, End move focus without selecting; Enter/Space selects; disabled options take focus but cannot be selected; Shift+F10 or the context-menu key requests the option's actions. |
+| `ContextMenu` | Focus moves to the first item; Up/Down, Home, End move between items; Enter/Space runs one; Escape, Tab, or a click outside closes; focus returns to where it was. |
 | `Tabs` | Left/Right arrows move between tabs; Home/End jump to the first/last tab. |
 | `CommandPalette` | Up/Down move through results; Enter runs; Escape closes. |
 | `VirtualList` rows | Up/Down move selection when the list has focus. |
+
+Actions a row shows only on hover need a keyboard route too: either the controls stay in the tab order and become visible on `:focus-within`, or the same actions are in the row's `ContextMenu`.
+
+App shortcuts (`lib/keybindings.ts`) do not run while any element with `aria-modal="true"` or `role="menu"` is in the document. Every modal overlay sets `role="dialog"` and `aria-modal="true"`, and every open menu sets `role="menu"`; an overlay without them lets background shortcuts run behind it.
 
 ## Adoption Checklist
 
@@ -226,13 +235,14 @@ Do not use the app Vite preview server for Storybook tests. CI runs `npm run tes
 Places where the primitives or features do not yet meet the rules above. Remove an entry when it is fixed.
 
 - `IconButton` and `Toolbar` omit `aria-pressed` when inactive instead of setting `"false"`.
-- `Dropdown` has no `role="menu"`/`menuitem`, no `aria-haspopup`/`aria-expanded`, moves a CSS class instead of focus, and does not return focus on close. `MenuList` has no default container role.
+- `Dropdown` has no `aria-haspopup`/`aria-expanded`, moves a CSS class instead of focus, and does not return focus on close. `MenuList` has no default container role.
 - `Popover` has no Escape handling or focus management.
 - `Tabs` has no arrow-key navigation.
-- Only `MetadataGrid` defines `:focus-visible`; `global.css` removes the outline on `input`/`textarea`.
+- Only `MetadataGrid`, `Listbox`, `MenuListItem`, and the device sidebar's row actions define `:focus-visible`; other controls rely on the browser's focus ring, and `global.css` removes the outline on `input`/`textarea`.
+- Project and device row buttons that appear on hover (rename, remove, stop) are pointer shortcuts outside the tab order; their keyboard route is the row's `ContextMenu`.
 - No `prefers-reduced-motion` handling.
 - Primitives hardcode radius, z-index, shadow, and 10/11px font sizes. `Button` hardcodes its danger color, and `FilterChip` references an undefined `--accent-rgb`. There are no spacing, radius, shadow, or motion tokens yet.
 - Feature components contain about 200 hardcoded colors in inline styles (worst: `McpPanel`, `StatusBar`, `ProjectSidebar`, `HealthPanel`). No stylelint rule enforces token use.
 - `global.css` colors links with `--accent` (3.7:1).
-- axe runs on 8 curated stories, not every component story.
+- axe runs on 10 curated stories, not every component story.
 - `theme.css` still contains legacy editor/LSP highlight styles that belong elsewhere or can be removed.
