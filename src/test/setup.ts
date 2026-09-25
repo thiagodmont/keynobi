@@ -11,6 +11,25 @@
 // silently on `undefined`.
 const unstubbedInvokes = vi.hoisted(() => [] as string[]);
 
+// Tauri sends invoke arguments as JSON, which cannot carry a bigint. A stubbed
+// invoke would accept one, so check every call's arguments here.
+const checkedInvokeCalls = new WeakSet<object>();
+afterEach(async () => {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const calls = vi.isMockFunction(invoke) ? vi.mocked(invoke).mock.calls : [];
+  for (const call of calls) {
+    if (checkedInvokeCalls.has(call)) continue;
+    checkedInvokeCalls.add(call);
+    const [command, args] = call;
+    JSON.stringify(args, (key, value: unknown) => {
+      if (typeof value === "bigint") {
+        throw new Error(`IPC argument "${key}" of ${command} is a bigint, which JSON cannot carry`);
+      }
+      return value;
+    });
+  }
+});
+
 afterEach(() => {
   const commands = unstubbedInvokes.splice(0);
   if (commands.length > 0) {

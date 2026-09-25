@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { rowInSelectionRange, rowFocusMarked } from "./logcat-row-selection";
 import type { LogcatEntry } from "@/lib/tauri-api";
 
-function mockEntry(id: bigint): LogcatEntry {
+function mockEntry(id: number): LogcatEntry {
   return {
     id,
     timestamp: "12:00:00.000",
@@ -39,8 +39,8 @@ describe("rowInSelectionRange", () => {
 });
 
 describe("rowFocusMarked", () => {
-  const id1 = 1n;
-  const id2 = 2n;
+  const id1 = 1;
+  const id2 = 2;
   const e1 = mockEntry(id1);
 
   it("marks row matching detail entry", () => {

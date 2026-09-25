@@ -4,11 +4,11 @@
  * Running statistics for the current logcat session.
  * Maintained in O(1) per entry by the LogStore.
  */
-export type LogStats = { totalIngested: bigint, 
+export type LogStats = { totalIngested: number, 
 /**
  * Counts indexed by `LogcatLevel::priority()` (0 = Verbose … 5 = Fatal, 6 = Unknown).
  */
-countsByLevel: [bigint, bigint, bigint, bigint, bigint, bigint, bigint], crashCount: bigint, jsonCount: bigint, packagesSeen: number, 
+countsByLevel: [number, number, number, number, number, number, number], crashCount: number, jsonCount: number, packagesSeen: number, 
 /**
  * Percentage of the ring buffer currently in use (0.0 – 100.0).
  * Computed as `(current_len / configured_ring_capacity) * 100`.
@@ -18,13 +18,13 @@ bufferUsagePct: number,
  * Current number of entries in the in-memory ring buffer (all lines stored;
  * independent of the active stream filter used for IPC).
  */
-bufferEntryCount: bigint, 
+bufferEntryCount: number, 
 /**
  * Lines discarded because the reader→pipeline channel was saturated.
  * Non-zero means the view is incomplete, so the UI must surface it rather
  * than silently showing a gap.
  */
-droppedLines: bigint, 
+droppedLines: number, 
 /**
  * Lines read from the device but not yet processed when the pipeline's
  * last batch ended. Stays near zero while the pipeline keeps up.

@@ -4,7 +4,7 @@ import { LogEntryDetailPanel } from "./LogEntryDetailPanel";
 import type { LogcatEntry } from "@/lib/tauri-api";
 
 const ENTRY = {
-  id: 0n,
+  id: 0,
   timestamp: "2024-01-15 10:23:45.123",
   pid: 1234,
   tid: 5678,

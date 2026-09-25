@@ -20,9 +20,6 @@ export interface Shape {
 function kindOf(value: unknown): Kind {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
-  // The bindings declare Rust u64/i64 as `bigint`, so mock data typed against
-  // them holds bigints where the backend sends JSON numbers.
-  if (typeof value === "bigint") return "number";
   const kind = typeof value;
   if (kind === "string" || kind === "number" || kind === "boolean" || kind === "undefined") {
     return kind;

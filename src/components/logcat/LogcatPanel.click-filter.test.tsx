@@ -14,7 +14,7 @@ import { LogcatPanel } from "./LogcatPanel";
 const ROW_TITLE = "Click to copy · Shift+click to select range";
 
 const BASE_ENTRY = {
-  id: 1n,
+  id: 1,
   timestamp: "04-29 13:00:00.000",
   pid: 1234,
   tid: 5678,
@@ -77,12 +77,12 @@ function filterEntries(entries: ProcessedEntry[], spec: LogcatFilterSpec): Proce
 
 function contextEntries(entries: ProcessedEntry[], args: unknown): ProcessedEntry[] {
   const opts = (args ?? {}) as {
-    anchorId?: bigint | number | string | null;
+    anchorId?: number | string | null;
     direction?: string | null;
     count?: number | null;
   };
   if (opts.anchorId === null || opts.anchorId === undefined) return [];
-  const anchorId = BigInt(opts.anchorId);
+  const anchorId = Number(opts.anchorId);
   const anchorIndex = entries.findIndex((entry) => entry.id === anchorId);
   if (anchorIndex < 0) return [];
   const count = Math.max(0, Math.floor(opts.count ?? 10));
@@ -114,14 +114,14 @@ function installLogcatPanelMocks(entries: ProcessedEntry[]): {
         return false;
       case "get_logcat_stats":
         return {
-          totalIngested: BigInt(storedEntries.length),
-          countsByLevel: [0n, 0n, 0n, 0n, 0n, 0n, 0n],
-          crashCount: 0n,
-          jsonCount: 0n,
+          totalIngested: storedEntries.length,
+          countsByLevel: [0, 0, 0, 0, 0, 0, 0],
+          crashCount: 0,
+          jsonCount: 0,
           packagesSeen: 1,
           bufferUsagePct: 0,
-          bufferEntryCount: BigInt(storedEntries.length),
-          droppedLines: 0n,
+          bufferEntryCount: storedEntries.length,
+          droppedLines: 0,
           backlogLines: 0,
         } satisfies LogStats;
       case "set_logcat_filter": {
@@ -207,7 +207,7 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
   it("keeps quoted message detail filters intact after a QueryBar rebuild", async () => {
     const quotedEntry = {
       ...BASE_ENTRY,
-      id: 2n,
+      id: 2,
       tag: "QuotedTag",
       message: 'hello "quoted" value',
     } satisfies ProcessedEntry;
@@ -232,19 +232,19 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
   it("opens detail for the clicked row after filtering changes visible indices", async () => {
     const alphaEntry = {
       ...BASE_ENTRY,
-      id: 10n,
+      id: 10,
       tag: "AlphaTag",
       message: "Alpha unfiltered message",
     } satisfies ProcessedEntry;
     const betaEntry = {
       ...BASE_ENTRY,
-      id: 11n,
+      id: 11,
       tag: "BetaTag",
       message: "Beta target message",
     } satisfies ProcessedEntry;
     const gammaEntry = {
       ...BASE_ENTRY,
-      id: 12n,
+      id: 12,
       tag: "GammaTag",
       message: "Gamma target message",
     } satisfies ProcessedEntry;
@@ -266,13 +266,13 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
   it("freezes the visible log list after selecting a row until jumping to the end", async () => {
     const selectedEntry = {
       ...BASE_ENTRY,
-      id: 20n,
+      id: 20,
       tag: "SelectedTag",
       message: "Selected row should stay visible",
     } satisfies ProcessedEntry;
     const incomingEntry = {
       ...BASE_ENTRY,
-      id: 21n,
+      id: 21,
       tag: "IncomingTag",
       message: "Incoming row should wait",
     } satisfies ProcessedEntry;
@@ -300,13 +300,13 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
   it("backfills log entries that arrived while paused when resuming", async () => {
     const visibleEntry = {
       ...BASE_ENTRY,
-      id: 25n,
+      id: 25,
       tag: "VisibleTag",
       message: "visible before pause",
     } satisfies ProcessedEntry;
     const pausedEntry = {
       ...BASE_ENTRY,
-      id: 26n,
+      id: 26,
       tag: "PausedTag",
       message: "arrived while paused",
     } satisfies ProcessedEntry;
@@ -328,7 +328,7 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
   it("hides and restores buffered lifecycle and process entries from the quick filter", async () => {
     const appEntry = {
       ...BASE_ENTRY,
-      id: 30n,
+      id: 30,
       tag: "App",
       message: "visible app row",
       category: "general",
@@ -336,7 +336,7 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
     } satisfies ProcessedEntry;
     const lifecycleEntry = {
       ...BASE_ENTRY,
-      id: 31n,
+      id: 31,
       tag: "ActivityManager",
       message: "lifecycle row",
       category: "lifecycle",
@@ -344,7 +344,7 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
     } satisfies ProcessedEntry;
     const processEntry = {
       ...BASE_ENTRY,
-      id: 32n,
+      id: 32,
       tag: "---",
       message: "com.example.app process died",
       category: "lifecycle",
@@ -373,7 +373,7 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
   it("excludes hidden lifecycle crash rows from the read-mode crash count", async () => {
     const appCrashEntry = {
       ...BASE_ENTRY,
-      id: 40n,
+      id: 40,
       tag: "AppCrash",
       message: "visible app crash",
       category: "general",
@@ -382,7 +382,7 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
     } satisfies ProcessedEntry;
     const lifecycleCrashEntry = {
       ...BASE_ENTRY,
-      id: 41n,
+      id: 41,
       tag: "ActivityManager",
       message: "hidden lifecycle crash",
       category: "lifecycle",
@@ -408,19 +408,19 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
     installLogcatPanelMocks([
       {
         ...BASE_ENTRY,
-        id: 50n,
+        id: 50,
         tag: "AlphaOnly",
         message: "Alpha only saved-filter row",
       },
       {
         ...BASE_ENTRY,
-        id: 51n,
+        id: 51,
         tag: "AlphaBeta",
         message: "Alpha beta saved-filter row",
       },
       {
         ...BASE_ENTRY,
-        id: 52n,
+        id: 52,
         tag: "BetaOnly",
         message: "Beta only saved-filter row",
       },
@@ -450,19 +450,19 @@ describe("LogcatPanel Entry Detail click-to-filter integration", () => {
   it("expands unfiltered context above a filtered row from the row context menu", async () => {
     const beforeEntry = {
       ...BASE_ENTRY,
-      id: 60n,
+      id: 60,
       tag: "Before",
       message: "Raw row before target",
     } satisfies ProcessedEntry;
     const targetEntry = {
       ...BASE_ENTRY,
-      id: 61n,
+      id: 61,
       tag: "Target",
       message: "Filtered target row",
     } satisfies ProcessedEntry;
     const afterEntry = {
       ...BASE_ENTRY,
-      id: 62n,
+      id: 62,
       tag: "After",
       message: "Raw row after target",
     } satisfies ProcessedEntry;

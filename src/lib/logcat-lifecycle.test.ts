@@ -4,7 +4,7 @@ import { isLifecycleLogcatEntry } from "./logcat-lifecycle";
 
 function entry(overrides: Partial<LogcatEntry>): LogcatEntry {
   return {
-    id: 1n,
+    id: 1,
     timestamp: "05-08 12:00:00.000",
     pid: 100,
     tid: 100,

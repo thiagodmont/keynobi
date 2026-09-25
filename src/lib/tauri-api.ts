@@ -67,8 +67,14 @@ export async function getProjectAppInfo(): Promise<ProjectAppInfo> {
   return invoke<ProjectAppInfo>("get_project_app_info");
 }
 
-/** Write versionName and versionCode back to the app-level build.gradle(.kts). */
-export async function saveProjectAppInfo(versionName: string, versionCode: bigint): Promise<void> {
+/**
+ * Write versionName and versionCode back to the app-level build.gradle(.kts).
+ * A `null` field is left as it is.
+ */
+export async function saveProjectAppInfo(
+  versionName: string | null,
+  versionCode: number | null
+): Promise<void> {
   return invoke<void>("save_project_app_info", { versionName, versionCode });
 }
 
@@ -446,7 +452,7 @@ export async function getLogcatEntries(opts?: {
 }
 
 export async function getLogcatContextEntries(opts: {
-  anchorId: bigint;
+  anchorId: number;
   direction: "before" | "after";
   count?: number;
 }): Promise<ProcessedEntry[]> {

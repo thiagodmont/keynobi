@@ -3,7 +3,7 @@ import type { LogcatEntry } from "@/lib/tauri-api";
 import { formatLogcatEntries, formatLogcatEntry } from "./logcat-entry-format";
 
 const ENTRY = {
-  id: 1n,
+  id: 1,
   timestamp: "05-10 09:30:00.000",
   pid: 123,
   tid: 456,
@@ -33,7 +33,7 @@ describe("logcat entry formatting", () => {
   });
 
   it("formats multiple entries as newline-delimited text", () => {
-    expect(formatLogcatEntries([ENTRY, { ...ENTRY, id: 2n, message: "Next" }])).toBe(
+    expect(formatLogcatEntries([ENTRY, { ...ENTRY, id: 2, message: "Next" }])).toBe(
       [
         "05-10 09:30:00.000  WARN  [com.example.app] MainActivity: Started",
         "05-10 09:30:00.000  WARN  [com.example.app] MainActivity: Next",

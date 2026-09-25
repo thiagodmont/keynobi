@@ -14,7 +14,7 @@ function makeRecord(state: BuildStatus["state"], durationMs = 0, errors: any[] =
       ? {
           state: "success",
           success: true,
-          durationMs: BigInt(durationMs),
+          durationMs: durationMs,
           errorCount: 0,
           warningCount: 0,
         }
@@ -22,7 +22,7 @@ function makeRecord(state: BuildStatus["state"], durationMs = 0, errors: any[] =
         ? {
             state: "failed",
             success: false,
-            durationMs: BigInt(durationMs),
+            durationMs: durationMs,
             errorCount: errors.length,
             warningCount: 0,
           }

@@ -257,7 +257,7 @@ describe("package:mine re-sync on applicationId change", () => {
     expect(
       matchesQuery(
         {
-          id: 1n,
+          id: 1,
           timestamp: "01-23 12:34:56.789",
           pid: 1,
           tid: 1,
@@ -279,7 +279,7 @@ describe("package:mine re-sync on applicationId change", () => {
     expect(
       matchesQuery(
         {
-          id: 2n,
+          id: 2,
           timestamp: "01-23 12:34:56.789",
           pid: 1,
           tid: 1,

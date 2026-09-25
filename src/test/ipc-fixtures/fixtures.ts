@@ -95,12 +95,16 @@ export const typeFixtures = {
     {
       "applicationId": "com.example.app",
       "versionCode": 42,
-      "versionName": "1.2.3"
+      "versionCodeUnavailable": null,
+      "versionName": "1.2.3",
+      "versionNameUnavailable": null
     },
     {
       "applicationId": null,
       "versionCode": null,
-      "versionName": null
+      "versionCodeUnavailable": "versionCode in app/build.gradle.kts (line 7) is set by `libs.versions.code.get().toInt()`",
+      "versionName": null,
+      "versionNameUnavailable": "No versionName assignment found in app/build.gradle.kts"
     }
   ] satisfies Wire<ProjectAppInfo>[],
   AppSettings: [

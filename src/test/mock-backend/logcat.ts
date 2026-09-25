@@ -3,12 +3,12 @@ import { triggerEvent } from "./events";
 
 let logcatRunning = false;
 let streamInterval: ReturnType<typeof setInterval> | null = null;
-let nextId = BigInt(4);
+let nextId = 4;
 let activeFilter: LogcatFilterSpec = emptyFilter();
 
 export const sampleEntries: ProcessedEntry[] = [
   {
-    id: BigInt(1),
+    id: 1,
     timestamp: "2026-04-23T10:00:00.000Z",
     pid: 1234,
     tid: 1234,
@@ -24,7 +24,7 @@ export const sampleEntries: ProcessedEntry[] = [
     jsonBody: null,
   },
   {
-    id: BigInt(2),
+    id: 2,
     timestamp: "2026-04-23T10:00:01.000Z",
     pid: 1234,
     tid: 1235,
@@ -40,7 +40,7 @@ export const sampleEntries: ProcessedEntry[] = [
     jsonBody: null,
   },
   {
-    id: BigInt(3),
+    id: 3,
     timestamp: "2026-04-23T10:00:02.000Z",
     pid: 1234,
     tid: 1236,
@@ -67,7 +67,7 @@ type LogcatEntriesArgs = {
 };
 
 type LogcatContextEntriesArgs = {
-  anchorId?: bigint | number | string | null;
+  anchorId?: number | string | null;
   direction?: "before" | "after" | string | null;
   count?: number | null;
 };
@@ -134,7 +134,7 @@ function argsToFilter(args: unknown): LogcatFilterSpec {
 function contextEntries(args: unknown): ProcessedEntry[] {
   const opts = (args ?? {}) as LogcatContextEntriesArgs;
   if (opts.anchorId === null || opts.anchorId === undefined) return [];
-  const anchorId = BigInt(opts.anchorId);
+  const anchorId = Number(opts.anchorId);
   const anchorIndex = storedEntries.findIndex((entry) => entry.id === anchorId);
   if (anchorIndex < 0) return [];
   const count = Math.max(0, Math.floor(opts.count ?? 10));
@@ -199,14 +199,14 @@ export function logcatHandlers(): Record<string, (args: unknown) => unknown> {
       triggerEvent("logcat:entries", filterEntries(nextEntries, activeFilter));
     },
     get_logcat_stats: (): LogStats => ({
-      totalIngested: BigInt(storedEntries.length),
-      countsByLevel: [BigInt(0), BigInt(1), BigInt(1), BigInt(0), BigInt(1), BigInt(0), BigInt(0)],
-      crashCount: BigInt(0),
-      jsonCount: BigInt(0),
+      totalIngested: storedEntries.length,
+      countsByLevel: [0, 1, 1, 0, 1, 0, 0],
+      crashCount: 0,
+      jsonCount: 0,
       packagesSeen: 1,
       bufferUsagePct: 0.006,
-      bufferEntryCount: BigInt(storedEntries.length),
-      droppedLines: 0n,
+      bufferEntryCount: storedEntries.length,
+      droppedLines: 0,
       backlogLines: 0,
     }),
   };

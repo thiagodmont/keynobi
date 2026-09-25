@@ -380,11 +380,17 @@ fn fixtures() -> Fixtures {
                 application_id: Some("com.example.app".into()),
                 version_name: Some("1.2.3".into()),
                 version_code: Some(42),
+                version_name_unavailable: None,
+                version_code_unavailable: None,
             },
             ProjectAppInfo {
                 application_id: None,
                 version_name: None,
                 version_code: None,
+                version_name_unavailable: Some("No versionName assignment found in app/build.gradle.kts".into()),
+                version_code_unavailable: Some(
+                    "versionCode in app/build.gradle.kts (line 7) is set by `libs.versions.code.get().toInt()`".into(),
+                ),
             },
         ],
     );

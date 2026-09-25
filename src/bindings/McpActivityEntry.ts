@@ -19,7 +19,7 @@ name: string,
 /**
  * Wall-clock duration in milliseconds (present for tool/resource/prompt events).
  */
-durationMs: bigint | null, 
+durationMs: number | null, 
 /**
  * `"ok"` or `"error"`.
  */

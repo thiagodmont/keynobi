@@ -32,7 +32,7 @@ const pastFailure = makeBuildRecord({
   status: {
     state: "failed",
     success: false,
-    durationMs: BigInt(65_000),
+    durationMs: 65_000,
     errorCount: 1,
     warningCount: 1,
   } as BuildStatus,

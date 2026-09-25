@@ -12,7 +12,7 @@ import {
 import { LogcatPanel } from "./LogcatPanel";
 
 const OLD_ENTRY = {
-  id: 1n,
+  id: 1,
   timestamp: "04-29 13:00:00.000",
   pid: 1234,
   tid: 5678,
@@ -64,14 +64,14 @@ function installMocks(options: { deferMountBackfill?: boolean } = {}) {
         return false;
       case "get_logcat_stats":
         return {
-          totalIngested: BigInt(stored.length),
-          countsByLevel: [0n, 0n, 0n, 0n, 0n, 0n, 0n],
-          crashCount: 0n,
-          jsonCount: 0n,
+          totalIngested: stored.length,
+          countsByLevel: [0, 0, 0, 0, 0, 0, 0],
+          crashCount: 0,
+          jsonCount: 0,
           packagesSeen: 1,
           bufferUsagePct: 0,
-          bufferEntryCount: BigInt(stored.length),
-          droppedLines: 0n,
+          bufferEntryCount: stored.length,
+          droppedLines: 0,
           backlogLines: 0,
         } satisfies LogStats;
       case "clear_logcat":

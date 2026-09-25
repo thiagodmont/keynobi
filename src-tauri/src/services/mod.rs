@@ -21,6 +21,7 @@ pub mod mcp_server;
 pub mod mcp_sessions;
 pub mod monitor;
 pub mod process_manager;
+pub mod project_app_info;
 pub mod project_trust;
 pub mod settings_manager;
 #[cfg(feature = "telemetry")]

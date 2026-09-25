@@ -339,7 +339,13 @@ pub struct ProjectAppInfo {
     /// Human-readable version string (e.g. `"1.2.3"`).
     pub version_name: Option<String>,
     /// Integer version code used by the Play Store.
+    #[ts(type = "number | null")]
     pub version_code: Option<i64>,
+    /// Why `version_name` is `None` and cannot be edited here: it is missing,
+    /// set more than once, or set by an expression defined elsewhere.
+    pub version_name_unavailable: Option<String>,
+    /// Why `version_code` is `None` and cannot be edited here.
+    pub version_code_unavailable: Option<String>,
 }
 
 #[cfg(test)]

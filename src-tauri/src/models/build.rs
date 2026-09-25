@@ -79,6 +79,7 @@ pub struct BuildError {
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct BuildResult {
     pub success: bool,
+    #[ts(type = "number")]
     pub duration_ms: u64,
     pub error_count: u32,
     pub warning_count: u32,

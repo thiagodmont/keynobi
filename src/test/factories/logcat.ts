@@ -1,6 +1,6 @@
 import type { ProcessedEntry } from "@/bindings";
 
-let _id = BigInt(1);
+let _id = 1;
 
 export function makeLogEntry(overrides: Partial<ProcessedEntry> = {}): ProcessedEntry {
   return {
@@ -23,5 +23,5 @@ export function makeLogEntry(overrides: Partial<ProcessedEntry> = {}): Processed
 }
 
 export function resetLogEntryId(): void {
-  _id = BigInt(1);
+  _id = 1;
 }

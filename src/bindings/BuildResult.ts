@@ -3,4 +3,4 @@
 /**
  * Summary of a completed build.
  */
-export type BuildResult = { success: boolean, durationMs: bigint, errorCount: number, warningCount: number, };
+export type BuildResult = { success: boolean, durationMs: number, errorCount: number, warningCount: number, };

@@ -5,7 +5,7 @@ import type { LogcatEntry } from "@/lib/tauri-api";
 
 function makeEntry(overrides: Partial<LogcatEntry> = {}): LogcatEntry {
   return {
-    id: 1n,
+    id: 1,
     timestamp: "01-23 12:34:56.789",
     pid: 1234,
     tid: 5678,

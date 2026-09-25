@@ -144,7 +144,7 @@ describe("BuildPanel viewing a past build", () => {
     status: {
       state: "failed",
       success: false,
-      durationMs: BigInt(2500),
+      durationMs: 2500,
       errorCount: 1,
       warningCount: 0,
     } as BuildStatus,

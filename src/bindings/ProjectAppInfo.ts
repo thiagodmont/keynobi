@@ -16,4 +16,13 @@ versionName: string | null,
 /**
  * Integer version code used by the Play Store.
  */
-versionCode: bigint | null, };
+versionCode: number | null, 
+/**
+ * Why `version_name` is `None` and cannot be edited here: it is missing,
+ * set more than once, or set by an expression defined elsewhere.
+ */
+versionNameUnavailable: string | null, 
+/**
+ * Why `version_code` is `None` and cannot be edited here.
+ */
+versionCodeUnavailable: string | null, };

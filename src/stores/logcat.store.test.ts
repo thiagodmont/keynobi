@@ -4,7 +4,7 @@ import { appendEntriesIncremental, computeCrashIndices } from "./logcat.store";
 
 function entry(id: number, isCrash = false): LogcatEntry {
   return {
-    id: BigInt(id),
+    id: id,
     timestamp: "01-01 00:00:00.000",
     level: isCrash ? "fatal" : "debug",
     tag: `Tag${id}`,
@@ -33,7 +33,7 @@ describe("logcat store helpers", () => {
     expect(dropped).toBe(0);
     expect(entries).toBe(originalEntries);
     expect(crashIndices).toBe(originalCrashIndices);
-    expect(entries.map((e) => e.id)).toEqual([1n, 2n, 3n, 4n, 5n]);
+    expect(entries.map((e) => e.id)).toEqual([1, 2, 3, 4, 5]);
     expect(crashIndices).toEqual([1, 4]);
   });
 
@@ -49,7 +49,7 @@ describe("logcat store helpers", () => {
     );
 
     expect(dropped).toBe(2);
-    expect(entries.map((e) => e.id)).toEqual([3n, 4n, 5n, 6n]);
+    expect(entries.map((e) => e.id)).toEqual([3, 4, 5, 6]);
     expect(crashIndices).toEqual([2]);
   });
 
@@ -64,7 +64,7 @@ describe("logcat store helpers", () => {
     );
 
     expect(dropped).toBe(2);
-    expect(entries.map((e) => e.id)).toEqual([3n, 4n]);
+    expect(entries.map((e) => e.id)).toEqual([3, 4]);
     expect(crashIndices).toEqual([0]);
   });
 

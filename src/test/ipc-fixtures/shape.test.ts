@@ -39,8 +39,10 @@ describe("shapeMismatches", () => {
     expect(shapeMismatches({ state: "success", duration: 1 }, shape)).toHaveLength(1);
   });
 
-  it("treats a bigint as the number the backend sends", () => {
-    expect(shapeMismatches({ id: 5n }, inferShape([{ id: 5 }]))).toEqual([]);
+  it("rejects a bigint, which JSON cannot carry", () => {
+    expect(() => shapeMismatches({ id: BigInt(5) }, inferShape([{ id: 5 }]))).toThrow(
+      "Not a JSON value"
+    );
   });
 
   it("rejects undefined, which JSON cannot carry", () => {

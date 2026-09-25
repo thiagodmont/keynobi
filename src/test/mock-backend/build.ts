@@ -61,7 +61,7 @@ function recordStatus(
   return {
     state,
     success: state === "success",
-    durationMs: BigInt(4000),
+    durationMs: 4000,
     errorCount: errors.filter((e) => e.severity === "error").length,
     warningCount: errors.filter((e) => e.severity === "warning").length,
   } as BuildStatus;

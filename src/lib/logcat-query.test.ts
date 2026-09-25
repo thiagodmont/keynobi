@@ -46,7 +46,7 @@ import type { LogcatEntry } from "@/lib/tauri-api";
 
 function makeEntry(overrides: Partial<LogcatEntry> = {}): LogcatEntry {
   return {
-    id: 1n,
+    id: 1,
     timestamp: "01-23 12:34:56.789",
     pid: 1234,
     tid: 5678,
@@ -1781,7 +1781,7 @@ describe("parseFilterGroups — pipe inside quoted message value is not an OR se
   it("correctly evaluates a multi-OR query with pipe-in-value filter", () => {
     function makeE(o: Partial<LogcatEntry> = {}): LogcatEntry {
       return {
-        id: 1n,
+        id: 1,
         timestamp: "",
         pid: 0,
         tid: 0,

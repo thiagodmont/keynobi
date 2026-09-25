@@ -1,9 +1,9 @@
 use crate::models::error::AppError;
 use crate::models::settings::{ProjectAppInfo, ProjectEntry, MAX_RECENT_PROJECTS};
+use crate::services::project_app_info::{self, extract_application_id};
 use crate::services::{fs_manager, project_trust, settings_manager};
 use crate::FsState;
 use std::path::PathBuf;
-use std::sync::LazyLock;
 use tauri::State;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -188,17 +188,6 @@ pub async fn get_application_id(state: State<'_, FsState>) -> Result<Option<Stri
     Ok(None)
 }
 
-static RE_APPLICATION_ID: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"applicationId\s*=?\s*"([^"]+)""#)
-        .expect("RE_APPLICATION_ID: invalid regex")
-});
-
-fn extract_application_id(content: &str) -> Option<String> {
-    // Matches: applicationId "com.example" or applicationId = "com.example"
-    let caps = RE_APPLICATION_ID.captures(content)?;
-    Some(caps.get(1)?.as_str().to_owned())
-}
-
 // ── Project registry commands ─────────────────────────────────────────────────
 
 /// Return the full recent-projects list sorted: pinned first, then by
@@ -300,7 +289,7 @@ pub async fn get_last_active_project() -> Result<Option<String>, String> {
 /// Read `applicationId`, `versionName`, and `versionCode` from the
 /// app-level `build.gradle(.kts)`.
 #[tauri::command]
-pub async fn get_project_app_info(state: State<'_, FsState>) -> Result<ProjectAppInfo, String> {
+pub async fn get_project_app_info(state: State<'_, FsState>) -> Result<ProjectAppInfo, AppError> {
     let guard = state.0.lock().await;
     let root = guard
         .gradle_root
@@ -309,51 +298,20 @@ pub async fn get_project_app_info(state: State<'_, FsState>) -> Result<ProjectAp
         .cloned();
     drop(guard);
 
-    let Some(root) = root else {
-        return Ok(ProjectAppInfo {
-            application_id: None,
-            version_name: None,
-            version_code: None,
-        });
-    };
-
-    let candidates = [
-        root.join("app").join("build.gradle.kts"),
-        root.join("app").join("build.gradle"),
-        root.join("build.gradle.kts"),
-        root.join("build.gradle"),
-    ];
-
-    for path in &candidates {
-        if path.is_file() {
-            if let Ok(content) = std::fs::read_to_string(path) {
-                return Ok(ProjectAppInfo {
-                    application_id: extract_application_id(&content),
-                    version_name: extract_version_name(&content),
-                    version_code: extract_version_code(&content),
-                });
-            }
-        }
-    }
-
-    Ok(ProjectAppInfo {
-        application_id: None,
-        version_name: None,
-        version_code: None,
-    })
+    let root = root.ok_or_else(|| AppError::NotFound("No project is open".to_string()))?;
+    tokio::task::spawn_blocking(move || project_app_info::read_app_info(&root))
+        .await
+        .map_err(|e| AppError::Other(format!("Failed to read app info: {e}")))
 }
 
 /// Write `versionName` and `versionCode` back to the app-level
-/// `build.gradle(.kts)` using regex replacement.
+/// `build.gradle(.kts)`. A `None` field is left as it is.
 #[tauri::command]
 pub async fn save_project_app_info(
-    version_name: String,
-    version_code: i64,
+    version_name: Option<String>,
+    version_code: Option<i64>,
     state: State<'_, FsState>,
-) -> Result<(), String> {
-    validate_version_name(&version_name)?;
-    validate_version_code(version_code)?;
-
+) -> Result<(), AppError> {
     let guard = state.0.lock().await;
     let root = guard
         .gradle_root
@@ -362,102 +320,12 @@ pub async fn save_project_app_info(
         .cloned();
     drop(guard);
 
-    let root = root.ok_or_else(|| "No project is open".to_string())?;
-
-    let candidates = [
-        root.join("app").join("build.gradle.kts"),
-        root.join("app").join("build.gradle"),
-        root.join("build.gradle.kts"),
-        root.join("build.gradle"),
-    ];
-
-    for path in &candidates {
-        if path.is_file() {
-            let content = std::fs::read_to_string(path)
-                .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
-
-            let updated = replace_version_name(&content, &version_name);
-            let updated = replace_version_code(&updated, version_code);
-
-            // Atomic write: write to temp file then rename.
-            let tmp = path.with_extension("gradle.tmp");
-            std::fs::write(&tmp, &updated)
-                .map_err(|e| format!("Failed to write temp file: {e}"))?;
-            std::fs::rename(&tmp, path).map_err(|e| format!("Failed to save gradle file: {e}"))?;
-
-            return Ok(());
-        }
-    }
-
-    Err("No build.gradle(.kts) file found in the project".to_string())
-}
-
-// ── Regex helpers ─────────────────────────────────────────────────────────────
-
-static RE_VERSION_NAME: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"(versionName\s*=?\s*)"[^"]*""#).expect("RE_VERSION_NAME: invalid regex")
-});
-
-static RE_VERSION_CODE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"(versionCode\s*=?\s*)\d+").expect("RE_VERSION_CODE: invalid regex")
-});
-
-static RE_EXTRACT_VERSION_NAME: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r#"versionName\s*=?\s*"([^"]+)""#)
-        .expect("RE_EXTRACT_VERSION_NAME: invalid regex")
-});
-
-fn extract_version_name(content: &str) -> Option<String> {
-    let caps = RE_EXTRACT_VERSION_NAME.captures(content)?;
-    Some(caps.get(1)?.as_str().to_owned())
-}
-
-static RE_EXTRACT_VERSION_CODE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"versionCode\s*=?\s*(\d+)").expect("RE_EXTRACT_VERSION_CODE: invalid regex")
-});
-
-fn extract_version_code(content: &str) -> Option<i64> {
-    let caps = RE_EXTRACT_VERSION_CODE.captures(content)?;
-    caps.get(1)?.as_str().parse().ok()
-}
-
-fn validate_version_name(value: &str) -> Result<(), String> {
-    if value.trim().is_empty() {
-        return Err("Version name cannot be empty".to_string());
-    }
-    if value
-        .chars()
-        .any(|c| matches!(c, '"' | '\\' | '$' | '\n' | '\r') || c.is_control())
-    {
-        return Err(
-            "Version name cannot contain quotes, backslashes, '$', line breaks, or control characters"
-                .to_string(),
-        );
-    }
-    Ok(())
-}
-
-fn validate_version_code(value: i64) -> Result<(), String> {
-    if value < 0 {
-        return Err("Version code must be a non-negative integer".to_string());
-    }
-    Ok(())
-}
-
-fn replace_version_name(content: &str, new_value: &str) -> String {
-    RE_VERSION_NAME
-        .replace(content, |caps: &regex::Captures| {
-            format!("{}\"{}\"", &caps[1], new_value)
-        })
-        .to_string()
-}
-
-fn replace_version_code(content: &str, new_value: i64) -> String {
-    RE_VERSION_CODE
-        .replace(content, |caps: &regex::Captures| {
-            format!("{}{}", &caps[1], new_value)
-        })
-        .to_string()
+    let root = root.ok_or_else(|| AppError::NotFound("No project is open".to_string()))?;
+    tokio::task::spawn_blocking(move || {
+        project_app_info::save_app_info(&root, version_name.as_deref(), version_code)
+    })
+    .await
+    .map_err(|e| AppError::Other(format!("Failed to save app info: {e}")))?
 }
 
 // ── Per-project meta persistence ──────────────────────────────────────────────
@@ -530,40 +398,6 @@ mod tests {
         let path = tmp.path();
         assert!(path.exists(), "tempdir must exist");
         assert!(path.is_dir(), "tempdir must be a directory");
-    }
-
-    #[test]
-    fn version_name_validation_rejects_gradle_string_breakers() {
-        assert!(validate_version_name("").is_err());
-        assert!(validate_version_name("1.2\"3").is_err());
-        assert!(validate_version_name("1.2\\3").is_err());
-        assert!(validate_version_name("1.$0").is_err());
-        assert!(validate_version_name("1.2\n3").is_err());
-    }
-
-    #[test]
-    fn version_code_validation_rejects_negative_values() {
-        assert!(validate_version_code(-1).is_err());
-        assert!(validate_version_code(0).is_ok());
-        assert!(validate_version_code(42).is_ok());
-    }
-
-    #[test]
-    fn replace_version_info_preserves_gradle_syntax_for_valid_values() {
-        let content = r#"
-android {
-    defaultConfig {
-        versionName = "1.0"
-        versionCode = 1
-    }
-}
-"#;
-
-        let updated = replace_version_name(content, "2.0.1");
-        let updated = replace_version_code(&updated, 12);
-
-        assert!(updated.contains(r#"versionName = "2.0.1""#));
-        assert!(updated.contains("versionCode = 12"));
     }
 
     // ── Stable project ids (M16) ─────────────────────────────────────────────

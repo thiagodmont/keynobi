@@ -109,7 +109,15 @@ Keynobi remembers your choice for each project folder. Projects you had already 
 
 Open **Project App Info** from the Command Palette to edit **Version Name** and **Version Code**. **Application ID** is shown read-only.
 
-Edits are written to `app/build.gradle.kts` or `app/build.gradle`. Projects whose application module is not named `app`, or that set versions in `gradle.properties` or a version catalog, are not supported. Change those in Android Studio.
+Edits are written to `app/build.gradle.kts` or `app/build.gradle`. Commented-out lines are ignored. Version Code must be a whole number from 1 to 2100000000.
+
+A field is shown read-only, with the reason, when Keynobi cannot edit it safely:
+
+- It is set by an expression, such as `libs.versions.code.get().toInt()` or `project.property("appVersion")`. The note gives the line and where the value is probably defined (the version catalog or `gradle.properties`); change it there.
+- It is set in more than one place, for example once per product flavor. The note lists the lines; edit the file directly.
+- It is not set in the build file.
+
+You can still save the other field. If saving fails, or the file already has these values, the reason is shown in the dialog and the file is not changed. Saving keeps the file's permissions. A build file (or `app` folder) that is a symlink leading outside the project is not read or changed. Projects whose application module is not named `app` are not supported.
 
 ---
 
