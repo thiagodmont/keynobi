@@ -127,6 +127,7 @@ describe("build.store", () => {
         origin: null,
         cancelledBy: null,
         launch: null,
+        mappings: [],
       },
     ]);
     expect(buildState.history).toHaveLength(1);
@@ -149,6 +150,7 @@ describe("build.store", () => {
         origin: null,
         cancelledBy: null,
         launch: null,
+        mappings: [],
       },
     ]);
     startBuild("assembleDebug");
@@ -170,6 +172,7 @@ describe("build.store", () => {
         origin: null,
         cancelledBy: null,
         launch: null,
+        mappings: [],
       },
     ]);
     startBuild("assembleDebug");

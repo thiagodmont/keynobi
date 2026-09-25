@@ -1,4 +1,11 @@
-import type { BuildError, BuildLine, BuildRecord, BuildStatus, LaunchTiming } from "@/bindings";
+import type {
+  BuildError,
+  BuildLine,
+  BuildRecord,
+  BuildStatus,
+  LaunchTiming,
+  MappingSnapshot,
+} from "@/bindings";
 
 export function makeBuildLine(overrides: Partial<BuildLine> = {}): BuildLine {
   return {
@@ -39,6 +46,18 @@ export function makeBuildRecord(overrides: Partial<BuildRecord> = {}): BuildReco
     origin: null,
     cancelledBy: null,
     launch: null,
+    mappings: [],
+    ...overrides,
+  };
+}
+
+export function makeMappingSnapshot(overrides: Partial<MappingSnapshot> = {}): MappingSnapshot {
+  return {
+    module: ":app",
+    variant: "release",
+    sha256: "6b1c2f0a".repeat(8),
+    bytes: 48_213_771,
+    pgMapId: "6b1c2f0",
     ...overrides,
   };
 }

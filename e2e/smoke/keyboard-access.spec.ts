@@ -142,6 +142,7 @@ test("an agent's build does not replace the past build being read", async ({ pag
   await tabTo(page, buildsList(page).getByRole("option").first());
   await page.keyboard.press("Enter");
   await expect(page.getByText(/^Viewing build #1 from /)).toBeVisible();
+  await expect(page.getByText("R8 mapping saved: release (map id 6b1c2f0)")).toBeVisible();
 
   await page.evaluate(() => window.__e2e__.startAgentBuild("assembleDebug", "Claude Code", 5_000));
 

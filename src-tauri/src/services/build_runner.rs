@@ -6,6 +6,7 @@ use crate::models::error::AppError;
 use crate::services::build_lock::{self, BuildLock};
 use crate::services::build_parser;
 use crate::services::gradle_modules::{self, GradleModule};
+use crate::services::mapping_snapshots::{self, MappingSource, PreparedMapping};
 use crate::services::process_manager::{self, ProcessId, ProcessManager, ProcessTermination};
 use crate::services::settings_manager::{data_dir, unique_tmp_path, with_data_lock_in};
 use std::collections::VecDeque;
@@ -70,20 +71,24 @@ fn build_log_id(path: &Path) -> Option<u32> {
 
 /// Append `record` to the persisted history, save its log, and rotate logs, all
 /// under the data lock. The history is re-read first so records appended by
-/// another process are kept, and the record's ID is allocated here. Returns the
-/// ID and the history as persisted.
+/// another process are kept, and the record's ID is allocated here. The
+/// build's prepared R8 mappings are published and linked to the record, and
+/// snapshots the kept history no longer references are pruned, in the same
+/// critical section. Returns the ID and the history as persisted.
 fn persist_build_record_in(
     dir: &Path,
     mut record: BuildRecord,
     raw_lines: &VecDeque<String>,
     retention_days: u32,
     max_folder_mb: u32,
+    mappings: Vec<PreparedMapping>,
 ) -> Result<(u32, VecDeque<BuildRecord>), String> {
     with_data_lock_in(dir, || {
         let build_log_dir = dir.join("build-logs");
         let mut history = load_build_history_from(dir);
         let id = next_build_id(&history, &build_log_dir);
         record.id = id;
+        record.mappings = mapping_snapshots::publish_snapshots(dir, mappings);
         history.push_back(record);
         while history.len() > MAX_HISTORY {
             history.pop_front();
@@ -91,12 +96,13 @@ fn persist_build_record_in(
         save_build_history_to(dir, &history)?;
         save_build_log_to(id, raw_lines, &build_log_dir);
         rotate_build_logs(&build_log_dir, retention_days, max_folder_mb, &history);
+        mapping_snapshots::prune_snapshots(dir, &mapping_snapshots::mappings_to_keep(&history));
         Ok((id, history))
     })?
 }
 
-/// Rotate build logs against the persisted history, under the data lock so a
-/// build another process is recording keeps its log.
+/// Rotate build logs and R8 mapping snapshots against the persisted history,
+/// under the data lock so a build another process is recording keeps both.
 pub fn rotate_persisted_build_logs(retention_days: u32, max_folder_mb: u32) -> Result<(), String> {
     let dir = data_dir();
     with_data_lock_in(&dir, || {
@@ -107,6 +113,7 @@ pub fn rotate_persisted_build_logs(retention_days: u32, max_folder_mb: u32) -> R
             max_folder_mb,
             &history,
         );
+        mapping_snapshots::prune_snapshots(&dir, &mapping_snapshots::mappings_to_keep(&history));
     })
 }
 
@@ -870,6 +877,9 @@ pub struct BuildFinalization {
     pub errors: Vec<BuildError>,
     pub origin: Option<BuildActor>,
     pub cancelled_by: Option<BuildActor>,
+    /// Where to look for the R8 mappings the build wrote. Only a successful
+    /// build's are saved.
+    pub mappings: Option<MappingSource>,
 }
 
 pub async fn finalize_completed_build(
@@ -899,6 +909,9 @@ pub async fn finalize_completed_build(
     } else {
         BuildStatus::Failed(result)
     };
+    let mapping_source = finalization
+        .mappings
+        .filter(|_| finalization.success && !finalization.cancelled);
 
     let record_id = record_run(
         build_state,
@@ -914,7 +927,9 @@ pub async fn finalize_completed_build(
             origin: finalization.origin.clone(),
             cancelled_by: finalization.cancelled_by.clone(),
             launch: None,
+            mappings: Vec::new(),
         },
+        mapping_source,
     )
     .await;
 
@@ -1065,12 +1080,19 @@ async fn stop_build(
 /// happens; a failure to clear the file is returned.
 pub async fn clear_history(build_state: &BuildState) -> Result<(), String> {
     build_state.inner.lock().await.history.clear();
-    tokio::task::spawn_blocking(|| {
-        let dir = data_dir();
-        with_data_lock_in(&dir, || save_build_history_to(&dir, &VecDeque::new()))?
-    })
-    .await
-    .map_err(|e| format!("Failed to clear build history: {e}"))?
+    tokio::task::spawn_blocking(|| clear_history_in(&data_dir()))
+        .await
+        .map_err(|e| format!("Failed to clear build history: {e}"))?
+}
+
+/// Save an empty history and remove the mapping snapshots it no longer names.
+fn clear_history_in(dir: &Path) -> Result<(), String> {
+    with_data_lock_in(dir, || {
+        let empty = VecDeque::new();
+        save_build_history_to(dir, &empty)?;
+        mapping_snapshots::prune_snapshots(dir, &mapping_snapshots::mappings_to_keep(&empty));
+        Ok(())
+    })?
 }
 
 /// Record the completed build result and push it to history.
@@ -1107,7 +1129,9 @@ pub async fn record_build_result(
             origin: None,
             cancelled_by: None,
             launch: None,
+            mappings: Vec::new(),
         },
+        None,
     )
     .await;
 }
@@ -1124,6 +1148,7 @@ async fn record_run(
     run_id: ProcessId,
     log: &BuildLog,
     record: BuildRecord,
+    mapping_source: Option<MappingSource>,
 ) -> u32 {
     // Snapshot the run's log before taking the inner lock so we don't hold two
     // locks simultaneously.
@@ -1143,15 +1168,22 @@ async fn record_run(
     }
 
     // Disk I/O runs off the async runtime and outside the build-state lock.
+    // Mappings are copied before the data lock is taken: they can be large,
+    // and other processes wait on that lock for settings and history.
     let record_for_io = record.clone();
     let persisted = tokio::task::spawn_blocking(move || {
         let (settings, _) = crate::services::settings_manager::load_settings();
+        let dir = data_dir();
+        let mappings = mapping_source
+            .map(|source| mapping_snapshots::prepare_snapshots(&dir, &source).mappings)
+            .unwrap_or_default();
         persist_build_record_in(
-            &data_dir(),
+            &dir,
             record_for_io,
             &raw_lines,
             settings.build.build_log_retention_days,
             settings.build.build_log_max_folder_mb,
+            mappings,
         )
     })
     .await
@@ -1444,6 +1476,7 @@ pub async fn start_build(
         origin,
     } = request;
     let started_at = chrono::Utc::now().to_rfc3339();
+    let started = std::time::SystemTime::now();
 
     // The lock first: a build of this process on the same project already
     // holds it, and then the slot below gives the usual answer.
@@ -1547,6 +1580,10 @@ pub async fn start_build(
         started_at,
         project_root,
         origin,
+        mappings: MappingSource {
+            gradle_root,
+            build_started: started,
+        },
         log,
         collector,
         _instrumentation: instrumentation,
@@ -1706,6 +1743,7 @@ struct Run {
     started_at: String,
     project_root: Option<String>,
     origin: BuildActor,
+    mappings: MappingSource,
     log: BuildLog,
     collector: Arc<RunCollector>,
     _instrumentation: Option<crate::services::ui_automator_lock::InstrumentationRun>,
@@ -1815,6 +1853,7 @@ impl Run {
                 errors: errors.clone(),
                 origin: Some(self.origin.clone()),
                 cancelled_by: cancelled_by.clone(),
+                mappings: Some(self.mappings.clone()),
             },
         )
         .await;
@@ -2726,6 +2765,7 @@ mod tests {
             origin: None,
             cancelled_by: None,
             launch: None,
+            mappings: Vec::new(),
         };
         let json = serde_json::to_string(&record).unwrap();
         let parsed: BuildRecord = serde_json::from_str(&json).unwrap();
@@ -2747,6 +2787,7 @@ mod tests {
                 origin: None,
                 cancelled_by: None,
                 launch: None,
+                mappings: Vec::new(),
             })
             .collect();
         // This is the formula that BuildStateInner::new() must use.
@@ -2779,6 +2820,7 @@ mod tests {
                     origin: None,
                     cancelled_by: None,
                     launch: None,
+                    mappings: Vec::new(),
                 });
             }
         }
@@ -2807,6 +2849,7 @@ mod tests {
                 origin: None,
                 cancelled_by: None,
                 launch: None,
+                mappings: Vec::new(),
             })
             .collect();
 
@@ -2893,12 +2936,13 @@ mod tests {
             origin: None,
             cancelled_by: None,
             launch: None,
+            mappings: Vec::new(),
         }
     }
 
     fn persist(dir: &Path, task: &str) -> u32 {
         let lines = VecDeque::from([format!("output of {task}")]);
-        persist_build_record_in(dir, record_named(task), &lines, 7, 100)
+        persist_build_record_in(dir, record_named(task), &lines, 7, 100, vec![])
             .unwrap()
             .0
     }
@@ -2913,7 +2957,7 @@ mod tests {
             }),
             ..record_named(task)
         };
-        persist_build_record_in(dir, record, &VecDeque::new(), 7, 100)
+        persist_build_record_in(dir, record, &VecDeque::new(), 7, 100, vec![])
             .unwrap()
             .0
     }
@@ -3013,6 +3057,205 @@ mod tests {
         assert_eq!(launch_of(dir.path(), 4), Some(cold_launch(812)));
     }
 
+    // ── R8 mapping snapshots ──────────────────────────────────────────────────
+
+    /// A project whose `app` module just wrote `mapping/<variant>/mapping.txt`.
+    fn project_with_mapping(variant: &str, text: &str) -> tempfile::TempDir {
+        let project = tempfile::tempdir().unwrap();
+        let root = project.path();
+        std::fs::write(root.join("settings.gradle.kts"), "include(\":app\")\n").unwrap();
+        let dir = root.join("app/build/outputs/mapping").join(variant);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            root.join("app/build.gradle.kts"),
+            "plugins { id(\"com.android.application\") }\n",
+        )
+        .unwrap();
+        std::fs::write(dir.join("mapping.txt"), text).unwrap();
+        project
+    }
+
+    fn mapping_source(project: &Path) -> MappingSource {
+        MappingSource {
+            gradle_root: project.to_path_buf(),
+            build_started: std::time::SystemTime::now() - std::time::Duration::from_secs(60),
+        }
+    }
+
+    /// What the finalizer does for a successful build of `project`.
+    fn persist_with_mapping(dir: &Path, project: &Path) -> BuildRecord {
+        let prepared = mapping_snapshots::prepare_snapshots(dir, &mapping_source(project));
+        let record = record_named("assembleRelease");
+        let (id, history) =
+            persist_build_record_in(dir, record, &VecDeque::new(), 7, 100, prepared.mappings)
+                .unwrap();
+        history.into_iter().find(|r| r.id == id).unwrap()
+    }
+
+    fn snapshot_saved(dir: &Path, record: &BuildRecord) -> bool {
+        let sha = &record.mappings[0].sha256;
+        mapping_snapshots::snapshot_path(dir, sha)
+            .unwrap()
+            .is_file()
+    }
+
+    #[test]
+    fn a_build_record_names_the_mapping_it_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = project_with_mapping("release", "# pg_map_id: 6b1c2f0\na.B -> a:\n");
+
+        let record = persist_with_mapping(dir.path(), project.path());
+
+        assert_eq!(record.mappings.len(), 1);
+        assert_eq!(record.mappings[0].module, ":app");
+        assert_eq!(record.mappings[0].variant, "release");
+        assert_eq!(record.mappings[0].pg_map_id.as_deref(), Some("6b1c2f0"));
+        assert!(snapshot_saved(dir.path(), &record));
+        let loaded = load_build_history_from(dir.path());
+        assert_eq!(loaded.back().unwrap().mappings, record.mappings);
+    }
+
+    #[test]
+    fn retention_removes_only_mappings_no_kept_build_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = persist_with_mapping(
+            dir.path(),
+            project_with_mapping("release", "one -> a:\n").path(),
+        );
+        let kept = persist_with_mapping(
+            dir.path(),
+            project_with_mapping("release", "two -> a:\n").path(),
+        );
+        assert!(snapshot_saved(dir.path(), &first));
+
+        // Builds without mappings push the first one out of the history.
+        for _ in 0..MAX_HISTORY - 1 {
+            persist(dir.path(), "assembleDebug");
+        }
+
+        assert!(!snapshot_saved(dir.path(), &first));
+        assert!(snapshot_saved(dir.path(), &kept));
+    }
+
+    #[test]
+    fn a_mapping_another_process_recorded_is_kept_by_this_process_build() {
+        let dir = tempfile::tempdir().unwrap();
+        // Another process's build, which this process's history has never seen.
+        let theirs = persist_with_mapping(
+            dir.path(),
+            project_with_mapping("release", "theirs -> a:\n").path(),
+        );
+        let mine = persist_with_mapping(
+            dir.path(),
+            project_with_mapping("release", "mine -> a:\n").path(),
+        );
+
+        assert!(snapshot_saved(dir.path(), &theirs));
+        assert!(snapshot_saved(dir.path(), &mine));
+        let merged = merge_history(&VecDeque::from([mine]), load_build_history_from(dir.path()));
+        let named: Vec<usize> = merged.iter().map(|r| r.mappings.len()).collect();
+        assert_eq!(named, vec![1, 1]);
+    }
+
+    #[test]
+    fn clearing_the_history_removes_its_mappings() {
+        let dir = tempfile::tempdir().unwrap();
+        let record = persist_with_mapping(
+            dir.path(),
+            project_with_mapping("release", "gone -> a:\n").path(),
+        );
+        clear_history_in(dir.path()).unwrap();
+        assert!(!snapshot_saved(dir.path(), &record));
+    }
+
+    #[test]
+    fn a_mapping_that_cannot_be_copied_leaves_the_build_recorded() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = project_with_mapping("release", "x -> a:\n");
+        // The snapshot folder cannot be created: a file has its name.
+        std::fs::write(mapping_snapshots::mappings_dir(dir.path()), "").unwrap();
+
+        let record = persist_with_mapping(dir.path(), project.path());
+
+        assert!(record.mappings.is_empty());
+        assert_eq!(load_build_history_from(dir.path()).len(), 1);
+    }
+
+    #[test]
+    fn a_mapping_that_cannot_be_published_leaves_the_build_recorded() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let project = project_with_mapping("release", "x -> a:\n");
+        let prepared =
+            mapping_snapshots::prepare_snapshots(dir.path(), &mapping_source(project.path()));
+        assert_eq!(prepared.mappings.len(), 1);
+        let folder = mapping_snapshots::mappings_dir(dir.path());
+        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let persisted = persist_build_record_in(
+            dir.path(),
+            record_named("assembleRelease"),
+            &VecDeque::new(),
+            7,
+            100,
+            prepared.mappings,
+        );
+
+        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (_, history) = persisted.unwrap();
+        assert!(history.back().unwrap().mappings.is_empty());
+    }
+
+    #[test]
+    fn history_saved_before_mappings_were_kept_still_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(BUILD_HISTORY_FILE),
+            r#"[{"id":4,"task":"assembleRelease","status":{"state":"cancelled"},"errors":[],
+                "startedAt":"2026-01-01T00:00:00Z","projectRoot":"/p"}]"#,
+        )
+        .unwrap();
+
+        let history = load_build_history_from(dir.path());
+        assert_eq!(history.len(), 1);
+        assert!(history[0].mappings.is_empty());
+
+        // Its first save with mappings kept prunes nothing it should not.
+        let project = project_with_mapping("release", "new -> a:\n");
+        let record = persist_with_mapping(dir.path(), project.path());
+        assert!(snapshot_saved(dir.path(), &record));
+        assert_eq!(load_build_history_from(dir.path()).len(), 2);
+    }
+
+    #[tokio::test]
+    async fn only_a_successful_build_saves_its_mappings() {
+        let _history = PERSISTED_HISTORY.lock().await;
+        let project = project_with_mapping("release", "# pg_map_id: 1a2b3c4\nx -> a:\n");
+        for (success, cancelled, saved) in [(true, false, 1), (false, false, 0), (false, true, 0)] {
+            let bs = BuildState::new();
+            let log = start_run(&bs, 7).await;
+            let event = finalize_completed_build(
+                &bs,
+                BuildFinalization {
+                    success,
+                    cancelled,
+                    mappings: Some(mapping_source(project.path())),
+                    ..finalization(7, log, "assembleRelease")
+                },
+            )
+            .await;
+
+            let inner = bs.inner.lock().await;
+            let record = inner.history.iter().find(|r| r.id == event.record_id);
+            let mappings = record.map(|r| r.mappings.len());
+            assert_eq!(
+                mappings,
+                Some(saved),
+                "success {success}, cancelled {cancelled}"
+            );
+        }
+    }
+
     #[test]
     fn a_build_recorded_by_another_process_is_kept() {
         let dir = tempfile::tempdir().unwrap();
@@ -3102,6 +3345,7 @@ mod tests {
             origin: None,
             cancelled_by: None,
             launch: None,
+            mappings: Vec::new(),
         });
 
         rotate_build_logs(dir_path, 365, 1000, &history);
@@ -3202,6 +3446,7 @@ mod tests {
             errors: vec![],
             origin: None,
             cancelled_by: None,
+            mappings: None,
         }
     }
 
@@ -3229,6 +3474,7 @@ mod tests {
                 errors: vec![],
                 origin: None,
                 cancelled_by: None,
+                mappings: None,
             },
         )
         .await;
@@ -3267,6 +3513,7 @@ mod tests {
                 }],
                 origin: None,
                 cancelled_by: None,
+                mappings: None,
             },
         )
         .await;
@@ -3324,6 +3571,7 @@ mod tests {
                 ],
                 origin: None,
                 cancelled_by: None,
+                mappings: None,
             },
         )
         .await;
@@ -3353,6 +3601,7 @@ mod tests {
                 errors: vec![],
                 origin: None,
                 cancelled_by: None,
+                mappings: None,
             },
         )
         .await;

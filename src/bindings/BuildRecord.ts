@@ -3,6 +3,7 @@ import type { BuildActor } from "./BuildActor";
 import type { BuildError } from "./BuildError";
 import type { BuildStatus } from "./BuildStatus";
 import type { LaunchTiming } from "./LaunchTiming";
+import type { MappingSnapshot } from "./MappingSnapshot";
 
 /**
  * A record of a past build kept in the build history ring-buffer.
@@ -24,4 +25,9 @@ cancelledBy: BuildActor | null,
 /**
  * How long the app took to launch when Run App installed this build's APK.
  */
-launch: LaunchTiming | null, };
+launch: LaunchTiming | null, 
+/**
+ * The R8 mappings this build wrote, as saved in the data directory. Empty
+ * for builds that wrote none and for records saved before mappings were kept.
+ */
+mappings: Array<MappingSnapshot>, };

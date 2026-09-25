@@ -306,7 +306,9 @@ describe("the mock backend matches the real payloads", () => {
   it("command responses", async () => {
     const problems = [];
     let checked = 0;
-    // Commands that look something up need something to find.
+    // Commands that look something up need something to find. A release
+    // build's record carries a saved mapping, so its shape is compared too.
+    addMockPastBuild({ task: "assembleRelease", state: "success" });
     const args = {
       get_build_log_entries: { id: addMockPastBuild({ task: "assembleDebug", state: "success" }) },
       launch_app_on_device: { serial: "emulator-5554", package: "com.example.mockapp" },

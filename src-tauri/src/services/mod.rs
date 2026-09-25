@@ -16,6 +16,7 @@ pub mod log_pipeline;
 pub mod log_store;
 pub mod log_stream;
 pub mod logcat;
+pub mod mapping_snapshots;
 pub mod mcp_activity;
 pub mod mcp_attach;
 pub mod mcp_relay;

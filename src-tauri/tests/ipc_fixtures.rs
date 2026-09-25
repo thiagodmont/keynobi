@@ -224,6 +224,25 @@ fn launch_timings() -> Vec<LaunchTiming> {
     ]
 }
 
+fn mapping_snapshots() -> Vec<MappingSnapshot> {
+    vec![
+        MappingSnapshot {
+            module: ":app".into(),
+            variant: "release".into(),
+            sha256: "6b1c2f0a".repeat(8),
+            bytes: 48_213_771,
+            pg_map_id: Some("6b1c2f0".into()),
+        },
+        MappingSnapshot {
+            module: ":wear".into(),
+            variant: "paidRelease".into(),
+            sha256: "0f".repeat(32),
+            bytes: 1_024,
+            pg_map_id: None,
+        },
+    ]
+}
+
 fn build_result(success: bool) -> BuildResult {
     BuildResult {
         success,
@@ -513,6 +532,7 @@ fn fixtures() -> Fixtures {
             origin: actor.clone(),
             cancelled_by: actor,
             launch: None,
+            mappings: vec![],
         })
         .chain(launch_timings().into_iter().map(|launch| BuildRecord {
             id: 20,
@@ -524,9 +544,11 @@ fn fixtures() -> Fixtures {
             origin: Some(BuildActor::App),
             cancelled_by: None,
             launch: Some(launch),
+            mappings: mapping_snapshots(),
         }))
         .collect();
     f.add("BuildRecord", &records);
+    f.add("MappingSnapshot", &mapping_snapshots());
     f.add(
         "LaunchState",
         &[

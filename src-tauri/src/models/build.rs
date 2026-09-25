@@ -152,6 +152,29 @@ pub struct BuildRecord {
     /// How long the app took to launch when Run App installed this build's APK.
     #[serde(default)]
     pub launch: Option<LaunchTiming>,
+    /// The R8 mappings this build wrote, as saved in the data directory. Empty
+    /// for builds that wrote none and for records saved before mappings were kept.
+    #[serde(default)]
+    pub mappings: Vec<MappingSnapshot>,
+}
+
+/// A copy of one R8 `mapping.txt` a build wrote, saved as
+/// `mappings/<sha256>.txt` in the data directory.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct MappingSnapshot {
+    /// Gradle path of the application module (`:app`; `:` for the root project).
+    pub module: String,
+    /// The directory AGP wrote the mapping to, named after the variant
+    /// (`release`, `paidRelease`).
+    pub variant: String,
+    /// SHA-256 of the mapping, lowercase hex. Names the saved copy.
+    pub sha256: String,
+    #[ts(type = "number")]
+    pub bytes: u64,
+    /// The `# pg_map_id:` header, when the mapping has one.
+    pub pg_map_id: Option<String>,
 }
 
 /// How Android started an activity, as `am start -W` reports it (Android 10+).
@@ -271,6 +294,23 @@ mod tests {
         assert_eq!(record.origin, None);
         assert_eq!(record.cancelled_by, None);
         assert_eq!(record.launch, None);
+        assert!(record.mappings.is_empty());
+    }
+
+    #[test]
+    fn a_record_keeps_its_mappings_through_json() {
+        let json = r#"{"id":4,"task":"assembleRelease","status":{"state":"cancelled"},
+            "errors":[],"startedAt":"2026-01-01T00:00:00Z","projectRoot":"/p",
+            "mappings":[{"module":":app","variant":"release","sha256":"ab","bytes":12,
+            "pgMapId":"6b1c2f0"},{"module":":app","variant":"paidRelease","sha256":"cd",
+            "bytes":3,"pgMapId":null}]}"#;
+        let record: BuildRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.mappings.len(), 2);
+        assert_eq!(record.mappings[0].pg_map_id.as_deref(), Some("6b1c2f0"));
+        assert_eq!(record.mappings[1].pg_map_id, None);
+        let back: BuildRecord =
+            serde_json::from_value(serde_json::to_value(&record).unwrap()).unwrap();
+        assert_eq!(back.mappings, record.mappings);
     }
 
     #[test]
