@@ -16,7 +16,7 @@ import {
   type McpSetupStatus,
   type LogStats,
 } from "@/lib/tauri-api";
-import { Alert } from "@/components/ui";
+import { Alert, modalFocus } from "@/components/ui";
 
 // ── Panel visibility signal (module-level, like SettingsPanel) ────────────────
 
@@ -768,6 +768,7 @@ export function HealthPanel(): JSX.Element {
 
       {/* Panel */}
       <div
+        ref={(el) => modalFocus(el, { onEscape: closeHealthPanel })}
         role="dialog"
         aria-modal="true"
         aria-label="Health Center"

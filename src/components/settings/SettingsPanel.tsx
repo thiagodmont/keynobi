@@ -10,7 +10,7 @@ import {
   LOGCAT_MIN_UI_LINES,
 } from "@/lib/logcat-ui-lines";
 import { AndroidSdkStatus, JavaStatus } from "@/components/settings/ToolStatus";
-import { Icon } from "@/components/ui";
+import { Icon, modalFocus } from "@/components/ui";
 
 type Category = "user" | "tools" | "advanced";
 
@@ -64,6 +64,7 @@ export function SettingsPanel(): JSX.Element {
       />
       {/* Panel */}
       <div
+        ref={(el) => modalFocus(el, { initialFocus: () => searchRef })}
         role="dialog"
         aria-modal="true"
         aria-label="Settings"

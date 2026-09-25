@@ -2,6 +2,7 @@ import { type JSX, Show, For, createSignal, createEffect, createMemo, onCleanup 
 import { Portal } from "solid-js/web";
 import { searchActions } from "@/lib/action-registry";
 import { Icon } from "@/components/ui/Icon";
+import { modalFocus } from "@/components/ui/Dialog/modal-focus";
 import styles from "./CommandPalette.module.css";
 
 export type PaletteMode = "commands";
@@ -90,6 +91,7 @@ export function CommandPalette(): JSX.Element {
       <Portal>
         <div data-testid="palette-backdrop" class={styles.backdrop} onClick={() => closePalette()}>
           <div
+            ref={(el) => modalFocus(el, { initialFocus: () => inputRef })}
             role="dialog"
             aria-modal="true"
             aria-label="Command Palette"

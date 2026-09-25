@@ -2,7 +2,7 @@ import { type JSX, Show, For, createSignal, onMount, onCleanup } from "solid-js"
 import { variantState, selectVariant, loadVariants } from "@/stores/variant.store";
 import { projectState } from "@/stores/project.store";
 import { isActiveProjectTrusted } from "@/stores/projects.store";
-import { Icon } from "@/components/ui";
+import { Icon, modalFocus } from "@/components/ui";
 import { showToast } from "@/components/ui";
 import { formatError } from "@/lib/tauri-api";
 
@@ -146,6 +146,10 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
       }}
     >
       <div
+        ref={(el) => modalFocus(el)}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Select Build Variant"
         style={{
           background: "var(--bg-secondary)",
           border: "1px solid var(--border)",

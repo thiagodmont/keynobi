@@ -9,7 +9,7 @@
  * Logcat and devices are not affected.
  */
 
-import { type JSX, createSignal, Show, For, onMount, onCleanup } from "solid-js";
+import { type JSX, createEffect, createSignal, on, Show } from "solid-js";
 import { projectState } from "@/stores/project.store";
 import { projectsState } from "@/stores/projects.store";
 import { uiState, toggleSidebar } from "@/stores/ui.store";
@@ -23,7 +23,14 @@ import {
   trustProject,
   revokeProjectTrust,
 } from "@/services/project.service";
-import { Badge, Icon, MenuList, MenuListItem } from "@/components/ui";
+import {
+  Badge,
+  ContextMenu,
+  Icon,
+  Listbox,
+  MenuListItem,
+  type ListboxContextMenuRequest,
+} from "@/components/ui";
 import type { ProjectEntry } from "@/bindings";
 
 // ── Avatar color ──────────────────────────────────────────────────────────────
@@ -76,25 +83,33 @@ interface ProjectRowProps {
   entry: ProjectEntry;
   isActive: boolean;
   collapsed: boolean;
-  onContextMenu: (e: MouseEvent) => void;
+  editing: boolean;
+  onStartRename: () => void;
+  onEndRename: () => void;
 }
 
 function ProjectRow(props: ProjectRowProps): JSX.Element {
   const [hover, setHover] = createSignal(false);
-  const [editing, setEditing] = createSignal(false);
   // eslint-disable-next-line solid/reactivity
   const [editValue, setEditValue] = createSignal(props.entry.name);
+  const editing = () => props.editing;
+
+  createEffect(
+    on(editing, (isEditing) => {
+      if (isEditing) setEditValue(props.entry.name);
+    })
+  );
 
   const color = () => avatarColor(props.entry.id);
   const letters = () => initials(props.entry.name);
 
   function startEdit(e: MouseEvent) {
     e.stopPropagation();
-    setEditValue(props.entry.name);
-    setEditing(true);
+    props.onStartRename();
   }
 
   function commitEdit() {
+    if (!editing()) return;
     const trimmed = editValue().trim();
     if (trimmed && trimmed !== props.entry.name) {
       renameProjectEntry(props.entry.id, trimmed).catch((e) => {
@@ -102,27 +117,22 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
         showToast(`Failed to rename project: ${formatError(e)}`, "error");
       });
     }
-    setEditing(false);
+    props.onEndRename();
   }
 
   function handleKeyDown(e: KeyboardEvent) {
     if (e.key === "Enter") commitEdit();
-    if (e.key === "Escape") setEditing(false);
+    if (e.key === "Escape") {
+      // Escape ends the rename only; it must not also close anything behind it.
+      e.stopPropagation();
+      props.onEndRename();
+    }
   }
 
   return (
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={() => {
-        if (!editing())
-          selectProject(props.entry).catch((e) => {
-            console.error(e);
-            showToast(`Failed to open project: ${formatError(e)}`, "error");
-          });
-      }}
-      onContextMenu={(e) => props.onContextMenu(e)}
-      title={props.collapsed ? props.entry.name : undefined}
       style={{
         display: "flex",
         "align-items": "flex-start",
@@ -259,7 +269,7 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
           </div>
         </div>
 
-        {/* Hover actions */}
+        {/* Pointer shortcuts; from the keyboard the same actions are in the row's menu. */}
         <Show when={hover() && !editing()}>
           <div
             style={{
@@ -272,6 +282,7 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
           >
             <button
               onClick={startEdit}
+              tabIndex={-1}
               title="Rename"
               style={{
                 background: "none",
@@ -301,6 +312,7 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
                     showToast(`Failed to remove project: ${formatError(e)}`, "error");
                   });
                 }}
+                tabIndex={-1}
                 title="Remove from list"
                 style={{
                   background: "none",
@@ -331,51 +343,41 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-interface ProjectMenu {
-  entry: ProjectEntry;
-  x: number;
-  y: number;
-}
-
 const MENU_WIDTH = 176;
-const MENU_HEIGHT = 64;
 
 export function ProjectSidebar(): JSX.Element {
   const collapsed = () => uiState.sidebarCollapsed;
-  const [menu, setMenu] = createSignal<ProjectMenu | null>(null);
-  let menuRef: HTMLDivElement | undefined;
-
-  function openMenu(entry: ProjectEntry, e: MouseEvent): void {
-    e.preventDefault();
-    setMenu({
-      entry,
-      x: Math.min(Math.max(8, e.clientX), window.innerWidth - MENU_WIDTH - 8),
-      y: Math.min(Math.max(8, e.clientY), window.innerHeight - MENU_HEIGHT - 8),
-    });
-  }
+  const [menu, setMenu] = createSignal<ListboxContextMenuRequest<ProjectEntry> | null>(null);
+  const [renamingId, setRenamingId] = createSignal<string | null>(null);
+  let listRef!: HTMLDivElement;
 
   function runFromMenu(action: (entry: ProjectEntry) => Promise<void>): void {
     const current = menu();
     setMenu(null);
-    if (current) action(current.entry).catch(console.error);
+    if (current) action(current.item).catch(console.error);
   }
 
-  onMount(() => {
-    function closeOnOutsideClick(e: MouseEvent): void {
-      const target = e.target as globalThis.Node | null;
-      if (target && menuRef?.contains(target)) return;
-      setMenu(null);
-    }
-    function closeOnEscape(e: KeyboardEvent): void {
-      if (e.key === "Escape") setMenu(null);
-    }
-    document.addEventListener("mousedown", closeOnOutsideClick);
-    document.addEventListener("keydown", closeOnEscape);
-    onCleanup(() => {
-      document.removeEventListener("mousedown", closeOnOutsideClick);
-      document.removeEventListener("keydown", closeOnEscape);
+  function startRename(entry: ProjectEntry): void {
+    setMenu(null);
+    setRenamingId(entry.id);
+  }
+
+  function endRename(entry: ProjectEntry): void {
+    setRenamingId(null);
+    // The rename field held focus; give it back to the project's row.
+    const option = Array.from(listRef.querySelectorAll<HTMLElement>('[role="option"]')).find(
+      (el) => el.dataset.key === entry.id
+    );
+    option?.focus();
+  }
+
+  function open(entry: ProjectEntry): void {
+    if (renamingId() === entry.id) return;
+    selectProject(entry).catch((e) => {
+      console.error(e);
+      showToast(`Failed to open project: ${formatError(e)}`, "error");
     });
-  });
+  }
 
   return (
     <div
@@ -455,6 +457,7 @@ export function ProjectSidebar(): JSX.Element {
 
       {/* ── Project list ── */}
       <div
+        ref={listRef}
         style={{
           flex: "1",
           "overflow-y": "auto",
@@ -482,16 +485,27 @@ export function ProjectSidebar(): JSX.Element {
             </Show>
           }
         >
-          <For each={projectsState.projects}>
+          <Listbox
+            label="Projects"
+            items={projectsState.projects}
+            getKey={(entry) => entry.id}
+            isSelected={(entry) => entry.path === projectState.projectRoot}
+            getOptionLabel={(entry) => (collapsed() ? entry.name : undefined)}
+            getOptionTitle={(entry) => (collapsed() ? entry.name : undefined)}
+            onSelect={open}
+            onContextMenu={setMenu}
+          >
             {(entry) => (
               <ProjectRow
-                entry={entry}
-                isActive={entry.path === projectState.projectRoot}
+                entry={entry()}
+                isActive={entry().path === projectState.projectRoot}
                 collapsed={collapsed()}
-                onContextMenu={(e) => openMenu(entry, e)}
+                editing={renamingId() === entry().id}
+                onStartRename={() => startRename(entry())}
+                onEndRename={() => endRename(entry())}
               />
             )}
-          </For>
+          </Listbox>
         </Show>
       </div>
 
@@ -545,22 +559,18 @@ export function ProjectSidebar(): JSX.Element {
 
       <Show when={menu()}>
         {(open) => (
-          <MenuList
-            role="menu"
-            surface="floating"
-            listRef={(el) => {
-              menuRef = el;
-            }}
-            style={{
-              position: "fixed",
-              left: `${open().x}px`,
-              top: `${open().y}px`,
-              width: `${MENU_WIDTH}px`,
-              "z-index": 1000,
-            }}
+          <ContextMenu
+            x={open().x}
+            y={open().y}
+            width={MENU_WIDTH}
+            label={`Actions for ${open().item.name}`}
+            onClose={() => setMenu(null)}
           >
+            <MenuListItem role="menuitem" onClick={() => startRename(open().item)}>
+              Rename…
+            </MenuListItem>
             <Show
-              when={open().entry.trusted === true}
+              when={open().item.trusted === true}
               fallback={
                 <MenuListItem role="menuitem" onClick={() => runFromMenu(trustProject)}>
                   Trust Project
@@ -571,7 +581,7 @@ export function ProjectSidebar(): JSX.Element {
                 Revoke Trust
               </MenuListItem>
             </Show>
-            <Show when={open().entry.path !== projectState.projectRoot}>
+            <Show when={open().item.path !== projectState.projectRoot}>
               <MenuListItem
                 role="menuitem"
                 destructive
@@ -580,7 +590,7 @@ export function ProjectSidebar(): JSX.Element {
                 Remove from List
               </MenuListItem>
             </Show>
-          </MenuList>
+          </ContextMenu>
         )}
       </Show>
     </div>

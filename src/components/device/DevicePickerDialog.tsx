@@ -7,7 +7,7 @@ import { type JSX, For, Show, createSignal, createMemo } from "solid-js";
 import { deviceState, setLaunchingAvd } from "@/stores/device.store";
 import { launchAvd } from "@/lib/tauri-api";
 import type { Device, AvdInfo } from "@/bindings";
-import { Icon } from "@/components/ui";
+import { Icon, modalFocus } from "@/components/ui";
 
 // ── Module-level promise resolver ─────────────────────────────────────────────
 
@@ -112,6 +112,10 @@ export function DevicePickerDialog(): JSX.Element {
       >
         {/* Dialog */}
         <div
+          ref={(el) => modalFocus(el, { onEscape: cancel })}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="device-picker-title"
           onClick={(e) => e.stopPropagation()}
           style={{
             background: "var(--bg-secondary)",
@@ -135,6 +139,7 @@ export function DevicePickerDialog(): JSX.Element {
             }}
           >
             <div
+              id="device-picker-title"
               style={{
                 "font-size": "13px",
                 "font-weight": "600",
