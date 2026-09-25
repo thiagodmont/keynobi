@@ -1,0 +1,40 @@
+e2e/fixtures/app.ts
+  s_1e114e823b9048::t_f191b4f7a45cd8 11-12
+  s_1e114e823b9048::t_11fff16ea19835 2,9-10
+src/test/mock-backend/build.ts
+  s_1e114e823b9048::t_72b7604d837b52 34-39
+  s_1e114e823b9048::t_96daa14fb01136 184
+  s_1e114e823b9048::t_fa7e76b2341694 56-59,79-84
+  s_1e114e823b9048::t_1a9af61fd6a775 1-8,18,24-33,40,60-78,85-115,123-124,126,131-132,144,157-168,194-209
+e2e/smoke/keyboard-access.spec.ts
+  s_1e114e823b9048::t_9694690dafacec 42-49,51-52
+  s_1e114e823b9048::t_0a687dcf822ba2 224
+  s_1e114e823b9048::t_e73c5cd7d27399 7
+  s_1e114e823b9048::t_3f9d702da5b3eb 1-6,8-41,50,53-202,204-205,215-220,222-223,240-249,251-254,256
+  s_1e114e823b9048::t_81e13894dc649e 203,206-214
+  s_1e114e823b9048::t_dc2e23e975946d 221,225-239,250,255
+  s_1e114e823b9048::t_20767f1d3e8ff8 257-271
+src/test/mock-backend/index.ts
+  s_1e114e823b9048::t_196dd54842c790 73
+  s_1e114e823b9048::t_183d26e54410cb 4
+  s_1e114e823b9048::t_0877a936df5714 71-72
+src/test/mock-backend/devices.ts
+  s_1e114e823b9048::t_2750d602e1a766 39,41-42
+  s_1e114e823b9048::t_aefe64c437157f 14-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3f2328057b0a0e65d69d9e3b125031b091ba5c62",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}

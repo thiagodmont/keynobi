@@ -1,0 +1,67 @@
+src/components/build/BuildPanel.component.test.tsx
+  s_1e114e823b9048::t_5b76b653312250 6,8,11,16-17
+  s_1e114e823b9048::t_30898ce54145b8 159,213
+  s_1e114e823b9048::t_006d5e5ac262df 133-158,160-212,214-283
+  s_1e114e823b9048::t_de524e5ad5209d 44,77,86,89,95
+  s_1e114e823b9048::t_7b0f300a4ae48f 284-285
+src/stores/build.store.ts
+  s_1e114e823b9048::t_69469724252d37 296
+  s_1e114e823b9048::t_5e83909347df61 369
+  s_1e114e823b9048::t_6b32335e62bc36 179,265-278
+  s_1e114e823b9048::t_28ae1ecedbfee1 3-10
+  s_1e114e823b9048::t_bbf22cc780e812 90
+  s_1e114e823b9048::t_2573bd02d21108 137-178
+  s_1e114e823b9048::t_7d23e0ca5c21c6 353
+  s_1e114e823b9048::t_756bee01cfa2f0 34-53
+  s_1e114e823b9048::t_f663064139a4e4 180
+src/components/build/BuildHistoryPanel.tsx
+  s_1e114e823b9048::t_0ac7a22a4a8203 63-64
+  s_1e114e823b9048::t_d580a43a6ca3cf 145
+  s_1e114e823b9048::t_789cb332997e53 1,4-5,10,55-61,65,72-78,111,135-144,146,148,150-151,170-263
+  s_1e114e823b9048::t_2a9bfeb3e28ced 62,66,71
+src/lib/build-actor.ts
+  s_1e114e823b9048::t_cca759d382944c 32-48
+src/components/build/BuildHistoryView.tsx
+  s_1e114e823b9048::t_41ed035f6b3465 1-72,74-81,84-127
+  s_1e114e823b9048::t_4010a64b3cdefc 73,82-83
+src/components/build/BuildHistoryView.module.css
+  s_1e114e823b9048::t_1d2338ac1f2061 1-46
+src/components/build/BuildPanel.tsx
+  s_1e114e823b9048::t_eb414fafca36d9 44,51-54
+  s_1e114e823b9048::t_33f2cf69f48fe0 26,32,35-36,47-48,57-59,61-66,68,70-72,75-76,78-80
+  s_1e114e823b9048::t_3c77c86a011c2a 329
+  s_1e114e823b9048::t_98702aa44884fe 332,337-346,348-363,365-366,368,370-375
+  s_1e114e823b9048::t_81424da1ee9a1a 141
+  s_1e114e823b9048::t_778b9c97e58616 27-31
+  s_1e114e823b9048::t_4a8da33391f86e 347
+  s_1e114e823b9048::t_1bac55463b9417 1,8,10-12
+  s_1e114e823b9048::t_c11b2802e3691c 117-118,126
+  s_1e114e823b9048::t_82edcfd1a97199 587
+  s_1e114e823b9048::t_334c2a67cc17ec 364
+  s_1e114e823b9048::t_530bc75e975733 43,55
+src/components/build/build-history-log.ts
+  s_1e114e823b9048::t_e29fa282b1ac5e 25-26,29
+  s_1e114e823b9048::t_e9edda07afe556 2-24,27-28,30-55
+  s_1e114e823b9048::t_0a6211d40a1277 1
+src/stores/build.store.history-view.test.ts
+  s_1e114e823b9048::t_5430f77bbdbb98 1-136
+src/components/build/build-history-log.test.ts
+  s_1e114e823b9048::t_fa7e76b2341694 73-75
+  s_1e114e823b9048::t_7fd2eb668f0b7a 1-72,76-109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1ddc13fef0f9c3a2a8b76fc1b2944b4674213b7c",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
