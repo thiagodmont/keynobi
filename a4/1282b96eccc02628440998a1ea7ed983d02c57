@@ -65,6 +65,7 @@ src/test/mock-backend/devices.ts
   s_1e114e823b9048::t_4aebfe530776e5 1-6,9
   s_1e114e823b9048::t_9386b31f8cb5fb 80-89,98-117
   s_1e114e823b9048::t_9dce5cf54474a3 47-79,90-97,118-130
+  s_1e114e823b9048::t_46a4de8edc0fff 7-8
 src/components/device/ExitReasonsDialog.module.css
   s_1e114e823b9048::t_43ea1e3fd10025 1-119
 src-tauri/tests/ipc_fixtures.rs
