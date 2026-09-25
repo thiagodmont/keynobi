@@ -277,6 +277,15 @@ Virtual devices:
 
 Wireless debugging pairing is not built in. Pair with `adb pair` and `adb connect` in a terminal; the device then appears in the list.
 
+### App exit reasons
+
+Android 11 (API 30) and later remember why each of an app's processes ended: a crash, a native crash, an ANR, the low-memory killer, the user swiping it away, a system kill, and so on. Open **Show App Exit Reasons** from the Command Palette to see that history for the selected device, newest first, with the time (the device's local time), the process, what the app was doing (foreground, cached, …), its memory, and the system's description.
+
+- It shows exits that never reached Logcat, for example a crash while Logcat was not running. Stack traces are only in Logcat, and only if it was running at the time.
+- It reads your project's app: the one build of its application ID installed on the device (such as `com.example.app.debug`). When the project has several application IDs, or several builds of the app are installed, type the package in the **Package** field and press **Refresh**. You can read any other installed app the same way.
+- On Android 10 and older the dialog says the device does not keep this history.
+- Android keeps a limited number of exits per app; Keynobi shows at most the newest 100.
+
 ---
 
 ## Settings and Health
@@ -328,6 +337,7 @@ AI clients can:
 
 - Run Gradle tasks and read structured build errors.
 - Read logcat and crash logs.
+- Read why the app's processes exited (`get_exit_reasons`, Android 11+), including crashes and ANRs that never reached logcat.
 - Inspect devices and app runtime state.
 - Install, launch, stop, and restart apps.
 - Inspect the UI hierarchy and drive the device UI: tap, type, swipe, scroll, press keys, open deep links, rotate, toggle network, and grant or revoke permissions.
@@ -422,6 +432,7 @@ Command Palette actions without a shortcut:
 - Cancel Build
 - Clean Project
 - Manage Virtual Devices (toggles the Devices sidebar, same as `Cmd+3`)
+- Show App Exit Reasons
 - Copy MCP Setup Commands
 
 In the Logcat query bar: **Enter** commits a pill, **Up/Down** and **Tab** work with suggestions, **Backspace** in an empty bar removes the last pill, and **Esc** closes suggestions, then clears the query.
@@ -431,7 +442,7 @@ In the Logcat query bar: **Enter** commits a pill, **Up/Down** and **Tab** work 
 - **Lists** (projects, connected devices, builds): each list is one Tab stop. Up/Down, Home, and End move within it; Enter or Space selects. Shift+F10, or the context-menu key, opens the actions of the focused project or running emulator.
 - **Row action menus** (Shift+F10 or right-click): focus moves to the first item. Up/Down move, Enter runs an item, Esc or Tab closes the menu and returns focus to the row.
 - **More options** menus: Up/Down highlight an item, Enter runs it, Esc closes the menu.
-- **Dialogs** (Settings, Health Center, MCP Activity, Command Palette, confirmations, and the device and variant pickers): focus moves into the dialog and stays there while it is open. Esc closes it, and focus returns to where it was.
+- **Dialogs** (Settings, Health Center, MCP Activity, Command Palette, App Exit Reasons, confirmations, and the device and variant pickers): focus moves into the dialog and stays there while it is open. Esc closes it, and focus returns to where it was.
 - The shortcuts above do not run while a dialog or menu is open.
 
 ---

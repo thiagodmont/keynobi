@@ -1,4 +1,12 @@
-import type { Device, AvdInfo, UiHierarchySnapshot, LaunchResult, LaunchTiming } from "@/bindings";
+import type {
+  AppExitReasons,
+  AppExitRecord,
+  Device,
+  AvdInfo,
+  UiHierarchySnapshot,
+  LaunchResult,
+  LaunchTiming,
+} from "@/bindings";
 import { attachMockLaunch } from "./build";
 import { triggerEvent } from "./events";
 
@@ -36,6 +44,90 @@ export const mockAvd: AvdInfo = {
 
 let selectedDevice: string | null = null;
 
+function mockExitRecord(
+  time: string,
+  pid: number,
+  reason: AppExitRecord["reason"],
+  reasonCode: number,
+  reasonLabel: string,
+  importance: number,
+  importanceName: string,
+  description: string | null
+): AppExitRecord {
+  return {
+    timestamp: time.replace("T", " "),
+    timestampLocal: time,
+    pid,
+    processName: "com.example.mockapp.debug",
+    reason,
+    reasonCode,
+    reasonLabel,
+    subReasonCode: 0,
+    subReason: "UNKNOWN",
+    status: 0,
+    importance,
+    importanceName,
+    pssKb: 56_320,
+    rssKb: 130_048,
+    description,
+  };
+}
+
+/** A device's exit history for the project's app: a crash, an ANR, and two kills. */
+export function mockExitReasons(serial: string, pkg: string | null): AppExitReasons {
+  const records = [
+    mockExitRecord(
+      "2026-09-25T10:15:03.482",
+      12345,
+      "crash",
+      4,
+      "APP CRASH(EXCEPTION)",
+      100,
+      "foreground",
+      "crash"
+    ),
+    mockExitRecord(
+      "2026-09-25T09:58:40.004",
+      12001,
+      "anr",
+      6,
+      "ANR",
+      100,
+      "foreground",
+      "Input dispatching timed out (com.example.mockapp.debug/.MainActivity is not responding. Waited 5001ms for FocusEvent(hasFocus=true))"
+    ),
+    mockExitRecord(
+      "2026-09-25T09:12:15.300",
+      11876,
+      "lowMemory",
+      3,
+      "LOW_MEMORY",
+      400,
+      "cached",
+      null
+    ),
+    mockExitRecord(
+      "2026-09-24T18:02:55.781",
+      10442,
+      "userRequested",
+      10,
+      "USER REQUESTED",
+      100,
+      "foreground",
+      "remove task"
+    ),
+  ];
+  return {
+    serial,
+    package: pkg ?? "com.example.mockapp.debug",
+    apiLevel: 34,
+    supported: true,
+    message: null,
+    records,
+    totalRecords: records.length,
+  };
+}
+
 export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
   return {
     list_adb_devices: () => [...mockDevices],
@@ -69,6 +161,10 @@ export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
       return { output: "Status: ok\nLaunchState: COLD\nTotalTime: 812\nWaitTime: 815", timing };
     },
     stop_app_on_device: () => undefined,
+    get_exit_reasons: (args: unknown) => {
+      const { serial, package: pkg } = (args ?? {}) as { serial?: string; package?: string | null };
+      return mockExitReasons(serial ?? mockEmulator.serial, pkg ?? null);
+    },
     list_system_images_cmd: () => [],
     list_device_definitions_cmd: () => [],
     create_avd_device: () => [mockAvd],

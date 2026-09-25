@@ -8,8 +8,8 @@ use commands::build::{
     get_build_log_entries, get_build_status, get_package_name_from_apk, run_gradle_task,
 };
 use commands::device::{
-    create_avd_device, delete_avd_device, download_system_image_cmd, get_selected_device,
-    install_apk_on_device, launch_app_on_device, launch_avd, list_adb_devices,
+    create_avd_device, delete_avd_device, download_system_image_cmd, get_exit_reasons,
+    get_selected_device, install_apk_on_device, launch_app_on_device, launch_avd, list_adb_devices,
     list_available_system_images_cmd, list_avd_devices, list_device_definitions_cmd,
     list_system_images_cmd, refresh_devices, select_device, start_device_polling,
     stop_app_on_device, stop_avd, stop_device_polling, wipe_avd_data_cmd,
@@ -362,6 +362,7 @@ pub fn run() {
             install_apk_on_device,
             launch_app_on_device,
             stop_app_on_device,
+            get_exit_reasons,
             list_avd_devices,
             launch_avd,
             stop_avd,

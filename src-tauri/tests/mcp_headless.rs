@@ -393,6 +393,109 @@ esac"#,
     assert!(!out.text.contains("stopped."), "{}", out.text);
 }
 
+/// A device on `api` with the project's debug build installed, whose exit
+/// history is the `android14.txt` fixture.
+fn write_exit_info_adb(sandbox: &Sandbox, api: u32) {
+    let dump = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/exit_info/android14.txt");
+    sandbox.write_adb(&format!(
+        r#"case "$*" in
+  devices*) printf 'List of devices attached\nemulator-5554\tdevice\n' ;;
+  *"getprop ro.build.version.sdk") echo {api} ;;
+  *"pm list packages") printf 'package:com.example.app.debug\npackage:com.other\n' ;;
+  *"dumpsys activity exit-info"*) cat '{}' ;;
+esac"#,
+        dump.display()
+    ));
+}
+
+#[test]
+fn get_exit_reasons_reads_the_project_app_newest_first() {
+    let sandbox = Sandbox::new();
+    write_app_module(&sandbox);
+    write_exit_info_adb(&sandbox, 34);
+    let mut client = sandbox.start();
+
+    let out = client.call_tool("get_exit_reasons", json!({}));
+
+    assert!(!out.is_error, "{}", out.text);
+    assert!(
+        out.text.starts_with(
+            "com.example.app.debug on emulator-5554 (API 34): 3 process exits recorded, newest first."
+        ),
+        "{}",
+        out.text
+    );
+    let freezer = out
+        .text
+        .find("1. 2024-01-09 08:12:44.310 — freezer (FREEZER)");
+    let anr = out.text.find("2. 2024-01-09 07:55:01.002 — anr (ANR)");
+    let crash = out
+        .text
+        .find("3. 2024-01-08 19:03:27.774 — crash (APP CRASH(EXCEPTION))");
+    assert!(
+        freezer.is_some() && anr.is_some() && crash.is_some(),
+        "{}",
+        out.text
+    );
+    assert!(out.text.contains("get_crash_stack_trace"), "{}", out.text);
+    assert!(
+        sandbox
+            .adb_calls()
+            .iter()
+            .any(|c| c == "-s emulator-5554 shell dumpsys activity exit-info com.example.app.debug"),
+        "{:?}",
+        sandbox.adb_calls()
+    );
+
+    let limited = client.call_tool(
+        "get_exit_reasons",
+        json!({ "device_serial": "emulator-5554", "package": "com.example.app", "limit": 1 }),
+    );
+    assert!(!limited.is_error, "{}", limited.text);
+    assert!(limited.text.contains("(showing 1;"), "{}", limited.text);
+    assert!(!limited.text.contains("2. "), "{}", limited.text);
+}
+
+#[test]
+fn get_exit_reasons_refuses_a_shell_package_and_reports_old_devices() {
+    let sandbox = Sandbox::new();
+    write_exit_info_adb(&sandbox, 29);
+    let mut client = sandbox.start();
+
+    for package in ["com.x;reboot", "-p", "com.x$(id)"] {
+        // Without a serial the device would be looked up with adb first.
+        for arguments in [
+            json!({ "package": package }),
+            json!({ "device_serial": "emulator-5554", "package": package }),
+        ] {
+            let message = client.call_tool_rejected("get_exit_reasons", arguments);
+            assert!(message.contains("Invalid package name"), "{message}");
+        }
+    }
+    assert!(
+        sandbox.adb_calls().is_empty(),
+        "adb must not run: {:?}",
+        sandbox.adb_calls()
+    );
+
+    let old = client.call_tool(
+        "get_exit_reasons",
+        json!({ "device_serial": "emulator-5554", "package": "com.example.app" }),
+    );
+    assert!(!old.is_error, "{}", old.text);
+    assert!(
+        old.text.contains("need Android 11 (API 30) or later"),
+        "{}",
+        old.text
+    );
+    assert!(
+        !sandbox.adb_calls().iter().any(|c| c.contains("dumpsys")),
+        "{:?}",
+        sandbox.adb_calls()
+    );
+}
+
 /// Two standalone servers on one data directory (like the app and a headless
 /// server) do not build one project at once, and both builds are kept in the
 /// shared history.

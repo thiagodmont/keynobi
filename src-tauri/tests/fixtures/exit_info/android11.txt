@@ -1,0 +1,20 @@
+ACTIVITY MANAGER PROCESS EXIT INFO (dumpsys activity exit-info)
+Last Timestamp of Persistence Into Persistent Storage: 2021-03-12 09:40:00.012
+  package: com.example.app
+    Historical Process Exit for uid=10152
+        ApplicationExitInfo #0:
+          timestamp=2021-03-12 09:31:11.536 pid=8123 realUid=10152 packageUid=10152 definingUid=10152 user=0
+          process=com.example.app reason=4 (APP CRASH(EXCEPTION)) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=55MB rss=127MB description=crash state=empty trace=null
+        ApplicationExitInfo #1:
+          timestamp=2021-03-12 09:12:40.004 pid=7710 realUid=10152 packageUid=10152 definingUid=10152 user=0
+          process=com.example.app reason=6 (ANR) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=61MB rss=140MB description=Input dispatching timed out (8f2c1a3 com.example.app/com.example.app.MainActivity (server) is not responding. Waited 5001ms for FocusEvent(hasFocus=true)) state=empty trace=/data/anr/anr_2021-03-12-09-12-39-987
+        ApplicationExitInfo #2:
+          timestamp=2021-03-11 18:02:15.300 pid=6044 realUid=10152 packageUid=10152 definingUid=10152 user=0
+          process=com.example.app reason=3 (LOW_MEMORY) subreason=0 (UNKNOWN) status=0
+          importance=400 pss=0 rss=0 description=null state=empty trace=null
+        ApplicationExitInfo #3:
+          timestamp=2021-03-11 17:55:02.781 pid=5980 realUid=10152 packageUid=10152 definingUid=10152 user=0
+          process=com.example.app reason=1 (EXIT_SELF) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=9216KB rss=48MB description=null state=empty trace=null

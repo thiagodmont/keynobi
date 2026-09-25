@@ -1,0 +1,17 @@
+ACTIVITY MANAGER PROCESS EXIT INFO (dumpsys activity exit-info)
+Last Timestamp of Persistence Into Persistent Storage: 2024-01-09 08:30:00.000
+  package: com.example.app
+    Historical Process Exit for uid=10187
+        ApplicationExitInfo #0:
+          timestamp=2024-01-09 08:12:44.310 pid=31020 realUid=10187 packageUid=10187 definingUid=10187 user=0
+          process=com.example.app reason=14 (FREEZER) subreason=18 (FREEZER BINDER IOCTL) status=0
+          importance=400 pss=38MB rss=102MB description=freezer binder ioctl state=empty trace=null
+        ApplicationExitInfo #1:
+          timestamp=2024-01-08 19:03:27.774 pid=29011 realUid=10187 packageUid=10187 definingUid=10187 user=0
+          process=com.example.app reason=4 (APP CRASH(EXCEPTION)) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=1GB rss=2GB description=crash state=empty trace=null
+    Historical Process Exit for uid=1010187
+        ApplicationExitInfo #0:
+          timestamp=2024-01-09 07:55:01.002 pid=30577 realUid=1010187 packageUid=1010187 definingUid=1010187 user=10
+          process=com.example.app reason=6 (ANR) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=77MB rss=165MB description=Broadcast of Intent { act=com.example.SYNC flg=0x10 cmp=com.example.app/.SyncReceiver } state=empty trace=null

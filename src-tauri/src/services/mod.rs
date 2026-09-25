@@ -1,4 +1,5 @@
 pub mod adb_manager;
+pub mod app_exit_info;
 pub mod app_inspector;
 pub mod app_location;
 pub mod build_inspector;
