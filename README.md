@@ -72,7 +72,7 @@ Press `Cmd+Shift+P` to see every command. The [User guide](references/USER_MANUA
 
 Keynobi is in **beta** (0.x) and runs on **macOS only**. It works with Gradle-based Android projects.
 
-- Crash reporting is **off by default**. When on, reports are scrubbed to exclude your code, logs, and project files.
+- Crash reporting is **off by default**. When on, reports contain only the error type, versions, and code locations: never error messages, your code, logs, or project files.
 - The only other network request is a check for new releases on GitHub at startup.
 - Everything else stays on your Mac. See [Privacy and Data](references/USER_MANUAL.md#privacy-and-data).
 

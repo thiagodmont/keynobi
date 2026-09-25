@@ -122,7 +122,9 @@ Actions that delete data, uninstall apps, change device state, or publish artifa
 
 Do not store API keys, tokens, credentials, or private project data in frontend state, logs, telemetry, fixtures, or docs. Sensitive operations belong in Rust or trusted external tools.
 
-Crash reporting is opt-in and off by default. Scrub events before sending them: no source code, project files, Gradle output, logcat, MCP traffic, personal identifiers, device identifiers, or home-directory paths. Every network call the app makes on its own must be disclosed in `USER_MANUAL.md`.
+Crash reporting is opt-in and off by default. Build every outgoing report from an allowlist instead of scrubbing known-bad fields: error type, release, environment, OS, CPU architecture, app stack frames (function, app-relative file, line, column), and a known error code (the `AppError` kind). Never send messages, exception values, breadcrumbs, tags, extra, user, request, or other contexts; native panics report their location, never their message. Both the native (`services/telemetry_sentry.rs`) and web (`src/lib/telemetry/sentry-web.ts`) clients check consent in `before_send` and again in the transport, which forwards only event items, so an opt-out stops uploads immediately. A new field reaches Sentry only when it is added to the allowlist, with a test that serializes the outgoing event and searches it for synthetic secrets.
+
+Every network call the app makes on its own must be disclosed in `USER_MANUAL.md`.
 
 ---
 

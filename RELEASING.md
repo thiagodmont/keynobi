@@ -91,9 +91,9 @@ export VITE_SENTRY_DSN='https://YOUR_BROWSER_KEY@YOUR_ORG.ingest.sentry.io/YOUR_
 npm run tauri dev -- --features telemetry
 ```
 
-In the dev app, open the **command palette** (**⌘⇧P**) and run **Send test native (Rust) Sentry event** or **Send test web Sentry event** (Debug category). You should see a matching event in each configured Sentry project.
+In the dev app, open the **command palette** (**⌘⇧P**) and run **Send test native (Rust) Sentry event** or **Send test web Sentry event** (Debug category). You should see a matching event in each configured Sentry project: `NativeTelemetryTest` for native and `Error` for web. Events carry no message by design; only allowlisted fields are sent.
 
-We keep **`send_default_pii: false`** and path scrubbing in code; do not paste a real DSN into the repository.
+We keep **`send_default_pii: false`** and build every outgoing event from an allowlist in code; do not paste a real DSN into the repository.
 
 The WebView **CSP** in `tauri.conf.json` must allow `connect-src` to Sentry ingest hosts (`*.ingest.sentry.io` / `*.ingest.us.sentry.io`); otherwise the browser SDK cannot upload events.
 

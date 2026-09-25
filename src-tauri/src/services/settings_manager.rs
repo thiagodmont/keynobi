@@ -271,6 +271,9 @@ fn save_settings_snapshot_at_path(
     path: &std::path::Path,
     settings: &AppSettings,
 ) -> Result<(), String> {
+    // Applied before the write so an opt-out takes effect even if saving fails.
+    #[cfg(feature = "telemetry")]
+    crate::services::telemetry_sentry::set_consent(settings.telemetry.enabled);
     let dir = path
         .parent()
         .map(std::path::Path::to_path_buf)
@@ -401,9 +404,14 @@ pub fn set_active_variant_for_project(project_path: &str, variant: &str) -> Resu
 
 /// Delete the settings file and return defaults.
 pub fn reset_settings() -> Result<AppSettings, String> {
-    let path = settings_file();
+    reset_settings_at_path(&settings_file())
+}
+
+fn reset_settings_at_path(path: &std::path::Path) -> Result<AppSettings, String> {
+    #[cfg(feature = "telemetry")]
+    crate::services::telemetry_sentry::set_consent(AppSettings::default().telemetry.enabled);
     if path.exists() {
-        std::fs::remove_file(&path).map_err(|e| format!("Failed to delete settings file: {e}"))?;
+        std::fs::remove_file(path).map_err(|e| format!("Failed to delete settings file: {e}"))?;
     }
     invalidate_settings_cache();
     Ok(AppSettings::default())
@@ -511,6 +519,28 @@ pub async fn detect_java_home_from_shell() -> Option<String> {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    #[cfg(feature = "telemetry")]
+    #[test]
+    fn saving_or_resetting_settings_applies_telemetry_opt_out_immediately() {
+        use crate::services::telemetry_sentry::{consent_given, set_consent, CONSENT_TEST_LOCK};
+        let _guard = CONSENT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("settings.json");
+
+        set_consent(true);
+        save_settings_snapshot_at_path(&path, &AppSettings::default()).unwrap();
+        assert!(
+            !consent_given(),
+            "saving with telemetry off revokes consent"
+        );
+
+        set_consent(true);
+        reset_settings_at_path(&path).unwrap();
+        assert!(!consent_given(), "reset to defaults revokes consent");
+    }
 
     #[test]
     fn unit_tests_never_resolve_the_real_data_dir() {
