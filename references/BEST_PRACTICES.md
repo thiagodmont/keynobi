@@ -146,6 +146,10 @@ Every long-lived collection, in memory or on disk, must have an explicit, named 
 |------|-----|
 | Logcat ring buffer | Setting, default 50,000 (1,000–100,000) |
 | Logcat IPC batch | `MAX_BATCH_SIZE` (500) |
+| Logcat lines waiting for the pipeline | `RAW_LOG_LINE_CHANNEL_CAPACITY` (10,000; overflow is counted as dropped) |
+| Logcat pipeline work per batch | `PIPELINE_BATCH_MAX_ROWS` (5,000 lines) or `PIPELINE_BATCH_MAX_DURATION` (20 ms) |
+| Logcat PID → package map | `MAX_TRACKED_PIDS` (4,096, oldest evicted; dead processes are evicted first) |
+| Logcat packages remembered per session | `MAX_TRACKED_PACKAGES` (4,096) |
 | Build history | `MAX_HISTORY` (10) |
 | Raw build log kept for MCP | `MAX_BUILD_LOG` (5,000 lines) |
 | Structured build errors/warnings | `MAX_BUILD_ERRORS` (1,000, newest kept) |
@@ -169,7 +173,9 @@ Lock, clone or update the minimal state, then release before I/O, process work, 
 ### Measuring Performance
 
 - Criterion benchmarks live under `src-tauri/benches/` (currently only `fs_benchmarks`, which measures `find_gradle_root`). CI does not run them.
-- `npm run perf:collect` records bundle size, Rust binary size, and Criterion results; `npm run perf:report` compares the last two snapshots. Neither measures the latency targets above.
+- `npm run perf:collect` rebuilds the frontend, builds the release binary, runs the Criterion benches, and records bundle size, binary size, and this run's bench results; `npm run perf:report` compares the last two snapshots and warns when they are not comparable. A skipped step (`--skip-frontend`, `--skip-rust`, `--skip-bench`) reports nothing rather than a leftover artifact.
+- `npm run perf:soak` runs the logcat soak (see `DOMAIN_PATTERNS.md` § Logcat → Soak Baseline). It is a baseline with no thresholds; run it before a release or nightly, not on every PR.
+- Every snapshot records its provenance: commit, whether the tree was dirty, Cargo profile, arch, rustc/cargo/node versions, hardware model, and artifact hashes (`scripts/metrics-provenance.mjs`). Compare only numbers from clean trees on the same machine and profile.
 - Before claiming a performance improvement, add a benchmark or a repeatable measurement for it.
 
 ---

@@ -143,7 +143,8 @@ Logcat is a backend-first streaming pipeline:
 ```text
 adb logcat -T 1                       (starts at "now"; no earlier history)
   -> raw line ingestion               (lines capped at MAX_LINE_BYTES = 64 KiB; bounded channel, RAW_LOG_LINE_CHANNEL_CAPACITY = 10,000)
-  -> processor chain                  (PackageResolver -> CrashAnalyzer -> JsonExtractor -> CategoryClassifier)
+  -> processor chain                  (PackageResolver -> CrashAnalyzer -> JsonExtractor -> CategoryClassifier;
+                                       batches of at most PIPELINE_BATCH_MAX_ROWS = 5,000 lines or 20 ms)
   -> bounded LogStore                 (ring buffer: setting, default 50,000, 1,000–100,000)
   -> backend filter                   (log_stream.rs)
   -> batched IPC emit                 (logcat:entries every 100 ms, up to MAX_BATCH_SIZE = 500)
@@ -151,6 +152,9 @@ adb logcat -T 1                       (starts at "now"; no earlier history)
 ```
 
 Backend processing owns package resolution, crash detection, JSON detection, category classification, stats, and ring-buffer storage.
+
+- **Bounded batches.** The reader refills the channel while the pipeline drains it, so "drain until empty" has no bound under a flood. `run_batch_into` stops at its `DrainBudget`; the batch is stored and emitted, the task yields, and the next batch runs at once instead of waiting for the 100 ms tick. Lines are never skipped or reordered. What is still queued is `LogStats.backlog_lines`; what the full channel refused is `LogStats.dropped_lines`.
+- **PID → package map.** Seeded from `adb shell ps`, extended by ActivityManager `Start proc`, and pruned by `Process <pkg> (pid <n>) has died` and `Killing <n>:<pkg>/...`, so a PID the kernel reuses (often for a native process with no `Start proc` line) is not attributed to the dead app. A death report only unmaps the PID if it still names the dead package; a `Start proc` on a reused PID always replaces the old mapping. `MAX_TRACKED_PIDS` (oldest evicted) and `MAX_TRACKED_PACKAGES` are the backstop for deaths the stream never saw.
 
 ### Stream Lifecycle
 
@@ -216,6 +220,19 @@ Presentational components should not call Tauri IPC except for narrow row action
 ### IPC Type
 
 `ProcessedEntry.json_body` is `Option<String>`, not a JSON value. The frontend parses it only when the user opens JSON details.
+
+### Soak Baseline
+
+`npm run perf:soak` builds `src-tauri/examples/logcat_soak.rs` in release mode and streams synthetic logcat through `request_start` and the real reader, pipeline, and store, with the binary itself acting as a fake `adb` (no device, no data directory). Flags: `--rate` (lines/s, default 1,000), `--duration-secs` (600), `--sample-secs` (10), `--giant-line-mb` (10). The traffic includes one app restart per second, JSON bodies, crash bursts, and one oversized line. The report (`perf-metrics/soak_<time>.json`) has RSS start/peak/end and samples, entries ingested and dropped, backlog, batch latency percentiles (from the `keynobi::logcat_batch` trace event), tracked PIDs, whether the oversized line was truncated visibly, and build provenance. It measures the backend only, not IPC or rendering. There are no thresholds yet.
+
+Baseline (commit 71bab15, release, Apple M4 Pro `Mac16,8`, arm64, rustc 1.97.1; machine shared with concurrent builds, so latency tails are pessimistic):
+
+| Run | RSS start / peak / end | Ingested | Dropped | Batch latency p50 / p99 / p99.9 / max | Tracked PIDs |
+|-----|------------------------|----------|---------|---------------------------------------|--------------|
+| 1,000 lines/s, 30 min | 10.1 / 22.2 / 15.3 MiB | 1,808,294 | 0 | 0.1 / 6.3 / 20.8 / 420 ms | 20 (1,800 restarts) |
+| 100,000 lines/s, 30 s | 10.1 / 42.1 / 41.7 MiB | 2,972,497 | 29,458 | 1.4 / 2.4 / 2.8 / 2.9 ms | 20 |
+
+RSS stays flat once the 50,000-entry ring is full. The 10 MiB line was stored as 65,522 bytes ending in `… [truncated 10420268 bytes]`. At 100,000 lines/s every full batch stopped at 5,000 rows; the drops come from the channel filling (10,000 lines) during the 100 ms wait after a batch that emptied it.
 
 ---
 
@@ -381,7 +398,9 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Unicode typing.** `ui_type_text_unicode` sets the clipboard with a Clipper broadcast, falling back to `content insert`. `am broadcast` exits 0 even when Clipper is not installed, so the fallback may not run and the paste can insert stale clipboard text. Needs verification on a device.
 - **UI Automator across processes.** The device lock and the instrumentation check are per process. A headless MCP server and the GUI (or two headless servers) can still collide on one device, and a connected test run started by one is invisible to the other; the device's "already registered" error is then reported as busy.
 - **Screen hash coverage.** `ui_swipe`, `send_ui_key`, `ui_type_text_unicode`, `clear_focused_input`, and `ui_scroll_until_element` do not accept `expectScreenHash`.
-- **Logcat clear mid-tick.** The pipeline checks `clear_epoch` at the top of each 100 ms tick but not again when it stores the batch, so lines drained just before a clear can still be stored (and emitted) just after it. They get fresh IDs, so identity is safe; at most one tick of pre-clear lines survives.
+- **Logcat PID attribution without death lines.** Eviction relies on ActivityManager death lines in the system buffer. When they are missed (dropped lines, a buffer not streamed), a dead app's PID stays mapped until the `MAX_TRACKED_PIDS` backstop evicts it, or a `Start proc` reuses it.
+- **Logcat sustained floods.** After a batch that empties the channel the pipeline waits for the next 100 ms tick, so input sustained above about `RAW_LOG_LINE_CHANNEL_CAPACITY` lines per tick (roughly 100,000 lines/s) overflows the channel and is dropped (and counted).
+- **Logcat clear mid-tick.** The pipeline checks `clear_epoch` at the top of each batch but not again when it stores the batch, so lines drained just before a clear can still be stored (and emitted) just after it. They get fresh IDs, so identity is safe; at most one batch of pre-clear lines survives.
 - **MCP error model.** Coordinate, permission, and deep-link validation failures return `CallToolResult::error` instead of `McpError::invalid_params`.
 - **Validator duplication.** MCP `validate_apk_path` duplicates `validate_apk_within_build_outputs` and hard-codes the `app` module.
 - **Activity log.** Summaries are not redacted.
