@@ -403,6 +403,13 @@ pub fn run() {
                 {
                     services::mcp_attach::remove_app_socket(&registry);
                 }
+                // Every exit path, including quit from the menu: stop the
+                // processes still running, within a bound.
+                if let Some(process_manager) = app.try_state::<ProcessManager>() {
+                    tauri::async_runtime::block_on(
+                        process_manager.shutdown_all(services::process_manager::SHUTDOWN_GRACE),
+                    );
+                }
             }
             release_log_guard_on_exit(&event, &mut file_guard)
         });

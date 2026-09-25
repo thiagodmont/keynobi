@@ -36,7 +36,7 @@ Every MCP client runs `keynobi --mcp`. That process first picks the project it w
 - `--attach-only`: if attaching fails, print the reason to stderr and exit with status 2 instead of running standalone.
 - When the app quits (`mcp_attach::quit_sessions`), it first cancels a running build, recorded as cancelled because Keynobi quit, and waits up to `QUIT_BUILD_TIMEOUT` (1.5 s) for it to be recorded. Then it answers every request still in flight with a JSON-RPC error (`-32603`, saying whether the build was cancelled) and closes the sessions.
 - `keynobi --mcp` then continues as a standalone server in the same process, with reason "the Keynobi app quit". It replays the client's `initialize` and `initialized` to the new server and drops the second `initialize` response, so the client keeps its session. If the app goes away without answering (for example, it crashed), the relay answers the requests left open itself ("The Keynobi app closed the MCP session before answering …") and falls back the same way. With `--attach-only` it exits with status 1 instead.
-- A client that disconnects does not stop a build it started: the build finishes and is recorded. A standalone server that loses its client waits for its build, up to `mcp.buildTimeoutSec`, before it exits.
+- A client that disconnects does not stop a build it started: the build finishes and is recorded. A standalone server that loses its client waits for its build, up to `mcp.buildTimeoutSec`, before it exits; it then stops any process still running within `SHUTDOWN_GRACE` (see `DOMAIN_PATTERNS.md` § Shutdown).
 
 ### What each mode means for users and features
 
@@ -263,7 +263,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 | `mcp_server.rs` | Core | Defines the MCP server, tools, prompts, resources, session modes, the `--mcp` launcher, validation, and activity instrumentation. |
 | `mcp_sessions.rs` | Direct | Tracks attached sessions and standalone server records for `get_mcp_server_status`. |
 | `monitor.rs` | Not exposed | Monitors app memory and app log folder size for the GUI status bar. |
-| `process_manager.rs` | Direct | Spawns and cancels long-running child processes used by MCP Gradle builds. |
+| `process_manager.rs` | Direct | Spawns and cancels long-running child processes used by MCP Gradle builds, and stops those left when a standalone server exits (`shutdown_all`). |
 | `project_trust.rs` | Indirect | Decides whether the user trusted a project to run its Gradle build; `get_project_info` reports it and builds require it. |
 | `settings_manager.rs` | Direct | Loads settings, MCP defaults, active variants, data directory paths, and Android tool paths. |
 | `telemetry_sentry.rs` | Not exposed | Optional crash reporting (allowlisted fields only); not part of the MCP tool surface. |
