@@ -1,0 +1,49 @@
+src-tauri/src/services/jdk.rs
+  s_1e114e823b9048::t_5a2cf4eea2bccf 383-386,686
+references/CODE_PATTERN.md
+  s_1e114e823b9048::t_5da7930c4350d6 299
+src-tauri/src/commands/mcp.rs
+  s_1e114e823b9048::t_5a2cf4eea2bccf 459-462
+src-tauri/src/services/app_inspector.rs
+  s_1e114e823b9048::t_6e3b51a13d87af 372
+src-tauri/src/services/logcat.rs
+  s_1e114e823b9048::t_a7a19ae5a0c1bd 1590-1593,1641,1652,1666,1700,1704,1745,1749,1782,1786,1900,1920,1957-1959,1963,1967,1970,2004,2034,2036,2046-2060,2066,2072-2073,2081,2159-2163,2383
+  s_1e114e823b9048::t_201408c426f248 1581,1836,2103,2150,2255,2441
+src-tauri/tests/headless/mod.rs
+  s_1e114e823b9048::t_ea991ea900b1e0 93,95,98-99,207,209,212-228
+src-tauri/src/utils/device_shell.rs
+  s_1e114e823b9048::t_76a1523891a6e5 52-54
+src-tauri/src/services/process_manager.rs
+  s_1e114e823b9048::t_ac0eae7339d500 440-455,521-528,531,648,680,737,770,885,939,978,1015,1036-1040,1042
+  s_1e114e823b9048::t_e9eb79f3a58a13 1081-1083,1085
+src-tauri/src/services/ui_hierarchy.rs
+  s_1e114e823b9048::t_e95205e0e827fb 603-605
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_ea991ea900b1e0 889-892
+src-tauri/src/services/ui_automation.rs
+  s_1e114e823b9048::t_6e3b51a13d87af 2080-2082
+src-tauri/src/services/build_runner.rs
+  s_1e114e823b9048::t_046b5afb828bf0 3138-3142
+src-tauri/src/commands/device.rs
+  s_1e114e823b9048::t_30411bf0c33a46 571-573
+  s_1e114e823b9048::t_6bc8c82b41ad0f 585-588,590,607-609,620-621,630,634,638,642,656,685
+src-tauri/src/utils/process.rs
+  s_1e114e823b9048::t_c0a01ef19aa094 85
+  s_1e114e823b9048::t_01eb968624a2d2 86-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "66b4a7e91fa27caac9db14876734bca0a91290c5",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
