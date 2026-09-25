@@ -27,7 +27,6 @@ use commands::logcat::{
 };
 use commands::mcp::{
     clear_mcp_activity, get_mcp_activity, get_mcp_server_status, get_mcp_setup_status,
-    start_mcp_server,
 };
 use commands::settings::*;
 use commands::studio::open_in_studio;
@@ -197,6 +196,20 @@ pub fn run() {
         .manage(new_logcat_state())
         .manage(Arc::new(Mutex::new(VecDeque::<LogEntry>::new())) as LogBuffer)
         .setup(move |app| {
+            // MCP clients attach over the app's socket; see services::mcp_attach.
+            let mcp_sessions = {
+                let handle = app.handle().clone();
+                services::mcp_sessions::McpSessionRegistry::with_listener(move |sessions| {
+                    let _ = handle.emit(services::mcp_sessions::SESSIONS_CHANGED_EVENT, sessions);
+                })
+            };
+            app.manage(mcp_sessions.clone());
+            services::mcp_sessions::remove_legacy_pid_file();
+            tauri::async_runtime::spawn(services::mcp_attach::start_app_listener(
+                app.handle().clone(),
+                mcp_sessions,
+            ));
+
             let (settings, settings_corrupted) = services::settings_manager::load_settings();
 
             let ring_cap = app_settings_model::clamp_logcat_ring_capacity_usize(
@@ -238,22 +251,6 @@ pub fn run() {
                 let log_max_bytes = u64::from(settings.advanced.log_max_size_mb) * 1024 * 1024;
                 tauri::async_runtime::spawn(async move {
                     services::monitor::run_monitor(handle, log_dir_monitor, log_max_bytes).await;
-                });
-            }
-
-            // Auto-start MCP server if the user has enabled it in settings.
-            if settings.mcp.auto_start {
-                let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    // Small delay so the window finishes initialising first.
-                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    if let Err(e) = services::mcp_server::start_mcp_server(handle.clone()).await {
-                        tracing::warn!("MCP auto-start failed: {}", e);
-                        // Notify the frontend so it can disable MCP UI and show an error.
-                        if let Some(win) = handle.get_webview_window("main") {
-                            let _ = win.emit("mcp:startup-failed", e.to_string());
-                        }
-                    }
                 });
             }
             Ok(())
@@ -379,7 +376,6 @@ pub fn run() {
             set_logcat_filter,
             get_logcat_stats,
             // MCP Server
-            start_mcp_server,
             get_mcp_setup_status,
             get_mcp_activity,
             get_mcp_server_status,
@@ -389,7 +385,16 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(move |_app, event| release_log_guard_on_exit(&event, &mut file_guard));
+        .run(move |app, event| {
+            if let tauri::RunEvent::Exit = event {
+                if let Some(registry) =
+                    app.try_state::<services::mcp_sessions::McpSessionRegistry>()
+                {
+                    services::mcp_attach::remove_app_socket(&registry);
+                }
+            }
+            release_log_guard_on_exit(&event, &mut file_guard)
+        });
 }
 
 #[cfg(test)]

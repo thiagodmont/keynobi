@@ -8,27 +8,46 @@ Update this file when a tool, prompt, resource, limit, or security rule changes.
 
 | Entry point | Role |
 |-------------|------|
-| `src-tauri/src/main.rs` | `keynobi --mcp [--project <path>]` starts headless MCP mode. Any other invocation opens the GUI. |
-| `services/mcp_server.rs` | Owns the MCP server, tool definitions, prompts, resources, MCP-specific validation, and GUI/headless startup. |
+| `src-tauri/src/main.rs` | `keynobi --mcp [--project <path>] [--attach-only]` runs `mcp_server::run_mcp`. Any other invocation opens the GUI. |
+| `services/mcp_server.rs` | Owns the MCP server, tool definitions, prompts, resources, MCP-specific validation, session modes, and the `--mcp` launcher (attach, else standalone). |
+| `services/mcp_attach.rs` | The app's socket listener, the attach handshake and its rules, and the stdio relay `keynobi --mcp` runs when attached. |
+| `services/mcp_sessions.rs` | Live sessions: the app's registry of attached sessions and the standalone server records. |
 | `utils/validation.rs`, `utils/path.rs` | Shared validators used by both MCP tools and Tauri commands. |
-| `services/mcp_activity.rs` | Appends activity entries to the JSONL log and manages the headless PID file. |
-| `commands/mcp.rs` | Tauri commands for setup commands and registration detection, activity reads (default 200, max 2,000 entries), server PID status, and clearing activity. |
-| `src/stores/mcp.store.ts` | Frontend MCP state: running flag, connected client, server PID, and recent activity (polled every 3 s). |
+| `services/mcp_activity.rs` | Appends activity entries to the JSONL log and rotates it. |
+| `commands/mcp.rs` | Tauri commands for setup commands and registration detection, activity reads (default 200, max 2,000 entries), live sessions (`get_mcp_server_status`), and clearing activity. |
+| `src/stores/mcp.store.ts` | Frontend MCP state: attached sessions (live through `mcp:sessions_changed`), standalone servers, and recent activity (polled every 3 s while the MCP panel is open). |
 
 ## Modes
 
-| Mode | How it starts | State |
-|------|---------------|-------|
-| **Headless** (supported) | An MCP client runs `keynobi --mcp`. | A separate process with fresh `FsState`, `BuildState`, `DeviceState`, `LogcatState`, and `ProcessManager`. The project is chosen once at startup: `--project`, then the Gradle build containing the client's working directory (the nearest folder with `settings.gradle(.kts)`, the directory or a parent), then `last_active_project` from settings (if it is a directory); otherwise no project. The working directory wins over `last_active_project` because the app's last project is often stale for an agent. Logs to stderr (`RUST_LOG`, default `warn`). |
-| GUI (in-process) | `settings.mcp.auto_start` at app launch. | Shares the GUI's managed state and emits `mcp:started`, `mcp:client_connected`, `mcp:stopped`, and `mcp:startup-failed`. It serves stdio of the GUI process, so a client can reach it only if it launched the app binary itself. Standard setup never uses it. |
+Every MCP client runs `keynobi --mcp`. That process first picks the project it wants (`select_headless_project`): `--project`, else the Gradle build containing the client's working directory (the nearest folder with `settings.gradle(.kts)`, the directory or a parent), else none. Then it tries to attach to the running app, and otherwise runs standalone. It never launches the app. Logs go to stderr (`RUST_LOG`, default `warn`).
 
-What headless mode means for users and features:
+| Mode | When | State |
+|------|------|-------|
+| **Attached** | The app is running and accepts the handshake. | `keynobi --mcp` only relays stdio to the app's socket. The app serves the session with `AndroidMcpServer::from_app_handle`, on its own `FsState`, `BuildState`, `DeviceState`, `LogcatState`, and `ProcessManager`. Many sessions can be attached; one ending does not affect the others. |
+| **Standalone** | No app, the app refused, or it did not answer within `ATTACH_TIMEOUT` (1.5 s). | Fresh state in the `keynobi --mcp` process, as before attaching existed. The project falls back to `last_active_project` from settings (if it is a directory) when none was requested. |
 
-- MCP builds, logcat streams, and device selection are not visible live in the GUI.
-- Switching projects in the GUI does not change the MCP server's project until the client restarts it.
+### Attaching
+
+- The app listens on `<data dir>/mcp.sock` (`mcp_attach::start_app_listener`, started at app launch). The data directory is made `0700` and the socket `0600`; connections from another user are dropped. On start, a socket file that answers belongs to another app instance and is left alone (this instance does not serve MCP); one that does not answer is stale and is replaced. The socket is removed when the app exits. Paths over 103 bytes (the macOS `sun_path` limit) are an error, not a panic.
+- Handshake, one JSON line each way before any MCP bytes: `{"attach":1,"version":"<binary version>","project":"/gradle/root"|null,"pid":123,"selected_by":"argument"|"working_directory"|null}`, answered with `{"accepted":true,"project":"/app/project","version":"<app version>"}` or `{"accepted":false,"reason":"…","version":"<app version>"}`. The app waits `REQUEST_TIMEOUT` (5 s) for the request; lines are capped at `MAX_HANDSHAKE_BYTES` (4 KiB).
+- Rules (`mcp_attach::decide_attach`): an unknown `attach` version is refused, naming both versions. `project: null` is accepted and the session follows the app's project (`selected_by: app`). A project is accepted only when the app has that project open (canonical path equal to the app's Gradle root or project root); the session is then pinned to it. Otherwise the reason names the app's project or says none is open. The app never changes its open project for an agent. At most `MAX_ATTACHED_SESSIONS` (16) sessions are served.
+- A pinned session whose project the app has since closed returns a tool error for every tool not in `PROJECT_INDEPENDENT_TOOLS` ("Keynobi now has B open; this session is for A …"); project resources are refused the same way. Device, UI, logcat, `get_project_info`, and `run_health_check` keep working.
+- `--attach-only`: if attaching fails, print the reason to stderr and exit with status 2 instead of running standalone.
+- When the app closes the socket (for example, it quits), the relay exits with status 1 and a message on stderr.
+
+### What each mode means for users and features
+
+- Attached sessions share the app's single build slot: the app, and every attached agent, get the same `A Gradle build is already running` answer while a build runs (a tool error for agents, `AppError::InvalidInput` for the GUI). Their builds emit `build:complete`, but their output is not streamed into the Build panel.
+- Standalone builds, logcat streams, and device selection are not visible in the app, and standalone and app builds are not mutually exclusive.
 - Trust is shared through `settings.json` and read on every build, so trusting or revoking a project in the app applies to a running MCP server without a restart.
-- Headless and GUI builds are not mutually exclusive across processes.
-- Shared with the GUI: `settings.json` (`set_active_variant` writes it), `build-history.json` (appended under a shared file lock), `mcp-activity.jsonl`, and `mcp-server.pid`.
+- Shared with the app through the data directory: `settings.json` (`set_active_variant` writes it), `build-history.json` (appended under a shared file lock), `mcp-activity.jsonl`, and `mcp-sessions/`.
+
+### Reporting the mode
+
+- `initialize`: `serverInfo` is `keynobi` with the binary's version, titled "Keynobi (attached to the app)" or "Keynobi (standalone)"; `instructions` starts with the mode and, when standalone, why, and that its builds and logcat are not visible in the app.
+- `get_project_info`: `mode` (`attached` or `standalone`), `standalone_reason`, `follows_app`, and `pinned_project`. A pinned session whose project the app closed reports `open: false`, `app_project`, and the mismatch in `hint`.
+- `run_gradle_task` and `run_tests` end their text with `[mode: …]`; `get_build_status` includes `mode` and `standalone_reason`.
+- The activity log's lifecycle entries say `Server started (standalone: <reason>)`, or `Client attached (pid N) — project: …` and `Client detached` for attached sessions.
 
 ## Setup
 
@@ -39,13 +58,14 @@ claude mcp add --transport stdio keynobi -- '/Applications/Keynobi.app/Contents/
 codex mcp add keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp
 ```
 
-Append `--project /path/to/project` to pin a project. Claude Code registers servers in the **local** scope by default (only the directory where the command ran); add `--scope user` to make Keynobi available in every project.
+Append `--project /path/to/project` to pin a project, or `--attach-only` to refuse running standalone. Registrations made before attaching existed keep working unchanged. Claude Code registers servers in the **local** scope by default (only the directory where the command ran); add `--scope user` to make Keynobi available in every project.
 
 Registration is detected with `claude mcp get keynobi` or `codex mcp get keynobi --json` (5 s timeout; exit code 0 means registered). The CLI is found through `PATH`, known install locations, then a login shell's `command -v`.
 
 ## Server Identity and Capabilities
 
 - Built on `rmcp` 3.1 (protocol `2025-11-25`).
+- `serverInfo` is `keynobi` with the crate version; its title and the start of `instructions` state the mode (see [Reporting the mode](#reporting-the-mode)).
 - Capabilities: tools, prompts, resources. No logging, completions, subscriptions, or `listChanged`.
 - `instructions` summarizes the tool surface for the model. Update it when adding or removing tools.
 
@@ -147,7 +167,7 @@ A package outside the scope, or any package when no application id can be found,
 | `get_project_info` | R |
 | `run_health_check` | R |
 
-`get_project_info` also returns `selected_by` (how the headless server chose the project: `argument`, `working_directory`, or `last_active_project`; `app` for the GUI's in-process server), `trusted` (whether the project may run its Gradle build), and `trust_hint` (what the user must do when it is not trusted, else `null`).
+`get_project_info` also returns `selected_by` (how the project was chosen: `argument`, `working_directory`, or `last_active_project`; `app` for an attached session that follows the app), the session `mode` fields (see [Reporting the mode](#reporting-the-mode)), `trusted` (whether the project may run its Gradle build), and `trust_hint` (what the user must do when it is not trusted, else `null`).
 
 Both return the same `java` object from `services/jdk.rs`, the JDK Gradle builds use: `ok`, `java_home`, `source` (`userGradleProperties`, `projectGradleProperties`, `settings`, `androidStudio`, `installedJdk`, or `null` when `java` on `PATH` was probed), `major_version`, `version`, `bin`, `warning` (JDK below 17), and `hint`. In `run_health_check` it is `checks.java`. For an untrusted project the project's `gradle.properties` is ignored, so `source` is never `projectGradleProperties` and the project cannot choose the `java` that is probed; `run_health_check` also ignores its `local.properties` `sdk.dir`. See `DOMAIN_PATTERNS.md` § Settings → JDK Resolution and Health.
 
@@ -210,8 +230,9 @@ Tool errors are for the model to read and recover from, so make the message acti
 ## Activity Log
 
 - `~/.keynobi/mcp-activity.jsonl`: one JSON entry per lifecycle event, tool call, prompt, or resource read. Each entry records kind, name, duration, status, and a summary of up to 120 bytes of the result. Arguments are not logged.
-- Rotated at server start: over 1,000 lines are trimmed to the last 500.
-- `~/.keynobi/mcp-server.pid`: written by headless mode, so the GUI can show whether a server is alive.
+- The app and every standalone server append to it, so appends, rotation, and clearing run under `settings_manager::with_data_lock`. Rotation writes the kept lines to a temporary file and renames it over the log; since appenders take the same lock, no line is appended to a file being replaced.
+- Rotated when it grows past `ROTATE_THRESHOLD_BYTES` (256 KiB), checked on every append and at standalone start: the last `ROTATE_KEEP` (500) entries are kept.
+- Live sessions: the app keeps attached sessions in memory (`McpSessionRegistry`) and emits `mcp:sessions_changed` with the list when it changes. Each standalone server writes `~/.keynobi/mcp-sessions/<pid>.json` (pid, start time, project, reason, binary path) at start and removes it on exit. Readers delete records whose process is gone (`kill(pid, 0)`) or whose PID now runs a different binary (`proc_pidpath`). `get_mcp_server_status` returns `{ listening, attached, standalone }`. The single-slot `mcp-server.pid` of older releases is deleted at app and standalone start.
 
 ## Service Catalog
 
@@ -231,8 +252,10 @@ Tool errors are for the model to read and recover from, so make the message acti
 | `log_store.rs` | Indirect | Stores bounded logcat entries and supports filtered MCP log queries. |
 | `log_stream.rs` | Indirect | Applies backend-side stream filters before logcat batches reach the frontend. |
 | `logcat.rs` | Direct | Starts/stops logcat streaming and owns logcat state, filters, known packages, and buffer access. |
-| `mcp_activity.rs` | Direct | Persists MCP lifecycle, tool, prompt, and resource activity; rotates logs and manages PID status. |
-| `mcp_server.rs` | Core | Defines the MCP server, tools, prompts, resources, mode startup, validation, and activity instrumentation. |
+| `mcp_activity.rs` | Direct | Persists MCP lifecycle, tool, prompt, and resource activity and rotates the log. |
+| `mcp_attach.rs` | Core | Serves attached sessions on the app's socket, decides the attach handshake, and relays stdio for `keynobi --mcp`. |
+| `mcp_server.rs` | Core | Defines the MCP server, tools, prompts, resources, session modes, the `--mcp` launcher, validation, and activity instrumentation. |
+| `mcp_sessions.rs` | Direct | Tracks attached sessions and standalone server records for `get_mcp_server_status`. |
 | `monitor.rs` | Not exposed | Monitors app memory and app log folder size for the GUI status bar. |
 | `process_manager.rs` | Direct | Spawns and cancels long-running child processes used by MCP Gradle builds. |
 | `project_trust.rs` | Indirect | Decides whether the user trusted a project to run its Gradle build; `get_project_info` reports it and builds require it. |
@@ -253,11 +276,12 @@ Tool errors are for the model to read and recover from, so make the message acti
 5. Bound the output: add a default and a maximum for any count, size, or timeout.
 6. Decide the tool's kind (R/W/D/O). Destructive behavior must be opt-in through an explicitly named parameter.
 7. Update the `instructions` string, the tool tables in this file, and `USER_MANUAL.md` if users see the change.
-8. Add tests: validation (including injection cases), and behavior against the real headless binary in `tests/mcp_headless.rs` (fake `adb`/`gradlew` via `headless::Sandbox`).
+8. Decide whether the tool reads or acts on the open project. If it does not, add it to `PROJECT_INDEPENDENT_TOOLS` so it keeps working in a pinned session after the app switches projects.
+9. Add tests: validation (including injection cases), and behavior against the real binary in `tests/mcp_headless.rs` (fake `adb`/`gradlew` via `headless::Sandbox`; `headless::TestApp` plays the running app for attached sessions).
 
 ## Testing and Debugging
 
-- Unit tests live in `mcp_server.rs` (validators, build slot, logcat state), `commands/mcp.rs`, `utils/validation.rs`, and `ui_automation.rs`. `src/stores/mcp.store.test.ts` covers the frontend store.
+- Unit tests live in `mcp_server.rs` (validators, build slot, logcat state, session modes), `mcp_attach.rs` (handshake rules, socket binding, relay), `mcp_sessions.rs`, `mcp_activity.rs`, `commands/mcp.rs`, `utils/validation.rs`, and `ui_automation.rs`. `tests/mcp_headless.rs` covers standalone and attached sessions end to end. `src/stores/mcp.store.test.ts` and `src/components/layout/StatusBar.test.tsx` cover the frontend.
 - Try tools interactively with the MCP Inspector:
 
   ```bash
@@ -271,14 +295,17 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
-- **Server identity.** `Implementation::from_build_env()` resolves inside rmcp, so `serverInfo` reports `rmcp` and rmcp's version instead of Keynobi's.
 - **Ignored parameter.** `run_gradle_task` accepts `variant` but ignores it.
 - **Parameter casing.** UI tools use camelCase on the wire, while their descriptions and all other tools use snake_case.
 - **Instructions drift.** The `instructions` string omits 15 tools (for example `cancel_build`, `stop_app`, `wait_for_element`, AVD tools).
 - **Groovy projects.** Resources check only `.kts` files and hard-code the `app` module. APK validation also hard-codes `app`.
 - **No progress or cancellation.** Tools ignore the request context. A long Gradle run blocks until it ends or times out.
-- **Multi-client PID file.** The PID file is single-slot. With two clients, the first to exit deletes it and the GUI reports MCP as stopped.
-- **Unbounded activity log.** The activity log grows without limit during a session, and summaries are not redacted.
+- **Unredacted activity log.** Activity summaries are not redacted.
+- **Attached builds in the Build panel.** Builds an attached agent starts share the app's build slot and state, but the Build panel does not stream their output or adopt a build it did not start.
+- **Who cancelled a build.** Neither the app nor an agent can tell whether the other cancelled a build.
+- **App quitting with clients attached.** Quitting the app cancels the running build (an agent's too), but the agent gets no result for it: its session just ends. Attached clients do not fall back to standalone mid-session; the relay exits (status 1, message on stderr) and the client must restart the MCP server.
+- **Standalone build slot.** Standalone servers and the app can still build the same project at the same time; there is no cross-process build lock.
+- **Pinned-session check is per call.** A pinned session checks the app's project when a tool starts; switching projects while a tool runs does not stop it.
 - **Package scope sources.** The scope reads only the `app` module (or the root build file). An `applicationIdSuffix` set in a convention plugin or through a variable is known only after that variant is built; until then its package needs `allow_foreign_package: true`.
 - **Screenshot coordinate space.** `screenshot` takes `deviceWidth`/`deviceHeight` from the capture itself. With a `wm size` override or on a multi-display device, the capture may not match the space `ui_tap` uses, so `scale` would be off.
 - **UI Automator across processes.** The per-device lock and the instrumentation check live in one process. A headless `keynobi --mcp` and the GUI, or two headless servers, can still collide on one device; the loser gets the busy error from the device.

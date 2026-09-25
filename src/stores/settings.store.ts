@@ -43,7 +43,6 @@ const DEFAULT_SETTINGS: AppSettings = {
     ringMaxEntries: 50_000,
   },
   mcp: {
-    autoStart: false,
     buildTimeoutSec: 600,
     logcatDefaultCount: 200,
     buildLogDefaultLines: 200,

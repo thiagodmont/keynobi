@@ -504,13 +504,17 @@ import type {
   McpClientSetupStatus,
   McpActivityEntry,
   McpServerStatus,
+  McpAttachedSession,
+  McpStandaloneServer,
 } from "@/bindings";
-export type { McpSetupStatus, McpClientSetupStatus, McpActivityEntry, McpServerStatus };
-
-/** Start the MCP server on stdio. For use in MCP mode only. */
-export async function startMcpServer(): Promise<void> {
-  return invoke<void>("start_mcp_server");
-}
+export type {
+  McpSetupStatus,
+  McpClientSetupStatus,
+  McpActivityEntry,
+  McpServerStatus,
+  McpAttachedSession,
+  McpStandaloneServer,
+};
 
 /**
  * Query the real binary path and read-only MCP registration status for supported clients.
@@ -525,7 +529,7 @@ export async function getMcpActivity(limit?: number): Promise<McpActivityEntry[]
   return invoke<McpActivityEntry[]>("get_mcp_activity", { limit: limit ?? null });
 }
 
-/** Check whether a headless MCP server process is currently running. */
+/** List MCP clients attached to the app and standalone MCP servers that are running. */
 export async function getMcpServerStatus(): Promise<McpServerStatus> {
   return invoke<McpServerStatus>("get_mcp_server_status");
 }
@@ -535,9 +539,11 @@ export async function clearMcpActivity(): Promise<void> {
   return invoke<void>("clear_mcp_activity");
 }
 
-/** Listen for MCP server startup failures (auto-start mode). */
-export function listenMcpStartupFailed(cb: (errorMessage: string) => void): Promise<UnlistenFn> {
-  return listen<string>("mcp:startup-failed", (event) => cb(event.payload));
+/** Listen for MCP clients attaching to or leaving the app. */
+export function listenMcpSessionsChanged(
+  cb: (sessions: McpAttachedSession[]) => void
+): Promise<UnlistenFn> {
+  return listen<McpAttachedSession[]>("mcp:sessions_changed", (event) => cb(event.payload));
 }
 
 // ── Android Studio integration ────────────────────────────────────────────────

@@ -3,8 +3,16 @@
 //!
 //! Each [`Sandbox`] gets its own `HOME`, so the child's data directory
 //! (`$HOME/.keynobi`) is a temp dir and a developer's real one is never read
-//! or written.
+//! or written. [`TestApp`] plays the running app: it serves attach requests
+//! on a sandbox's socket from this test process.
 
+use keynobi_lib::services::adb_manager::DeviceState;
+use keynobi_lib::services::build_runner::BuildState;
+use keynobi_lib::services::mcp_attach;
+use keynobi_lib::services::mcp_server::AndroidMcpServer;
+use keynobi_lib::services::mcp_sessions::McpSessionRegistry;
+use keynobi_lib::services::process_manager::ProcessManager;
+use keynobi_lib::FsState;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -26,7 +34,12 @@ pub struct Sandbox {
 impl Sandbox {
     /// A project whose `gradlew` succeeds and an SDK whose `adb` sees no devices.
     pub fn new() -> Self {
-        let dir = tempfile::tempdir().expect("create sandbox dir");
+        // Under /tmp: the app socket lives in the data dir, and macOS limits
+        // socket paths to 103 bytes.
+        let dir = tempfile::Builder::new()
+            .prefix("kn")
+            .tempdir_in("/tmp")
+            .expect("create sandbox dir");
         let root = dir.path().canonicalize().expect("canonicalize sandbox dir");
         let home = root.join("home");
         let project = root.join("project");
@@ -106,18 +119,36 @@ impl Sandbox {
         self.start_in(&self.project, Some(&self.project))
     }
 
-    /// Launch `keynobi --mcp [--project <project>]` in `working_dir`.
-    pub fn start_in(&self, working_dir: &Path, project: Option<&Path>) -> McpClient {
+    /// The socket the app would serve on for this sandbox's data dir.
+    pub fn socket_path(&self) -> PathBuf {
+        self.home.join(".keynobi").join("mcp.sock")
+    }
+
+    /// The activity log in this sandbox's data dir.
+    pub fn activity_log(&self) -> String {
+        std::fs::read_to_string(self.home.join(".keynobi").join("mcp-activity.jsonl"))
+            .unwrap_or_default()
+    }
+
+    /// `keynobi --mcp [--project <project>]` in `working_dir`, not yet spawned.
+    pub fn command(&self, working_dir: &Path, project: Option<&Path>) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_keynobi"));
         command.arg("--mcp");
         if let Some(project) = project {
             command.arg("--project").arg(project);
         }
-        let mut child = command
+        command
             .env("HOME", &self.home)
             .env_remove("GRADLE_USER_HOME")
             .env_remove("RUST_LOG")
-            .current_dir(working_dir)
+            .current_dir(working_dir);
+        command
+    }
+
+    /// Launch `keynobi --mcp [--project <project>]` in `working_dir`.
+    pub fn start_in(&self, working_dir: &Path, project: Option<&Path>) -> McpClient {
+        let mut child = self
+            .command(working_dir, project)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -141,6 +172,7 @@ impl Sandbox {
             stdin,
             lines,
             next_id: 1,
+            init: Value::Null,
         };
         client.initialize();
         client
@@ -190,6 +222,8 @@ pub struct McpClient {
     stdin: ChildStdin,
     lines: Receiver<String>,
     next_id: u64,
+    /// The `initialize` result.
+    pub init: Value,
 }
 
 /// The outcome of a `tools/call`.
@@ -213,6 +247,7 @@ impl McpClient {
             result.get("serverInfo").is_some(),
             "initialize returned no serverInfo: {result}"
         );
+        self.init = result;
         self.send(json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }));
     }
 
@@ -254,6 +289,18 @@ impl McpClient {
             .iter()
             .filter_map(|t| t["name"].as_str().map(str::to_string))
             .collect()
+    }
+
+    /// The `instructions` the server gave at initialize.
+    pub fn instructions(&self) -> &str {
+        self.init["instructions"].as_str().unwrap_or_default()
+    }
+
+    /// Call a tool that returns JSON and parse it.
+    pub fn call_tool_json(&mut self, name: &str, arguments: Value) -> Value {
+        let out = self.call_tool(name, arguments);
+        assert!(!out.is_error, "{name}: {}", out.text);
+        serde_json::from_str(&out.text).unwrap_or_else(|_| panic!("{name}: {}", out.text))
     }
 
     pub fn call_tool(&mut self, name: &str, arguments: Value) -> ToolOutput {
@@ -299,5 +346,107 @@ impl Drop for McpClient {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+/// The running app, as far as attaching is concerned: this test process
+/// serves attach requests on a sandbox's socket over state it owns, the way
+/// the app serves them over its managed state.
+pub struct TestApp {
+    rt: Option<tokio::runtime::Runtime>,
+    pub fs_state: FsState,
+    pub build_state: BuildState,
+    pub registry: McpSessionRegistry,
+}
+
+impl TestApp {
+    /// Listen on `sandbox`'s socket with `project` open.
+    pub fn listen(sandbox: &Sandbox, project: Option<&Path>) -> Self {
+        let rt = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build test app runtime");
+        let app = Self {
+            rt: None,
+            fs_state: FsState::new(),
+            build_state: crate::common::isolated_build_state(),
+            registry: McpSessionRegistry::new(),
+        };
+        app.open(project);
+        app.serve(rt, sandbox)
+    }
+
+    fn serve(mut self, rt: tokio::runtime::Runtime, sandbox: &Sandbox) -> Self {
+        let listener = rt
+            .block_on(async { mcp_attach::bind_app_socket(&sandbox.socket_path()) })
+            .expect("bind the app socket")
+            .expect("no other app is listening");
+        let (fs_state, build_state) = (self.fs_state.clone(), self.build_state.clone());
+        let device_state = DeviceState::new();
+        let logcat_state = keynobi_lib::commands::logcat::new_logcat_state();
+        let process_manager = ProcessManager::new();
+        rt.spawn(mcp_attach::serve_mcp_socket(
+            listener,
+            self.fs_state.clone(),
+            self.registry.clone(),
+            move || {
+                AndroidMcpServer::new_headless(
+                    build_state.clone(),
+                    device_state.clone(),
+                    logcat_state.clone(),
+                    fs_state.clone(),
+                    process_manager.clone(),
+                    None,
+                )
+            },
+        ));
+        self.rt = Some(rt);
+        self
+    }
+
+    /// Switch the app to `project` (or close it).
+    pub fn open(&self, project: Option<&Path>) {
+        let mut fs = self.fs_state.0.blocking_lock();
+        fs.project_root = project.map(Path::to_path_buf);
+        fs.gradle_root = project.map(Path::to_path_buf);
+    }
+
+    /// Record in this process's settings that the user trusted `project`.
+    pub fn trust(&self, project: &Path) {
+        keynobi_lib::services::settings_manager::mutate_settings(|settings| {
+            settings
+                .recent_projects
+                .push(keynobi_lib::models::settings::ProjectEntry {
+                    id: project.to_string_lossy().into_owned(),
+                    path: project.to_string_lossy().into_owned(),
+                    name: "sandbox".into(),
+                    gradle_root: Some(project.to_string_lossy().into_owned()),
+                    trusted: Some(true),
+                    ..Default::default()
+                });
+        })
+        .expect("trust the project");
+    }
+
+    /// Wait until `count` sessions are attached.
+    pub fn wait_for_sessions(&self, count: usize) {
+        let deadline = std::time::Instant::now() + REPLY_TIMEOUT;
+        while self.registry.sessions().len() != count {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "expected {count} attached sessions, have {:?}",
+                self.registry.sessions()
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+impl Drop for TestApp {
+    fn drop(&mut self) {
+        if let Some(rt) = self.rt.take() {
+            rt.shutdown_background();
+        }
     }
 }

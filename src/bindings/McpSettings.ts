@@ -5,13 +5,6 @@
  */
 export type McpSettings = { 
 /**
- * Automatically start the MCP stdio server when the app launches.
- *
- * When enabled, configured MCP clients can connect immediately after the app opens
- * without needing to trigger "Start MCP Server" from the command palette.
- */
-autoStart: boolean, 
-/**
  * Maximum seconds to wait for a Gradle build via the `run_gradle_task`
  * MCP tool before cancelling. Increase for very large projects.
  */

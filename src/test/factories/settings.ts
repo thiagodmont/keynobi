@@ -33,7 +33,6 @@ export function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings 
       ringMaxEntries: 50000,
     },
     mcp: {
-      autoStart: false,
       buildTimeoutSec: 300,
       logcatDefaultCount: 200,
       buildLogDefaultLines: 500,

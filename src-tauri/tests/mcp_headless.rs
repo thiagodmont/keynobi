@@ -1,8 +1,10 @@
-//! End-to-end tests of the headless MCP server binary. See `headless/mod.rs`.
+//! End-to-end tests of the `keynobi --mcp` binary, standalone and attached to
+//! an app. See `headless/mod.rs`.
 
+mod common;
 mod headless;
 
-use headless::Sandbox;
+use headless::{Sandbox, TestApp};
 use serde_json::json;
 
 #[test]
@@ -559,4 +561,304 @@ fn screenshot_reports_adb_output_that_is_not_an_image() {
     assert!(out.is_error, "{}", out.text);
     assert!(out.text.contains("did not return a PNG"), "{}", out.text);
     assert!(out.text.contains("device unauthorized"), "{}", out.text);
+}
+
+// ── Attaching to the app ──────────────────────────────────────────────────────
+
+const NOT_RUNNING: &str = "the Keynobi app is not running";
+
+#[test]
+fn without_the_app_the_server_runs_standalone_and_says_why() {
+    let sandbox = Sandbox::new();
+    let mut client = sandbox.start();
+
+    assert!(
+        client
+            .instructions()
+            .starts_with(&format!("Mode: standalone, because {NOT_RUNNING}.")),
+        "{}",
+        client.instructions()
+    );
+    assert!(client
+        .instructions()
+        .contains("not visible in the Keynobi app"));
+    assert_eq!(client.init["serverInfo"]["name"], "keynobi");
+
+    let info = client.call_tool_json("get_project_info", json!({}));
+    assert_eq!(info["mode"], "standalone", "{info}");
+    assert_eq!(info["standalone_reason"], NOT_RUNNING, "{info}");
+
+    let status = client.call_tool_json("get_build_status", json!({}));
+    assert_eq!(status["mode"], "standalone", "{status}");
+
+    let build = client.call_tool("run_gradle_task", json!({ "task": "assembleDebug" }));
+    assert!(!build.is_error, "{}", build.text);
+    assert!(
+        build
+            .text
+            .contains(&format!("mode: standalone ({NOT_RUNNING})")),
+        "{}",
+        build.text
+    );
+
+    assert!(
+        sandbox
+            .activity_log()
+            .contains(&format!("Server started (standalone: {NOT_RUNNING})")),
+        "{}",
+        sandbox.activity_log()
+    );
+}
+
+#[test]
+fn a_standalone_server_records_itself_while_it_runs() {
+    let sandbox = Sandbox::new();
+    let client = sandbox.start();
+    let records = sandbox.home.join(".keynobi").join("mcp-sessions");
+
+    let names: Vec<_> = std::fs::read_dir(&records)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names.len(), 1, "{names:?}");
+    let record: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(records.join(&names[0])).unwrap()).unwrap();
+    assert_eq!(record["reason"], NOT_RUNNING);
+    drop(client);
+}
+
+#[test]
+fn a_server_attaches_to_the_app_that_has_its_project_open() {
+    let sandbox = Sandbox::new();
+    let app = TestApp::listen(&sandbox, Some(&sandbox.project));
+    let mut client = sandbox.start();
+    app.wait_for_sessions(1);
+
+    assert!(
+        client.instructions().starts_with("Mode: attached"),
+        "{}",
+        client.instructions()
+    );
+    let info = client.call_tool_json("get_project_info", json!({}));
+    assert_eq!(info["mode"], "attached", "{info}");
+    assert_eq!(info["follows_app"], false, "{info}");
+    assert_eq!(info["pinned_project"], json!(sandbox.project), "{info}");
+    assert_eq!(info["path"], json!(sandbox.project), "{info}");
+    assert_eq!(info["selected_by"], "argument", "{info}");
+
+    // No standalone record: this process serves nothing itself.
+    assert!(!sandbox.home.join(".keynobi").join("mcp-sessions").exists());
+    assert_eq!(
+        app.registry.sessions()[0].client_name.as_deref(),
+        Some("keynobi-headless-test")
+    );
+}
+
+#[test]
+fn a_server_without_a_project_follows_the_app() {
+    let sandbox = Sandbox::new();
+    let app = TestApp::listen(&sandbox, Some(&sandbox.project));
+    // The home folder is not inside a Gradle build.
+    let mut client = sandbox.start_in(&sandbox.home, None);
+
+    let info = client.call_tool_json("get_project_info", json!({}));
+    assert_eq!(info["mode"], "attached", "{info}");
+    assert_eq!(info["follows_app"], true, "{info}");
+    assert_eq!(info["selected_by"], "app", "{info}");
+    assert_eq!(info["path"], json!(sandbox.project), "{info}");
+
+    // Switching projects in the app moves the session with it.
+    let other = sandbox.home.join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    app.open(Some(&other));
+    let info = client.call_tool_json("get_project_info", json!({}));
+    assert_eq!(info["path"], json!(other), "{info}");
+}
+
+#[test]
+fn a_project_mismatch_runs_standalone_and_names_the_app_project() {
+    let sandbox = Sandbox::new();
+    let other = sandbox.home.join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    let app = TestApp::listen(&sandbox, Some(&other));
+    let mut client = sandbox.start();
+
+    let info = client.call_tool_json("get_project_info", json!({}));
+    assert_eq!(info["mode"], "standalone", "{info}");
+    let reason = info["standalone_reason"].as_str().unwrap();
+    assert!(
+        reason.contains("another project open") && reason.contains(&other.display().to_string()),
+        "{reason}"
+    );
+    assert_eq!(info["path"], json!(sandbox.project), "{info}");
+    assert!(client.instructions().contains(reason));
+    assert!(app.registry.sessions().is_empty());
+}
+
+#[test]
+fn a_pinned_session_refuses_project_tools_after_the_app_switches_projects() {
+    let sandbox = Sandbox::new();
+    let app = TestApp::listen(&sandbox, Some(&sandbox.project));
+    let mut client = sandbox.start();
+
+    let other = sandbox.home.join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    app.open(Some(&other));
+
+    let build = client.call_tool("run_gradle_task", json!({ "task": "assembleDebug" }));
+    assert!(build.is_error, "{}", build.text);
+    assert!(
+        build
+            .text
+            .contains(&format!("Keynobi now has {} open", other.display()))
+            && build.text.contains(&format!(
+                "this session is for {}",
+                sandbox.project.display()
+            )),
+        "{}",
+        build.text
+    );
+    // Device tools do not depend on the project.
+    let devices = client.call_tool("list_devices", json!({}));
+    assert!(!devices.is_error, "{}", devices.text);
+}
+
+#[test]
+fn attach_only_fails_instead_of_running_standalone() {
+    let sandbox = Sandbox::new();
+    let out = sandbox
+        .command(&sandbox.project, Some(&sandbox.project))
+        .arg("--attach-only")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains(NOT_RUNNING), "{stderr}");
+    assert!(
+        out.stdout.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert!(
+        !sandbox.activity_log().contains("Server started"),
+        "{}",
+        sandbox.activity_log()
+    );
+}
+
+#[test]
+fn one_attached_client_leaving_does_not_affect_another() {
+    let sandbox = Sandbox::new();
+    let app = TestApp::listen(&sandbox, Some(&sandbox.project));
+    let first = sandbox.start();
+    let mut second = sandbox.start();
+    app.wait_for_sessions(2);
+
+    drop(first);
+    app.wait_for_sessions(1);
+
+    let devices = second.call_tool("list_devices", json!({}));
+    assert!(!devices.is_error, "{}", devices.text);
+    let info = second.call_tool_json("get_project_info", json!({}));
+    assert_eq!(info["mode"], "attached", "{info}");
+}
+
+#[test]
+fn a_stale_socket_file_means_standalone_until_the_app_replaces_it() {
+    let sandbox = Sandbox::new();
+    // Left behind by an app that crashed.
+    drop(std::os::unix::net::UnixListener::bind(sandbox.socket_path()).unwrap());
+
+    let info = sandbox
+        .start()
+        .call_tool_json("get_project_info", json!({}));
+    assert_eq!(info["standalone_reason"], NOT_RUNNING, "{info}");
+
+    let _app = TestApp::listen(&sandbox, Some(&sandbox.project));
+    let info = sandbox
+        .start()
+        .call_tool_json("get_project_info", json!({}));
+    assert_eq!(info["mode"], "attached", "{info}");
+}
+
+/// The app and every attached session share one build slot, and all of them
+/// get the same answer while it is taken.
+#[test]
+fn the_app_and_attached_sessions_share_one_build_slot() {
+    use keynobi_lib::services::build_runner::{self, BUILD_ALREADY_RUNNING};
+
+    let sandbox = Sandbox::new();
+    sandbox.write_gradlew("sleep 3\necho 'BUILD SUCCESSFUL in 3s'");
+    let app = TestApp::listen(&sandbox, Some(&sandbox.project));
+    app.trust(&sandbox.project);
+    let mut first = sandbox.start();
+    let mut second = sandbox.start();
+    app.wait_for_sessions(2);
+
+    // The app's own build holds the slot: an agent is refused.
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    rt.block_on(build_runner::try_reserve_build_slot(
+        &app.build_state,
+        "assembleDebug",
+        "2026-01-01T00:00:00Z",
+    ))
+    .unwrap();
+    let busy = first.call_tool("run_gradle_task", json!({ "task": "assembleDebug" }));
+    assert!(busy.is_error, "{}", busy.text);
+    assert!(busy.text.contains(BUILD_ALREADY_RUNNING), "{}", busy.text);
+    rt.block_on(async {
+        build_runner::mark_build_spawn_failed(&mut *app.build_state.inner.lock().await);
+    });
+
+    // An agent's build holds the slot: the other agent and the app are refused.
+    let building = std::thread::spawn(move || {
+        let out = first.call_tool("run_gradle_task", json!({ "task": "assembleDebug" }));
+        (first, out)
+    });
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let status = second.call_tool_json("get_build_status", json!({}));
+        if status["status"] == "running" {
+            assert_eq!(status["mode"], "attached", "{status}");
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline, "{status}");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let busy = second.call_tool("run_gradle_task", json!({ "task": "assembleRelease" }));
+    assert!(busy.is_error, "{}", busy.text);
+    assert!(busy.text.contains(BUILD_ALREADY_RUNNING), "{}", busy.text);
+    let app_busy = rt.block_on(build_runner::try_reserve_build_slot(
+        &app.build_state,
+        "assembleDebug",
+        "2026-01-01T00:00:01Z",
+    ));
+    assert_eq!(app_busy, Err(BUILD_ALREADY_RUNNING.to_string()));
+
+    let (_first, done) = building.join().unwrap();
+    assert!(!done.is_error, "{}", done.text);
+    assert!(done.text.contains("mode: attached"), "{}", done.text);
+}
+
+#[test]
+fn settings_saved_with_the_removed_mcp_auto_start_still_load() {
+    let sandbox = Sandbox::new();
+    let settings = sandbox.home.join(".keynobi").join("settings.json");
+    let mut value: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    value["mcp"] = json!({ "autoStart": true, "allowUnrestrictedGradle": true });
+    std::fs::write(&settings, value.to_string()).unwrap();
+    let mut client = sandbox.start();
+
+    // Only allowed because the rest of the MCP settings loaded.
+    let build = client.call_tool("run_gradle_task", json!({ "task": "publishRelease" }));
+    assert!(!build.is_error, "{}", build.text);
+    assert!(!sandbox
+        .home
+        .join(".keynobi")
+        .join("settings.json.corrupt")
+        .exists());
 }

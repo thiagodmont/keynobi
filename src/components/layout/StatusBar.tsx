@@ -7,9 +7,9 @@ import { overallHealth, healthSummary } from "@/stores/health.store";
 import { buildState, isBuilding, isDeploying, buildDurationMs } from "@/stores/build.store";
 import { VariantSelectorPill } from "@/components/build/VariantSelector";
 import { setActiveTab } from "@/stores/ui.store";
-import { mcpState } from "@/stores/mcp.store";
+import { mcpStatusSummary } from "@/stores/mcp.store";
 import { openMcpPanel } from "@/components/mcp/McpPanel";
-import { Icon } from "@/components/ui";
+import { Icon, StatusDot } from "@/components/ui";
 import { appMemoryBytes, logFolderBytes, rotationTriggered } from "@/stores/monitor.store";
 import { settingsState } from "@/stores/settings.store";
 import { AppUpdateStatusIndicator } from "@/components/update/AppUpdateStatusIndicator";
@@ -296,30 +296,21 @@ function BuildStatusIndicator(): JSX.Element {
 
 // ── MCP status indicator ───────────────────────────────────────────────────────
 
-function McpStatusIndicator(): JSX.Element {
-  const connected = () => mcpState.running || mcpState.serverAlive;
-  const clientName = () => mcpState.clientName;
+export function McpStatusIndicator(): JSX.Element {
+  const summary = () => mcpStatusSummary();
+  const connected = () => summary().tone !== "idle";
 
-  const dotColor = () => {
-    if (mcpState.clientName) return "var(--success)"; // client actively connected
-    if (mcpState.serverAlive) return "var(--info)"; // server alive, no client
-    if (mcpState.running) return "var(--warning)"; // GUI-mode server running
-    return "rgba(255,255,255,0.3)"; // idle
-  };
-
-  const tooltip = () => {
-    if (clientName()) return `MCP: ${clientName()} connected — click for activity log`;
-    if (mcpState.serverAlive)
-      return `MCP server running (PID ${mcpState.serverPid ?? "?"}) — click for activity log`;
-    if (mcpState.running) return "MCP server running — click for activity log";
-    return "MCP — click to set up or view activity log";
-  };
+  const tooltip = () =>
+    connected()
+      ? `MCP: ${summary().description} — click for activity log`
+      : "MCP — click to set up or view activity log";
 
   return (
     <button
       onClick={openMcpPanel}
       onMouseDown={(e) => e.stopPropagation()}
       title={tooltip()}
+      aria-label={tooltip()}
       style={{
         display: "flex",
         "align-items": "center",
@@ -344,15 +335,15 @@ function McpStatusIndicator(): JSX.Element {
           : "rgba(255,255,255,0.08)";
       }}
     >
-      <span
-        style={{
-          width: "6px",
-          height: "6px",
-          "border-radius": "50%",
-          background: dotColor(),
-          "flex-shrink": "0",
-          display: "inline-block",
-        }}
+      <StatusDot
+        size="sm"
+        status={
+          summary().tone === "attached"
+            ? "ok"
+            : summary().tone === "standalone"
+              ? "warning"
+              : "idle"
+        }
       />
       <span
         style={{
@@ -362,7 +353,7 @@ function McpStatusIndicator(): JSX.Element {
           "white-space": "nowrap",
         }}
       >
-        {clientName() ? `MCP: ${clientName()}` : "MCP"}
+        {connected() ? `MCP: ${summary().label}` : "MCP"}
       </span>
     </button>
   );

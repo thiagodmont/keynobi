@@ -791,6 +791,9 @@ pub fn mark_build_spawn_failed(bs: &mut BuildStateInner) {
     }
 }
 
+/// Error returned when the build slot is taken, by every front door.
+pub const BUILD_ALREADY_RUNNING: &str = "A Gradle build is already running";
+
 /// Reserve the single build slot, marking the build as starting.
 ///
 /// Every code path that spawns Gradle MUST call this first. Previously only the
@@ -808,7 +811,7 @@ pub async fn try_reserve_build_slot(
     let mut bs = build_state.inner.lock().await;
     if bs.starting || bs.current_build.is_some() || matches!(bs.status, BuildStatus::Running { .. })
     {
-        return Err("A Gradle build is already running".to_string());
+        return Err(BUILD_ALREADY_RUNNING.to_string());
     }
     bs.starting = true;
     bs.status = BuildStatus::Running {

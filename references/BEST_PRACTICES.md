@@ -46,14 +46,15 @@ Security violations fail immediately with clear errors. User-actionable failures
 
 ## Process Model
 
-Keynobi runs as up to two kinds of process that do **not** share memory:
+Keynobi runs as these kinds of process, which do **not** share memory:
 
 | Process | Started by | State |
 |---------|-----------|-------|
-| GUI app | The user (Finder, Dock) | Tauri managed state: `FsState`, `BuildState`, `DeviceState`, `LogcatState`, `ProcessManager`. |
-| Headless MCP server | An MCP client running `keynobi --mcp [--project <path>]` | Its own fresh copies of the same state. One process per connected client. |
+| GUI app | The user (Finder, Dock) | Tauri managed state: `FsState`, `BuildState`, `DeviceState`, `LogcatState`, `ProcessManager`. MCP sessions attached over its socket run in this process on the same state. |
+| `keynobi --mcp`, attached | An MCP client, while the app is running and has the requested project open (or none was requested) | No state of its own: it relays the client's stdio to the app, which serves the session. |
+| `keynobi --mcp`, standalone | An MCP client, when attaching fails | Its own fresh copies of the same state. One process per client. |
 
-The processes coordinate only through files in the data directory (below). There is no cross-process build lock, and the GUI does not see an MCP client's builds, logcat stream, or selected device live. Design features and write docs with this boundary in mind; do not promise shared live state that the code does not provide.
+Standalone servers coordinate with the app only through files in the data directory (below): there is no cross-process build lock, and the app does not see a standalone server's builds, logcat stream, or selected device. Attached sessions share the app's state, but their builds are not yet streamed into the Build panel. Design features and write docs with this boundary in mind; do not promise shared live state that the code does not provide. See `MCP_SERVER.md` § Modes.
 
 ### Data Directory
 
@@ -64,7 +65,9 @@ All persistent app data lives under `~/.keynobi/`, resolved by `settings_manager
 | `settings.json` | User settings (atomic writes; a corrupt file is moved to `settings.json.corrupt`). |
 | `logs/app.log.*` | Daily-rotated GUI logs, pruned by retention and folder-size settings (never the active file). |
 | `build-history.json`, `build-logs/build-{id}.jsonl` | Build history and per-build logs. |
-| `mcp-activity.jsonl`, `mcp-server.pid` | MCP activity log and headless server PID. |
+| `mcp-activity.jsonl` | MCP activity log (appended and rotated under the data lock). |
+| `mcp.sock` | Socket the app serves attached MCP sessions on (`0600`; the data directory is `0700`). |
+| `mcp-sessions/<pid>.json` | One record per running standalone MCP server. |
 | `.lock` | Advisory lock that serializes settings and build-history writes across processes. |
 
 Every read-modify-write of `settings.json` or `build-history.json` runs under `settings_manager::with_data_lock` (a process mutex plus a file lock on `.lock`) and re-reads the file inside it, because other processes write the same files. Write atomically to a `unique_tmp_path` and rename. The lock is not reentrant; never take it inside itself.
@@ -252,7 +255,7 @@ KEYNOBI_LOG=keynobi_lib=debug npm run tauri dev
 
 The file writer is non-blocking. Its guard is held until `RunEvent::Exit`, and dropping it there writes out queued lines; never `mem::forget` it. Old files are pruned at startup by `advanced.logRetentionDays` and every 5 s by `services/monitor.rs` (oldest first until the folder is under `advanced.logMaxSizeMb`). Both passes skip the file being written today (`monitor::active_log_file_name`, UTC date) and count only removals that succeeded.
 
-Headless MCP logging uses the standard tracing env filter (`RUST_LOG`, default `warn`) and writes to stderr so stdout remains reserved for MCP JSON-RPC.
+`keynobi --mcp` logging (standalone or relaying) uses the standard tracing env filter (`RUST_LOG`, default `warn`) and writes to stderr so stdout remains reserved for MCP JSON-RPC.
 
 Do not log secrets, full MCP tool arguments, or raw device text at `info` or above.
 
@@ -262,8 +265,7 @@ Do not log secrets, full MCP tool arguments, or raw device text at `info` or abo
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
-- **Cross-process state.** GUI and headless MCP do not share live state or a build lock. Settings and build history are merged under the data lock, but `mcp-activity.jsonl` is still appended without it.
+- **Cross-process state.** The app and standalone MCP servers do not share live state or a build lock. Settings, build history, and the MCP activity log are merged under the data lock.
 - **Health check settings write.** `health_inspector` stores a detected SDK path by saving a full settings snapshot instead of `mutate_settings`, so it can revert a concurrent edit to another setting.
 - **Duplicated logic.** APK path validation exists twice (`utils/path.rs` and MCP `validate_apk_path`).
 - **`unwrap()` policy.** Enforced by review only. About 15 production `unwrap()` calls remain, mostly `Regex::new` in `build_parser.rs`. Consider `clippy::unwrap_used`.
-- **Unbounded activity log.** `mcp-activity.jsonl` is trimmed only at MCP server start.

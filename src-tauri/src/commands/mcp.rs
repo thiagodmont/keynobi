@@ -1,7 +1,8 @@
-pub use crate::services::mcp_server::start_mcp_server;
-
+use crate::models::error::AppError;
 use crate::services::mcp_activity;
-pub use crate::services::mcp_activity::{McpActivityEntry, McpServerStatus};
+pub use crate::services::mcp_activity::McpActivityEntry;
+pub use crate::services::mcp_sessions::McpServerStatus;
+use crate::services::mcp_sessions::{self, McpSessionRegistry};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -356,16 +357,20 @@ pub async fn get_mcp_activity(limit: Option<u32>) -> Result<Vec<McpActivityEntry
         .map_err(|e| format!("Failed to read MCP activity log: {e}"))
 }
 
-/// Return the live status of the MCP server: whether a headless process is alive and its PID.
+/// Return the live MCP sessions: clients attached to this app, and standalone
+/// `keynobi --mcp` servers running with their own state.
 #[tauri::command]
-pub async fn get_mcp_server_status() -> Result<McpServerStatus, String> {
-    let status = tokio::task::spawn_blocking(|| McpServerStatus {
-        alive: mcp_activity::is_mcp_server_alive(),
-        pid: mcp_activity::read_pid_file(),
+pub async fn get_mcp_server_status(
+    registry: tauri::State<'_, McpSessionRegistry>,
+) -> Result<McpServerStatus, AppError> {
+    let standalone = tokio::task::spawn_blocking(mcp_sessions::list_standalone_servers)
+        .await
+        .map_err(|e| AppError::McpError(format!("Failed to list MCP servers: {e}")))?;
+    Ok(McpServerStatus {
+        listening: registry.is_listening(),
+        attached: registry.sessions(),
+        standalone,
     })
-    .await
-    .map_err(|e| format!("Failed to check MCP server status: {e}"))?;
-    Ok(status)
 }
 
 /// Clear the MCP activity log.
