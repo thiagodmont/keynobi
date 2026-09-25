@@ -24,7 +24,7 @@ pub async fn run_health_check(
     let adb = crate::services::adb_manager::get_adb_path(settings);
 
     let (java, adb_status) = tokio::join!(
-        jdk::check_java(settings, gradle_root.or(project_root), jdk_roots),
+        jdk::check_project_java(settings, project_root, gradle_root, jdk_roots),
         async {
             output_with_timeout(
                 tokio::process::Command::new(&adb).arg("version"),
@@ -36,7 +36,7 @@ pub async fn run_health_check(
     let java_ok = java.found;
     let adb_ok = adb_status.map(|o| o.status.success()).unwrap_or(false);
 
-    let detected_sdk = detect_sdk_path(settings.android.sdk_path.as_deref(), project_root);
+    let detected_sdk = detected_sdk_for(settings, project_root);
     let sdk_ok = detected_sdk.is_some();
 
     if sdk_ok {
@@ -65,6 +65,14 @@ pub async fn run_health_check(
         detected_sdk,
         project_path: project_root.map(|p| p.to_path_buf()),
     }
+}
+
+/// The SDK to report and save. An untrusted project's `local.properties` is
+/// not consulted, so it cannot choose the SDK whose tools Keynobi runs.
+fn detected_sdk_for(settings: &AppSettings, project_root: Option<&Path>) -> Option<String> {
+    let trusted_root =
+        project_root.filter(|root| crate::services::project_trust::is_trusted(settings, root));
+    detect_sdk_path(settings.android.sdk_path.as_deref(), trusted_root)
 }
 
 pub fn detect_sdk_path(configured: Option<&str>, project_root: Option<&Path>) -> Option<String> {
@@ -128,6 +136,34 @@ pub fn detect_sdk_path(configured: Option<&str>, project_root: Option<&Path>) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_trusted_project_can_choose_the_sdk_through_local_properties() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let sdk = root.join("project-sdk");
+        std::fs::create_dir_all(sdk.join("platform-tools")).unwrap();
+        let project = root.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::write(
+            project.join("local.properties"),
+            format!("sdk.dir={}\n", sdk.display()),
+        )
+        .unwrap();
+        let project_sdk = Some(sdk.to_string_lossy().into_owned());
+
+        let mut settings = AppSettings::default();
+        assert_ne!(detected_sdk_for(&settings, Some(&project)), project_sdk);
+
+        settings
+            .recent_projects
+            .push(crate::models::settings::ProjectEntry {
+                path: project.to_string_lossy().into_owned(),
+                trusted: Some(true),
+                ..Default::default()
+            });
+        assert_eq!(detected_sdk_for(&settings, Some(&project)), project_sdk);
+    }
 
     #[test]
     fn detect_sdk_path_accepts_valid_configured_path() {

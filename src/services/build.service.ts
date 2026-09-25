@@ -26,6 +26,7 @@ import { deviceState } from "@/stores/device.store";
 import { setActiveTab } from "@/stores/ui.store";
 import { projectState, currentProjectGeneration } from "@/stores/project.store";
 import { settingsState } from "@/stores/settings.store";
+import { isActiveProjectTrusted } from "@/stores/projects.store";
 import type { BuildError } from "@/bindings";
 
 let buildCompleteUnlisten: (() => void) | null = null;
@@ -160,11 +161,24 @@ export async function runBuild(task?: string, opts?: RunBuildOptions): Promise<v
   return runBuildGuarded(task, opts, false);
 }
 
+/** Button title for build actions disabled in Safe Mode. */
+export const SAFE_MODE_BUILD_TITLE = "Safe Mode — trust this project to build";
+
+/** Builds run the project's own Gradle scripts, so Safe Mode refuses them. */
+function assertProjectTrusted(): void {
+  if (projectState.projectRoot && !isActiveProjectTrusted()) {
+    throw new Error(
+      `${SAFE_MODE_BUILD_TITLE}. Keynobi does not run the Gradle build scripts of a project you have not trusted: right-click it in the Projects sidebar and choose Trust Project.`
+    );
+  }
+}
+
 async function runBuildGuarded(
   task: string | undefined,
   opts: RunBuildOptions | undefined,
   allowDuringDeploy: boolean
 ): Promise<void> {
+  assertProjectTrusted();
   if (deployInFlight && !allowDuringDeploy) {
     throw new Error("A build or deploy is already running.");
   }
@@ -292,6 +306,7 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
  * After a successful build the APK is installed and the app launched.
  */
 export async function runAndDeploy(): Promise<void> {
+  assertProjectTrusted();
   if (
     deployInFlight ||
     currentBuildPromise ||

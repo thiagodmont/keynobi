@@ -4,7 +4,24 @@ import { invoke } from "@tauri-apps/api/core";
 import { BuildPanel } from "./BuildPanel";
 import { resetBuildState, setBuildHistory } from "@/stores/build.store";
 import { setProject, setProjectState } from "@/stores/project.store";
+import { setProjects } from "@/stores/projects.store";
 import { makeBuildLine, makeBuildRecord } from "@/test/factories/build";
+import type { ProjectEntry } from "@/bindings";
+
+function registerProject(trusted: boolean | null): void {
+  const entry: ProjectEntry = {
+    id: "p1",
+    path: "/mock/android-project",
+    name: "android-project",
+    gradleRoot: "/mock/android-project",
+    lastOpened: "2026-01-01T00:00:00Z",
+    pinned: false,
+    lastBuildVariant: null,
+    lastDevice: null,
+    trusted,
+  };
+  setProjects([entry]);
+}
 
 type LogResponder = (id: number) => Promise<unknown>;
 
@@ -33,6 +50,7 @@ describe("BuildPanel historical log", () => {
     }
     resetBuildState();
     setProject("/mock/android-project", "android-project");
+    registerProject(true);
     setBuildHistory([
       makeBuildRecord({ id: 2, task: "assembleRelease" }),
       makeBuildRecord({ id: 1, task: "assembleDebug" }),
@@ -45,6 +63,7 @@ describe("BuildPanel historical log", () => {
     vi.mocked(invoke).mockResolvedValue(undefined);
     resetBuildState();
     setProjectState({ projectRoot: null, gradleRoot: null, projectName: null, loading: false });
+    setProjects([]);
   });
 
   it("shows the load error instead of 'No log saved' when loading a build's log fails", async () => {
@@ -100,5 +119,42 @@ describe("BuildPanel historical log", () => {
     expect(await screen.findByText("> Task :app:assembleDebug")).not.toBeNull();
     expect(screen.queryByRole("alert")).toBeNull();
     expect(attempts).toBe(2);
+  });
+});
+
+describe("BuildPanel in Safe Mode", () => {
+  beforeEach(() => {
+    resetBuildState();
+    setProject("/mock/android-project", "android-project");
+  });
+
+  afterEach(() => {
+    cleanup();
+    resetBuildState();
+    setProjectState({ projectRoot: null, gradleRoot: null, projectName: null, loading: false });
+    setProjects([]);
+  });
+
+  for (const trusted of [false, null]) {
+    it(`disables Run and Build and explains Safe Mode (trusted: ${trusted})`, () => {
+      registerProject(trusted);
+      render(() => <BuildPanel />);
+
+      const buttons = screen.getAllByTitle("Safe Mode — trust this project to build");
+      expect(buttons).toHaveLength(2);
+      for (const button of buttons) expect((button as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByRole("alert").textContent).toContain("Safe Mode");
+      expect(screen.getByRole("button", { name: "Trust Project…" })).not.toBeNull();
+    });
+  }
+
+  it("enables Run and Build for a trusted project", () => {
+    registerProject(true);
+    render(() => <BuildPanel />);
+
+    expect(screen.queryAllByTitle("Safe Mode — trust this project to build")).toHaveLength(0);
+    const run = screen.getByTitle(/Run App/) as HTMLButtonElement;
+    expect(run.disabled).toBe(false);
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

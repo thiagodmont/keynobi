@@ -83,7 +83,7 @@ Keynobi runs with the user's privileges and drives `adb`, `gradlew`, and the And
 
 - Paths and identifiers from the frontend.
 - Every argument from an MCP client. An AI agent can be steered by prompt injection from log lines, web pages, or project files it has read.
-- Project files: opening a project and building it executes the project's Gradle build scripts.
+- Project files: building a project, or detecting its variants with Gradle, executes the project's `gradlew` and build scripts, and its `gradle.properties` and `local.properties` name paths to executables.
 - Output from devices and tools (logcat, UI Automator XML, Gradle output).
 
 ### Path Boundaries
@@ -91,6 +91,10 @@ Keynobi runs with the user's privileges and drives `adb`, `gradlew`, and the And
 Every path from the frontend, MCP, or an external tool is untrusted. Validate paths against the effective project root before filesystem access.
 
 The effective root is `gradle_root` when available, otherwise `project_root`. Use canonical paths so `..` and symlinks cannot escape the sandbox. Never use raw string prefix checks for security.
+
+### Project Trust
+
+Opening a project must never run its code. Anything that executes project-controlled code (Gradle) or an executable whose path the project chose runs only for a project the user trusted in the app, checked in the backend on every path (`services/project_trust.rs`). New projects open in Safe Mode until the user chooses **Trust**; the MCP server never prompts. See `DOMAIN_PATTERNS.md` § Projects → Project Trust.
 
 ### Process Arguments
 

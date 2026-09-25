@@ -1,6 +1,7 @@
 import { type JSX, Show, For, createSignal, onMount, onCleanup } from "solid-js";
 import { variantState, selectVariant, loadVariants } from "@/stores/variant.store";
 import { projectState } from "@/stores/project.store";
+import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { Icon } from "@/components/ui";
 import { showToast } from "@/components/ui";
 import { formatError } from "@/lib/tauri-api";
@@ -116,6 +117,9 @@ function VariantPickerModal(props: { onClose: () => void }): JSX.Element {
   }
 
   const statusLabel = () => {
+    if (projectState.projectRoot && !isActiveProjectTrusted()) {
+      return "Safe Mode — read from build files; trust the project to detect variants with Gradle";
+    }
     if (variantState.gradleError) return `Gradle error: ${variantState.gradleError}`;
     if (variantState.gradleLoading) return "Detecting variants from Gradle…";
     if (variantState.fromGradle) return "Detected via Gradle";

@@ -37,4 +37,11 @@ lastBuildVariant: string | null,
 /**
  * Last-used ADB device serial for this project.
  */
-lastDevice: string | null, };
+lastDevice: string | null, 
+/**
+ * Whether Keynobi may run this project's Gradle build scripts:
+ * `Some(true)` trusted, `Some(false)` Safe Mode (declined or revoked),
+ * `None` not asked yet. Always written, so an entry saved before this
+ * field existed is the only kind that reads as missing, and it is trusted.
+ */
+trusted: boolean | null, };

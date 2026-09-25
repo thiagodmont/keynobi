@@ -890,6 +890,7 @@ mod variant_tests {
                     pinned: false,
                     last_build_variant: Some("release".into()),
                     last_device: None,
+                    trusted: None,
                 });
         })
         .unwrap();
@@ -905,6 +906,26 @@ mod variant_tests {
             saved.recent_projects[0].last_build_variant.as_deref(),
             Some("release")
         );
+    }
+
+    #[test]
+    fn a_settings_snapshot_cannot_change_project_trust() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        write_settings(
+            &path,
+            r#"{ "recentProjects": [{ "id": "p1", "path": "/proj/a", "trusted": true }] }"#,
+        );
+        // The UI loaded its snapshot while the project was trusted...
+        let (mut snapshot, _) = load_settings_from_path(&path);
+        // ...and the user revoked trust before the snapshot was saved.
+        mutate_settings_at_path(&path, |s| s.recent_projects[0].trusted = Some(false)).unwrap();
+
+        snapshot.onboarding_completed = true;
+        save_settings_snapshot_at_path(&path, &snapshot).unwrap();
+
+        let (saved, _) = load_settings_from_path(&path);
+        assert_eq!(saved.recent_projects[0].trusted, Some(false));
     }
 
     #[test]

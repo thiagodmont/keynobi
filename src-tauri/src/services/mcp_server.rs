@@ -25,6 +25,7 @@ use crate::services::jdk;
 use crate::services::logcat::{self, LogcatFilter, LogcatState};
 use crate::services::mcp_activity::{self, McpActivityEntry};
 use crate::services::process_manager::ProcessManager;
+use crate::services::project_trust;
 use crate::services::settings_manager;
 use crate::services::ui_automation;
 use crate::services::ui_hierarchy;
@@ -56,6 +57,20 @@ static MCP_STDIO_RUNNING: AtomicBool = AtomicBool::new(false);
 
 // ── Server struct ─────────────────────────────────────────────────────────────
 
+/// How the server chose its project, reported by `get_project_info`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectSelection {
+    /// The project open in the Keynobi app (the app's own server).
+    App,
+    /// `--project <path>`.
+    Argument,
+    /// The Gradle build containing the working directory.
+    WorkingDirectory,
+    /// The project last active in the Keynobi app.
+    LastActiveProject,
+}
+
 /// Holds references to all app state needed by MCP tools.
 ///
 /// All state structs are backed by `Arc<Mutex<>>` internally, so `Clone` here
@@ -69,6 +84,8 @@ pub struct AndroidMcpServer {
     process_manager: ProcessManager,
     /// Present in GUI mode; used for lifecycle event emission and logcat streaming.
     app_handle: Option<AppHandle>,
+    /// How the project was chosen; `None` when no project was found.
+    project_selection: Option<ProjectSelection>,
     tool_router: ToolRouter<Self>,
     prompt_router: PromptRouter<Self>,
 }
@@ -88,6 +105,7 @@ impl AndroidMcpServer {
             fs_state,
             process_manager,
             app_handle: Some(app.clone()),
+            project_selection: Some(ProjectSelection::App),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
@@ -110,6 +128,7 @@ impl AndroidMcpServer {
         logcat_state: LogcatState,
         fs_state: FsState,
         process_manager: ProcessManager,
+        project_selection: Option<ProjectSelection>,
     ) -> Self {
         Self {
             build_state,
@@ -118,6 +137,7 @@ impl AndroidMcpServer {
             fs_state,
             process_manager,
             app_handle: None,
+            project_selection,
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
@@ -377,7 +397,7 @@ impl AndroidMcpServer {
         // Snapshot both roots under a single FsState lock (mirroring the UI
         // path in commands/build.rs) so a project switch mid-request cannot
         // pair one project's gradle_root with another's history root.
-        let (gradle_root, project_root_for_history) = {
+        let (gradle_root, project_root_for_history, trust_root) = {
             let fs = self.fs_state.0.lock().await;
             let root = fs
                 .gradle_root
@@ -393,15 +413,17 @@ impl AndroidMcpServer {
                 .project_root
                 .as_ref()
                 .map(|p| p.to_string_lossy().into_owned());
-            (root, history_root)
+            let trust_root = fs.project_root.clone().unwrap_or_else(|| root.clone());
+            (root, history_root, trust_root)
         };
+
+        let (settings, _) = settings_manager::load_settings();
+        let env = build_runner::trusted_gradle_env(&settings, &trust_root, &gradle_root)
+            .map_err(|e| McpError::invalid_params(e, None))?;
 
         let gradlew = build_runner::find_gradlew(&gradle_root).ok_or_else(|| {
             McpError::invalid_params("gradlew not found. Is this an Android project?", None)
         })?;
-
-        let (settings, _) = settings_manager::load_settings();
-        let env = build_runner::build_env_vars(&settings, &gradle_root);
 
         let result = build_runner::run_task(
             &p.task,
@@ -2849,7 +2871,7 @@ impl AndroidMcpServer {
 
     /// Get information about the open Android project.
     #[tool(
-        description = "Get the currently open Android project name, path, detected Gradle root, and the JDK Gradle builds use (path, major version, and where it was found).",
+        description = "Get the currently open Android project name, path, detected Gradle root, how the project was selected (selected_by), whether it is trusted to run its Gradle build (trusted), and the JDK Gradle builds use (path, major version, and where it was found).",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -2862,9 +2884,10 @@ impl AndroidMcpServer {
             (fs.project_root.clone(), fs.gradle_root.clone())
         };
         let (settings, _) = settings_manager::load_settings();
-        let java = jdk::check_java(
+        let java = jdk::check_project_java(
             &settings,
-            gradle_root.as_deref().or(project_root.as_deref()),
+            project_root.as_deref(),
+            gradle_root.as_deref(),
             &jdk::JdkSearchRoots::system(),
         )
         .await
@@ -2883,11 +2906,19 @@ impl AndroidMcpServer {
                 let gradle = gradle_root
                     .as_ref()
                     .map(|g| g.to_string_lossy().to_string());
+                let trusted = project_trust::is_trusted(&settings, root);
+                let trust_hint = (!trusted).then_some(
+                    "Safe Mode: run_gradle_task and run_tests are refused until the user opens \
+                     this project in the Keynobi app and chooses Trust. Other tools still work.",
+                );
                 Ok(CallToolResult::structured(json!({
                     "open": true,
                     "name": name,
                     "path": root.to_string_lossy(),
                     "gradle_root": gradle,
+                    "selected_by": self.project_selection,
+                    "trusted": trusted,
+                    "trust_hint": trust_hint,
                     "java": java,
                 })))
             }
@@ -3554,6 +3585,33 @@ pub async fn start_mcp_server(app_handle: AppHandle) -> Result<(), String> {
 
 // ── Headless entry point ──────────────────────────────────────────────────────
 
+/// The headless server's project: `--project`, else the Gradle build that
+/// contains the working directory, else the app's last active project. An
+/// agent's working directory beats a project the app happened to leave open.
+fn select_headless_project(
+    argument: Option<PathBuf>,
+    working_dir: Option<PathBuf>,
+    last_active_project: impl FnOnce() -> Option<String>,
+) -> Option<(PathBuf, ProjectSelection)> {
+    use crate::services::fs_manager;
+
+    if let Some(path) = argument {
+        let path = path.canonicalize().unwrap_or(path);
+        return Some((path, ProjectSelection::Argument));
+    }
+    if let Some(root) = working_dir
+        .as_deref()
+        .and_then(fs_manager::find_gradle_root)
+    {
+        let root = root.canonicalize().unwrap_or(root);
+        return Some((root, ProjectSelection::WorkingDirectory));
+    }
+    last_active_project()
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .map(|p| (p, ProjectSelection::LastActiveProject))
+}
+
 /// Run the MCP server in headless mode (no Tauri GUI).
 ///
 /// Called from `main.rs` when the binary is launched with `--mcp`.
@@ -3571,24 +3629,17 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
         .with_target(false)
         .init();
 
-    // Priority: --project arg > last_active_project from settings > current_dir.
-    let project_root = project_path
-        .or_else(|| {
-            let (settings, _) = settings_manager::load_settings();
-            settings.last_active_project.and_then(|p| {
-                let path = PathBuf::from(&p);
-                if path.is_dir() {
-                    info!(
-                        "MCP headless: using last active project from settings: {}",
-                        p
-                    );
-                    Some(path)
-                } else {
-                    None
-                }
-            })
-        })
-        .or_else(|| std::env::current_dir().ok());
+    let selection = select_headless_project(project_path, std::env::current_dir().ok(), || {
+        settings_manager::load_settings().0.last_active_project
+    });
+    let project_selection = selection.as_ref().map(|(_, how)| *how);
+    let project_root = selection.map(|(root, how)| {
+        info!(
+            "MCP headless: project {} (selected by {how:?})",
+            root.display()
+        );
+        root
+    });
     let gradle_root = project_root
         .as_ref()
         .and_then(|root| fs_manager::find_gradle_root(root));
@@ -3623,6 +3674,7 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
         logcat_state,
         fs_state,
         process_manager,
+        project_selection,
     ));
     let transport = rmcp::transport::stdio();
     match server.serve(transport).await {
@@ -3856,6 +3908,63 @@ mod tests {
     // corrupts the app's view of the world. Constructed headless (app_handle
     // None) so no Tauri runtime is needed.
 
+    fn gradle_build(dir: &std::path::Path) -> PathBuf {
+        std::fs::create_dir_all(dir.join("app")).unwrap();
+        std::fs::write(dir.join("settings.gradle.kts"), "").unwrap();
+        dir.canonicalize().unwrap()
+    }
+
+    #[test]
+    fn headless_project_prefers_the_argument() {
+        let tmp = tempfile::tempdir().unwrap();
+        let arg = gradle_build(&tmp.path().join("arg"));
+        let cwd = gradle_build(&tmp.path().join("cwd"));
+        let last = gradle_build(&tmp.path().join("last"));
+
+        let picked = select_headless_project(Some(arg.clone()), Some(cwd), || {
+            Some(last.to_string_lossy().into_owned())
+        });
+
+        assert_eq!(picked, Some((arg, ProjectSelection::Argument)));
+    }
+
+    #[test]
+    fn headless_project_prefers_the_working_directory_over_the_last_active_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        let cwd = gradle_build(&tmp.path().join("cwd"));
+        let last = gradle_build(&tmp.path().join("last"));
+        let last_active = || Some(last.to_string_lossy().into_owned());
+
+        let picked = select_headless_project(None, Some(cwd.clone()), last_active);
+        assert_eq!(
+            picked,
+            Some((cwd.clone(), ProjectSelection::WorkingDirectory))
+        );
+
+        // A module folder inside the build selects the build.
+        let picked = select_headless_project(None, Some(cwd.join("app")), last_active);
+        assert_eq!(picked, Some((cwd, ProjectSelection::WorkingDirectory)));
+    }
+
+    #[test]
+    fn headless_project_falls_back_to_the_last_active_project() {
+        let tmp = tempfile::tempdir().unwrap();
+        let not_gradle = tmp.path().join("notes");
+        std::fs::create_dir_all(&not_gradle).unwrap();
+        let last = gradle_build(&tmp.path().join("last"));
+
+        let picked = select_headless_project(None, Some(not_gradle.clone()), || {
+            Some(last.to_string_lossy().into_owned())
+        });
+        assert_eq!(picked, Some((last, ProjectSelection::LastActiveProject)));
+
+        let missing = tmp.path().join("deleted").to_string_lossy().into_owned();
+        assert_eq!(
+            select_headless_project(None, Some(not_gradle), || Some(missing)),
+            None
+        );
+    }
+
     fn headless_server() -> AndroidMcpServer {
         AndroidMcpServer::new_headless(
             BuildState::new(),
@@ -3863,6 +3972,7 @@ mod tests {
             crate::commands::logcat::new_logcat_state(),
             FsState::new(),
             ProcessManager::new(),
+            None,
         )
     }
 

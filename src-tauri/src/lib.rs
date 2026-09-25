@@ -17,7 +17,7 @@ use commands::device::{
 use commands::file_system::{
     get_application_id, get_gradle_root, get_last_active_project, get_project_app_info,
     get_project_root, list_projects, open_project, pin_project, remove_project, rename_project,
-    save_project_app_info, update_project_meta,
+    save_project_app_info, set_project_trust, update_project_meta,
 };
 use commands::health::run_health_checks;
 use commands::logcat::{
@@ -314,6 +314,7 @@ pub fn run() {
             list_projects,
             remove_project,
             pin_project,
+            set_project_trust,
             get_last_active_project,
             update_project_meta,
             rename_project,

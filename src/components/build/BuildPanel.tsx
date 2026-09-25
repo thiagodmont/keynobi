@@ -7,7 +7,15 @@ import {
   clearBuildHistory,
   lineToLogEntry,
 } from "@/stores/build.store";
-import { runBuild, runAndDeploy, cancelBuild, jumpToBuildError } from "@/services/build.service";
+import {
+  runBuild,
+  runAndDeploy,
+  cancelBuild,
+  jumpToBuildError,
+  SAFE_MODE_BUILD_TITLE,
+} from "@/services/build.service";
+import { askToTrustActiveProject } from "@/services/project.service";
+import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { LogViewer } from "@/components/common/LogViewer";
 import type { BuildError, BuildRecord } from "@/bindings";
 import type { LogEntry } from "@/stores/log.store";
@@ -118,6 +126,7 @@ export function BuildPanel(): JSX.Element {
   });
 
   const busy = () => running() || isDeploying();
+  const safeMode = () => !isActiveProjectTrusted();
 
   /** Full run: build → install → launch on the selected device. */
   async function handleRunApp() {
@@ -227,9 +236,11 @@ export function BuildPanel(): JSX.Element {
             fallback={
               <IconButton
                 size="sm"
-                title="Run App — build, install & launch (Cmd+R)"
+                title={
+                  safeMode() ? SAFE_MODE_BUILD_TITLE : "Run App — build, install & launch (Cmd+R)"
+                }
                 onClick={handleRunApp}
-                disabled={busy()}
+                disabled={busy() || safeMode()}
               >
                 <Icon name="play" size={13} color="var(--success)" />
               </IconButton>
@@ -244,9 +255,9 @@ export function BuildPanel(): JSX.Element {
           <Show when={!isBuilding() && !isDeploying()}>
             <IconButton
               size="sm"
-              title="Build only — no install (Cmd+Shift+R)"
+              title={safeMode() ? SAFE_MODE_BUILD_TITLE : "Build only — no install (Cmd+Shift+R)"}
               onClick={handleBuildOnly}
-              disabled={busy()}
+              disabled={busy() || safeMode()}
             >
               <Icon name="hammer" size={13} color="var(--text-secondary)" />
             </IconButton>
@@ -290,6 +301,27 @@ export function BuildPanel(): JSX.Element {
             </span>
           </Show>
         </div>
+
+        <Show when={safeMode()}>
+          <div style={{ padding: "8px", "flex-shrink": "0" }}>
+            <Alert
+              variant="warning"
+              title="Safe Mode"
+              action={
+                <Button
+                  variant="outline"
+                  size="xs"
+                  onClick={() => void askToTrustActiveProject().catch(console.error)}
+                >
+                  Trust Project…
+                </Button>
+              }
+            >
+              Keynobi does not run this project's Gradle build scripts until you trust it, so builds
+              are disabled and build variants are read from the build files.
+            </Alert>
+          </div>
+        </Show>
 
         {/* ── Content: history strip + log/problems ── */}
         <div style={{ flex: "1", overflow: "hidden", display: "flex" }}>

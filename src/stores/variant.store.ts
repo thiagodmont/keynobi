@@ -8,6 +8,7 @@ import {
 } from "@/lib/tauri-api";
 import { showToast } from "@/components/ui";
 import { projectState } from "@/stores/project.store";
+import { isProjectTrusted } from "@/stores/projects.store";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -142,6 +143,8 @@ const loadVariantsPending = new Map<string, Promise<void>>();
  *    project skip the Gradle invocation entirely.
  *
  * Both phases update the store independently so the UI is always responsive.
+ * Phase 2 runs the project's own build scripts, so it is skipped for a project
+ * that is not trusted (Safe Mode): only the static preview is shown.
  *
  * Pass `{ force: true }` to bypass the cache (e.g. the Refresh button).
  */
@@ -150,11 +153,13 @@ export function loadVariants(opts?: { force?: boolean }): Promise<void> {
   if (opts?.force) {
     if (root !== null) variantCache.delete(root);
   }
-  const pendingKey = root ?? "__no_project__";
+  const runGradle = isProjectTrusted(root);
+  // A load started in Safe Mode must not satisfy one requested after trusting.
+  const pendingKey = `${root ?? "__no_project__"}|${runGradle ? "gradle" : "preview"}`;
   const pending = loadVariantsPending.get(pendingKey);
   if (pending) return pending;
 
-  const next = runLoadVariants(root).finally(() => {
+  const next = runLoadVariants(root, runGradle).finally(() => {
     loadVariantsPending.delete(pendingKey);
   });
   loadVariantsPending.set(pendingKey, next);
@@ -165,11 +170,11 @@ function isCurrentProject(root: string | null): boolean {
   return projectState.projectRoot === root;
 }
 
-async function runLoadVariants(rootAtStart: string | null): Promise<void> {
+async function runLoadVariants(rootAtStart: string | null, runGradle: boolean): Promise<void> {
   if (isCurrentProject(rootAtStart)) {
     setVariantState({
       loading: true,
-      gradleLoading: true,
+      gradleLoading: runGradle,
       error: null,
       gradleError: null,
       fromGradle: false,
@@ -197,6 +202,8 @@ async function runLoadVariants(rootAtStart: string | null): Promise<void> {
   }
 
   // ── Phase 2: authoritative list from Gradle (or session cache) ───────────────
+  if (!runGradle) return;
+
   const cacheKey = rootAtStart;
   const cached = cacheKey !== null ? variantCache.get(cacheKey) : undefined;
 

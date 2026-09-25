@@ -58,7 +58,7 @@ After updating, restart your AI clients so they use the new app binary for MCP.
 1. Open **Keynobi**.
 2. Complete the setup wizard (**Welcome → Environment → Privacy → Workflow → Summary**), or choose **Skip setup** and finish later in **Settings**.
 3. Set your **Android SDK Path** and **JAVA_HOME** if auto-detect does not find them.
-4. Press `Cmd+O` or click **Add Project…** and choose your Android project folder.
+4. Press `Cmd+O` or click **Add Project…** and choose your Android project folder. The first time you open a project, choose **Trust** so Keynobi can run its Gradle build (see [Project trust and Safe Mode](#project-trust-and-safe-mode)).
 5. Select a device or start an emulator.
 6. Press `Cmd+R` to build, install, and launch.
 
@@ -92,6 +92,18 @@ Use the **Projects** sidebar to add, switch, rename, or remove saved projects.
 - Click a project row to switch projects.
 - **Rename** changes only the label in Keynobi; it does not rename the folder. Press Enter to save or Esc to cancel.
 - **Remove from list** deletes the saved entry only; it does not delete files on disk.
+- Right-click a project row for **Trust Project** or **Revoke Trust**, and **Remove from List**.
+
+### Project trust and Safe Mode
+
+Building a project, and detecting its build variants, runs the project's `gradlew` and Gradle build scripts, which can run any code. The first time you open a project, Keynobi asks: "This project will run its Gradle build scripts. Trust it?"
+
+- **Trust**: Keynobi detects variants with Gradle and you can build and run.
+- **Open in Safe Mode**: Keynobi runs none of the project's build code. Build variants are read from the build files only, and **Run App**, **Build Only**, `Cmd+R`, `Cmd+Shift+R`, and **Clean Project** are disabled. Health Center ignores the project's `org.gradle.java.home` and `local.properties` SDK path.
+
+If you close the question without choosing, the project stays in Safe Mode and Keynobi asks again next time you open it. A **Safe Mode** badge shows on the project row and in the title bar; click the title bar badge, or **Trust Project…** in the Build tab, to trust the project. To stop trusting a project, right-click it and choose **Revoke Trust**; a running build of the open project is cancelled.
+
+Keynobi remembers your choice for each project folder. Projects you had already added before this question existed are trusted. Removing a project from the list, or the list dropping it when it passes 20 projects, forgets the choice.
 
 ### Project App Info
 
@@ -106,6 +118,8 @@ Edits are written to `app/build.gradle.kts` or `app/build.gradle`. Projects whos
 The Build tab streams Gradle output and highlights structured errors.
 
 Common actions:
+
+Builds need a trusted project; in Safe Mode every build action is disabled (see [Project trust and Safe Mode](#project-trust-and-safe-mode)).
 
 - `Cmd+R` or **Run App**: build, install, and launch the app on the selected device.
 - `Cmd+Shift+R`: build only.
@@ -277,7 +291,7 @@ Open Health Center with `Cmd+Shift+H` or the Health status item. It checks:
 
 The Java / JDK check shows the JDK Gradle builds use, its version, and where it was found. Keynobi picks it in this order:
 
-1. `org.gradle.java.home` in `~/.gradle/gradle.properties`, then in the project's `gradle.properties` (the same rule Gradle follows).
+1. `org.gradle.java.home` in `~/.gradle/gradle.properties`, then in the project's `gradle.properties` (the same rule Gradle follows). The project's file is skipped while the project is in Safe Mode.
 2. **JAVA_HOME** in Settings.
 3. The JDK bundled with Android Studio (including Android Studio Preview).
 4. The newest JDK 17 or later in `/Library/Java/JavaVirtualMachines`.
@@ -325,7 +339,8 @@ To bind MCP to a specific Android project, append `--project /path/to/MyAndroidP
 
 Your AI client starts its own Keynobi MCP process in the background. It does not connect to the Keynobi window you have open.
 
-- **Project**: the MCP server uses `--project` if given. Otherwise it uses the last project you had open in Keynobi when the AI client started it, or else the client's working folder. If you switch projects in Keynobi, restart the MCP server in your AI client.
+- **Project**: the MCP server uses `--project` if given. Otherwise it uses the Android project that contains the AI client's working folder (a folder with `settings.gradle` or `settings.gradle.kts`, or a parent of it), or else the last project you had open in Keynobi. `get_project_info` reports which rule chose the project. If you switch projects in Keynobi, restart the MCP server in your AI client.
+- **Trust**: an AI client can build only a project you trusted in Keynobi. For any other project, `run_gradle_task` and `run_tests` fail with a message asking you to open the project in Keynobi and choose **Trust**; the MCP server never asks itself. Other tools keep working.
 - **Builds and logcat**: builds and logcat started by an AI client do not appear live in the Build and Logcat tabs. They can appear in build history the next time Keynobi starts.
 - **Activity**: the **MCP Activity** panel (`Cmd+Shift+M`) shows setup status, whether a server is running, and recent tool calls from AI clients.
 
@@ -408,6 +423,7 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 ### Build fails immediately
 
 - Open Health Center and check Java / JDK and Android SDK.
+- If the Build tab shows **Safe Mode**, trust the project first.
 - Confirm the project has a `gradlew` wrapper and that the JDK shown in Health Center is one your Android Gradle Plugin supports. `org.gradle.java.home` in `gradle.properties` takes precedence over **JAVA_HOME** in Settings.
 - Try **Clean Project** from the Command Palette.
 
@@ -440,7 +456,11 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 
 ### MCP works on the wrong project
 
-- The MCP server picks its project when your AI client starts it. Restart the MCP server from your AI client, or add `--project /path/to/project` to the setup command.
+- The MCP server picks its project when your AI client starts it. Ask the client to call `get_project_info`: `selected_by` says whether the project came from `--project` (`argument`), the client's working folder (`working_directory`), or the last project open in Keynobi (`last_active_project`). Restart the MCP server from your AI client, or add `--project /path/to/project` to the setup command.
+
+### MCP builds fail with "This project is not trusted"
+
+- Open the project in Keynobi and choose **Trust**, or right-click it in the Projects sidebar and choose **Trust Project**. Then ask the AI client to build again; the MCP server does not need a restart.
 
 ---
 

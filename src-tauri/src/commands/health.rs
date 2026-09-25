@@ -45,7 +45,7 @@ async fn system_report(
 ) -> SystemHealthReport {
     // ── Java probe ────────────────────────────────────────────────────────────
     // The same JDK resolution and probe as Gradle builds and MCP health.
-    let java = jdk::check_java(settings, gradle_root.or(project_root), jdk_roots).await;
+    let java = jdk::check_project_java(settings, project_root, gradle_root, jdk_roots).await;
 
     // ── Android SDK probe ─────────────────────────────────────────────────────
     // Expand `~/` before any filesystem check — Rust does NOT expand the tilde
@@ -233,6 +233,44 @@ mod tests {
         assert!(!gui.java_executable_found);
         assert!(!mcp.all_ok);
         assert_eq!(gui.java_version, None);
+    }
+
+    #[tokio::test]
+    async fn health_runs_a_project_chosen_java_only_for_a_trusted_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let project = root.join("project");
+        let marker = root.join("project-java-ran");
+        write_script(
+            &project.join("tools").join("bin").join("java"),
+            &format!("touch '{}'", marker.display()),
+        );
+        std::fs::write(
+            project.join("gradle.properties"),
+            format!("org.gradle.java.home={}\n", project.join("tools").display()),
+        )
+        .unwrap();
+        let roots = JdkSearchRoots::default();
+
+        let mut settings = AppSettings::default();
+        let (gui, mcp) = gui_and_mcp_reports(&root, &mut settings, &project, &roots).await;
+        assert!(!marker.exists(), "an untrusted project's java must not run");
+        assert_ne!(gui.java_source, Some(JdkSource::ProjectGradleProperties));
+        assert_ne!(
+            mcp.java.jdk.map(|j| j.source),
+            Some(JdkSource::ProjectGradleProperties)
+        );
+
+        settings
+            .recent_projects
+            .push(crate::models::settings::ProjectEntry {
+                path: project.to_string_lossy().into_owned(),
+                trusted: Some(true),
+                ..Default::default()
+            });
+        let (gui, _) = gui_and_mcp_reports(&root, &mut settings, &project, &roots).await;
+        assert!(marker.exists(), "a trusted project's java is probed");
+        assert_eq!(gui.java_source, Some(JdkSource::ProjectGradleProperties));
     }
 
     #[test]

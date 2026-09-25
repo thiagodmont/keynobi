@@ -1,5 +1,6 @@
 import { createStore, produce } from "solid-js/store";
 import type { ProjectEntry } from "@/bindings";
+import { projectState } from "@/stores/project.store";
 
 interface ProjectsState {
   /** All known projects from the registry, sorted: pinned first, then by last opened. */
@@ -100,4 +101,28 @@ export function updateProjectMetaInStore(
       }
     })
   );
+}
+
+/** Record a trust decision in the in-memory list. */
+export function setProjectTrustInStore(id: string, trusted: boolean): void {
+  setProjectsState(
+    produce((s) => {
+      const entry = s.projects.find((p) => p.id === id);
+      if (entry) entry.trusted = trusted;
+    })
+  );
+}
+
+/**
+ * Whether Keynobi may run the Gradle build of the project at `root`. Unknown
+ * projects and projects never asked about are not trusted (Safe Mode).
+ */
+export function isProjectTrusted(root: string | null): boolean {
+  if (root === null) return false;
+  return projectsState.projects.find((p) => p.path === root)?.trusted === true;
+}
+
+/** Whether the open project is trusted; false in Safe Mode or with no project. */
+export function isActiveProjectTrusted(): boolean {
+  return isProjectTrusted(projectState.projectRoot);
 }

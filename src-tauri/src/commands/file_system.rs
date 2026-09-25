@@ -1,6 +1,6 @@
 use crate::models::error::AppError;
 use crate::models::settings::{ProjectAppInfo, ProjectEntry, MAX_RECENT_PROJECTS};
-use crate::services::{fs_manager, settings_manager};
+use crate::services::{fs_manager, project_trust, settings_manager};
 use crate::FsState;
 use std::path::PathBuf;
 use std::sync::LazyLock;
@@ -57,6 +57,7 @@ fn upsert_project(path: &std::path::Path, gradle_root: Option<&std::path::Path>)
                 pinned: false,
                 last_build_variant: None,
                 last_device: None,
+                trusted: None,
             });
 
             // Evict oldest non-pinned entries when over the cap.
@@ -252,6 +253,24 @@ pub async fn pin_project(id: String, pinned: bool) -> Result<(), String> {
     })
     .await
     .map_err(|e| format!("Failed to save settings: {e}"))?
+}
+
+/// Record whether Keynobi may run the project's Gradle build scripts.
+#[tauri::command]
+pub async fn set_project_trust(id: String, trusted: bool) -> Result<(), AppError> {
+    let found = tokio::task::spawn_blocking({
+        let id = id.clone();
+        move || project_trust::set_trust(&id, trusted)
+    })
+    .await
+    .map_err(|e| AppError::SettingsError(format!("Failed to save settings: {e}")))?
+    .map_err(AppError::SettingsError)?;
+    if !found {
+        return Err(AppError::NotFound(format!(
+            "Project with id '{id}' not found"
+        )));
+    }
+    Ok(())
 }
 
 /// Return the path of the last-active project (used on startup to restore the session).
@@ -596,6 +615,7 @@ android {
                 pinned: true,
                 last_build_variant: Some("debug".to_string()),
                 last_device: None,
+                trusted: Some(true),
             });
         })
         .unwrap();

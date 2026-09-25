@@ -9,6 +9,7 @@ export const mockProject: ProjectEntry = {
   pinned: false,
   lastBuildVariant: "debug",
   lastDevice: null,
+  trusted: true,
 };
 
 export function projectHandlers(): Record<string, (args: unknown) => unknown> {
@@ -17,9 +18,12 @@ export function projectHandlers(): Record<string, (args: unknown) => unknown> {
     get_project_root: () => mockProject.path,
     get_gradle_root: () => mockProject.gradleRoot,
     get_application_id: () => "com.example.mockapp",
-    list_projects: () => [mockProject],
+    list_projects: () => [{ ...mockProject }],
     remove_project: () => undefined,
     pin_project: () => undefined,
+    set_project_trust: (args) => {
+      mockProject.trusted = (args as { trusted: boolean }).trusted;
+    },
     get_last_active_project: () => null,
     get_project_app_info: (): ProjectAppInfo => ({
       applicationId: "com.example.mockapp",

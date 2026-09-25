@@ -1,9 +1,12 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetUIStateForTests, uiState } from "@/stores/ui.store";
 import { resetBuildState, setDeployPhase, startBuild } from "@/stores/build.store";
+import { setProject, setProjectState } from "@/stores/project.store";
+import { setProjects } from "@/stores/projects.store";
+import type { ProjectEntry } from "@/bindings";
 import { TitleBar } from "./TitleBar";
 
 describe("TitleBar", () => {
@@ -128,5 +131,46 @@ describe("TitleBar", () => {
 
     fireEvent.click(button);
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "cancel_build")).toHaveLength(0);
+  });
+
+  describe("Safe Mode", () => {
+    function openProject(trusted: boolean | null): void {
+      const entry: ProjectEntry = {
+        id: "p1",
+        path: "/projects/app",
+        name: "app",
+        gradleRoot: "/projects/app",
+        lastOpened: "2026-01-01T00:00:00Z",
+        pinned: false,
+        lastBuildVariant: null,
+        lastDevice: null,
+        trusted,
+      };
+      setProject(entry.path, entry.name);
+      setProjects([entry]);
+    }
+
+    afterEach(() => {
+      setProjects([]);
+      setProjectState({ projectRoot: null, gradleRoot: null, projectName: null, loading: false });
+    });
+
+    it("disables Run and shows a Safe Mode badge for an untrusted project", () => {
+      openProject(false);
+      render(() => <TitleBar />);
+
+      const run = screen.getByTitle("Safe Mode — trust this project to build") as HTMLButtonElement;
+      expect(run.disabled).toBe(true);
+      expect(screen.getByRole("button", { name: "Safe Mode" })).not.toBeNull();
+    });
+
+    it("enables Run without a badge for a trusted project", () => {
+      openProject(true);
+      render(() => <TitleBar />);
+
+      const run = screen.getByTitle(/Run App/) as HTMLButtonElement;
+      expect(run.disabled).toBe(false);
+      expect(screen.queryByRole("button", { name: "Safe Mode" })).toBeNull();
+    });
   });
 });

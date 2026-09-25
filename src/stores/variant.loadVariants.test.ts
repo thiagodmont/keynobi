@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type { BuildVariant, VariantList } from "@/bindings";
 
 const mockPreview = vi.fn();
@@ -8,6 +8,11 @@ vi.mock("@/lib/tauri-api", () => ({
   getVariantsPreview: (...args: unknown[]) => mockPreview(...args),
   getVariantsFromGradle: (...args: unknown[]) => mockGradle(...args),
   setActiveVariant: vi.fn(),
+}));
+
+const mockTrusted = vi.fn((_root: string | null) => true);
+vi.mock("@/stores/projects.store", () => ({
+  isProjectTrusted: (root: string | null) => mockTrusted(root),
 }));
 
 import {
@@ -235,5 +240,48 @@ describe("loadVariants defaultVariant", () => {
     mockGradle.mockResolvedValue(dualList);
     await loadVariants();
     expect(variantState.activeVariant).toBe("freeDebug");
+  });
+});
+
+describe("loadVariants in Safe Mode", () => {
+  beforeEach(() => {
+    setProject("/projects/untrusted", "untrusted");
+    resetVariantState();
+    clearVariantCache();
+    mockPreview.mockReset();
+    mockGradle.mockReset();
+    mockPreview.mockResolvedValue(sampleList);
+    mockGradle.mockResolvedValue(listFor("fromGradle"));
+    mockTrusted.mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    mockTrusted.mockReturnValue(true);
+  });
+
+  it("shows the static preview and never runs Gradle", async () => {
+    await loadVariants();
+    await loadVariants({ force: true });
+
+    expect(mockGradle).not.toHaveBeenCalled();
+    expect(variantState.variants.map((v) => v.name)).toEqual(["debug"]);
+    expect(variantState.fromGradle).toBe(false);
+    expect(variantState.gradleLoading).toBe(false);
+    expect(variantState.gradleError).toBeNull();
+    expect(variantState.error).toBeNull();
+  });
+
+  it("runs Gradle once the project is trusted, even while a Safe Mode load is pending", async () => {
+    const preview = deferred<VariantList>();
+    mockPreview.mockImplementationOnce(() => preview.promise);
+    const safeLoad = loadVariants();
+
+    mockTrusted.mockReturnValue(true);
+    const trustedLoad = loadVariants();
+    preview.resolve(sampleList);
+    await Promise.all([safeLoad, trustedLoad]);
+
+    expect(mockGradle).toHaveBeenCalledTimes(1);
+    expect(variantState.fromGradle).toBe(true);
   });
 });
