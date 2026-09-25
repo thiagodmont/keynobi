@@ -247,6 +247,7 @@ export const typeFixtures = {
       "adbFound": true,
       "adbVersion": "Android Debug Bridge version 1.0.41",
       "androidSdkValid": true,
+      "appLocationProblem": null,
       "emulatorFound": true,
       "gradleWrapperFound": true,
       "javaBinUsed": "/jdk/bin/java",
@@ -262,6 +263,7 @@ export const typeFixtures = {
       "adbFound": false,
       "adbVersion": null,
       "androidSdkValid": false,
+      "appLocationProblem": "Keynobi is running from a disk image.",
       "emulatorFound": false,
       "gradleWrapperFound": false,
       "javaBinUsed": "java",
@@ -848,6 +850,7 @@ export const typeFixtures = {
   ] satisfies Wire<ProcessedEntry>[],
   LogStats: [
     {
+      "backlogLines": 5,
       "bufferEntryCount": 100,
       "bufferUsagePct": 0.5,
       "countsByLevel": [
@@ -872,32 +875,37 @@ export const typeFixtures = {
       "connectedAt": "2026-04-23T10:00:00Z",
       "id": 2,
       "pid": 4321,
-      "project": "/p"
+      "project": "/p",
+      "version": "0.1.29"
     },
     {
       "clientName": null,
       "connectedAt": "2026-04-23T10:00:00Z",
       "id": 3,
       "pid": null,
-      "project": null
+      "project": null,
+      "version": "0.1.28"
     }
   ] satisfies Wire<McpAttachedSession>[],
   McpServerStatus: [
     {
+      "appVersion": "0.1.29",
       "attached": [
         {
           "clientName": "Claude Code",
           "connectedAt": "2026-04-23T10:00:00Z",
           "id": 2,
           "pid": 4321,
-          "project": "/p"
+          "project": "/p",
+          "version": "0.1.29"
         },
         {
           "clientName": null,
           "connectedAt": "2026-04-23T10:00:00Z",
           "id": 3,
           "pid": null,
-          "project": null
+          "project": null,
+          "version": "0.1.28"
         }
       ],
       "listening": true,
@@ -906,13 +914,15 @@ export const typeFixtures = {
           "pid": 5555,
           "project": "/p",
           "reason": "the Keynobi app is not running",
-          "startedAt": "2026-04-23T10:00:00Z"
+          "startedAt": "2026-04-23T10:00:00Z",
+          "version": "0.1.29"
         },
         {
           "pid": 5556,
           "project": null,
           "reason": "the Keynobi app is not running",
-          "startedAt": "2026-04-23T10:00:00Z"
+          "startedAt": "2026-04-23T10:00:00Z",
+          "version": null
         }
       ]
     }
@@ -940,33 +950,39 @@ export const typeFixtures = {
       "claude": {
         "clientFound": true,
         "configuredCommand": "/Applications/Keynobi.app/Contents/MacOS/keynobi --mcp",
+        "configuredScope": "user",
         "isConfigured": true,
-        "setupCommand": "claude mcp add --transport stdio keynobi -- keynobi --mcp"
+        "setupCommand": "claude mcp add --scope user --transport stdio keynobi -- keynobi --mcp"
       },
       "codex": {
         "clientFound": true,
         "configuredCommand": "/Applications/Keynobi.app/Contents/MacOS/keynobi --mcp",
+        "configuredScope": "user",
         "isConfigured": true,
-        "setupCommand": "claude mcp add --transport stdio keynobi -- keynobi --mcp"
+        "setupCommand": "claude mcp add --scope user --transport stdio keynobi -- keynobi --mcp"
       },
       "exePath": "/Applications/Keynobi.app/Contents/MacOS/keynobi",
+      "locationProblem": null,
       "setupCommand": "/Applications/Keynobi.app/Contents/MacOS/keynobi --mcp"
     },
     {
       "claude": {
         "clientFound": false,
         "configuredCommand": null,
+        "configuredScope": null,
         "isConfigured": false,
-        "setupCommand": "claude mcp add --transport stdio keynobi -- keynobi --mcp"
+        "setupCommand": null
       },
       "codex": {
         "clientFound": false,
         "configuredCommand": null,
+        "configuredScope": null,
         "isConfigured": false,
-        "setupCommand": "claude mcp add --transport stdio keynobi -- keynobi --mcp"
+        "setupCommand": null
       },
-      "exePath": "/Applications/Keynobi.app/Contents/MacOS/keynobi",
-      "setupCommand": "/Applications/Keynobi.app/Contents/MacOS/keynobi --mcp"
+      "exePath": "/Volumes/Keynobi/Keynobi.app/Contents/MacOS/keynobi",
+      "locationProblem": "Keynobi is running from a disk image.",
+      "setupCommand": null
     }
   ] satisfies Wire<McpSetupStatus>[],
   MonitorStats: [
@@ -1232,14 +1248,16 @@ export const eventFixtures = {
           "connectedAt": "2026-04-23T10:00:00Z",
           "id": 2,
           "pid": 4321,
-          "project": "/p"
+          "project": "/p",
+          "version": "0.1.29"
         },
         {
           "clientName": null,
           "connectedAt": "2026-04-23T10:00:00Z",
           "id": 3,
           "pid": null,
-          "project": null
+          "project": null,
+          "version": "0.1.28"
         }
       ]
     ] satisfies Wire<McpAttachedSession[]>[],
