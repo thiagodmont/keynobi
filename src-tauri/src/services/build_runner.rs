@@ -1,6 +1,6 @@
 use crate::models::build::{
     BuildError, BuildErrorSeverity, BuildLine, BuildLineKind, BuildLinesEvent, BuildRecord,
-    BuildResult, BuildStartedEvent, BuildStatus,
+    BuildResult, BuildStartedEvent, BuildStatus, LaunchTiming,
 };
 use crate::models::error::AppError;
 use crate::services::build_lock::{self, BuildLock};
@@ -900,7 +900,7 @@ pub async fn finalize_completed_build(
         BuildStatus::Failed(result)
     };
 
-    record_run(
+    let record_id = record_run(
         build_state,
         finalization.run_id,
         &finalization.log,
@@ -913,12 +913,14 @@ pub async fn finalize_completed_build(
             project_root: finalization.project_root,
             origin: finalization.origin.clone(),
             cancelled_by: finalization.cancelled_by.clone(),
+            launch: None,
         },
     )
     .await;
 
     BuildCompleteEvent {
         run_id: finalization.run_id,
+        record_id,
         success: finalization.success,
         cancelled: finalization.cancelled,
         duration_ms: finalization.duration_ms,
@@ -1104,12 +1106,13 @@ pub async fn record_build_result(
             project_root,
             origin: None,
             cancelled_by: None,
+            launch: None,
         },
     )
     .await;
 }
 
-/// Push `record` (its ID is allocated when persisted) to history.
+/// Push `record` (its ID is allocated when persisted) to history. Returns its ID.
 ///
 /// Every run gets a history entry, but only the latest run updates the shared
 /// status, errors, and cancellable process. A run cancelled and replaced by a
@@ -1121,7 +1124,7 @@ async fn record_run(
     run_id: ProcessId,
     log: &BuildLog,
     record: BuildRecord,
-) {
+) -> u32 {
     // Snapshot the run's log before taking the inner lock so we don't hold two
     // locks simultaneously.
     let raw_lines: VecDeque<String> = log.lock().map(|g| g.clone()).unwrap_or_default();
@@ -1157,21 +1160,82 @@ async fn record_run(
 
     let mut bs = build_state.inner.lock().await;
     match persisted {
-        Ok((_, persisted_history)) => {
+        Ok((id, persisted_history)) => {
             bs.history = merge_history(&bs.history, persisted_history);
+            id
         }
         Err(e) => {
             // Keep the build visible in this session even though it was not
             // saved. A failure here used to be silent.
             tracing::warn!("Failed to persist build history: {e}");
             let mut record = record;
-            record.id = bs.history.iter().map(|r| r.id).max().unwrap_or(0) + 1;
+            let id = bs.history.iter().map(|r| r.id).max().unwrap_or(0) + 1;
+            record.id = id;
             bs.history.push_back(record);
             while bs.history.len() > MAX_HISTORY {
                 bs.history.pop_front();
             }
+            id
         }
     }
+}
+
+/// Record `timing` on history record `id`: in the persisted history, under the
+/// data lock (re-read inside it, since other processes append to it), and in
+/// memory. Only a successful build takes a launch time.
+pub async fn attach_launch_timing(
+    build_state: &BuildState,
+    id: u32,
+    timing: LaunchTiming,
+) -> Result<(), AppError> {
+    let for_io = timing.clone();
+    let persisted =
+        tokio::task::spawn_blocking(move || attach_launch_timing_in(&data_dir(), id, for_io))
+            .await
+            .map_err(|e| AppError::Other(format!("Launch timing task failed: {e}")))?;
+
+    let mut bs = build_state.inner.lock().await;
+    match persisted {
+        Ok(history) => {
+            bs.history = merge_history(&bs.history, history);
+            Ok(())
+        }
+        // A record only this session holds (its save failed) is updated in memory.
+        Err(AppError::NotFound(message)) => match bs.history.iter_mut().find(|r| r.id == id) {
+            Some(record) => set_launch(record, timing),
+            None => Err(AppError::NotFound(message)),
+        },
+        Err(e) => Err(e),
+    }
+}
+
+fn set_launch(record: &mut BuildRecord, timing: LaunchTiming) -> Result<(), AppError> {
+    if !matches!(record.status, BuildStatus::Success(_)) {
+        return Err(AppError::InvalidInput(format!(
+            "Build #{} did not succeed; it has no launch to record",
+            record.id
+        )));
+    }
+    record.launch = Some(timing);
+    Ok(())
+}
+
+fn attach_launch_timing_in(
+    dir: &Path,
+    id: u32,
+    timing: LaunchTiming,
+) -> Result<VecDeque<BuildRecord>, AppError> {
+    with_data_lock_in(dir, || {
+        let mut history = load_build_history_from(dir);
+        let record = history
+            .iter_mut()
+            .find(|r| r.id == id)
+            .ok_or_else(|| AppError::NotFound(format!("Build #{id} is not in the history")))?;
+        set_launch(record, timing)?;
+        save_build_history_to(dir, &history).map_err(AppError::Io)?;
+        Ok(history)
+    })
+    .map_err(AppError::Io)?
 }
 
 /// Environment for a Gradle process in `gradle_root`, with `gradlew` made
@@ -2661,6 +2725,7 @@ mod tests {
             project_root: None,
             origin: None,
             cancelled_by: None,
+            launch: None,
         };
         let json = serde_json::to_string(&record).unwrap();
         let parsed: BuildRecord = serde_json::from_str(&json).unwrap();
@@ -2681,6 +2746,7 @@ mod tests {
                 project_root: None,
                 origin: None,
                 cancelled_by: None,
+                launch: None,
             })
             .collect();
         // This is the formula that BuildStateInner::new() must use.
@@ -2712,6 +2778,7 @@ mod tests {
                     project_root: None,
                     origin: None,
                     cancelled_by: None,
+                    launch: None,
                 });
             }
         }
@@ -2739,6 +2806,7 @@ mod tests {
                 project_root: None,
                 origin: None,
                 cancelled_by: None,
+                launch: None,
             })
             .collect();
 
@@ -2824,6 +2892,7 @@ mod tests {
             project_root: None,
             origin: None,
             cancelled_by: None,
+            launch: None,
         }
     }
 
@@ -2832,6 +2901,116 @@ mod tests {
         persist_build_record_in(dir, record_named(task), &lines, 7, 100)
             .unwrap()
             .0
+    }
+
+    fn persist_succeeded(dir: &Path, task: &str) -> u32 {
+        let record = BuildRecord {
+            status: BuildStatus::Success(BuildResult {
+                success: true,
+                duration_ms: 1_000,
+                error_count: 0,
+                warning_count: 0,
+            }),
+            ..record_named(task)
+        };
+        persist_build_record_in(dir, record, &VecDeque::new(), 7, 100)
+            .unwrap()
+            .0
+    }
+
+    fn cold_launch(total_ms: u32) -> LaunchTiming {
+        LaunchTiming {
+            total_ms,
+            wait_ms: Some(total_ms + 3),
+            launch_state: Some(crate::models::build::LaunchState::Cold),
+            measured_at: "2026-01-01T00:01:00Z".into(),
+            serial: "emulator-5554".into(),
+            avd_name: Some("Pixel_7".into()),
+            model: None,
+        }
+    }
+
+    fn launch_of(dir: &Path, id: u32) -> Option<LaunchTiming> {
+        load_build_history_from(dir)
+            .into_iter()
+            .find(|r| r.id == id)
+            .and_then(|r| r.launch)
+    }
+
+    #[test]
+    fn launch_timing_goes_to_the_named_build_not_the_latest() {
+        let dir = tempfile::tempdir().unwrap();
+        let deployed = persist_succeeded(dir.path(), "assembleDebug");
+        // Another client's build finishes between the build and the launch.
+        let later = persist_succeeded(dir.path(), "assembleRelease");
+
+        let history = attach_launch_timing_in(dir.path(), deployed, cold_launch(812)).unwrap();
+
+        assert_eq!(launch_of(dir.path(), deployed), Some(cold_launch(812)));
+        assert_eq!(launch_of(dir.path(), later), None);
+        assert_eq!(
+            history.iter().find(|r| r.id == deployed).unwrap().launch,
+            Some(cold_launch(812))
+        );
+    }
+
+    #[test]
+    fn launch_timing_is_refused_for_a_build_that_did_not_succeed_or_is_gone() {
+        let dir = tempfile::tempdir().unwrap();
+        let failed = persist(dir.path(), "assembleDebug");
+
+        let err = attach_launch_timing_in(dir.path(), failed, cold_launch(812)).unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert_eq!(launch_of(dir.path(), failed), None);
+
+        let err = attach_launch_timing_in(dir.path(), failed + 100, cold_launch(812)).unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn launch_timing_of_a_build_kept_only_in_memory_is_recorded_there() {
+        let _history = PERSISTED_HISTORY.lock().await;
+        let state = BuildState::new();
+        // Far above any ID the shared test data directory holds.
+        let id = u32::MAX - 7;
+        state.inner.lock().await.history.push_back(BuildRecord {
+            id,
+            status: BuildStatus::Success(BuildResult {
+                success: true,
+                duration_ms: 1_000,
+                error_count: 0,
+                warning_count: 0,
+            }),
+            ..record_named("assembleDebug")
+        });
+
+        attach_launch_timing(&state, id, cold_launch(640))
+            .await
+            .unwrap();
+
+        let bs = state.inner.lock().await;
+        assert_eq!(bs.history.back().unwrap().launch, Some(cold_launch(640)));
+    }
+
+    #[test]
+    fn history_saved_before_launch_times_were_kept_still_loads() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(BUILD_HISTORY_FILE),
+            r#"[{"id":4,"task":"assembleDebug","status":{"state":"success","success":true,
+                "durationMs":1000,"errorCount":0,"warningCount":0},"errors":[],
+                "startedAt":"2026-01-01T00:00:00Z","projectRoot":"/p",
+                "origin":{"kind":"app"},"cancelledBy":null}]"#,
+        )
+        .unwrap();
+
+        let history = load_build_history_from(dir.path());
+
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].launch, None);
+        // And a launch time can be recorded on it.
+        attach_launch_timing_in(dir.path(), 4, cold_launch(812)).unwrap();
+        assert_eq!(launch_of(dir.path(), 4), Some(cold_launch(812)));
     }
 
     #[test]
@@ -2922,6 +3101,7 @@ mod tests {
             project_root: None,
             origin: None,
             cancelled_by: None,
+            launch: None,
         });
 
         rotate_build_logs(dir_path, 365, 1000, &history);
@@ -3105,6 +3285,11 @@ mod tests {
             inner.history.back().and_then(|r| r.project_root.as_deref()),
             Some("/tmp/p"),
             "the recorded root must match get_build_history's project filter"
+        );
+        assert_eq!(
+            inner.history.back().map(|r| r.id),
+            Some(event.record_id),
+            "build:complete must name the record the run was saved as"
         );
     }
 

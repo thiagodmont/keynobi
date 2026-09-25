@@ -8,4 +8,8 @@ export type BuildCompleteEvent = {
 /**
  * The run this event belongs to (the Gradle process ID the build started with).
  */
-runId: number, success: boolean, cancelled: boolean, durationMs: number, errorCount: number, warningCount: number, task: string, origin: BuildActor | null, cancelledBy: BuildActor | null, };
+runId: number, 
+/**
+ * ID of the history record the run was saved as.
+ */
+recordId: number, success: boolean, cancelled: boolean, durationMs: number, errorCount: number, warningCount: number, task: string, origin: BuildActor | null, cancelledBy: BuildActor | null, };

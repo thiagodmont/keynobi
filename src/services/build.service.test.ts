@@ -19,6 +19,7 @@ import { resetDeviceState } from "@/stores/device.store";
 import { resetVariantState, selectVariant } from "@/stores/variant.store";
 import { updateSetting } from "@/stores/settings.store";
 import { beginProjectOpen, setApplicationId } from "@/stores/project.store";
+import { makeLaunchTiming } from "@/test/factories/build";
 
 const devicePickerMock = vi.hoisted(() => ({
   showDevicePicker: vi.fn<() => Promise<string | null>>(),
@@ -412,6 +413,9 @@ describe("late cancelled completion event after a timeout", () => {
 });
 
 describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
+  /** The event listeners the current deploy registered. */
+  let deployHandlers = new Map<string, (e: { payload: unknown }) => void>();
+
   beforeEach(() => {
     resetBuildState();
     resetDeviceState();
@@ -433,9 +437,11 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
    * deploy failed with, or null.
    */
   async function deployThroughSuccessfulBuild(
-    overrides: Record<string, () => Promise<unknown>> = {}
+    overrides: Record<string, () => Promise<unknown>> = {},
+    completion: Record<string, unknown> = {}
   ): Promise<unknown> {
     const handlers = new Map<string, (e: { payload: unknown }) => void>();
+    deployHandlers = handlers;
     vi.mocked(listen).mockImplementation(async (event, cb) => {
       handlers.set(String(event), cb as unknown as (e: { payload: unknown }) => void);
       return () => {};
@@ -453,7 +459,9 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
       if (cmd === "find_apk_path") return Promise.resolve("/tmp/app-debug.apk");
       if (cmd === "get_package_name_from_apk") return Promise.resolve("com.example.app");
       if (cmd === "install_apk_on_device") return Promise.resolve("Success");
-      if (cmd === "launch_app_on_device") return Promise.resolve("Starting: Intent");
+      if (cmd === "launch_app_on_device") {
+        return Promise.resolve({ output: "Status: ok", timing: makeLaunchTiming() });
+      }
       return Promise.resolve(undefined);
     });
 
@@ -466,12 +474,14 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     handlers.get("build:complete")!({
       payload: {
         runId: 1,
+        recordId: 7,
         success: true,
         cancelled: false,
         durationMs: 1_000,
         errorCount: 0,
         warningCount: 0,
         task: "assembleDebug",
+        ...completion,
       },
     });
     return deploy.then(
@@ -505,6 +515,74 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     expect(
       mockInvoke.mock.calls.filter(([cmd]) => cmd === "launch_app_on_device")[0]?.[1]
     ).toMatchObject({ serial: "emulator-5554", package: "com.example.app" });
+  });
+
+  function launchCalls() {
+    return mockInvoke.mock.calls.filter(([cmd]) => cmd === "launch_app_on_device");
+  }
+
+  function buildLog(): string[] {
+    flushPendingLines();
+    return buildLogStore.entries.map((entry) => entry.message);
+  }
+
+  it("records the launch time on the build this deploy ran", async () => {
+    const error = await deployThroughSuccessfulBuild();
+
+    expect(error).toBeNull();
+    expect(launchCalls()[0]?.[1]).toMatchObject({ buildId: 7 });
+    expect(buildLog()).toContain("▶ Launch time: 812 ms (cold)");
+  });
+
+  it("names its own build even when another build finished before the launch", async () => {
+    const error = await deployThroughSuccessfulBuild({
+      install_apk_on_device: () => {
+        // An agent's build finishes (and is recorded) while the APK installs.
+        deployHandlers.get("build:complete")!({
+          payload: {
+            runId: 2,
+            recordId: 8,
+            success: true,
+            cancelled: false,
+            durationMs: 900,
+            errorCount: 0,
+            warningCount: 0,
+            task: "assembleRelease",
+            origin: { kind: "agent", sessionId: 1, clientName: "Codex", standalone: false },
+            cancelledBy: null,
+          },
+        });
+        return Promise.resolve("Success");
+      },
+    });
+
+    expect(error).toBeNull();
+    expect(launchCalls()).toHaveLength(1);
+    expect(launchCalls()[0]?.[1]).toMatchObject({ buildId: 7 });
+  });
+
+  it("does not launch, so records no launch time, after a failed build", async () => {
+    await deployThroughSuccessfulBuild({}, { success: false, errorCount: 1 });
+
+    expect(buildState.phase).toBe("failed");
+    expect(launchCalls()).toHaveLength(0);
+  });
+
+  it("does not launch, so records no launch time, after a cancelled build", async () => {
+    await deployThroughSuccessfulBuild({}, { success: false, cancelled: true });
+
+    expect(buildState.phase).toBe("cancelled");
+    expect(launchCalls()).toHaveLength(0);
+  });
+
+  it("says when the launch method reported no launch time", async () => {
+    const error = await deployThroughSuccessfulBuild({
+      launch_app_on_device: () =>
+        Promise.resolve({ output: "monkey OK: Events injected: 1", timing: null }),
+    });
+
+    expect(error).toBeNull();
+    expect(buildLog()).toContain("▶ Launch time: not reported by this launch method");
   });
 
   it("stops before installing when the variant has no APK, with the backend's reason", async () => {

@@ -1,3 +1,4 @@
+use crate::models::build::{LaunchResult, LaunchTiming};
 use crate::models::device::{
     AvailableSystemImage, AvdInfo, Device, DeviceConnectionState, DeviceDefinition, DeviceKind,
     SdkDownloadProgress, SystemImageInfo,
@@ -8,9 +9,10 @@ use crate::services::adb_manager::{
     get_avdmanager_path, get_emulator_path, get_sdkmanager_path, install_apk, launch_app,
     launch_emulator, list_available_system_images, list_avds, list_device_definitions,
     list_devices, list_system_images, stop_app, stop_emulator, validate_avd_name,
-    validate_device_profile_id, validate_system_image_id, wipe_avd_data, DeviceState,
-    DeviceStateInner,
+    validate_device_profile_id, validate_system_image_id, wipe_avd_data, AmStartTiming,
+    DeviceState, DeviceStateInner,
 };
+use crate::services::build_runner::{attach_launch_timing, BuildState};
 use crate::services::settings_manager;
 use crate::FsState;
 use serde::Serialize;
@@ -130,13 +132,17 @@ pub async fn install_apk_on_device(
         .map_err(AppError::Io)
 }
 
-/// Launch an app on the given device.
+/// Launch an app on the given device. With `build_id`, the launch time is
+/// recorded on that build's history entry: the build whose APK was installed.
 #[tauri::command]
 pub async fn launch_app_on_device(
     serial: String,
     package: String,
     activity: Option<String>,
-) -> Result<String, AppError> {
+    build_id: Option<u32>,
+    device_state: State<'_, DeviceState>,
+    build_state: State<'_, BuildState>,
+) -> Result<LaunchResult, AppError> {
     validate_device_serial(&serial)?;
     validate_package_name(&package)?;
     if let Some(ref activity_name) = activity {
@@ -144,9 +150,46 @@ pub async fn launch_app_on_device(
     }
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    launch_app(&adb, &serial, &package, activity.as_deref())
+    let outcome = launch_app(&adb, &serial, &package, activity.as_deref())
         .await
-        .map_err(AppError::ProcessFailed)
+        .map_err(AppError::ProcessFailed)?;
+
+    let timing = match outcome.timing {
+        Some(measured) => {
+            let device = device_state
+                .0
+                .lock()
+                .await
+                .devices
+                .iter()
+                .find(|d| d.serial == serial)
+                .cloned();
+            Some(launch_timing(measured, &serial, device.as_ref()))
+        }
+        None => None,
+    };
+    if let (Some(id), Some(timing)) = (build_id, &timing) {
+        // The app launched; failing to record its time must not fail the launch.
+        if let Err(e) = attach_launch_timing(&build_state, id, timing.clone()).await {
+            tracing::warn!("Launch time not recorded on build #{id}: {e}");
+        }
+    }
+    Ok(LaunchResult {
+        output: outcome.description,
+        timing,
+    })
+}
+
+fn launch_timing(measured: AmStartTiming, serial: &str, device: Option<&Device>) -> LaunchTiming {
+    LaunchTiming {
+        total_ms: measured.total_ms,
+        wait_ms: measured.wait_ms,
+        launch_state: measured.launch_state,
+        measured_at: chrono::Utc::now().to_rfc3339(),
+        serial: serial.to_string(),
+        avd_name: device.and_then(|d| d.avd_name.clone()),
+        model: device.and_then(|d| d.model.clone()),
+    }
 }
 
 /// Force-stop an app on the given device.

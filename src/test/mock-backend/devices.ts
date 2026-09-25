@@ -1,4 +1,5 @@
-import type { Device, AvdInfo, UiHierarchySnapshot } from "@/bindings";
+import type { Device, AvdInfo, UiHierarchySnapshot, LaunchResult, LaunchTiming } from "@/bindings";
+import { attachMockLaunch } from "./build";
 import { triggerEvent } from "./events";
 
 export const mockEmulator: Device = {
@@ -52,7 +53,21 @@ export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
     start_device_polling: () => undefined,
     stop_device_polling: () => undefined,
     install_apk_on_device: () => "Success",
-    launch_app_on_device: () => "Started",
+    launch_app_on_device: (args: unknown): LaunchResult => {
+      const { serial, buildId } = args as { serial: string; buildId?: number | null };
+      const device = mockDevices.find((d) => d.serial === serial);
+      const timing: LaunchTiming = {
+        totalMs: 812,
+        waitMs: 815,
+        launchState: "cold",
+        measuredAt: new Date().toISOString(),
+        serial,
+        avdName: device?.avdName ?? null,
+        model: device?.model ?? null,
+      };
+      if (typeof buildId === "number") attachMockLaunch(buildId, timing);
+      return { output: "Status: ok\nLaunchState: COLD\nTotalTime: 812\nWaitTime: 815", timing };
+    },
     stop_app_on_device: () => undefined,
     list_system_images_cmd: () => [],
     list_device_definitions_cmd: () => [],

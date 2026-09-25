@@ -1,7 +1,9 @@
-use crate::services::adb_manager::am_start_failure;
+use crate::models::build::LaunchState;
+use crate::services::adb_manager::{am_start_failure, parse_am_start_timing};
 use crate::utils::device_shell::quote_device_shell_arg;
 use crate::utils::process::{
-    describe_failure, output_with_timeout, ADB_QUERY_TIMEOUT, ADB_UNRESPONSIVE_HINT,
+    describe_failure, output_with_timeout, ADB_LAUNCH_TIMEOUT, ADB_QUERY_TIMEOUT,
+    ADB_UNRESPONSIVE_HINT,
 };
 use std::path::PathBuf;
 
@@ -27,6 +29,12 @@ pub struct RestartResult {
     pub launched: bool,
     pub activity: Option<String>,
     pub display_time_ms: Option<u64>,
+    /// `TotalTime` from `am start -W`; `None` when the device reported none.
+    pub total_time_ms: Option<u32>,
+    /// `WaitTime` from `am start -W`.
+    pub wait_time_ms: Option<u32>,
+    /// `LaunchState` from `am start -W` (Android 10+).
+    pub launch_state: Option<LaunchState>,
     /// True when `pm clear` wiped the app's data before the relaunch.
     pub data_cleared: bool,
 }
@@ -103,22 +111,30 @@ pub async fn restart_app(
     let activity = resolve_launcher_activity(adb, device_serial, package).await?;
 
     let start = std::time::Instant::now();
-    let output = adb_cmd(
+    // `-W` returns once the activity has drawn, so the Displayed line is
+    // already logged by then: anchor the logcat read before the start.
+    let anchor = logcat_anchor_now();
+    let output = adb_cmd_with_timeout(
         adb,
         Some(device_serial),
-        &["shell", "am", "start", "-n", &activity],
+        &["shell", "am", "start", "-W", "-n", &activity],
+        ADB_LAUNCH_TIMEOUT,
     )
     .await?;
     if let Some(failure) = am_start_failure(&output) {
         return Err(format!("am start {activity} failed: {failure}"));
     }
+    let timing = parse_am_start_timing(&output);
 
-    let display_time_ms = wait_for_displayed(adb, device_serial, package, start).await;
+    let display_time_ms = wait_for_displayed(adb, device_serial, package, start, &anchor).await;
 
     Ok(RestartResult {
         launched: true,
         activity: Some(activity),
         display_time_ms,
+        total_time_ms: timing.map(|t| t.total_ms),
+        wait_time_ms: timing.and_then(|t| t.wait_ms),
+        launch_state: timing.and_then(|t| t.launch_state),
         data_cleared: clear_data,
     })
 }
@@ -218,20 +234,21 @@ async fn resolve_launcher_activity(
         .ok_or_else(|| format!("Could not resolve launcher activity for package '{package}'"))
 }
 
+/// Now as "MM-DD HH:MM:SS.mmm", the timestamp anchor `logcat -T` expects.
+/// A bare integer would be read as a line count, not a timestamp.
+fn logcat_anchor_now() -> String {
+    chrono::Local::now()
+        .format("%m-%d %H:%M:%S%.3f")
+        .to_string()
+}
+
 async fn wait_for_displayed(
     adb: &PathBuf,
     device_serial: &str,
     package: &str,
     start: std::time::Instant,
+    anchor: &str,
 ) -> Option<u64> {
-    // Format the anchor timestamp as "MM-DD HH:MM:SS.mmm" — the format
-    // Android logcat's -T flag expects for a timestamp anchor.
-    // A bare integer would be interpreted as a line count, not a timestamp.
-    let anchor = {
-        let now = chrono::Local::now();
-        now.format("%m-%d %H:%M:%S%.3f").to_string()
-    };
-
     let deadline = std::time::Duration::from_secs(10);
     loop {
         if start.elapsed() > deadline {
@@ -242,7 +259,7 @@ async fn wait_for_displayed(
         let output = adb_cmd(
             adb,
             Some(device_serial),
-            &["logcat", "-d", "-T", &anchor, "-s", "ActivityManager:I"],
+            &["logcat", "-d", "-T", anchor, "-s", "ActivityManager:I"],
         )
         .await
         .unwrap_or_default();
@@ -300,6 +317,15 @@ async fn adb_cmd(
     device_serial: Option<&str>,
     args: &[&str],
 ) -> Result<String, String> {
+    adb_cmd_with_timeout(adb, device_serial, args, ADB_QUERY_TIMEOUT).await
+}
+
+async fn adb_cmd_with_timeout(
+    adb: &PathBuf,
+    device_serial: Option<&str>,
+    args: &[&str],
+    timeout: std::time::Duration,
+) -> Result<String, String> {
     let mut cmd = tokio::process::Command::new(adb);
     if let Some(serial) = device_serial {
         cmd.arg("-s").arg(serial);
@@ -314,7 +340,7 @@ async fn adb_cmd(
             cmd.args(args);
         }
     }
-    let output = output_with_timeout(&mut cmd, ADB_QUERY_TIMEOUT)
+    let output = output_with_timeout(&mut cmd, timeout)
         .await
         .map_err(|e| describe_failure("adb command", &e, ADB_UNRESPONSIVE_HINT))?;
     if !output.status.success() {
@@ -376,6 +402,33 @@ mod tests {
             .unwrap_err();
 
         assert!(err.contains("does not exist"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn restart_reports_the_launch_timing_and_state() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let adb = dir.path().join("adb");
+        std::fs::write(
+            &adb,
+            "#!/bin/sh\ncase \"$*\" in\n\
+             *resolve-activity*) echo 0; echo com.example.app/.Main ;;\n\
+             *'am start -W -n'*) printf 'Status: ok\\nLaunchState: COLD\\nActivity: com.example.app/.Main\\nTotalTime: 812\\nWaitTime: 815\\nComplete\\n' ;;\n\
+             *logcat*) echo 'I ActivityManager: Displayed com.example.app/.Main: +812ms' ;;\n\
+             esac\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::utils::process::test_support::run_once(&adb);
+
+        let result = restart_app(&adb, "emulator-5554", "com.example.app", false)
+            .await
+            .unwrap();
+
+        assert_eq!(result.total_time_ms, Some(812));
+        assert_eq!(result.wait_time_ms, Some(815));
+        assert_eq!(result.launch_state, Some(LaunchState::Cold));
+        assert_eq!(result.display_time_ms, Some(812));
     }
 
     #[test]

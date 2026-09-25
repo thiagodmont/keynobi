@@ -1,3 +1,4 @@
+use crate::models::build::LaunchState;
 use crate::models::device::{
     AvailableSystemImage, AvdInfo, Device, DeviceConnectionState, DeviceDefinition, DeviceKind,
     SdkDownloadProgress, SystemImageInfo,
@@ -486,6 +487,114 @@ pub fn is_wireless_adb_serial(serial: &str) -> bool {
     })
 }
 
+/// Launch timing that `am start -W` printed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct AmStartTiming {
+    /// `TotalTime`, in milliseconds.
+    pub total_ms: u32,
+    /// `WaitTime`, in milliseconds.
+    pub wait_ms: Option<u32>,
+    /// `LaunchState` (Android 10+); `None` when absent or `UNKNOWN`.
+    pub launch_state: Option<LaunchState>,
+}
+
+/// The launch timing in `am start -W` output, or `None` when it has none.
+///
+/// Android 10+ prints `Status`, `LaunchState`, `Activity`, `TotalTime`, and
+/// `WaitTime`; older versions print `ThisTime`, `TotalTime`, and `WaitTime`
+/// without `LaunchState`. `TotalTime` is missing when the intent went to an
+/// activity already on top, and a `Status: timeout` launch is not a measurement.
+pub fn parse_am_start_timing(output: &str) -> Option<AmStartTiming> {
+    let mut total_ms = None;
+    let mut wait_ms = None;
+    let mut launch_state = None;
+    for line in output.lines().map(str::trim) {
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
+        let value = value.trim();
+        match key {
+            "Status" if value != "ok" => return None,
+            "TotalTime" => total_ms = value.parse::<u32>().ok(),
+            "WaitTime" => wait_ms = value.parse::<u32>().ok(),
+            "LaunchState" => {
+                launch_state = match value {
+                    "COLD" => Some(LaunchState::Cold),
+                    "WARM" => Some(LaunchState::Warm),
+                    "HOT" => Some(LaunchState::Hot),
+                    "RELAUNCH" => Some(LaunchState::Relaunch),
+                    _ => None,
+                }
+            }
+            _ => {}
+        }
+    }
+    Some(AmStartTiming {
+        total_ms: total_ms?,
+        wait_ms,
+        launch_state,
+    })
+}
+
+/// One line for tool output: `Launch time: 812 ms (cold), wait 830 ms`, or
+/// that the launch reported none.
+pub fn describe_launch_timing(timing: Option<&AmStartTiming>) -> String {
+    let Some(t) = timing else {
+        return "Launch time: not reported by this launch method.".to_string();
+    };
+    let state = match t.launch_state {
+        Some(LaunchState::Cold) => " (cold)",
+        Some(LaunchState::Warm) => " (warm)",
+        Some(LaunchState::Hot) => " (hot)",
+        Some(LaunchState::Relaunch) => " (relaunch)",
+        None => "",
+    };
+    match t.wait_ms {
+        Some(wait) => format!("Launch time: {} ms{state}, wait {wait} ms", t.total_ms),
+        None => format!("Launch time: {} ms{state}", t.total_ms),
+    }
+}
+
+/// What [`launch_app`] did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchOutcome {
+    /// Human-readable description, for the build log.
+    pub description: String,
+    /// `None` when the launch method reports no timing (monkey, the MAIN intent).
+    pub timing: Option<AmStartTiming>,
+}
+
+/// `am start -W -n <component>`: starts that activity and waits until it has drawn.
+async fn am_start_component(
+    adb: &Path,
+    serial: &str,
+    component: &str,
+) -> Result<std::process::Output, String> {
+    output_with_timeout(
+        Command::new(adb).args([
+            "-s",
+            serial,
+            "shell",
+            "am",
+            "start",
+            "-W",
+            "-n",
+            &quote_device_shell_arg(component),
+        ]),
+        ADB_LAUNCH_TIMEOUT,
+    )
+    .await
+    .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))
+}
+
+/// A successful component start, with the timing it printed.
+fn started_component(description: String, output: &str) -> LaunchOutcome {
+    LaunchOutcome {
+        description,
+        timing: parse_am_start_timing(output),
+    }
+}
+
 /// Launch an app on a device.
 ///
 /// Strategy:
@@ -497,50 +606,30 @@ pub fn is_wireless_adb_serial(serial: &str) -> bool {
 ///   3. Fall back to `adb shell monkey` with the effective package name.
 ///   4. Last resort: `am start -a android.intent.action.MAIN` intent.
 ///
-/// Returns a human-readable description of what happened (for build log display).
+/// Starts of a known component use `am start -W` and report its timing; the
+/// fallbacks in steps 3 and 4 report none. The description is for the build log.
 pub async fn launch_app(
     adb: &Path,
     serial: &str,
     package: &str,
     activity: Option<&str>,
-) -> Result<String, String> {
+) -> Result<LaunchOutcome, String> {
     // If caller already knows the activity, use am start directly.
     if let Some(act) = activity {
-        let args = [
-            "-s",
-            serial,
-            "shell",
-            "am",
-            "start",
-            "-n",
-            &quote_device_shell_arg(&format!("{package}/{act}")),
-        ];
-        let out = output_with_timeout(Command::new(adb).args(args), ADB_LAUNCH_TIMEOUT)
-            .await
-            .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))?;
+        let out = am_start_component(adb, serial, &format!("{package}/{act}")).await?;
         return check_am_start(&out)
-            .map(|combined| format!("am start OK: {combined}"))
+            .map(|combined| started_component(format!("am start OK: {combined}"), &combined))
             .map_err(|combined| format!("am start failed: {combined}"));
     }
 
     // Step 1: ask the device for the LAUNCHER activity of the given package name.
     if let Some(component) = try_resolve_launcher(adb, serial, package).await {
-        let out = output_with_timeout(
-            Command::new(adb).args([
-                "-s",
-                serial,
-                "shell",
-                "am",
-                "start",
-                "-n",
-                &quote_device_shell_arg(&component),
-            ]),
-            ADB_LAUNCH_TIMEOUT,
-        )
-        .await
-        .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))?;
+        let out = am_start_component(adb, serial, &component).await?;
         if let Ok(combined) = check_am_start(&out) {
-            return Ok(format!("am start OK ({component}): {combined}"));
+            return Ok(started_component(
+                format!("am start OK ({component}): {combined}"),
+                &combined,
+            ));
         }
     }
 
@@ -552,22 +641,12 @@ pub async fn launch_app(
 
     if effective_package != package {
         if let Some(component) = try_resolve_launcher(adb, serial, &effective_package).await {
-            let out = output_with_timeout(
-                Command::new(adb).args([
-                    "-s",
-                    serial,
-                    "shell",
-                    "am",
-                    "start",
-                    "-n",
-                    &quote_device_shell_arg(&component),
-                ]),
-                ADB_LAUNCH_TIMEOUT,
-            )
-            .await
-            .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))?;
+            let out = am_start_component(adb, serial, &component).await?;
             if let Ok(combined) = check_am_start(&out) {
-                return Ok(format!("am start OK ({component}): {combined}"));
+                return Ok(started_component(
+                    format!("am start OK ({component}): {combined}"),
+                    &combined,
+                ));
             }
         }
     }
@@ -595,7 +674,10 @@ pub async fn launch_app(
     let monkey_combined = format!("{monkey_stdout}{monkey_stderr}").trim().to_owned();
 
     if monkey_stdout.contains("Events injected: 1") {
-        return Ok(format!("monkey OK: {monkey_combined}"));
+        return Ok(LaunchOutcome {
+            description: format!("monkey OK: {monkey_combined}"),
+            timing: None,
+        });
     }
 
     // Step 4: last resort — fire the MAIN/LAUNCHER intent.
@@ -618,7 +700,10 @@ pub async fn launch_app(
     .map_err(|e| describe_failure("adb am start", &e, ADB_UNRESPONSIVE_HINT))?;
 
     match check_am_start(&out) {
-        Ok(combined) => Ok(format!("am start (intent) OK: {combined}")),
+        Ok(combined) => Ok(LaunchOutcome {
+            description: format!("am start (intent) OK: {combined}"),
+            timing: None,
+        }),
         Err(combined) => Err(format!(
             "processFailed: {monkey_combined} | intent: {combined}"
         )),
@@ -1788,11 +1873,220 @@ mod tests {
 
         assert_eq!(
             recorded_calls(&record),
-            vec![vec!["am", "start", "-n", "com.example.app/.Main$Inner"]]
+            vec![vec![
+                "am",
+                "start",
+                "-W",
+                "-n",
+                "com.example.app/.Main$Inner"
+            ]]
         );
     }
 
     use super::*;
+
+    // `am start -W` output as devices print it.
+    const AM_START_W_COLD: &str = "\
+Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] cmp=com.example.app/.MainActivity }
+Status: ok
+LaunchState: COLD
+Activity: com.example.app/.MainActivity
+TotalTime: 812
+WaitTime: 815
+Complete";
+    const AM_START_W_WARM: &str = "\
+Starting: Intent { cmp=com.example.app/.MainActivity }
+Status: ok
+LaunchState: WARM
+Activity: com.example.app/.MainActivity
+TotalTime: 240
+WaitTime: 244
+Complete";
+    const AM_START_W_HOT: &str = "\
+Starting: Intent { cmp=com.example.app/.MainActivity }
+Warning: Activity not started, its current task has been brought to the front
+Status: ok
+LaunchState: HOT
+Activity: com.example.app/.MainActivity
+TotalTime: 95
+WaitTime: 98
+Complete";
+    /// Android 9 and older: no `LaunchState`, plus `ThisTime`.
+    const AM_START_W_ANDROID_9: &str = "\
+Starting: Intent { cmp=com.example.app/.MainActivity }
+Status: ok
+Activity: com.example.app/.MainActivity
+ThisTime: 640
+TotalTime: 640
+WaitTime: 668
+Complete";
+    /// The intent went to the activity already on top: no `TotalTime`.
+    const AM_START_W_DELIVERED_TO_TOP: &str = "\
+Starting: Intent { cmp=com.example.app/.MainActivity }
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+LaunchState: UNKNOWN (0)
+Activity: com.example.app/.MainActivity
+WaitTime: 4
+Complete";
+    const AM_START_W_TIMEOUT: &str = "\
+Starting: Intent { cmp=com.example.app/.MainActivity }
+Status: timeout
+LaunchState: UNKNOWN (0)
+Activity: com.example.app/.MainActivity
+TotalTime: 10000
+WaitTime: 10004
+Complete";
+    const AM_START_W_FAILED: &str = "\
+Starting: Intent { cmp=com.example.app/.Missing }
+Error type 3
+Error: Activity class {com.example.app/.Missing} does not exist.";
+
+    #[test]
+    fn am_start_timing_reads_cold_warm_and_hot_launches() {
+        for (output, total, wait, state) in [
+            (AM_START_W_COLD, 812, 815, LaunchState::Cold),
+            (AM_START_W_WARM, 240, 244, LaunchState::Warm),
+            (AM_START_W_HOT, 95, 98, LaunchState::Hot),
+        ] {
+            assert_eq!(
+                parse_am_start_timing(output),
+                Some(AmStartTiming {
+                    total_ms: total,
+                    wait_ms: Some(wait),
+                    launch_state: Some(state),
+                }),
+                "{output}"
+            );
+        }
+    }
+
+    #[test]
+    fn am_start_timing_without_a_launch_state_keeps_the_times() {
+        assert_eq!(
+            parse_am_start_timing(AM_START_W_ANDROID_9),
+            Some(AmStartTiming {
+                total_ms: 640,
+                wait_ms: Some(668),
+                launch_state: None,
+            })
+        );
+        let unknown_state =
+            AM_START_W_COLD.replace("LaunchState: COLD", "LaunchState: UNKNOWN (0)");
+        assert_eq!(
+            parse_am_start_timing(&unknown_state).map(|t| t.launch_state),
+            Some(None)
+        );
+        let no_wait = AM_START_W_COLD.replace("WaitTime: 815\n", "");
+        assert_eq!(
+            parse_am_start_timing(&no_wait),
+            Some(AmStartTiming {
+                total_ms: 812,
+                wait_ms: None,
+                launch_state: Some(LaunchState::Cold),
+            })
+        );
+    }
+
+    #[test]
+    fn am_start_timing_is_none_without_a_total_time_or_on_failure() {
+        for output in [
+            AM_START_W_DELIVERED_TO_TOP,
+            AM_START_W_TIMEOUT,
+            AM_START_W_FAILED,
+            "Starting: Intent { cmp=com.example.app/.MainActivity }",
+            "TotalTime: -1",
+            "",
+        ] {
+            assert_eq!(parse_am_start_timing(output), None, "{output}");
+        }
+    }
+
+    #[test]
+    fn launch_timing_description_names_the_state_or_its_absence() {
+        let cold = parse_am_start_timing(AM_START_W_COLD);
+        assert_eq!(
+            describe_launch_timing(cold.as_ref()),
+            "Launch time: 812 ms (cold), wait 815 ms"
+        );
+        assert_eq!(
+            describe_launch_timing(None),
+            "Launch time: not reported by this launch method."
+        );
+    }
+
+    /// An `adb` that answers by the arguments it gets, like a device would.
+    fn adb_script(dir: &Path, cases: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let adb = dir.join("adb");
+        std::fs::write(&adb, format!("#!/bin/sh\ncase \"$*\" in\n{cases}\nesac\n")).unwrap();
+        std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::utils::process::test_support::run_once(&adb);
+        adb
+    }
+
+    #[tokio::test]
+    async fn a_resolved_component_launch_reports_its_timing() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = adb_script(
+            dir.path(),
+            &format!(
+                "*resolve-activity*) echo 0; echo com.example.app/.MainActivity ;;\n\
+                 *'am start -W -n'*) printf '%s\\n' '{}' ;;",
+                AM_START_W_COLD.replace('\'', "")
+            ),
+        );
+
+        let outcome = launch_app(&adb, "emulator-5554", "com.example.app", None)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            outcome.timing,
+            Some(AmStartTiming {
+                total_ms: 812,
+                wait_ms: Some(815),
+                launch_state: Some(LaunchState::Cold),
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn the_monkey_fallback_reports_no_timing() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = adb_script(dir.path(), "*monkey*) echo 'Events injected: 1' ;;");
+
+        let outcome = launch_app(&adb, "emulator-5554", "com.example.app", None)
+            .await
+            .unwrap();
+
+        assert!(outcome.description.starts_with("monkey OK"), "{outcome:?}");
+        assert_eq!(outcome.timing, None);
+    }
+
+    #[tokio::test]
+    async fn the_main_intent_fallback_reports_no_timing() {
+        let dir = tempfile::tempdir().unwrap();
+        // Even if it printed timing, the intent fallback is not a measured launch.
+        let adb = adb_script(
+            dir.path(),
+            &format!(
+                "*monkey*) echo 'No activities found to run, monkey aborted.' ;;\n\
+                 *'android.intent.action.MAIN'*) printf '%s\\n' '{}' ;;",
+                AM_START_W_COLD.replace('\'', "")
+            ),
+        );
+
+        let outcome = launch_app(&adb, "emulator-5554", "com.example.app", None)
+            .await
+            .unwrap();
+
+        assert!(
+            outcome.description.starts_with("am start (intent) OK"),
+            "{outcome:?}"
+        );
+        assert_eq!(outcome.timing, None);
+    }
 
     /// An `adb` that never answers, like a wedged adb server.
     fn hanging_adb(dir: &Path) -> PathBuf {

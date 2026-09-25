@@ -2,6 +2,7 @@
 import type { BuildActor } from "./BuildActor";
 import type { BuildError } from "./BuildError";
 import type { BuildStatus } from "./BuildStatus";
+import type { LaunchTiming } from "./LaunchTiming";
 
 /**
  * A record of a past build kept in the build history ring-buffer.
@@ -19,4 +20,8 @@ origin: BuildActor | null,
 /**
  * Who cancelled the build, when it was cancelled.
  */
-cancelledBy: BuildActor | null, };
+cancelledBy: BuildActor | null, 
+/**
+ * How long the app took to launch when Run App installed this build's APK.
+ */
+launch: LaunchTiming | null, };

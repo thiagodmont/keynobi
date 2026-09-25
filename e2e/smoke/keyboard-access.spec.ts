@@ -267,5 +267,5 @@ deployTest("with no device online, start an emulator from the Run App dialog", a
   await expect(picker).toBeHidden();
 
   await expect(page.getByText("BUILD SUCCESSFUL in 4s")).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText(/Launch: Started/)).toBeVisible();
+  await expect(page.getByText("▶ Launch time: 812 ms (cold)")).toBeVisible();
 });

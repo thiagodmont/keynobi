@@ -292,6 +292,7 @@ import type {
   SdkDownloadProgress,
   UiHierarchySnapshot,
   DeviceListChangedEvent,
+  LaunchResult,
 } from "@/bindings";
 export type {
   Device,
@@ -301,6 +302,7 @@ export type {
   AvailableSystemImage,
   SdkDownloadProgress,
   UiHierarchySnapshot,
+  LaunchResult,
 };
 
 export async function listAdbDevices(): Promise<Device[]> {
@@ -330,15 +332,20 @@ export async function installApkOnDevice(serial: string, apkPath: string): Promi
   return invoke<string>("install_apk_on_device", { serial, apkPath });
 }
 
+/**
+ * Launch an app. With `buildId`, the backend records the launch time on that
+ * build's history entry (the build whose APK was installed).
+ */
 export async function launchAppOnDevice(
   serial: string,
   pkg: string,
-  activity?: string
-): Promise<string> {
-  return invoke<string>("launch_app_on_device", {
+  opts: { activity?: string; buildId?: number | null } = {}
+): Promise<LaunchResult> {
+  return invoke<LaunchResult>("launch_app_on_device", {
     serial,
     package: pkg,
-    activity: activity ?? null,
+    activity: opts.activity ?? null,
+    buildId: opts.buildId ?? null,
   });
 }
 
