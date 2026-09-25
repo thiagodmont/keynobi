@@ -149,6 +149,9 @@ pub struct LogStats {
     /// Non-zero means the view is incomplete, so the UI must surface it rather
     /// than silently showing a gap.
     pub dropped_lines: u64,
+    /// Lines read from the device but not yet processed when the pipeline's
+    /// last batch ended. Stays near zero while the pipeline keeps up.
+    pub backlog_lines: u64,
 }
 
 // ── LogcatFilterSpec ──────────────────────────────────────────────────────────
