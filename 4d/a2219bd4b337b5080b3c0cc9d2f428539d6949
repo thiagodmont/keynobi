@@ -1,0 +1,44 @@
+src-tauri/src/commands/build.rs
+  s_1e114e823b9048::t_3f48371a91110e 288
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_6d817d3bd8aebe 68-70,258
+  s_1e114e823b9048::t_a16620fc648168 259
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_6d817d3bd8aebe 30
+src-tauri/src/services/settings_manager.rs
+  s_1e114e823b9048::t_96437b940f79eb 851-915
+  s_1e114e823b9048::t_e91209581fdc3e 21-24,148-153,159-161,163-187,259-263,280-282,285,308,311-314,338-342,346
+  s_1e114e823b9048::t_781acb5f0b87a9 154-158,162,265,270-279,283-284,333-337
+  s_1e114e823b9048::t_f9f91a28c6afba 286
+src-tauri/src/lib.rs
+  s_1e114e823b9048::t_3f48371a91110e 227-231
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_6d817d3bd8aebe 82-84,326-327
+src-tauri/tests/build_integration.rs
+  s_1e114e823b9048::t_46abda9e304e67 319-333
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_96437b940f79eb 148,286-326
+src-tauri/src/services/build_runner.rs
+  s_1e114e823b9048::t_93767323df62b8 1919
+  s_1e114e823b9048::t_d94c35ffa05dd5 2051-2054,2056,2060
+  s_1e114e823b9048::t_781acb5f0b87a9 4,24-25,67-68,74-76,83-84,93-95,97,123,127-131,856-861,920-921
+  s_1e114e823b9048::t_96437b940f79eb 82,1981-2050,2055,2057-2059,2061-2062
+  s_1e114e823b9048::t_3f48371a91110e 23,26,28-54,56-66,69-73,77-81,85-92,96,98-107,112-118,350,852-855,897,904,906-913,916-917,922-923,926,928-930,932-947
+  s_1e114e823b9048::t_46abda9e304e67 108-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4da2219bd4b337b5080b3c0cc9d2f428539d6949",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
