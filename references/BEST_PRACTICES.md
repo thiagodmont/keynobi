@@ -65,14 +65,15 @@ All persistent app data lives under `~/.keynobi/`, resolved by `settings_manager
 | `settings.json` | User settings (atomic writes; a corrupt file is moved to `settings.json.corrupt`). |
 | `logs/app.log.*` | Daily-rotated GUI logs, pruned by retention and folder-size settings (never the active file). |
 | `build-history.json`, `build-logs/build-{id}.jsonl` | Build history and per-build logs. |
-| `mappings/<sha256>.txt` | Copies of the R8 mappings successful builds wrote, named by content and listed on their history records. |
+| `mappings/<sha256>.txt` | Copies of the R8 mappings successful builds wrote, named by content and listed on their history records and on the installs that pin them. |
+| `installed-builds.json` | What Keynobi last installed on each device, per package, and the build that produced it. |
 | `mcp-activity.jsonl` | MCP activity log (appended and rotated under the data lock). |
 | `mcp.sock` | Socket the app serves attached MCP sessions on (`0600`; the data directory is `0700`). |
 | `mcp-sessions/<pid>.json` | One record per running standalone MCP server. |
-| `.lock` | Advisory lock that serializes settings and build-history writes across processes. |
+| `.lock` | Advisory lock that serializes settings, build-history, and installed-builds writes across processes. |
 | `build-locks/<hash>.lock` | One per project being built, held for the whole build and naming the building process's pid, so two processes never build one project at once. |
 
-Every read-modify-write of `settings.json` or `build-history.json`, and every file published to or removed from `mappings/` (a copy is written to a private temporary file there first, without the lock), runs under `settings_manager::with_data_lock` (a process mutex plus a file lock on `.lock`) and re-reads the file inside it, because other processes write the same files. Write atomically to a `unique_tmp_path` and rename. The lock is not reentrant; never take it inside itself.
+Every read-modify-write of `settings.json`, `build-history.json`, or `installed-builds.json`, and every file published to or removed from `mappings/` (a copy is written to a private temporary file there first, without the lock), runs under `settings_manager::with_data_lock` (a process mutex plus a file lock on `.lock`) and re-reads the file inside it, because other processes write the same files. Write atomically to a `unique_tmp_path` and rename. The lock is not reentrant; never take it inside itself.
 
 Frontend-only preferences (saved logcat filters, last query, dismissed update versions) live in WebView `localStorage`.
 
@@ -158,7 +159,8 @@ Every long-lived collection, in memory or on disk, must have an explicit, named 
 | Structured build errors/warnings | `MAX_BUILD_ERRORS` (1,000, newest kept) |
 | One line of process output (build, logcat) | `MAX_LINE_BYTES` (64 KiB) |
 | Build log files | Age, orphan, and folder-size pruning (settings) |
-| R8 mapping snapshots | `MAX_MAPPING_BYTES` (256 MiB per file), `MAX_MAPPINGS_PER_BUILD` (8), `MAX_MAPPING_SNAPSHOTS` (32 files); unreferenced snapshots are pruned with the history |
+| R8 mapping snapshots | `MAX_MAPPING_BYTES` (256 MiB per file), `MAX_MAPPINGS_PER_BUILD` (8), `MAX_MAPPING_SNAPSHOTS` (32 files) unpinned; unreferenced snapshots are pruned with the history, and snapshots installed builds name are never pruned |
+| Installed builds | `MAX_INSTALLED_TARGETS` (16 device and package pairs, oldest dropped); `MAX_APKS_PER_BUILD` (8 hashed APKs per build record) |
 | UI hierarchy | `MAX_XML_BYTES`, `MAX_NODES`, `MAX_DEPTH`, `MAX_ATTR_LEN` |
 | Saved logcat filters | `MAX_SAVED_FILTERS` (50) |
 | Recent projects | `MAX_RECENT_PROJECTS` (20) |

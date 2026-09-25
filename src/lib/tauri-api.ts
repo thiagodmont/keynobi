@@ -294,6 +294,7 @@ import type {
   DeviceListChangedEvent,
   LaunchResult,
   AppExitReasons,
+  InstalledBuild,
 } from "@/bindings";
 export type {
   Device,
@@ -305,6 +306,7 @@ export type {
   UiHierarchySnapshot,
   LaunchResult,
   AppExitReasons,
+  InstalledBuild,
 };
 
 export async function listAdbDevices(): Promise<Device[]> {
@@ -330,8 +332,14 @@ export async function dumpUiHierarchy(deviceSerial?: string | null): Promise<UiH
   });
 }
 
+/** Install an APK. The backend records which build produced it (see `listInstalledBuilds`). */
 export async function installApkOnDevice(serial: string, apkPath: string): Promise<string> {
   return invoke<string>("install_apk_on_device", { serial, apkPath });
+}
+
+/** What Keynobi last installed on each device, per package, oldest first. */
+export async function listInstalledBuilds(): Promise<InstalledBuild[]> {
+  return invoke<InstalledBuild[]>("list_installed_builds");
 }
 
 /**

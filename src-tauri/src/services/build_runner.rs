@@ -6,6 +6,7 @@ use crate::models::error::AppError;
 use crate::services::build_lock::{self, BuildLock};
 use crate::services::build_parser;
 use crate::services::gradle_modules::{self, GradleModule};
+use crate::services::installed_builds;
 use crate::services::mapping_snapshots::{self, MappingSource, PreparedMapping};
 use crate::services::process_manager::{self, ProcessId, ProcessManager, ProcessTermination};
 use crate::services::settings_manager::{data_dir, unique_tmp_path, with_data_lock_in};
@@ -96,9 +97,19 @@ fn persist_build_record_in(
         save_build_history_to(dir, &history)?;
         save_build_log_to(id, raw_lines, &build_log_dir);
         rotate_build_logs(&build_log_dir, retention_days, max_folder_mb, &history);
-        mapping_snapshots::prune_snapshots(dir, &mapping_snapshots::mappings_to_keep(&history));
+        prune_mappings(dir, &history);
         Ok((id, history))
     })?
+}
+
+/// Remove the mapping snapshots neither `history` nor an installed build names.
+/// Callers hold the data lock.
+fn prune_mappings(dir: &Path, history: &VecDeque<BuildRecord>) {
+    let installed = installed_builds::load_installed_builds_from(dir);
+    mapping_snapshots::prune_snapshots(
+        dir,
+        &mapping_snapshots::mappings_to_keep(history, &installed),
+    );
 }
 
 /// Rotate build logs and R8 mapping snapshots against the persisted history,
@@ -113,7 +124,7 @@ pub fn rotate_persisted_build_logs(retention_days: u32, max_folder_mb: u32) -> R
             max_folder_mb,
             &history,
         );
-        mapping_snapshots::prune_snapshots(&dir, &mapping_snapshots::mappings_to_keep(&history));
+        prune_mappings(&dir, &history);
     })
 }
 
@@ -142,7 +153,7 @@ pub fn load_build_history() -> VecDeque<BuildRecord> {
     load_build_history_from(&data_dir())
 }
 
-fn load_build_history_from(dir: &Path) -> VecDeque<BuildRecord> {
+pub(crate) fn load_build_history_from(dir: &Path) -> VecDeque<BuildRecord> {
     let path = dir.join(BUILD_HISTORY_FILE);
     if !path.exists() {
         return VecDeque::new();
@@ -651,18 +662,20 @@ fn apk_outputs_dir_within(gradle_root: &Path, module: &GradleModule) -> Result<P
 /// The AGP `output-metadata.json` written next to a variant's APKs.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct OutputMetadata {
+pub(crate) struct OutputMetadata {
     #[serde(default)]
-    application_id: Option<String>,
-    variant_name: String,
+    pub(crate) application_id: Option<String>,
+    pub(crate) variant_name: String,
     #[serde(default)]
-    elements: Vec<OutputMetadataElement>,
+    pub(crate) elements: Vec<OutputMetadataElement>,
 }
 
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct OutputMetadataElement {
-    output_file: String,
+pub(crate) struct OutputMetadataElement {
+    pub(crate) output_file: String,
+    #[serde(default)]
+    pub(crate) version_code: Option<i64>,
 }
 
 fn read_output_metadata(dir: &Path) -> Option<OutputMetadata> {
@@ -877,8 +890,8 @@ pub struct BuildFinalization {
     pub errors: Vec<BuildError>,
     pub origin: Option<BuildActor>,
     pub cancelled_by: Option<BuildActor>,
-    /// Where to look for the R8 mappings the build wrote. Only a successful
-    /// build's are saved.
+    /// Where to look for the R8 mappings and APKs the build wrote. Only a
+    /// successful build's are saved.
     pub mappings: Option<MappingSource>,
 }
 
@@ -928,6 +941,7 @@ pub async fn finalize_completed_build(
             cancelled_by: finalization.cancelled_by.clone(),
             launch: None,
             mappings: Vec::new(),
+            apks: Vec::new(),
         },
         mapping_source,
     )
@@ -1090,7 +1104,7 @@ fn clear_history_in(dir: &Path) -> Result<(), String> {
     with_data_lock_in(dir, || {
         let empty = VecDeque::new();
         save_build_history_to(dir, &empty)?;
-        mapping_snapshots::prune_snapshots(dir, &mapping_snapshots::mappings_to_keep(&empty));
+        prune_mappings(dir, &empty);
         Ok(())
     })?
 }
@@ -1130,6 +1144,7 @@ pub async fn record_build_result(
             cancelled_by: None,
             launch: None,
             mappings: Vec::new(),
+            apks: Vec::new(),
         },
         None,
     )
@@ -1168,14 +1183,19 @@ async fn record_run(
     }
 
     // Disk I/O runs off the async runtime and outside the build-state lock.
-    // Mappings are copied before the data lock is taken: they can be large,
-    // and other processes wait on that lock for settings and history.
-    let record_for_io = record.clone();
+    // Mappings are copied and APKs hashed before the data lock is taken: they
+    // can be large, and other processes wait on that lock for settings and history.
+    let mut record_for_io = record.clone();
     let persisted = tokio::task::spawn_blocking(move || {
         let (settings, _) = crate::services::settings_manager::load_settings();
         let dir = data_dir();
         let mappings = mapping_source
-            .map(|source| mapping_snapshots::prepare_snapshots(&dir, &source).mappings)
+            .as_ref()
+            .map(|source| mapping_snapshots::prepare_snapshots(&dir, source).mappings)
+            .unwrap_or_default();
+        record_for_io.apks = mapping_source
+            .as_ref()
+            .map(installed_builds::hash_build_apks)
             .unwrap_or_default();
         persist_build_record_in(
             &dir,
@@ -2766,6 +2786,7 @@ mod tests {
             cancelled_by: None,
             launch: None,
             mappings: Vec::new(),
+            apks: Vec::new(),
         };
         let json = serde_json::to_string(&record).unwrap();
         let parsed: BuildRecord = serde_json::from_str(&json).unwrap();
@@ -2788,6 +2809,7 @@ mod tests {
                 cancelled_by: None,
                 launch: None,
                 mappings: Vec::new(),
+                apks: Vec::new(),
             })
             .collect();
         // This is the formula that BuildStateInner::new() must use.
@@ -2821,6 +2843,7 @@ mod tests {
                     cancelled_by: None,
                     launch: None,
                     mappings: Vec::new(),
+                    apks: Vec::new(),
                 });
             }
         }
@@ -2850,6 +2873,7 @@ mod tests {
                 cancelled_by: None,
                 launch: None,
                 mappings: Vec::new(),
+                apks: Vec::new(),
             })
             .collect();
 
@@ -2937,6 +2961,7 @@ mod tests {
             cancelled_by: None,
             launch: None,
             mappings: Vec::new(),
+            apks: Vec::new(),
         }
     }
 
@@ -3157,6 +3182,79 @@ mod tests {
         assert_eq!(named, vec![1, 1]);
     }
 
+    /// The release APK and its output metadata, as AGP writes them.
+    fn write_release_apk(project: &Path) {
+        let folder = project.join("app/build/outputs/apk/release");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(folder.join("app-release.apk"), "release apk").unwrap();
+        std::fs::write(
+            folder.join("output-metadata.json"),
+            r#"{"applicationId":"com.example","variantName":"release",
+                "elements":[{"versionCode":3,"outputFile":"app-release.apk"}]}"#,
+        )
+        .unwrap();
+    }
+
+    /// A successful build of `project` whose `app` module also wrote a
+    /// release APK, recorded as the finalizer records it.
+    fn persist_with_apk(dir: &Path, project: &Path) -> BuildRecord {
+        write_release_apk(project);
+        let source = mapping_source(project);
+        let prepared = mapping_snapshots::prepare_snapshots(dir, &source);
+        let record = BuildRecord {
+            apks: installed_builds::hash_build_apks(&source),
+            ..record_named("assembleRelease")
+        };
+        let (id, history) =
+            persist_build_record_in(dir, record, &VecDeque::new(), 7, 100, prepared.mappings)
+                .unwrap();
+        history.into_iter().find(|r| r.id == id).unwrap()
+    }
+
+    fn install_on_pixel(dir: &Path, sha256: &str) -> crate::models::build::InstalledBuild {
+        installed_builds::record_install_in(
+            dir,
+            &installed_builds::InstallTarget {
+                serial: "emulator-5554".into(),
+                avd_name: Some("Pixel_7".into()),
+                model: None,
+            },
+            &installed_builds::InstalledApk {
+                sha256: sha256.into(),
+                application_id: Some("com.example".into()),
+                version_code: None,
+            },
+            String::new(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn an_installed_build_keeps_its_mapping_after_it_leaves_the_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let project = project_with_mapping("release", "installed -> a:\n");
+        let record = persist_with_apk(dir.path(), project.path());
+        assert_eq!(record.apks.len(), 1);
+        let installed = install_on_pixel(dir.path(), &record.apks[0].sha256);
+        assert_eq!(installed.build_id, Some(record.id));
+        assert_eq!(installed.mappings, record.mappings);
+
+        for _ in 0..MAX_HISTORY {
+            persist(dir.path(), "assembleDebug");
+        }
+        assert!(!load_build_history_from(dir.path())
+            .iter()
+            .any(|r| r.id == record.id));
+        assert!(snapshot_saved(dir.path(), &record));
+        clear_history_in(dir.path()).unwrap();
+        assert!(snapshot_saved(dir.path(), &record));
+
+        // Another APK replaces it on the device: the mapping is no longer needed.
+        install_on_pixel(dir.path(), &"0".repeat(64));
+        persist(dir.path(), "assembleDebug");
+        assert!(!snapshot_saved(dir.path(), &record));
+    }
+
     #[test]
     fn clearing_the_history_removes_its_mappings() {
         let dir = tempfile::tempdir().unwrap();
@@ -3219,6 +3317,7 @@ mod tests {
         let history = load_build_history_from(dir.path());
         assert_eq!(history.len(), 1);
         assert!(history[0].mappings.is_empty());
+        assert!(history[0].apks.is_empty());
 
         // Its first save with mappings kept prunes nothing it should not.
         let project = project_with_mapping("release", "new -> a:\n");
@@ -3228,9 +3327,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn only_a_successful_build_saves_its_mappings() {
+    async fn only_a_successful_build_saves_its_mappings_and_apks() {
         let _history = PERSISTED_HISTORY.lock().await;
         let project = project_with_mapping("release", "# pg_map_id: 1a2b3c4\nx -> a:\n");
+        write_release_apk(project.path());
         for (success, cancelled, saved) in [(true, false, 1), (false, false, 0), (false, true, 0)] {
             let bs = BuildState::new();
             let log = start_run(&bs, 7).await;
@@ -3247,10 +3347,10 @@ mod tests {
 
             let inner = bs.inner.lock().await;
             let record = inner.history.iter().find(|r| r.id == event.record_id);
-            let mappings = record.map(|r| r.mappings.len());
+            let saved_now = record.map(|r| (r.mappings.len(), r.apks.len()));
             assert_eq!(
-                mappings,
-                Some(saved),
+                saved_now,
+                Some((saved, saved)),
                 "success {success}, cancelled {cancelled}"
             );
         }
@@ -3346,6 +3446,7 @@ mod tests {
             cancelled_by: None,
             launch: None,
             mappings: Vec::new(),
+            apks: Vec::new(),
         });
 
         rotate_build_logs(dir_path, 365, 1000, &history);

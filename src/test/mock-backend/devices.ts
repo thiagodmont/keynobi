@@ -7,7 +7,7 @@ import type {
   LaunchResult,
   LaunchTiming,
 } from "@/bindings";
-import { attachMockLaunch } from "./build";
+import { attachMockLaunch, recordMockInstall } from "./build";
 import { triggerEvent } from "./events";
 
 export const mockEmulator: Device = {
@@ -144,7 +144,15 @@ export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
     stop_avd: () => undefined,
     start_device_polling: () => undefined,
     stop_device_polling: () => undefined,
-    install_apk_on_device: () => "Success",
+    install_apk_on_device: (args: unknown) => {
+      const { serial, apkPath } = args as { serial: string; apkPath: string };
+      recordMockInstall(
+        serial,
+        mockDevices.find((d) => d.serial === serial),
+        apkPath
+      );
+      return "Success";
+    },
     launch_app_on_device: (args: unknown): LaunchResult => {
       const { serial, buildId } = args as { serial: string; buildId?: number | null };
       const device = mockDevices.find((d) => d.serial === serial);

@@ -128,6 +128,7 @@ describe("build.store", () => {
         cancelledBy: null,
         launch: null,
         mappings: [],
+        apks: [],
       },
     ]);
     expect(buildState.history).toHaveLength(1);
@@ -151,6 +152,7 @@ describe("build.store", () => {
         cancelledBy: null,
         launch: null,
         mappings: [],
+        apks: [],
       },
     ]);
     startBuild("assembleDebug");
@@ -173,6 +175,7 @@ describe("build.store", () => {
         cancelledBy: null,
         launch: null,
         mappings: [],
+        apks: [],
       },
     ]);
     startBuild("assembleDebug");

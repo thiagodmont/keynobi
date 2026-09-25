@@ -1570,13 +1570,127 @@ fn install_apk_installs_the_apk_the_path_resolves_to() {
     );
 
     assert!(!out.is_error, "{}", out.text);
+    let installs: Vec<String> = sandbox
+        .adb_calls()
+        .into_iter()
+        .filter(|call| call.contains(" install "))
+        .collect();
     assert_eq!(
-        sandbox.adb_calls(),
+        installs,
         vec![format!(
             "-s emulator-5554 install -r -t {}",
             debug.join("app-debug.apk").display()
         )]
     );
+}
+
+/// An `adb` whose emulators run the AVD `Pixel_7` and whose installs succeed
+/// after `install_seconds`.
+fn installing_adb(sandbox: &Sandbox, install_seconds: &str) {
+    sandbox.write_adb(&format!(
+        r#"case "$*" in
+  *"emu avd name"*) printf 'Pixel_7\nOK\n' ;;
+  *" install "*) sleep {install_seconds}; echo Success ;;
+esac"#
+    ));
+}
+
+fn installed_builds(sandbox: &Sandbox) -> Vec<serde_json::Value> {
+    let path = sandbox.home.join(".keynobi").join("installed-builds.json");
+    serde_json::from_str(&std::fs::read_to_string(path).unwrap_or_else(|_| "[]".into())).unwrap()
+}
+
+#[test]
+fn install_apk_records_the_build_that_wrote_the_apk() {
+    let sandbox = Sandbox::new();
+    installing_adb(&sandbox, "0");
+    let release = sandbox.project.join("app/build/outputs/apk/release");
+    let mapping = sandbox.project.join("app/build/outputs/mapping/release");
+    std::fs::create_dir_all(&release).unwrap();
+    sandbox.write_gradlew(&format!(
+        "mkdir -p '{mapping}'\n\
+         printf 'release apk' > '{release}/app-release.apk'\n\
+         printf '%s' '{{\"applicationId\":\"com.example.sandbox\",\"variantName\":\"release\",\
+         \"elements\":[{{\"versionCode\":5,\"outputFile\":\"app-release.apk\"}}]}}' \
+         > '{release}/output-metadata.json'\n\
+         printf '# pg_map_id: 6b1c2f0\\nx -> a:\\n' > '{mapping}/mapping.txt'\n\
+         echo 'BUILD SUCCESSFUL in 1s'",
+        release = release.display(),
+        mapping = mapping.display(),
+    ));
+    let mut client = sandbox.start();
+
+    let build = client.call_tool("run_gradle_task", json!({ "task": "assembleRelease" }));
+    assert!(!build.is_error, "{}", build.text);
+    let out = client.call_tool(
+        "install_apk",
+        json!({ "device_serial": "emulator-5554", "apk_path": release.join("app-release.apk") }),
+    );
+
+    assert!(!out.is_error, "{}", out.text);
+    let history: Vec<serde_json::Value> = serde_json::from_str(
+        &std::fs::read_to_string(sandbox.home.join(".keynobi/build-history.json")).unwrap(),
+    )
+    .unwrap();
+    let build_id = history[0]["id"].as_u64().unwrap();
+    assert!(
+        out.text.contains(&format!(
+            "Recorded com.example.sandbox on Pixel_7 as build #{build_id}"
+        )),
+        "{}",
+        out.text
+    );
+    let installed = installed_builds(&sandbox);
+    assert_eq!(installed.len(), 1, "{installed:?}");
+    assert_eq!(installed[0]["buildId"], build_id);
+    assert_eq!(installed[0]["avdName"], "Pixel_7");
+    assert_eq!(installed[0]["package"], "com.example.sandbox");
+    assert_eq!(installed[0]["versionCode"], 5);
+    assert_eq!(installed[0]["apkSha256"], history[0]["apks"][0]["sha256"]);
+    assert_eq!(installed[0]["mappings"][0]["pgMapId"], "6b1c2f0");
+}
+
+/// Two standalone servers installing at the same time both keep their install.
+#[test]
+fn two_standalone_servers_record_their_installs() {
+    let sandbox = Sandbox::new();
+    installing_adb(&sandbox, "0.3");
+    let debug = sandbox.project.join("app/build/outputs/apk/debug");
+    write_file(&debug.join("app-debug.apk"), b"apk");
+    write_file(
+        &debug.join("output-metadata.json"),
+        br#"{"applicationId":"com.example.sandbox.debug","variantName":"debug",
+            "elements":[{"outputFile":"app-debug.apk"}]}"#,
+    );
+    let mut clients = [sandbox.start(), sandbox.start()];
+
+    let requests: Vec<u64> = clients
+        .iter_mut()
+        .zip(["R5CT0001", "R5CT0002"])
+        .map(|(client, serial)| {
+            client.send_request(
+                "tools/call",
+                json!({ "name": "install_apk", "arguments": {
+                    "device_serial": serial, "apk_path": debug.join("app-debug.apk")
+                }}),
+            )
+        })
+        .collect();
+    for (client, id) in clients.iter_mut().zip(requests) {
+        let result = client.wait_response(id).expect("install_apk answered");
+        assert_ne!(result["isError"], true, "{result}");
+    }
+
+    let mut serials: Vec<String> = installed_builds(&sandbox)
+        .iter()
+        .map(|entry| {
+            assert_eq!(entry["package"], "com.example.sandbox.debug", "{entry}");
+            assert_eq!(entry["buildId"], serde_json::Value::Null, "{entry}");
+            entry["serial"].as_str().unwrap().to_string()
+        })
+        .collect();
+    serials.sort();
+    assert_eq!(serials, vec!["R5CT0001", "R5CT0002"]);
 }
 
 fn resource_uris(client: &mut headless::McpClient) -> Vec<String> {

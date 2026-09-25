@@ -2,6 +2,7 @@
 import type { BuildActor } from "./BuildActor";
 import type { BuildError } from "./BuildError";
 import type { BuildStatus } from "./BuildStatus";
+import type { BuiltApk } from "./BuiltApk";
 import type { LaunchTiming } from "./LaunchTiming";
 import type { MappingSnapshot } from "./MappingSnapshot";
 
@@ -30,4 +31,10 @@ launch: LaunchTiming | null,
  * The R8 mappings this build wrote, as saved in the data directory. Empty
  * for builds that wrote none and for records saved before mappings were kept.
  */
-mappings: Array<MappingSnapshot>, };
+mappings: Array<MappingSnapshot>, 
+/**
+ * The APKs this build wrote, hashed when it finished, so an install of
+ * one can be traced back to this build. Empty for builds that wrote none
+ * and for records saved before APKs were hashed.
+ */
+apks: Array<BuiltApk>, };

@@ -38,6 +38,8 @@ export type { LaunchState } from "./LaunchState";
 export type { LaunchTiming } from "./LaunchTiming";
 export type { LaunchResult } from "./LaunchResult";
 export type { MappingSnapshot } from "./MappingSnapshot";
+export type { BuiltApk } from "./BuiltApk";
+export type { InstalledBuild } from "./InstalledBuild";
 
 // Devices & variants
 export type { Device } from "./Device";

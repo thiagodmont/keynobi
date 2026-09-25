@@ -38,6 +38,7 @@ function makeRecord(state: BuildStatus["state"], durationMs = 0, errors: any[] =
     cancelledBy: null,
     launch: null,
     mappings: [],
+    apks: [],
   };
 }
 
