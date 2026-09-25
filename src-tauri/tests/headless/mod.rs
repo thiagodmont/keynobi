@@ -272,6 +272,11 @@ impl McpClient {
         id
     }
 
+    /// Send a notification.
+    pub fn notify(&mut self, method: &str, params: Value) {
+        self.send(json!({ "jsonrpc": "2.0", "method": method, "params": params }));
+    }
+
     /// Wait for the response to request `id`, skipping other messages.
     pub fn wait_response(&mut self, id: u64) -> Result<Value, Value> {
         self.wait_response_noting(id, |_| {})
