@@ -7,6 +7,52 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.29] — 2026-09-25
+
+### Breaking Changes
+- restart_app no longer clears app data by default (#268)
+
+### Added
+- require project trust before running project build code (#297)
+- declare read-only, destructive, and open-world annotations on every tool (#271)
+
+### Fixed
+- share settings and build history safely between the app and MCP servers (#293)
+- keep entry IDs unique for the life of the process (#296)
+- scope app-changing device tools to the project and stop cutting off wireless adb (#295)
+- resolve one JDK for builds, GUI Health, and MCP health (#294)
+- follow only this window's build run and stop deploys when the project changes (#292)
+- time out hung adb and SDK tool calls instead of blocking forever (#290)
+- parse Kotlin 2, KSP, lint, R8, and AAPT2 diagnostics from real build output (#291)
+- install only the requested variant's APK and never launch a guessed package (#289)
+- report a build's exit even when a descendant keeps its output open (#288)
+- a cancelled build that finishes late no longer takes over the next one (#287)
+- export logcat from Rust and remove webview filesystem access (#285)
+- bound the bytes kept per line of build and logcat output (#283)
+- never rotate away the active log and flush it on exit (#282)
+- show a load error instead of "No log saved" when a past build's log fails to load (#281)
+- report a device whose state changes without its serial changing (#280)
+- a failed device or variant selection no longer undoes a newer one (#279)
+- close dialogs with Escape and keep focus inside them (#278)
+- block Play track promotion tasks for agents (#273)
+- reduce the webview's filesystem access to saving a chosen file (#272)
+- block Gradle options and publish/upload/uninstall tasks for agents (#270)
+- quote every adb shell argument for the device shell (#269)
+- running the Rust test suite could overwrite local build history (#267)
+- monotonic logcat IDs, wipe false success, dead auto-install setting, variant persistence, capped error buffer (#204)
+- stale build-history race, wipe false success, MCP history gap, variant timeout, cache cap (#203)
+- close five verified defects across MCP server, adb, and build flow (#191)
+- install rustfmt and reformat with the locked prettier
+
+### Changed
+- Add sync-version.test.mjs drift guard for the three version files (#251)
+- Make the MCP tool `find_apk_path` honour the build variant persisted… (#249)
+- Fix setAgeInQuery/setPackageInQuery to strip negated tokens whole (#219)
+- Fix ts-rs export path for LogEntry/LogLevel bindings (#217)
+- Make the CI TypeScript-bindings staleness guard able to actually fail: s (#235)
+
+---
+
 ## [0.1.28] — 2026-08-18
 
 ### Fixed
