@@ -41,6 +41,8 @@ Both front doors reserve the same slot and share finalization:
 
 Gradle runs with `--console=plain`. Every path that spawns Gradle must call `try_reserve_build_slot` first.
 
+Three paths run the project's `gradlew`: Tauri `run_gradle_task`, MCP `run_gradle_task`/`run_tests` (through `build_runner::run_task`), and Tauri `get_variants_from_gradle`. Each gets its Gradle environment only from `build_runner::trusted_gradle_env`, which refuses an untrusted project before making `gradlew` executable or spawning anything (see [Project Trust](#project-trust)). `build_env_vars` is private so no path can skip the check.
+
 ### Frontend Flow
 
 `build.service.ts` owns build orchestration:
@@ -77,11 +79,12 @@ runAndDeploy()
 - **A run is identified by its Gradle process ID** (`BuildFinalization.run_id`, `build:complete` `runId`). Once the process has spawned, both front doors set `latest_run`. Finalization always appends history, but only the latest run may update the shared status, errors, current build, and cancellable process, so a cancelled build that finishes after its replacement started cannot take the replacement over.
 - **The frontend follows only its own run.** `build.service.ts` takes the run ID from `run_gradle_task` and applies a `build:complete` only when `runId` matches; a completion that arrives before the ID is returned is held until it is. Events from cancelled, timed-out, or replaced runs refresh history only.
 - `cancelBuild()` releases the waiting `runBuild()` even when the cancel request fails. Cancel is offered only while Gradle runs; install and launch cannot be cancelled.
+- **Untrusted projects never build.** The backend refuses (GUI: `AppError::PermissionDenied`; MCP: `invalid_params`), and `runBuild()`/`runAndDeploy()` reject early in Safe Mode with the same instruction.
 - **Project opens are generation-counted** (`beginProjectOpen()` in `project.store.ts`). Every open, select, and restore stops after an `await` once a newer open started, so it cannot write another project's registry entry, variant, or device. Deploy stops before APK lookup and before install when the generation changed.
 - **Each run has its own output buffer** (`BuildLogSlot::start_run`). `get_build_log` reads the latest run's; a run's history entry saves its own lines even when it finishes late.
 - Build history IDs must stay unique across restarts and clears so log filenames never collide. `persist_build_record_in` allocates them under the data lock, above every ID in the persisted history and in `build-logs/`.
 - A finished build is appended to the history as re-read from disk, so builds another process recorded are kept, and log rotation checks against that merged history.
-- `save_settings` (the settings UI's full snapshot) keeps `recentProjects` and `lastActiveProject` from disk; the backend owns them.
+- `save_settings` (the settings UI's full snapshot) keeps `recentProjects` and `lastActiveProject` from disk; the backend owns them, including each project's trust.
 - **Deploy installs only the requested variant's APK.** `find_output_apk` reads AGP's `output-metadata.json` (else the directory path under `apk/`) and returns an error when no APK or more than one APK matches. It never falls back to another variant's APK.
 - **Launch uses the installed APK's package name** (aapt2, else `output-metadata.json`). If neither works, deploy installs but does not launch; it never guesses from the project's `applicationId`.
 
@@ -277,7 +280,8 @@ Validate every external string before acting, using the shared validators:
 
 ### Modes
 
-- Headless mode (`AndroidMcpServer::new_headless`) is the supported mode. It picks the project once at startup: `--project`, then `last_active_project` from settings (if it is a directory), then the current directory.
+- Headless mode (`AndroidMcpServer::new_headless`) is the supported mode. It picks the project once at startup (`select_headless_project`): `--project`, then the Gradle root containing the current directory (`find_gradle_root`), then `last_active_project` from settings if it is a directory; otherwise no project. `get_project_info` reports the rule as `selected_by` (`argument`, `working_directory`, `last_active_project`; `app` in GUI mode).
+- The MCP server never asks about trust. Build tools refuse an untrusted project with `invalid_params`; every other tool works.
 - GUI mode (`AndroidMcpServer::from_app_handle`) shares the GUI's managed state but is served on the GUI's stdio; see [Process Model](#process-model).
 - Headless MCP logs to stderr; stdout is reserved for MCP JSON-RPC.
 
@@ -296,7 +300,7 @@ MCP lifecycle, tool, prompt, and resource activity is appended to `~/.keynobi/mc
 
 ### JDK Resolution and Health
 
-`services/jdk.rs` is the only place that decides which JDK Gradle uses. `build_env_vars` (GUI builds, MCP builds, variant discovery), the `sdkmanager` calls, GUI Health (`run_health_checks`), and MCP `run_health_check`/`get_project_info` all call it, so the GUI and a headless MCP process pick the same JDK even when they inherit different environments. Resolution order:
+`services/jdk.rs` is the only place that decides which JDK Gradle uses. `build_env_vars` (GUI builds, MCP builds, variant discovery), the `sdkmanager` calls, GUI Health (`run_health_checks`), and MCP `run_health_check`/`get_project_info` all call it (Health and project info through `check_project_java`, which ignores an untrusted project's `gradle.properties` so the project cannot choose the `java` binary that is probed), so the GUI and a headless MCP process pick the same JDK even when they inherit different environments. Resolution order:
 
 1. `org.gradle.java.home` in `$GRADLE_USER_HOME/gradle.properties` (default `~/.gradle`), then in the Gradle root's `gradle.properties`. This matches Gradle, where the user home file overrides the project file and the daemon runs on this JDK whatever `JAVA_HOME` says.
 2. The `java.home` setting (`~/` expanded).
@@ -311,6 +315,17 @@ The probe runs `<home>/bin/java -version` through `output_with_timeout` (`TOOL_P
 
 - Saved projects and `last_active_project` live in settings; `MAX_RECENT_PROJECTS` (20) caps the list.
 - Opening a project resolves the Gradle root (`fs_manager::find_gradle_root`), which becomes the effective root for path validation.
+
+### Project Trust
+
+Opening a project must not run its code. Only Gradle runs project code, and only a trusted project may run it.
+
+- `ProjectEntry.trusted`: `true` trusted, `false` Safe Mode (declined or revoked), `null` never asked. A new registry entry starts `null`. The field is always written; an entry saved before it existed has no field and deserializes as `true`, so projects already in the registry keep working.
+- `services/project_trust.rs` owns the lookup. `trust_in(settings, project_root)` compares canonical paths: the registry entry for the same folder decides; otherwise the folder is the Gradle root of registered projects, where a Safe Mode entry wins over a trusted one. Unknown folders are untrusted. The trust root is `FsState.project_root` (falling back to the Gradle root).
+- `set_project_trust(id, trusted)` writes through `mutate_settings`; the settings UI snapshot cannot change it.
+- Frontend: `project.service.ts` asks once, after the registry entry of a newly opened project is known and only if the open is still current (**Trust** or **Open in Safe Mode**; the safe choice is listed last). Dismissing keeps Safe Mode without saving. Trust is derived from the projects store (`isProjectTrusted(root)`), not a separate store. `loadVariants()` skips the Gradle phase for an untrusted root and keys its in-flight coalescing by trust, so a Safe Mode load cannot satisfy one started after trusting.
+- Trusting the open project reloads its variants with Gradle. Revoking cancels the open project's running build.
+- Health ignores an untrusted project's `org.gradle.java.home` (`jdk::check_project_java`) and its `local.properties` `sdk.dir` (`health_inspector`), so the project cannot choose an executable Keynobi runs.
 - Project App Info edits `versionName`/`versionCode` in `app/build.gradle(.kts)`. Edits must report failure when the file or fields are not found.
 
 ## Shutdown
@@ -338,4 +353,6 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Project App Info.** When the app module is not named `app`, the root build file is edited and success is reported even if nothing changed.
 - **Airplane-mode fallback.** On devices without `cmd connectivity airplane-mode`, the fallback broadcast is a protected broadcast that a non-root shell is normally refused; the setting is then restored and the step reported as failed. Needs verification on a device.
 - **Dead code.** `DevicePanel.tsx` (panel/popover modes) is not imported anywhere.
+- **Trust is lost with the registry entry.** Removing a project, or eviction past `MAX_RECENT_PROJECTS`, forgets its trust; reopening asks again. Downgrading to a version without trust drops the field, and upgrading again treats those entries as trusted.
+- **Revoking does not stop other processes.** Revoking trust cancels only the open project's build in the GUI; a build a headless MCP server already started runs to completion. New builds are refused everywhere.
 - **JDK resolution scope.** `-Dorg.gradle.java.home` in `GRADLE_OPTS` or `JAVA_OPTS` and Gradle toolchains are not considered. The Settings **Auto-detect** button (`detect_java_path`) still prefers the process `JAVA_HOME` and a login shell's `JAVA_HOME`, which may be older than 17.

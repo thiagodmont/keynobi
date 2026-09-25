@@ -45,6 +45,7 @@ describe("project.service", () => {
       pinned: false,
       lastBuildVariant: null,
       lastDevice: null,
+      trusted: true,
     };
 
     mockOpen.mockResolvedValue(aliasPath);
@@ -91,6 +92,7 @@ describe("project.service", () => {
       pinned: false,
       lastBuildVariant: null,
       lastDevice: null,
+      trusted: true,
     });
 
     let releaseSlow: (v: string) => void = () => {};
@@ -150,6 +152,7 @@ describe("project.service", () => {
       pinned: false,
       lastBuildVariant: variant,
       lastDevice: null,
+      trusted: true,
     });
     const first = entryFor("/projects/first", "first-id", "release");
     const second = entryFor("/projects/second", "second-id", "debug");

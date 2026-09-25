@@ -2,7 +2,7 @@ use crate::models::build::{
     BuildError, BuildErrorSeverity, BuildLine, BuildLineKind, BuildRecord, BuildStatus,
 };
 use crate::models::error::AppError;
-use crate::services::build_runner::{self, build_env_vars, find_output_apk, BuildState};
+use crate::services::build_runner::{self, find_output_apk, BuildState};
 use crate::services::process_manager::{self, ProcessManager, ProcessTermination, SpawnOptions};
 use crate::services::settings_manager;
 use crate::FsState;
@@ -43,7 +43,7 @@ pub async fn run_gradle_task(
 ) -> Result<u32, AppError> {
     validate_gradle_task(&task)?;
 
-    let (gradle_root, project_root_for_history): (PathBuf, Option<String>) = {
+    let (gradle_root, project_root_for_history, trust_root): (PathBuf, Option<String>, PathBuf) = {
         let fs = fs_state.0.lock().await;
         let root = fs
             .gradle_root
@@ -55,7 +55,8 @@ pub async fn run_gradle_task(
             .project_root
             .as_ref()
             .map(|p| p.to_string_lossy().into_owned());
-        (root, project_root)
+        let trust_root = fs.project_root.clone().unwrap_or_else(|| root.clone());
+        (root, project_root, trust_root)
     };
 
     let (settings, _) = settings_manager::load_settings();
@@ -65,7 +66,8 @@ pub async fn run_gradle_task(
 
     let args = vec![task.clone(), "--console=plain".to_owned()];
 
-    let env = build_env_vars(&settings, &gradle_root);
+    let env = build_runner::trusted_gradle_env(&settings, &trust_root, &gradle_root)
+        .map_err(AppError::PermissionDenied)?;
     let started_at = Utc::now().to_rfc3339();
 
     // Shared with the MCP path so both front doors enforce one build at a time.

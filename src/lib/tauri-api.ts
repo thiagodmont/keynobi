@@ -52,6 +52,11 @@ export async function pinProject(id: string, pinned: boolean): Promise<void> {
   return invoke<void>("pin_project", { id, pinned });
 }
 
+/** Record whether Keynobi may run the project's Gradle build scripts. */
+export async function setProjectTrust(id: string, trusted: boolean): Promise<void> {
+  return invoke<void>("set_project_trust", { id, trusted });
+}
+
 /** Return the path of the project that was last active, for session restore. */
 export async function getLastActiveProject(): Promise<string | null> {
   return invoke<string | null>("get_last_active_project");

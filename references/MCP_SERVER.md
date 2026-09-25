@@ -19,13 +19,14 @@ Update this file when a tool, prompt, resource, limit, or security rule changes.
 
 | Mode | How it starts | State |
 |------|---------------|-------|
-| **Headless** (supported) | An MCP client runs `keynobi --mcp`. | A separate process with fresh `FsState`, `BuildState`, `DeviceState`, `LogcatState`, and `ProcessManager`. The project is chosen once at startup: `--project`, then `last_active_project` from settings (if it is a directory), then the client's working directory. Logs to stderr (`RUST_LOG`, default `warn`). |
+| **Headless** (supported) | An MCP client runs `keynobi --mcp`. | A separate process with fresh `FsState`, `BuildState`, `DeviceState`, `LogcatState`, and `ProcessManager`. The project is chosen once at startup: `--project`, then the Gradle build containing the client's working directory (the nearest folder with `settings.gradle(.kts)`, the directory or a parent), then `last_active_project` from settings (if it is a directory); otherwise no project. The working directory wins over `last_active_project` because the app's last project is often stale for an agent. Logs to stderr (`RUST_LOG`, default `warn`). |
 | GUI (in-process) | `settings.mcp.auto_start` at app launch. | Shares the GUI's managed state and emits `mcp:started`, `mcp:client_connected`, `mcp:stopped`, and `mcp:startup-failed`. It serves stdio of the GUI process, so a client can reach it only if it launched the app binary itself. Standard setup never uses it. |
 
 What headless mode means for users and features:
 
 - MCP builds, logcat streams, and device selection are not visible live in the GUI.
 - Switching projects in the GUI does not change the MCP server's project until the client restarts it.
+- Trust is shared through `settings.json` and read on every build, so trusting or revoking a project in the app applies to a running MCP server without a restart.
 - Headless and GUI builds are not mutually exclusive across processes.
 - Shared with the GUI: `settings.json` (`set_active_variant` writes it), `build-history.json` (appended under a shared file lock), `mcp-activity.jsonl`, and `mcp-server.pid`.
 
@@ -67,7 +68,7 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 
 | Tool | Kind | Notes |
 |------|------|-------|
-| `run_gradle_task` | O | `task`; `variant` is accepted but ignored. Times out after `mcp.buildTimeoutSec` (default 600 s). Task names starting with `-` (Gradle options) are rejected. Unless `mcp.allowUnrestrictedGradle` is on, tasks matching `publish*`, `promote*`, `upload*`, `uninstall*`, `closeAndRelease*`, `*ToMavenCentral`, or `*PlayStore*` are refused, including Gradle abbreviations such as `pRB`. |
+| `run_gradle_task` | O | `task`; `variant` is accepted but ignored. Refused with `invalid_params` unless the user trusted the project in the app (see [Project Trust](#project-trust)). Times out after `mcp.buildTimeoutSec` (default 600 s). Task names starting with `-` (Gradle options) are rejected. Unless `mcp.allowUnrestrictedGradle` is on, tasks matching `publish*`, `promote*`, `upload*`, `uninstall*`, `closeAndRelease*`, `*ToMavenCentral`, or `*PlayStore*` are refused, including Gradle abbreviations such as `pRB`. |
 | `get_build_status` | R | |
 | `get_build_errors` | R | Errors without a recognised location are returned with the message only. |
 | `get_build_log` | R | `lines`: default `mcp.defaultBuildLogLines` (200), max 2,000. |
@@ -75,7 +76,7 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 | `list_build_variants` | R | |
 | `set_active_variant` | W | Persists to settings (shared with the GUI). |
 | `find_apk_path` | R | `variant?`. Matches the variant exactly, using `output-metadata.json` when present. Returns `found: false` with a `reason` when no APK or more than one APK matches. |
-| `run_tests` | O | `test_type`. Custom tasks go through the same policy as `run_gradle_task`. |
+| `run_tests` | O | `test_type`. Custom tasks go through the same policy as `run_gradle_task`, including the trust check. |
 | `get_build_config` | R | `module?`; rejects `/`, `\`, and `..`. |
 
 ### Logcat and Crashes
@@ -144,7 +145,13 @@ A package outside the scope, or any package when no application id can be found,
 | `get_project_info` | R |
 | `run_health_check` | R |
 
-Both return the same `java` object from `services/jdk.rs`, the JDK Gradle builds use: `ok`, `java_home`, `source` (`userGradleProperties`, `projectGradleProperties`, `settings`, `androidStudio`, `installedJdk`, or `null` when `java` on `PATH` was probed), `major_version`, `version`, `bin`, `warning` (JDK below 17), and `hint`. In `run_health_check` it is `checks.java`. See `DOMAIN_PATTERNS.md` § Settings → JDK Resolution and Health.
+`get_project_info` also returns `selected_by` (how the headless server chose the project: `argument`, `working_directory`, or `last_active_project`; `app` for the GUI's in-process server), `trusted` (whether the project may run its Gradle build), and `trust_hint` (what the user must do when it is not trusted, else `null`).
+
+Both return the same `java` object from `services/jdk.rs`, the JDK Gradle builds use: `ok`, `java_home`, `source` (`userGradleProperties`, `projectGradleProperties`, `settings`, `androidStudio`, `installedJdk`, or `null` when `java` on `PATH` was probed), `major_version`, `version`, `bin`, `warning` (JDK below 17), and `hint`. In `run_health_check` it is `checks.java`. For an untrusted project the project's `gradle.properties` is ignored, so `source` is never `projectGradleProperties` and the project cannot choose the `java` that is probed; `run_health_check` also ignores its `local.properties` `sdk.dir`. See `DOMAIN_PATTERNS.md` § Settings → JDK Resolution and Health.
+
+### Project Trust
+
+Running Gradle executes the project's `gradlew` and build scripts, so builds need the user's trust, given in the Keynobi app (**Trust** when the project is first opened, or **Trust Project** in the Projects sidebar). The MCP server never prompts and cannot grant trust. For a project that is not trusted (declined, revoked, never asked, or not in the app's project list), `run_gradle_task` and `run_tests` fail with `invalid_params` before anything is spawned or made executable. The message tells the model to ask the user to open the project in the Keynobi app and choose Trust. Every other tool works on an untrusted project. The check is `project_trust::require_trusted`, reached through `build_runner::trusted_gradle_env`, the same function the GUI's build and variant commands use.
 
 ## Prompts and Resources
 
@@ -182,7 +189,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 - **Prompt-injected agents.** Log lines, UI text, web pages, and project files the agent has read can steer it. Treat every tool argument as hostile.
 - **Device shell re-parsing.** `adb shell` joins its arguments and the device's `/system/bin/sh` parses them again.
-- **Gradle is code execution.** Any Gradle task runs the project's build scripts with the user's privileges.
+- **Gradle is code execution.** Any Gradle task runs the project's build scripts with the user's privileges. A freshly cloned repository controls its `gradlew`, its build scripts, and paths in its `gradle.properties` and `local.properties`.
 - **Destructive device actions.** Uninstalling, clearing data, cutting the network, or stopping emulators can destroy user work. On a personal phone, an agent can also target other apps (for example `com.google.android.gms`) or drop its own wireless-ADB connection.
 
 ### Rules
@@ -196,6 +203,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 7. Tools that stop an app or change its data or permissions act only on the project's app unless the call passes `allow_foreign_package: true` (see [Package Scope](#package-scope)).
 8. Never run a device command that drops the connection adb uses (Wi-Fi off or airplane mode on over wireless ADB).
 9. Check `am start` output, not just its exit code (`adb_manager::am_start_failure`).
+10. Run a project's build code only when the user trusted the project in the app. Never offer a tool that grants trust, and never run an executable whose path an untrusted project chose (see [Project Trust](#project-trust)).
 
 ## Activity Log
 
@@ -225,6 +233,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 | `mcp_server.rs` | Core | Defines the MCP server, tools, prompts, resources, mode startup, validation, and activity instrumentation. |
 | `monitor.rs` | Not exposed | Monitors app memory and app log folder size for the GUI status bar. |
 | `process_manager.rs` | Direct | Spawns and cancels long-running child processes used by MCP Gradle builds. |
+| `project_trust.rs` | Indirect | Decides whether the user trusted a project to run its Gradle build; `get_project_info` reports it and builds require it. |
 | `settings_manager.rs` | Direct | Loads settings, MCP defaults, active variants, data directory paths, and Android tool paths. |
 | `telemetry_sentry.rs` | Not exposed | Optional crash/error reporting with privacy scrubbing; not part of the MCP tool surface. |
 | `ui_automation.rs` | Direct | Implements MCP UI queries and actions using UI Automator snapshots and `adb shell input`. |

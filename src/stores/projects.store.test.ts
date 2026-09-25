@@ -22,6 +22,7 @@ function entry(over: Partial<ProjectEntry> & { id: string }): ProjectEntry {
     pinned: over.pinned ?? false,
     lastBuildVariant: over.lastBuildVariant ?? null,
     lastDevice: over.lastDevice ?? null,
+    trusted: over.trusted === undefined ? true : over.trusted,
   };
 }
 

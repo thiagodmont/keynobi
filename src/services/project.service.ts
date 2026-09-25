@@ -19,6 +19,7 @@ import {
   getLastActiveProject,
   updateProjectMeta,
   renameProject as renameProjectApi,
+  setProjectTrust,
 } from "@/lib/tauri-api";
 import {
   setProject,
@@ -26,6 +27,7 @@ import {
   setApplicationId,
   beginProjectOpen,
   currentProjectGeneration,
+  projectState,
 } from "@/stores/project.store";
 import {
   setProjects,
@@ -36,9 +38,10 @@ import {
   setProjectsLoading,
   renameProjectInStore,
   updateProjectMetaInStore,
+  setProjectTrustInStore,
   projectsState,
 } from "@/stores/projects.store";
-import { showToast } from "@/components/ui";
+import { showDialog, showToast } from "@/components/ui";
 import { initBuildService, cancelBuild } from "@/services/build.service";
 import { resetBuildState, setBuildHistory } from "@/stores/build.store";
 import { getBuildHistory } from "@/lib/tauri-api";
@@ -129,6 +132,83 @@ async function doOpenProject(
   }
 }
 
+// ── Project trust ─────────────────────────────────────────────────────────────
+
+type TrustChoice = "trust" | "safe-mode" | "cancel";
+
+const pendingTrustQuestions = new Map<string, Promise<void>>();
+
+function askToTrust(name: string): Promise<TrustChoice> {
+  return showDialog({
+    title: `Trust "${name}"?`,
+    message:
+      "This project will run its Gradle build scripts. Trust it? In Safe Mode, build variants are read from the build files and builds are disabled until you trust the project.",
+    buttons: [
+      { label: "Trust", value: "trust", style: "primary" },
+      { label: "Open in Safe Mode", value: "safe-mode", style: "secondary" },
+    ],
+  }) as Promise<TrustChoice>;
+}
+
+/** Save a trust decision; returns false (after a toast) when it was not saved. */
+async function recordTrust(id: string, trusted: boolean): Promise<boolean> {
+  try {
+    await setProjectTrust(id, trusted);
+    setProjectTrustInStore(id, trusted);
+    return true;
+  } catch (err) {
+    showToast(`Failed to save project trust: ${formatError(err)}`, "error");
+    return false;
+  }
+}
+
+/**
+ * Ask once, the first time a project is opened, whether it may run its Gradle
+ * build scripts. Dismissing the dialog keeps Safe Mode and asks again on the
+ * next open.
+ */
+async function resolveProjectTrust(
+  entry: ProjectEntry | null,
+  isCurrent: IsCurrentOpen
+): Promise<void> {
+  if (!entry || entry.trusted !== null || !isCurrent()) return;
+  // Reopening a project while its question is still shown waits for that answer.
+  let pending = pendingTrustQuestions.get(entry.id);
+  if (!pending) {
+    pending = askToTrust(entry.name)
+      .then(async (choice) => {
+        // The answer is about this project even if another open started meanwhile.
+        if (choice !== "cancel") await recordTrust(entry.id, choice === "trust");
+      })
+      .finally(() => pendingTrustQuestions.delete(entry.id));
+    pendingTrustQuestions.set(entry.id, pending);
+  }
+  await pending;
+}
+
+/** Trust a project. Reloads the open project's variants so the Gradle phase runs. */
+export async function trustProject(entry: ProjectEntry): Promise<void> {
+  if (!(await recordTrust(entry.id, true))) return;
+  if (entry.path === projectState.projectRoot) {
+    await loadVariants().catch(console.error);
+  }
+}
+
+/** Revoke trust: builds are disabled and the open project's running build is cancelled. */
+export async function revokeProjectTrust(entry: ProjectEntry): Promise<void> {
+  if (!(await recordTrust(entry.id, false))) return;
+  if (entry.path === projectState.projectRoot) {
+    await cancelBuild().catch(console.error);
+  }
+}
+
+/** Ask the trust question again for the open project. */
+export async function askToTrustActiveProject(): Promise<void> {
+  const entry = projectsState.projects.find((p) => p.path === projectState.projectRoot);
+  if (!entry) return;
+  if ((await askToTrust(entry.name)) === "trust") await trustProject(entry);
+}
+
 /**
  * After FsState points at a project, rediscover variants and restore registry selections.
  * Call only after a successful `doOpenProject` so a failed open does not wipe variant state.
@@ -137,6 +217,8 @@ async function reloadVariantsAndRestoreMeta(
   entry: ProjectEntry | null,
   isCurrent: IsCurrentOpen
 ): Promise<void> {
+  if (!isCurrent()) return;
+  await resolveProjectTrust(entry, isCurrent);
   if (!isCurrent()) return;
   resetVariantState();
   await loadVariants();
@@ -294,6 +376,7 @@ export async function restoreLastProject(): Promise<boolean> {
       if (!isCurrent()) return false;
       const entry = projects.find((p) => p.path === lastPath);
       if (entry) {
+        upsertProject(entry);
         setActiveProjectId(entry.id);
       }
       await reloadVariantsAndRestoreMeta(entry ?? null, isCurrent);

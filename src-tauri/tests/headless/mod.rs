@@ -20,6 +20,7 @@ pub struct Sandbox {
     pub home: PathBuf,
     pub project: PathBuf,
     sdk: PathBuf,
+    jdk: PathBuf,
 }
 
 impl Sandbox {
@@ -42,21 +43,34 @@ impl Sandbox {
         // Android Studio and installed JDKs.
         let jdk = root.join("jdk");
         write_fake_jdk(&jdk, "17.0.9");
-        std::fs::write(
-            home.join(".keynobi").join("settings.json"),
-            json!({ "android": { "sdkPath": sdk }, "java": { "home": jdk } }).to_string(),
-        )
-        .unwrap();
 
         let sandbox = Self {
             _dir: dir,
             home,
             project,
             sdk,
+            jdk,
         };
+        // The user trusted the project in the app.
+        sandbox.write_projects(json!([project_entry(&sandbox.project, json!(true))]), None);
         sandbox.write_adb("echo 'List of devices attached'");
         sandbox.write_gradlew("echo 'BUILD SUCCESSFUL in 1s'");
         sandbox
+    }
+
+    /// Rewrite the settings with this project registry and last active project.
+    pub fn write_projects(&self, recent_projects: Value, last_active_project: Option<&Path>) {
+        std::fs::write(
+            self.home.join(".keynobi").join("settings.json"),
+            json!({
+                "android": { "sdkPath": self.sdk },
+                "java": { "home": self.jdk },
+                "recentProjects": recent_projects,
+                "lastActiveProject": last_active_project,
+            })
+            .to_string(),
+        )
+        .unwrap();
     }
 
     /// Replace the fake `adb` body. Every invocation's arguments are recorded
@@ -89,13 +103,21 @@ impl Sandbox {
 
     /// Launch `keynobi --mcp --project <project>` and complete the MCP handshake.
     pub fn start(&self) -> McpClient {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_keynobi"))
-            .args(["--mcp", "--project"])
-            .arg(&self.project)
+        self.start_in(&self.project, Some(&self.project))
+    }
+
+    /// Launch `keynobi --mcp [--project <project>]` in `working_dir`.
+    pub fn start_in(&self, working_dir: &Path, project: Option<&Path>) -> McpClient {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_keynobi"));
+        command.arg("--mcp");
+        if let Some(project) = project {
+            command.arg("--project").arg(project);
+        }
+        let mut child = command
             .env("HOME", &self.home)
             .env_remove("GRADLE_USER_HOME")
             .env_remove("RUST_LOG")
-            .current_dir(&self.project)
+            .current_dir(working_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -125,6 +147,20 @@ impl Sandbox {
     }
 }
 
+/// A project registry entry as the app writes it; `trusted` is `true`,
+/// `false`, or `null` (never asked).
+pub fn project_entry(path: &Path, trusted: Value) -> Value {
+    json!({
+        "id": path.to_string_lossy(),
+        "path": path,
+        "name": path.file_name().map(|n| n.to_string_lossy().into_owned()),
+        "gradleRoot": path,
+        "lastOpened": "2026-01-01T00:00:00Z",
+        "pinned": false,
+        "trusted": trusted,
+    })
+}
+
 /// A JDK home whose `java -version` reports `version`.
 pub fn write_fake_jdk(home: &Path, version: &str) {
     std::fs::create_dir_all(home.join("bin")).unwrap();
@@ -139,7 +175,7 @@ pub fn write_fake_jdk(home: &Path, version: &str) {
     );
 }
 
-fn write_script(path: &Path, body: &str) {
+pub fn write_script(path: &Path, body: &str) {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).unwrap();
     }

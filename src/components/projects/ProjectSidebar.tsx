@@ -9,7 +9,7 @@
  * Logcat and devices are not affected.
  */
 
-import { type JSX, createSignal, Show, For } from "solid-js";
+import { type JSX, createSignal, Show, For, onMount, onCleanup } from "solid-js";
 import { projectState } from "@/stores/project.store";
 import { projectsState } from "@/stores/projects.store";
 import { uiState, toggleSidebar } from "@/stores/ui.store";
@@ -20,8 +20,10 @@ import {
   openProjectFolder,
   removeProjectEntry,
   renameProjectEntry,
+  trustProject,
+  revokeProjectTrust,
 } from "@/services/project.service";
-import { Icon } from "@/components/ui";
+import { Badge, Icon, MenuList, MenuListItem } from "@/components/ui";
 import type { ProjectEntry } from "@/bindings";
 
 // ── Avatar color ──────────────────────────────────────────────────────────────
@@ -74,6 +76,7 @@ interface ProjectRowProps {
   entry: ProjectEntry;
   isActive: boolean;
   collapsed: boolean;
+  onContextMenu: (e: MouseEvent) => void;
 }
 
 function ProjectRow(props: ProjectRowProps): JSX.Element {
@@ -118,6 +121,7 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
             showToast(`Failed to open project: ${formatError(e)}`, "error");
           });
       }}
+      onContextMenu={(e) => props.onContextMenu(e)}
       title={props.collapsed ? props.entry.name : undefined}
       style={{
         display: "flex",
@@ -243,6 +247,15 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
                 gradlew
               </span>
             </Show>
+            <Show when={props.entry.trusted !== true}>
+              <Badge
+                variant="warning"
+                size="xs"
+                title="Safe Mode: this project's Gradle build scripts do not run until you trust it (right-click → Trust Project)"
+              >
+                Safe Mode
+              </Badge>
+            </Show>
           </div>
         </div>
 
@@ -318,8 +331,51 @@ function ProjectRow(props: ProjectRowProps): JSX.Element {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+interface ProjectMenu {
+  entry: ProjectEntry;
+  x: number;
+  y: number;
+}
+
+const MENU_WIDTH = 176;
+const MENU_HEIGHT = 64;
+
 export function ProjectSidebar(): JSX.Element {
   const collapsed = () => uiState.sidebarCollapsed;
+  const [menu, setMenu] = createSignal<ProjectMenu | null>(null);
+  let menuRef: HTMLDivElement | undefined;
+
+  function openMenu(entry: ProjectEntry, e: MouseEvent): void {
+    e.preventDefault();
+    setMenu({
+      entry,
+      x: Math.min(Math.max(8, e.clientX), window.innerWidth - MENU_WIDTH - 8),
+      y: Math.min(Math.max(8, e.clientY), window.innerHeight - MENU_HEIGHT - 8),
+    });
+  }
+
+  function runFromMenu(action: (entry: ProjectEntry) => Promise<void>): void {
+    const current = menu();
+    setMenu(null);
+    if (current) action(current.entry).catch(console.error);
+  }
+
+  onMount(() => {
+    function closeOnOutsideClick(e: MouseEvent): void {
+      const target = e.target as globalThis.Node | null;
+      if (target && menuRef?.contains(target)) return;
+      setMenu(null);
+    }
+    function closeOnEscape(e: KeyboardEvent): void {
+      if (e.key === "Escape") setMenu(null);
+    }
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    onCleanup(() => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    });
+  });
 
   return (
     <div
@@ -432,6 +488,7 @@ export function ProjectSidebar(): JSX.Element {
                 entry={entry}
                 isActive={entry.path === projectState.projectRoot}
                 collapsed={collapsed()}
+                onContextMenu={(e) => openMenu(entry, e)}
               />
             )}
           </For>
@@ -485,6 +542,47 @@ export function ProjectSidebar(): JSX.Element {
           </Show>
         </button>
       </div>
+
+      <Show when={menu()}>
+        {(open) => (
+          <MenuList
+            role="menu"
+            surface="floating"
+            listRef={(el) => {
+              menuRef = el;
+            }}
+            style={{
+              position: "fixed",
+              left: `${open().x}px`,
+              top: `${open().y}px`,
+              width: `${MENU_WIDTH}px`,
+              "z-index": 1000,
+            }}
+          >
+            <Show
+              when={open().entry.trusted === true}
+              fallback={
+                <MenuListItem role="menuitem" onClick={() => runFromMenu(trustProject)}>
+                  Trust Project
+                </MenuListItem>
+              }
+            >
+              <MenuListItem role="menuitem" onClick={() => runFromMenu(revokeProjectTrust)}>
+                Revoke Trust
+              </MenuListItem>
+            </Show>
+            <Show when={open().entry.path !== projectState.projectRoot}>
+              <MenuListItem
+                role="menuitem"
+                destructive
+                onClick={() => runFromMenu((entry) => removeProjectEntry(entry.id))}
+              >
+                Remove from List
+              </MenuListItem>
+            </Show>
+          </MenuList>
+        )}
+      </Show>
     </div>
   );
 }

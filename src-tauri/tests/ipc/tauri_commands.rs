@@ -1,6 +1,7 @@
 use keynobi_lib::models::build::BuildStatus;
 use keynobi_lib::models::error::AppError;
-use keynobi_lib::models::settings::AppSettings;
+use keynobi_lib::models::settings::{AppSettings, ProjectEntry};
+use keynobi_lib::models::variant::VariantList;
 use keynobi_lib::services::{adb_manager::DeviceState, build_runner::BuildState};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
@@ -34,6 +35,13 @@ async fn get_selected_device(
     device_state: State<'_, DeviceState>,
 ) -> Result<Option<String>, String> {
     keynobi_lib::commands::device::get_selected_device(device_state).await
+}
+
+#[tauri::command]
+async fn get_variants_from_gradle(
+    fs_state: State<'_, keynobi_lib::FsState>,
+) -> Result<VariantList, String> {
+    keynobi_lib::commands::variant::get_variants_from_gradle(fs_state).await
 }
 
 fn create_app() -> tauri::App<MockRuntime> {
@@ -158,4 +166,66 @@ fn tauri_ipc_unregistered_command_returns_error() {
         err.to_string().contains("missing_command"),
         "unexpected IPC error payload: {err}"
     );
+}
+
+/// An app whose open project is `project`.
+fn create_app_with_project(project: &std::path::Path) -> tauri::App<MockRuntime> {
+    let fs_state = keynobi_lib::FsState::new();
+    {
+        let mut fs = fs_state.0.blocking_lock();
+        fs.project_root = Some(project.to_path_buf());
+        fs.gradle_root = Some(project.to_path_buf());
+    }
+    mock_builder()
+        .manage(fs_state)
+        .invoke_handler(tauri::generate_handler![get_variants_from_gradle])
+        .build(mock_context(noop_assets()))
+        .expect("failed to build mock Tauri app")
+}
+
+/// A Gradle project whose `gradlew` leaves `marker` behind when it runs.
+fn project_with_marker_gradlew(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let project = dir.canonicalize().unwrap().join("project");
+    std::fs::create_dir_all(&project).unwrap();
+    std::fs::write(project.join("settings.gradle.kts"), "").unwrap();
+    let marker = project.join("gradlew-ran");
+    let gradlew = project.join("gradlew");
+    std::fs::write(
+        &gradlew,
+        format!("#!/bin/sh\ntouch '{}'\n", marker.display()),
+    )
+    .unwrap();
+    std::fs::set_permissions(&gradlew, std::fs::Permissions::from_mode(0o755)).unwrap();
+    (project, marker)
+}
+
+#[test]
+fn tauri_ipc_variant_discovery_runs_gradle_only_for_a_trusted_project() {
+    crate::common::isolate_data_dir();
+    let dir = tempfile::tempdir().unwrap();
+    let (project, marker) = project_with_marker_gradlew(dir.path());
+    let app = create_app_with_project(&project);
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("failed to build mock webview");
+
+    let err = get_ipc_response(&webview, request("get_variants_from_gradle", json!({})))
+        .expect_err("an untrusted project must be refused");
+    assert!(err.to_string().contains("not trusted"), "{err}");
+    assert!(!marker.exists(), "gradlew ran for an untrusted project");
+
+    keynobi_lib::services::settings_manager::mutate_settings(|s| {
+        s.recent_projects.push(ProjectEntry {
+            id: project.to_string_lossy().into_owned(),
+            path: project.to_string_lossy().into_owned(),
+            trusted: Some(true),
+            ..Default::default()
+        })
+    })
+    .unwrap();
+    // The fake gradlew prints no variants, so discovery still fails, but only
+    // after running it.
+    let _ = get_ipc_response(&webview, request("get_variants_from_gradle", json!({})));
+    assert!(marker.exists(), "gradlew did not run for a trusted project");
 }

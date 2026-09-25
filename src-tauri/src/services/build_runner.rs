@@ -948,8 +948,21 @@ pub async fn record_build_result(
     }
 }
 
+/// Environment for a Gradle process in `gradle_root`, with `gradlew` made
+/// executable, for a project the user trusted. The only way to prepare a
+/// Gradle run: an untrusted project is refused before anything is changed or
+/// spawned.
+pub fn trusted_gradle_env(
+    settings: &crate::models::settings::AppSettings,
+    project_root: &Path,
+    gradle_root: &Path,
+) -> Result<Vec<(String, String)>, String> {
+    crate::services::project_trust::require_trusted(settings, project_root)?;
+    Ok(build_env_vars(settings, gradle_root))
+}
+
 /// Build environment variables for a Gradle process, and ensure `gradlew` is executable.
-pub fn build_env_vars(
+fn build_env_vars(
     settings: &crate::models::settings::AppSettings,
     gradle_root: &Path,
 ) -> Vec<(String, String)> {
@@ -1242,6 +1255,56 @@ mod tests {
 
         let expected = dirs::home_dir().unwrap().join("jdks/17");
         assert_eq!(java_home_env(&env), Some(expected.to_str().unwrap()));
+    }
+
+    fn gradlew_mode(project: &Path) -> u32 {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::metadata(project.join("gradlew"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777
+    }
+
+    fn project_with_plain_gradlew() -> tempfile::TempDir {
+        use std::os::unix::fs::PermissionsExt;
+        let project = tempfile::tempdir().unwrap();
+        let gradlew = project.path().join("gradlew");
+        std::fs::write(&gradlew, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&gradlew, std::fs::Permissions::from_mode(0o644)).unwrap();
+        project
+    }
+
+    #[test]
+    fn an_untrusted_project_gets_no_gradle_env_and_its_gradlew_is_untouched() {
+        let project = project_with_plain_gradlew();
+        let settings = crate::models::settings::AppSettings::default();
+
+        let err = trusted_gradle_env(&settings, project.path(), project.path()).unwrap_err();
+
+        assert!(err.contains("not trusted"), "{err}");
+        assert_eq!(
+            gradlew_mode(project.path()),
+            0o644,
+            "gradlew not made executable"
+        );
+    }
+
+    #[test]
+    fn a_trusted_project_gets_gradle_env_and_an_executable_gradlew() {
+        let project = project_with_plain_gradlew();
+        let mut settings = crate::models::settings::AppSettings::default();
+        settings
+            .recent_projects
+            .push(crate::models::settings::ProjectEntry {
+                path: project.path().to_string_lossy().into_owned(),
+                trusted: Some(true),
+                ..Default::default()
+            });
+
+        trusted_gradle_env(&settings, project.path(), project.path()).unwrap();
+
+        assert_eq!(gradlew_mode(project.path()) & 0o111, 0o111);
     }
 
     #[test]

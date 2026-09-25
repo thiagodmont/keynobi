@@ -87,7 +87,21 @@ pub async fn get_variants_preview(fs_state: State<'_, FsState>) -> Result<Varian
 /// actually has.
 #[tauri::command]
 pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<VariantList, String> {
-    let gradle_root = resolve_gradle_root(&fs_state).await?;
+    // Both roots from one lock, so a project switch cannot pair two projects.
+    let (gradle_root, trust_root) = {
+        let fs = fs_state.0.lock().await;
+        let gradle_root = fs
+            .gradle_root
+            .as_ref()
+            .or(fs.project_root.as_ref())
+            .cloned()
+            .ok_or_else(|| "No project open".to_string())?;
+        let trust_root = fs
+            .project_root
+            .clone()
+            .unwrap_or_else(|| gradle_root.clone());
+        (gradle_root, trust_root)
+    };
 
     let gradlew = gradle_root.join("gradlew");
     if !gradlew.is_file() {
@@ -96,8 +110,9 @@ pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<Va
 
     let (settings, _) = settings_manager::load_settings();
 
-    // Same JAVA_HOME and SDK variables as builds; also makes gradlew executable.
-    let env = build_runner::build_env_vars(&settings, &gradle_root);
+    // Same trust check, JAVA_HOME, and SDK variables as builds; also makes
+    // gradlew executable.
+    let env = build_runner::trusted_gradle_env(&settings, &trust_root, &gradle_root)?;
 
     // Try `:app:tasks --all` first (module-scoped, lists every variant task).
     // `--all` is required because newer AGP versions mark individual variant tasks

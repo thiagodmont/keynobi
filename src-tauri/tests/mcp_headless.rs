@@ -325,3 +325,131 @@ fn two_servers_building_at_once_keep_both_builds_in_the_shared_history() {
         );
     }
 }
+
+/// A fake `gradlew` that leaves a marker file when it runs.
+fn gradlew_leaving_a_marker(sandbox: &Sandbox) -> std::path::PathBuf {
+    let marker = sandbox.home.join("gradlew-ran");
+    sandbox.write_gradlew(&format!(
+        "touch '{}'\necho 'BUILD SUCCESSFUL in 1s'",
+        marker.display()
+    ));
+    marker
+}
+
+#[test]
+fn an_untrusted_project_cannot_build_and_its_gradlew_never_runs() {
+    let sandbox = Sandbox::new();
+    let marker = gradlew_leaving_a_marker(&sandbox);
+    let registries = [
+        json!([]),
+        json!([headless::project_entry(&sandbox.project, json!(null))]),
+        json!([headless::project_entry(&sandbox.project, json!(false))]),
+    ];
+
+    for registry in registries {
+        sandbox.write_projects(registry.clone(), None);
+        let mut client = sandbox.start();
+
+        for (tool, args) in [
+            ("run_gradle_task", json!({ "task": "assembleDebug" })),
+            ("run_tests", json!({ "test_type": "unit" })),
+        ] {
+            let message = client.call_tool_rejected(tool, args);
+            assert!(message.contains("not trusted"), "{tool}: {message}");
+            assert!(message.contains("Keynobi app"), "{tool}: {message}");
+        }
+        // Read-only tools keep working.
+        let info = client.call_tool("get_project_info", json!({}));
+        assert!(!info.is_error, "{}", info.text);
+
+        assert!(!marker.exists(), "gradlew ran for registry {registry}");
+    }
+}
+
+#[test]
+fn a_trusted_project_builds() {
+    let sandbox = Sandbox::new();
+    let marker = gradlew_leaving_a_marker(&sandbox);
+    let mut client = sandbox.start();
+
+    let build = client.call_tool("run_gradle_task", json!({ "task": "assembleDebug" }));
+
+    assert!(!build.is_error, "{}", build.text);
+    assert!(marker.exists(), "gradlew did not run");
+}
+
+fn project_info(client: &mut headless::McpClient) -> serde_json::Value {
+    let out = client.call_tool("get_project_info", json!({}));
+    assert!(!out.is_error, "{}", out.text);
+    serde_json::from_str(&out.text).unwrap()
+}
+
+#[test]
+fn get_project_info_reports_how_the_project_was_selected_and_its_trust() {
+    let sandbox = Sandbox::new();
+    let info = project_info(&mut sandbox.start());
+    assert_eq!(info["selected_by"], "argument", "{info}");
+    assert_eq!(info["trusted"], true, "{info}");
+    assert_eq!(info["trust_hint"], serde_json::Value::Null, "{info}");
+
+    sandbox.write_projects(
+        json!([headless::project_entry(&sandbox.project, json!(false))]),
+        None,
+    );
+    let info = project_info(&mut sandbox.start());
+    assert_eq!(info["trusted"], false, "{info}");
+    assert!(
+        info["trust_hint"].as_str().unwrap().contains("Trust"),
+        "{info}"
+    );
+}
+
+#[test]
+fn project_info_never_runs_java_chosen_by_an_untrusted_project() {
+    let sandbox = Sandbox::new();
+    sandbox.write_projects(json!([]), None);
+    let marker = sandbox.home.join("project-java-ran");
+    let project_jdk = sandbox.project.join("tools");
+    headless::write_script(
+        &project_jdk.join("bin").join("java"),
+        &format!("touch '{}'", marker.display()),
+    );
+    std::fs::write(
+        sandbox.project.join("gradle.properties"),
+        format!("org.gradle.java.home={}\n", project_jdk.display()),
+    )
+    .unwrap();
+    let mut client = sandbox.start();
+
+    for tool in ["get_project_info", "run_health_check"] {
+        let out = client.call_tool(tool, json!({}));
+        assert!(!out.is_error, "{tool}: {}", out.text);
+    }
+
+    assert!(!marker.exists(), "the project's java ran");
+}
+
+#[test]
+fn the_working_directory_beats_a_stale_last_active_project() {
+    let sandbox = Sandbox::new();
+    std::fs::create_dir_all(sandbox.project.join("app")).unwrap();
+    let stale = sandbox.home.join("stale-project");
+    std::fs::create_dir_all(&stale).unwrap();
+    std::fs::write(stale.join("settings.gradle"), "").unwrap();
+    sandbox.write_projects(
+        json!([
+            headless::project_entry(&sandbox.project, json!(true)),
+            headless::project_entry(&stale, json!(true)),
+        ]),
+        Some(&stale),
+    );
+
+    let info = project_info(&mut sandbox.start_in(&sandbox.project.join("app"), None));
+    assert_eq!(info["path"], sandbox.project.to_string_lossy().as_ref());
+    assert_eq!(info["selected_by"], "working_directory", "{info}");
+
+    // Outside any Gradle build, the app's last active project is used.
+    let info = project_info(&mut sandbox.start_in(&sandbox.home, None));
+    assert_eq!(info["path"], stale.to_string_lossy().as_ref());
+    assert_eq!(info["selected_by"], "last_active_project", "{info}");
+}

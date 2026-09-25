@@ -3,9 +3,11 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { projectState } from "@/stores/project.store";
 import { toggleLogMode, uiState } from "@/stores/ui.store";
 import { buildState, isBuilding, isDeploying } from "@/stores/build.store";
-import { runAndDeploy, cancelBuild } from "@/services/build.service";
+import { runAndDeploy, cancelBuild, SAFE_MODE_BUILD_TITLE } from "@/services/build.service";
+import { askToTrustActiveProject } from "@/services/project.service";
+import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { formatError } from "@/lib/tauri-api";
-import { Icon, showToast } from "@/components/ui";
+import { Badge, Icon, showToast } from "@/components/ui";
 
 async function startDrag(e: MouseEvent) {
   if (e.button !== 0) return;
@@ -25,7 +27,9 @@ export function TitleBar(): JSX.Element {
   const runInFlight = () => isBuilding() || isDeploying();
   // Only Gradle can be cancelled; install and launch run to completion.
   const deployingAfterBuild = () => isDeploying() && !isBuilding();
-  const runDisabled = () => deployingAfterBuild() || (!projectState.projectRoot && !runInFlight());
+  const safeMode = () => !!projectState.projectRoot && !isActiveProjectTrusted();
+  const runDisabled = () =>
+    deployingAfterBuild() || ((!projectState.projectRoot || safeMode()) && !runInFlight());
 
   onMount(() => {
     getCurrentWindow()
@@ -61,6 +65,7 @@ export function TitleBar(): JSX.Element {
     if (buildState.deployPhase === "launching") return "Launching app…";
     if (deployingAfterBuild()) return "Deploying…";
     if (!projectState.projectRoot) return "Open a project to run";
+    if (safeMode()) return SAFE_MODE_BUILD_TITLE;
     return "Run App — build, install & launch (Cmd+R)";
   };
 
@@ -120,6 +125,17 @@ export function TitleBar(): JSX.Element {
           {projectState.projectName ? `Keynobi — ${projectState.projectName}` : "Keynobi"}
         </span>
       </div>
+      <Show when={safeMode()}>
+        <Badge
+          variant="warning"
+          size="xs"
+          title="This project's Gradle build scripts do not run until you trust it. Click to trust it."
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => void askToTrustActiveProject().catch(console.error)}
+        >
+          Safe Mode
+        </Badge>
+      </Show>
       <button
         type="button"
         onClick={() => toggleLogMode()}

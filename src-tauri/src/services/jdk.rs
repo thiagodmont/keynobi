@@ -313,6 +313,22 @@ pub async fn check_java(
     }
 }
 
+/// [`check_java`] for the open project. An untrusted project's
+/// `gradle.properties` is ignored, so its `org.gradle.java.home` cannot choose
+/// the binary that is run.
+pub async fn check_project_java(
+    settings: &AppSettings,
+    project_root: Option<&Path>,
+    gradle_root: Option<&Path>,
+    roots: &JdkSearchRoots,
+) -> JavaCheck {
+    let trusted = project_root
+        .or(gradle_root)
+        .is_some_and(|root| crate::services::project_trust::is_trusted(settings, root));
+    let project_dir = gradle_root.or(project_root).filter(|_| trusted);
+    check_java(settings, project_dir, roots).await
+}
+
 /// Run `<bin> -version`. Java counts as present only when it exits
 /// successfully and prints a version: the macOS `/usr/bin/java` stub exits
 /// non-zero with "Unable to locate a Java Runtime" when no JDK is installed.

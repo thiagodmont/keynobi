@@ -27,6 +27,18 @@ pub struct ProjectEntry {
     /// Last-used ADB device serial for this project.
     #[serde(default)]
     pub last_device: Option<String>,
+    /// Whether Keynobi may run this project's Gradle build scripts:
+    /// `Some(true)` trusted, `Some(false)` Safe Mode (declined or revoked),
+    /// `None` not asked yet. Always written, so an entry saved before this
+    /// field existed is the only kind that reads as missing, and it is trusted.
+    #[serde(default = "trusted_when_missing")]
+    pub trusted: Option<bool>,
+}
+
+/// Projects opened before trust existed already ran their Gradle build on
+/// open, so they keep working without a prompt.
+fn trusted_when_missing() -> Option<bool> {
+    Some(true)
 }
 
 /// All app settings persisted to `~/.keynobi/settings.json`.
@@ -339,6 +351,34 @@ pub struct ProjectAppInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn projects_saved_before_trust_existed_are_trusted() {
+        let parsed: AppSettings = serde_json::from_str(
+            r#"{"recentProjects": [{"id": "a", "path": "/p/a", "name": "a", "pinned": false}]}"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.recent_projects[0].trusted, Some(true));
+    }
+
+    #[test]
+    fn a_new_project_entry_has_not_been_asked_about_trust() {
+        assert_eq!(ProjectEntry::default().trusted, None);
+    }
+
+    #[test]
+    fn project_trust_round_trips_including_not_asked() {
+        for trusted in [None, Some(false), Some(true)] {
+            let entry = ProjectEntry {
+                trusted,
+                ..ProjectEntry::default()
+            };
+            let json = serde_json::to_value(&entry).unwrap();
+            assert!(json.get("trusted").is_some(), "always written: {json}");
+            let back: ProjectEntry = serde_json::from_value(json).unwrap();
+            assert_eq!(back.trusted, trusted);
+        }
+    }
 
     #[test]
     fn unrestricted_gradle_is_off_by_default_and_for_older_settings_files() {
