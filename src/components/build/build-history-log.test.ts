@@ -93,6 +93,30 @@ describe("createHistoricalLog", () => {
     log.dispose();
   });
 
+  it("does not reload when what the ID is derived from changes but the ID does not", async () => {
+    const pending = deferLogCalls();
+    const log = createRoot((dispose) => {
+      // Stands in for the history list being refreshed after another build.
+      const [historyVersion, setHistoryVersion] = createSignal(0);
+      const handle = createHistoricalLog(() => {
+        void historyVersion();
+        return 4;
+      });
+      return { ...handle, setHistoryVersion, dispose };
+    });
+    pending.get(4)!.resolve([makeBuildLine()]);
+    await settle();
+
+    log.setHistoryVersion(1);
+    await settle();
+
+    expect(
+      vi.mocked(invoke).mock.calls.filter(([c]) => c === "get_build_log_entries")
+    ).toHaveLength(1);
+    expect(log.state().status).toBe("loaded");
+    log.dispose();
+  });
+
   it("drops a slow response for a build that is no longer selected", async () => {
     const pending = deferLogCalls();
     const log = mount(1);
