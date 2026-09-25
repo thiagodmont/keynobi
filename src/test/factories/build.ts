@@ -29,7 +29,7 @@ export function makeBuildRecord(overrides: Partial<BuildRecord> = {}): BuildReco
     status: {
       state: "success",
       success: true,
-      durationMs: BigInt(4000),
+      durationMs: 4000,
       errorCount: 0,
       warningCount: 0,
     } as BuildStatus,

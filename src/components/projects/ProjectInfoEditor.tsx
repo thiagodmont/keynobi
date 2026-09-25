@@ -9,10 +9,13 @@ import { type JSX, createSignal, Show, createEffect } from "solid-js";
 import { Portal } from "solid-js/web";
 import { getProjectAppInfo, saveProjectAppInfo, formatError } from "@/lib/tauri-api";
 import { projectState } from "@/stores/project.store";
-import { modalFocus, showToast } from "@/components/ui";
+import { Alert, modalFocus, showToast } from "@/components/ui";
 import type { ProjectAppInfo } from "@/bindings";
 
-const MAX_I64 = 9223372036854775807n;
+/** The largest version code Google Play accepts. */
+export const MAX_VERSION_CODE = 2_100_000_000;
+
+const VERSION_CODE_RANGE_MESSAGE = `Version code must be a whole number from 1 to ${MAX_VERSION_CODE}.`;
 
 // ── Module-level open/close signal ────────────────────────────────────────────
 
@@ -26,31 +29,45 @@ export function closeProjectInfoEditor(): void {
   setOpen(false);
 }
 
+/**
+ * Validate the editor fields. A `null` field cannot be edited here (it is not a
+ * single literal in the build file) and is left out of the save.
+ */
 export function validateProjectInfoInput(
-  rawVersionName: string,
-  rawVersionCode: string
-): { ok: true; versionName: string; versionCode: bigint } | { ok: false; message: string } {
-  const versionName = rawVersionName.trim();
-  const versionCodeText = rawVersionCode.trim();
-
-  if (!versionName) {
-    return { ok: false, message: "Version name cannot be empty." };
-  }
-  if (/["\\$\r\n]/.test(versionName)) {
-    return {
-      ok: false,
-      message: "Version name cannot contain quotes, backslashes, '$', or line breaks.",
-    };
-  }
-  if (!/^\d+$/.test(versionCodeText)) {
-    return { ok: false, message: "Version code must be a non-negative integer." };
-  }
-
-  const versionCode = BigInt(versionCodeText);
-  if (versionCode > MAX_I64) {
-    return { ok: false, message: "Version code is too large." };
+  rawVersionName: string | null,
+  rawVersionCode: string | null
+):
+  | { ok: true; versionName: string | null; versionCode: number | null }
+  | { ok: false; message: string } {
+  let versionName: string | null = null;
+  if (rawVersionName !== null) {
+    versionName = rawVersionName.trim();
+    if (!versionName) {
+      return { ok: false, message: "Version name cannot be empty." };
+    }
+    if (/["\\$\r\n]/.test(versionName)) {
+      return {
+        ok: false,
+        message: "Version name cannot contain quotes, backslashes, '$', or line breaks.",
+      };
+    }
   }
 
+  let versionCode: number | null = null;
+  if (rawVersionCode !== null) {
+    const versionCodeText = rawVersionCode.trim();
+    if (!/^\d+$/.test(versionCodeText)) {
+      return { ok: false, message: VERSION_CODE_RANGE_MESSAGE };
+    }
+    versionCode = Number(versionCodeText);
+    if (versionCode < 1 || versionCode > MAX_VERSION_CODE) {
+      return { ok: false, message: VERSION_CODE_RANGE_MESSAGE };
+    }
+  }
+
+  if (versionName === null && versionCode === null) {
+    return { ok: false, message: "Neither field can be edited here." };
+  }
   return { ok: true, versionName, versionCode };
 }
 
@@ -62,12 +79,18 @@ export function ProjectInfoEditor(): JSX.Element {
   const [versionCode, setVersionCode] = createSignal("");
   const [saving, setSaving] = createSignal(false);
   const [loading, setLoading] = createSignal(false);
+  const [error, setError] = createSignal<string | null>(null);
+
+  const nameEditable = () => !info()?.versionNameUnavailable;
+  const codeEditable = () => !info()?.versionCodeUnavailable;
 
   // Load app info whenever the modal opens.
   createEffect(() => {
     if (!open()) return;
     if (!projectState.projectRoot) return;
 
+    setInfo(null);
+    setError(null);
     setLoading(true);
     getProjectAppInfo()
       .then((data) => {
@@ -87,19 +110,23 @@ export function ProjectInfoEditor(): JSX.Element {
   });
 
   async function handleSave() {
-    const validation = validateProjectInfoInput(versionName(), versionCode());
+    const validation = validateProjectInfoInput(
+      nameEditable() ? versionName() : null,
+      codeEditable() ? versionCode() : null
+    );
     if (!validation.ok) {
-      showToast(validation.message, "error");
+      setError(validation.message);
       return;
     }
 
+    setError(null);
     setSaving(true);
     try {
       await saveProjectAppInfo(validation.versionName, validation.versionCode);
       showToast("App info saved successfully.", "success");
       setOpen(false);
     } catch (err) {
-      showToast(`Failed to save app info: ${formatError(err)}`, "error");
+      setError(`Failed to save app info: ${formatError(err)}`);
     } finally {
       setSaving(false);
     }
@@ -124,6 +151,20 @@ export function ProjectInfoEditor(): JSX.Element {
     "letter-spacing": "0.05em",
     "margin-bottom": "4px",
     display: "block",
+  } as const;
+
+  const readOnlyStyle = {
+    ...inputStyle,
+    color: "var(--text-muted)",
+    background: "var(--bg-secondary)",
+    cursor: "default",
+  } as const;
+
+  const noteStyle = {
+    "font-size": "11px",
+    color: "var(--text-muted)",
+    "margin-top": "4px",
+    "line-height": "1.4",
   } as const;
 
   return (
@@ -186,43 +227,75 @@ export function ProjectInfoEditor(): JSX.Element {
               {/* Application ID (read-only) */}
               <div style={{ "margin-bottom": "14px" }}>
                 <label style={labelStyle}>Application ID</label>
-                <div
-                  style={{
-                    ...inputStyle,
-                    color: "var(--text-muted)",
-                    background: "var(--bg-secondary)",
-                    cursor: "default",
-                  }}
-                >
-                  {info()?.applicationId ?? "—"}
-                </div>
+                <div style={readOnlyStyle}>{info()?.applicationId ?? "—"}</div>
               </div>
 
               {/* Version Name */}
               <div style={{ "margin-bottom": "14px" }}>
-                <label style={labelStyle}>Version Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 1.0.0"
-                  value={versionName()}
-                  onInput={(e) => setVersionName(e.currentTarget.value)}
-                  style={inputStyle}
-                />
+                <label style={labelStyle} for="project-info-version-name">
+                  Version Name
+                </label>
+                <Show
+                  when={nameEditable()}
+                  fallback={
+                    <>
+                      <div style={readOnlyStyle}>—</div>
+                      <div style={noteStyle}>{info()?.versionNameUnavailable}</div>
+                    </>
+                  }
+                >
+                  <input
+                    id="project-info-version-name"
+                    type="text"
+                    placeholder="e.g. 1.0.0"
+                    value={versionName()}
+                    onInput={(e) => {
+                      setVersionName(e.currentTarget.value);
+                      setError(null);
+                    }}
+                    style={inputStyle}
+                  />
+                </Show>
               </div>
 
               {/* Version Code */}
               <div style={{ "margin-bottom": "22px" }}>
-                <label style={labelStyle}>Version Code</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="1"
-                  placeholder="e.g. 1"
-                  value={versionCode()}
-                  onInput={(e) => setVersionCode(e.currentTarget.value)}
-                  style={inputStyle}
-                />
+                <label style={labelStyle} for="project-info-version-code">
+                  Version Code
+                </label>
+                <Show
+                  when={codeEditable()}
+                  fallback={
+                    <>
+                      <div style={readOnlyStyle}>—</div>
+                      <div style={noteStyle}>{info()?.versionCodeUnavailable}</div>
+                    </>
+                  }
+                >
+                  <input
+                    id="project-info-version-code"
+                    type="number"
+                    min="1"
+                    max={MAX_VERSION_CODE}
+                    step="1"
+                    placeholder="e.g. 1"
+                    value={versionCode()}
+                    onInput={(e) => {
+                      setVersionCode(e.currentTarget.value);
+                      setError(null);
+                    }}
+                    style={inputStyle}
+                  />
+                </Show>
               </div>
+
+              <Show when={error()}>
+                {(message) => (
+                  <div style={{ "margin-bottom": "14px" }}>
+                    <Alert variant="error">{message()}</Alert>
+                  </div>
+                )}
+              </Show>
 
               {/* Buttons */}
               <div style={{ display: "flex", gap: "8px", "justify-content": "flex-end" }}>
@@ -242,7 +315,7 @@ export function ProjectInfoEditor(): JSX.Element {
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={saving()}
+                  disabled={saving() || (!nameEditable() && !codeEditable())}
                   style={{
                     padding: "6px 16px",
                     "border-radius": "4px",
@@ -251,7 +324,7 @@ export function ProjectInfoEditor(): JSX.Element {
                     background: "var(--accent)",
                     color: "#fff",
                     border: "none",
-                    opacity: saving() ? "0.6" : "1",
+                    opacity: saving() || (!nameEditable() && !codeEditable()) ? "0.6" : "1",
                   }}
                 >
                   {saving() ? "Saving…" : "Save"}

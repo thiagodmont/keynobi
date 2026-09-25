@@ -34,6 +34,7 @@ pub struct McpActivityEntry {
     /// Tool name, resource URI, prompt name, or lifecycle event description.
     pub name: String,
     /// Wall-clock duration in milliseconds (present for tool/resource/prompt events).
+    #[ts(type = "number | null")]
     pub duration_ms: Option<u64>,
     /// `"ok"` or `"error"`.
     pub status: String,

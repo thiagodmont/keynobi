@@ -20,7 +20,7 @@ async function openLogcatWithEmptyEntries(page: Page): Promise<void> {
 async function pushLogcatEntries(page: Page, entries: LogcatSeedEntry[]): Promise<void> {
   await page.evaluate(async (seedEntries) => {
     const payload = seedEntries.map((entry) => ({
-      id: BigInt(entry.id),
+      id: entry.id,
       timestamp: "2026-05-06T12:00:00.000Z",
       pid: 1234,
       tid: 5678,

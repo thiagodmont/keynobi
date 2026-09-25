@@ -50,6 +50,8 @@ const handlers: Map<string, Handler> = new Map(
 );
 
 export async function handleInvoke(command: string, args: unknown = {}): Promise<unknown> {
+  // The real IPC layer sends arguments as JSON; fail the same way it would.
+  JSON.stringify(args);
   const handler = handlers.get(command);
   if (!handler) {
     throw new Error(`[mock-backend] unhandled command: ${command}`);

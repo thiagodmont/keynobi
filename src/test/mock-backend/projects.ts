@@ -28,7 +28,9 @@ export function projectHandlers(): Record<string, (args: unknown) => unknown> {
     get_project_app_info: (): ProjectAppInfo => ({
       applicationId: "com.example.mockapp",
       versionName: "1.0.0",
-      versionCode: BigInt(1),
+      versionCode: 1,
+      versionNameUnavailable: null,
+      versionCodeUnavailable: null,
     }),
     save_project_app_info: () => undefined,
     update_project_meta: () => undefined,

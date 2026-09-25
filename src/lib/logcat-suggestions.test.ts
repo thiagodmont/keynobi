@@ -4,7 +4,7 @@ import { createLogcatSuggestionIndex } from "./logcat-suggestions";
 
 function entry(id: number, tag: string, pkg?: string): LogcatEntry {
   return {
-    id: BigInt(id),
+    id: id,
     timestamp: "01-01 00:00:00.000",
     level: "debug",
     tag,

@@ -122,7 +122,7 @@ Never use raw `path.starts_with(root)` for security.
 
 ### Persistence
 
-- Write files atomically: write a temporary sibling, then `rename` it over the target. See `settings_manager.rs` and `build_runner.rs`.
+- Write files atomically: write a temporary sibling named with `settings_manager::unique_tmp_path`, then `rename` it over the target. See `settings_manager.rs` and `build_runner.rs`. When replacing a file the user owns (a build file), create the temporary file with `create_new`, give it the original's permissions before the rename, and remove it when any step fails (`project_app_info::write_atomically`).
 - Settings structs use `#[serde(default)]` so older files load after fields are added. Clamp numeric settings to safe ranges on load.
 - Resolve storage paths through `settings_manager::data_dir()`. Tests must not touch the real `~/.keynobi`.
 
@@ -145,7 +145,7 @@ npm run check:bindings      # regenerate and fail on any diff
 
 `generate:bindings` runs the full Rust test suite. Check the data-dir warning in `BEST_PRACTICES.md` § Known Gaps first.
 
-A 64-bit integer crosses IPC as a JSON number, but `ts-rs` types it `bigint`. Mark new `u64`/`i64` fields `#[ts(type = "number")]`. An `Option` field with `skip_serializing_if` is absent rather than `null` on the wire; mark it `#[ts(optional)]` so the binding says so.
+A 64-bit integer crosses IPC as a JSON number, but `ts-rs` types it `bigint`. Mark every `u64`/`i64` field `#[ts(type = "number")]` (`"number | null"` for an `Option`, a tuple of `number` for an array), and only for values that stay below 2^53 (counts, IDs, durations, byte sizes). A `bigint` cannot be sent at all: invoke arguments are serialized as JSON, which throws on one, so the command never reaches Rust. An `Option` field with `skip_serializing_if` is absent rather than `null` on the wire; mark it `#[ts(optional)]` so the binding says so.
 
 #### Payload fixtures
 
@@ -158,7 +158,7 @@ npm run generate:ipc-fixtures
 The fixtures are checked three ways:
 
 - **Compile time:** each sample `satisfies Wire<T>` (the binding with `bigint` read as `number`), so `tsc` fails when a binding and the serializer disagree.
-- **`scripts/ipc-payloads.test.mjs`:** each sample has exactly the fields its binding declares; every type used in an `invoke<T>`/`listen<T>` has samples; no new field is typed `bigint`; every event the frontend listens for is emitted in Rust, has a payload fixture, and is listened for with that payload type.
+- **`scripts/ipc-payloads.test.mjs`:** each sample has exactly the fields its binding declares; every type used in an `invoke<T>`/`listen<T>` has samples; no field is typed `bigint`; every event the frontend listens for is emitted in Rust, has a payload fixture, and is listened for with that payload type.
 - **Mock backend:** the same test calls every mock command whose response is a binding type and drives every mock event, and compares each payload's shape (keys, JSON kinds, `null`s) with the samples.
 
 When you add a command or event that returns a new type, add samples for it, with every `Option` both present and absent.
@@ -278,6 +278,7 @@ Registered shortcuts do not run while a modal dialog (`aria-modal="true"`) or a 
 - Tests live next to the code they cover.
 - `src/test/setup.ts` mocks Tauri APIs with `vi.mock`. Override per test with `vi.mocked(...)`.
 - Stub every IPC call a test makes (`vi.mocked(invoke).mockResolvedValueOnce(...)` or `mockImplementation`). An unstubbed `invoke` rejects and fails the test, even when the code under test catches the rejection.
+- `setup.ts` also fails a test whose `invoke` arguments contain a `bigint`, which the real IPC layer cannot send; the mock backend (`handleInvoke`) serializes arguments the same way in e2e.
 - Use factories from `src/test/factories/` for IPC-shaped data (build, devices, logcat, settings).
 - Reset mutable stores in `beforeEach` with their reset helpers.
 - Test behavior and state transitions, not internal implementation details.
@@ -351,6 +352,5 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Uncapped output reader.** `adb_manager::download_system_image` still reads `sdkmanager` output with `AsyncBufReadExt::lines()` instead of `CappedLines`.
 - **Store naming.** `layoutViewer.store.ts` uses camelCase instead of kebab-case.
 - **Typed factories are rarely used.** Only one test imports `src/test/factories/`; most tests build IPC data inline.
-- **64-bit integers typed `bigint`.** Eleven existing fields (listed in `scripts/ipc-payloads.test.mjs`) are `bigint` in the bindings but arrive as numbers, so frontend code and mock data treat numbers as bigints. Sending one is worse: `saveProjectAppInfo` passes a `BigInt` version code, which the IPC layer cannot serialize, so saving the version code fails before it reaches Rust.
 - **Event payload types are declared by hand.** `tests/ipc_fixtures.rs` names each event's payload type; nothing ties it to the value the emit site passes.
 - **Some mock checks are vacuous.** Mock commands that return empty lists (`get_build_history`, `get_build_errors`, `get_mcp_activity`, `get_logcat_context_entries` without an anchor, and the AVD and system-image lists) have no elements to compare, and the mock never emits `logcat:reconnecting`, `logcat:stopped`, `monitor://stats`, or `settings:corrupted`.

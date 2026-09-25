@@ -5,7 +5,7 @@ import { createLogcatSuggestionRuntime } from "./logcat-suggestion-runtime";
 
 function entry(overrides: Partial<LogcatEntry>): LogcatEntry {
   return {
-    id: BigInt(overrides.id ?? 1),
+    id: overrides.id ?? 1,
     timestamp: "01-01 00:00:00.000",
     pid: 1,
     tid: 1,

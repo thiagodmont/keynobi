@@ -98,6 +98,7 @@ impl EntryFlags {
 #[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessedEntry {
+    #[ts(type = "number")]
     pub id: u64,
     pub timestamp: String,
     pub pid: i32,
@@ -118,6 +119,7 @@ pub struct ProcessedEntry {
     pub category: EntryCategory,
     /// Groups consecutive lines belonging to the same crash/ANR stack trace.
     /// All lines in a single crash share the same `crash_group_id`.
+    #[ts(type = "number | null")]
     pub crash_group_id: Option<u64>,
     /// Raw JSON string extracted from the message, if the message contains
     /// valid JSON. The frontend parses this on-demand (only when the user
@@ -133,10 +135,14 @@ pub struct ProcessedEntry {
 #[ts(export, export_to = "../../src/bindings/")]
 #[serde(rename_all = "camelCase")]
 pub struct LogStats {
+    #[ts(type = "number")]
     pub total_ingested: u64,
     /// Counts indexed by `LogcatLevel::priority()` (0 = Verbose … 5 = Fatal, 6 = Unknown).
+    #[ts(type = "[number, number, number, number, number, number, number]")]
     pub counts_by_level: [u64; 7],
+    #[ts(type = "number")]
     pub crash_count: u64,
+    #[ts(type = "number")]
     pub json_count: u64,
     pub packages_seen: usize,
     /// Percentage of the ring buffer currently in use (0.0 – 100.0).
@@ -144,10 +150,12 @@ pub struct LogStats {
     pub buffer_usage_pct: f32,
     /// Current number of entries in the in-memory ring buffer (all lines stored;
     /// independent of the active stream filter used for IPC).
+    #[ts(type = "number")]
     pub buffer_entry_count: u64,
     /// Lines discarded because the reader→pipeline channel was saturated.
     /// Non-zero means the view is incomplete, so the UI must surface it rather
     /// than silently showing a gap.
+    #[ts(type = "number")]
     pub dropped_lines: u64,
     /// Lines read from the device but not yet processed when the pipeline's
     /// last batch ended. Stays near zero while the pipeline keeps up.

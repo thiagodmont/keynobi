@@ -5,7 +5,7 @@ import { LogcatVirtualRow } from "./LogcatRows";
 import styles from "./LogcatRows.module.css";
 
 const ENTRY: LogcatEntry = {
-  id: 1n,
+  id: 1,
   timestamp: "2026-05-06T12:00:00.000Z",
   pid: 123,
   tid: 456,

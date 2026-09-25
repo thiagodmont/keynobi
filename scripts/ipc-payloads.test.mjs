@@ -21,25 +21,6 @@ import { sampleEntries } from "@/test/mock-backend/logcat";
 // vitest runs with the repo root as cwd (see vite.config.ts `test.include`).
 const REPO_ROOT = process.cwd();
 
-/**
- * Rust integers the bindings declare as `bigint` although they arrive as JSON
- * numbers. Do not add to this list: mark a new 64-bit field
- * `#[ts(type = "number")]` instead.
- */
-const BIGINT_FIELDS_SENT_AS_NUMBERS = [
-  "BuildResult.durationMs",
-  "LogStats.bufferEntryCount",
-  "LogStats.countsByLevel",
-  "LogStats.crashCount",
-  "LogStats.droppedLines",
-  "LogStats.jsonCount",
-  "LogStats.totalIngested",
-  "McpActivityEntry.durationMs",
-  "ProcessedEntry.crashGroupId",
-  "ProcessedEntry.id",
-  "ProjectAppInfo.versionCode",
-];
-
 /** Events the mock backend has no way to produce; e2e tests trigger them directly. */
 const NOT_EMITTED_BY_MOCK = {
   "logcat:reconnecting": "the mock logcat stream never loses adb",
@@ -245,7 +226,7 @@ describe("IPC fixtures match the bindings", () => {
       declared.sort(),
       "These fields are typed bigint but arrive as JSON numbers, and a bigint " +
         'argument cannot be sent at all. Mark new ones #[ts(type = "number")].'
-    ).toEqual(BIGINT_FIELDS_SENT_AS_NUMBERS);
+    ).toEqual([]);
   });
 
   it("every type the frontend invokes or listens for has a fixture", () => {

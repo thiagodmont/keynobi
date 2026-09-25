@@ -10,7 +10,7 @@ import type { LogcatLevel } from "./LogcatLevel";
  * (package resolution, crash grouping, JSON detection, category) is embedded
  * directly in this struct to minimise IPC overhead.
  */
-export type ProcessedEntry = { id: bigint, timestamp: string, pid: number, tid: number, level: LogcatLevel, tag: string, message: string, package: string | null, kind: LogcatKind, isCrash: boolean, 
+export type ProcessedEntry = { id: number, timestamp: string, pid: number, tid: number, level: LogcatLevel, tag: string, message: string, package: string | null, kind: LogcatKind, isCrash: boolean, 
 /**
  * Bitfield of `EntryFlags` constants. Check with `(flags & EntryFlags::CRASH) !== 0`.
  */
@@ -23,7 +23,7 @@ category: EntryCategory,
  * Groups consecutive lines belonging to the same crash/ANR stack trace.
  * All lines in a single crash share the same `crash_group_id`.
  */
-crashGroupId: bigint | null, 
+crashGroupId: number | null, 
 /**
  * Raw JSON string extracted from the message, if the message contains
  * valid JSON. The frontend parses this on-demand (only when the user

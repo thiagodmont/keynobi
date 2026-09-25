@@ -379,7 +379,11 @@ Opening a project must not run its code. Only Gradle runs project code, and only
 - Frontend: `project.service.ts` asks once, after the registry entry of a newly opened project is known and only if the open is still current (**Trust** or **Open in Safe Mode**; the safe choice is listed last). Dismissing keeps Safe Mode without saving. Trust is derived from the projects store (`isProjectTrusted(root)`), not a separate store. `loadVariants()` skips the Gradle phase for an untrusted root and keys its in-flight coalescing by trust, so a Safe Mode load cannot satisfy one started after trusting.
 - Trusting the open project reloads its variants with Gradle. Revoking cancels the open project's running build.
 - Health ignores an untrusted project's `org.gradle.java.home` (`jdk::check_project_java`) and its `local.properties` `sdk.dir` (`health_inspector`), so the project cannot choose an executable Keynobi runs.
-- Project App Info edits `versionName`/`versionCode` in `app/build.gradle(.kts)`. Edits must report failure when the file or fields are not found.
+- Project App Info (`services/project_app_info.rs`) reads and edits `versionName`/`versionCode` in the first of `app/build.gradle.kts`, `app/build.gradle`, `build.gradle.kts`, `build.gradle`. Only real assignments count: the scanner skips `//` and `/* */` comments (nested in Kotlin) and string literals, and ignores reads, comparisons, and `val`/`var`/`def` declarations.
+  - A field is editable only when it has exactly one literal assignment. Otherwise `ProjectAppInfo.versionNameUnavailable`/`versionCodeUnavailable` says why (missing, set N times with the line numbers, or set by an expression, with the line and where the value is probably defined), the value is `null`, and a save of that field is refused with the same message. Several assignments (for example one per product flavor) are refused rather than guessed.
+  - `save_project_app_info` takes each field as optional and leaves a `null` field alone. A save that would not change the file is refused. Version codes must be 1 to `MAX_VERSION_CODE` (2100000000), checked in the editor and the command.
+  - Both commands resolve the build file with `validate_within_root` and read and write only its canonical path, which must be a regular file inside the canonical project root and at most `MAX_BUILD_FILE_BYTES` (1 MB). A symlinked `app` directory or build file that leads outside the project is refused; one that stays inside is followed, and the link itself is kept.
+  - The file is replaced through a unique temporary file next to the canonical target that gets the original permissions, then renamed over it. A refused or failed save leaves the file byte-identical.
 
 ## Shutdown
 
@@ -413,7 +417,7 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **MCP error model.** Coordinate, permission, and deep-link validation failures return `CallToolResult::error` instead of `McpError::invalid_params`.
 - **Activity log.** Summaries are not redacted.
 - **APK lookup module.** `find_output_apk` and `validate_apk_within_build_outputs` look only under `app/build/outputs`, so projects whose application module is not named `app` cannot deploy.
-- **Project App Info.** When the app module is not named `app`, the root build file is edited and success is reported even if nothing changed.
+- **Project App Info.** When the app module is not named `app`, the root build file is read instead; it usually sets no versions, so both fields show as unavailable. `applicationId` is still read with a first-match pattern, so a commented-out `applicationId` above the real one is shown (and used for `package:mine`).
 - **Airplane-mode fallback.** On devices without `cmd connectivity airplane-mode`, the fallback broadcast is a protected broadcast that a non-root shell is normally refused; the setting is then restored and the step reported as failed. Needs verification on a device.
 - **Dead code.** `DevicePanel.tsx` (panel/popover modes) is not imported anywhere.
 - **Trust is lost with the registry entry.** Removing a project, or eviction past `MAX_RECENT_PROJECTS`, forgets its trust; reopening asks again. Downgrading to a version without trust drops the field, and upgrading again treats those entries as trusted.

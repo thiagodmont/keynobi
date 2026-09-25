@@ -14,7 +14,7 @@ export function rowFocusMarked(
   anchor: number | null,
   end: number | null,
   detail: LogcatEntry | null,
-  entryId: bigint
+  entryId: number
 ): boolean {
   if (detail !== null) return detail.id === entryId;
   if (anchor === null) return false;
