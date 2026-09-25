@@ -94,7 +94,10 @@ runAndDeploy()
 
 ### Backend State
 
-`DeviceState` (`services/adb_manager.rs`) owns connected devices, the selected serial, and the polling guard. Device polling runs as a detached task every 3 s and emits `device:list_changed` when any device's serial or connection state changes (for example unauthorized → online).
+`DeviceState` (`services/adb_manager.rs`) owns connected devices, the selected serial, and the polling state. Device polling runs as a detached task every 3 s and emits `device:list_changed` when any device's serial or connection state changes (for example unauthorized → online).
+
+- **One polling loop.** Start and stop go through `DeviceStateInner::begin_polling` / `stop_polling`, which bump a generation. A loop runs only while its generation is current (`is_current_polling`), checks it again before writing the device list, and is woken by stop instead of finishing its sleep, so a stop followed by a quick start (or shutdown) never leaves two loops.
+- **Current SDK path.** Each tick resolves `adb` from settings again, so changing the Android SDK path takes effect on the next poll. The loop (`poll_devices` in `commands/device.rs`) takes the path resolver and the event emitter as parameters and is tested without Tauri.
 
 adb and SDK tool calls have per-operation deadlines (`utils/process.rs`): 10 s for queries (`devices`, `getprop`, `pm`, `dumpsys`, `am force-stop`), 30 s for launches and screenshots, 5 min for `adb install`, 15 s for `emu kill`, 30 s for aapt2, 60 s for avdmanager, and 2 min for `sdkmanager --list`. When `adb devices` times out, `list_devices` logs it and returns an empty list, so polling continues on the next tick; enrichment skips a device whose `getprop` times out.
 
