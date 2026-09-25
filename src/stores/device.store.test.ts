@@ -13,8 +13,11 @@ import {
   resetDeviceState,
   initDevices,
   onDeviceChange,
+  runningAvdNames,
+  serialForAvd,
 } from "@/stores/device.store";
 import type { Device, AvdInfo } from "@/bindings";
+import { makeAvd, makeDevice } from "@/test/factories/devices";
 
 const mockDevices: Device[] = [
   {
@@ -419,5 +422,67 @@ describe("device selection stays in sync with the backend", () => {
 
       expect(deviceState.selectedSerial).toBe("ZX1G22ABCD");
     });
+  });
+});
+
+describe("running AVDs are matched by the AVD name the backend resolved", () => {
+  beforeEach(() => {
+    resetDeviceState();
+  });
+
+  it("matches a running AVD whose model is unrelated to its name", () => {
+    setAvds([makeAvd({ name: "Pixel_7_API_34" })]);
+    setDevices([
+      makeDevice({
+        serial: "emulator-5554",
+        model: "sdk_gphone64_arm64",
+        avdName: "Pixel_7_API_34",
+      }),
+    ]);
+
+    expect(runningAvdNames().has("Pixel_7_API_34")).toBe(true);
+    expect(serialForAvd("Pixel_7_API_34")).toBe("emulator-5554");
+  });
+
+  it("does not confuse AVDs whose names share a prefix", () => {
+    setAvds([makeAvd({ name: "Pixel_7" }), makeAvd({ name: "Pixel_7_Pro" })]);
+    setDevices([
+      makeDevice({
+        serial: "emulator-5556",
+        name: "Pixel 7 Pro",
+        model: "Pixel_7_Pro",
+        avdName: "Pixel_7_Pro",
+      }),
+    ]);
+
+    expect(runningAvdNames().has("Pixel_7")).toBe(false);
+    expect(serialForAvd("Pixel_7")).toBeNull();
+    expect(serialForAvd("Pixel_7_Pro")).toBe("emulator-5556");
+  });
+
+  it("returns each AVD's own serial when both run", () => {
+    setDevices([
+      makeDevice({ serial: "emulator-5554", model: "Pixel_7_Pro", avdName: "Pixel_7" }),
+      makeDevice({ serial: "emulator-5556", model: "Pixel_7", avdName: "Pixel_7_Pro" }),
+    ]);
+
+    expect(serialForAvd("Pixel_7")).toBe("emulator-5554");
+    expect(serialForAvd("Pixel_7_Pro")).toBe("emulator-5556");
+  });
+
+  it("treats an emulator without a resolved AVD name as no AVD", () => {
+    setAvds([makeAvd({ name: "Pixel_7" })]);
+    setDevices([makeDevice({ serial: "emulator-5554", model: "Pixel_7", avdName: undefined })]);
+
+    expect(runningAvdNames().size).toBe(0);
+    expect(serialForAvd("Pixel_7")).toBeNull();
+  });
+
+  it("ignores offline emulators", () => {
+    setDevices([
+      makeDevice({ serial: "emulator-5554", avdName: "Pixel_7", connectionState: "offline" }),
+    ]);
+
+    expect(serialForAvd("Pixel_7")).toBeNull();
   });
 });

@@ -286,6 +286,24 @@ echo 'Error: Activity not started, unable to resolve Intent { act=android.intent
     );
 }
 
+#[test]
+fn stop_avd_reports_a_stop_the_emulator_refused() {
+    let sandbox = Sandbox::new();
+    sandbox.write_adb(
+        r#"case "$*" in
+  "devices -l") printf 'List of devices attached\nemulator-5554\tdevice\n' ;;
+  *"emu kill") echo "error: could not connect to TCP port 5554: Connection refused" >&2; exit 1 ;;
+esac"#,
+    );
+    let mut client = sandbox.start();
+
+    let out = client.call_tool("stop_avd", json!({ "serial": "emulator-5554" }));
+
+    assert!(out.is_error, "{}", out.text);
+    assert!(out.text.contains("Connection refused"), "{}", out.text);
+    assert!(!out.text.contains("stopped."), "{}", out.text);
+}
+
 /// Two standalone servers on one data directory (like the app and a headless
 /// server) do not build one project at once, and both builds are kept in the
 /// shared history.

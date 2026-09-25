@@ -134,8 +134,8 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 | `stop_app` | D | `device_serial`, `package`, `allow_foreign_package?`. [Package-scoped](#package-scope). |
 | `restart_app` | D | `package`, `device_serial?`, `clear_data?`, `allow_foreign_package?`. [Package-scoped](#package-scope). Force-stops and relaunches; app data is preserved. `clear_data: true` runs `pm clear` first (wipes data and runtime permissions) and requires `device_serial`. The removed `cold` parameter returns an error. |
 | `list_avds` | R | |
-| `launch_avd` | W | `name` |
-| `stop_avd` | D | `serial` |
+| `launch_avd` | W | `name`. Returns `serial` (the emulator whose AVD name matches, even when other emulators start at the same time), `avd_name`, and `already_running` (the AVD was running, or this process was already starting it, so no second emulator was started). Waits up to 60 s. A launch that fails, or whose emulator exits before it is online, is a tool error. |
+| `stop_avd` | D | `serial`. Succeeds only once adb no longer lists the emulator (up to 30 s). A refused or failed `emu kill`, or an emulator still listed at the limit, is a tool error. |
 
 ### UI Hierarchy and Automation
 

@@ -25,4 +25,10 @@ apiLevel: number | null,
 /**
  * Android version string (from `ro.build.version.release`).
  */
-androidVersion: string | null, };
+androidVersion: string | null, 
+/**
+ * For an online emulator, the AVD it runs (the name used with
+ * `emulator @<name>`), when the emulator reported it. Identifies which AVD
+ * is running; `name` and `model` are for display only.
+ */
+avdName?: string, };

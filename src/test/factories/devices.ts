@@ -9,6 +9,7 @@ export function makeDevice(overrides: Partial<Device> = {}): Device {
     connectionState: "online",
     apiLevel: 34,
     androidVersion: "14",
+    avdName: "Pixel_6_API_34",
     ...overrides,
   };
 }

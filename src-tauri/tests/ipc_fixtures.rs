@@ -255,6 +255,17 @@ fn devices() -> Vec<Device> {
             connection_state: DeviceConnectionState::Online,
             api_level: Some(34),
             android_version: Some("14".into()),
+            avd_name: Some("Pixel_7_API_34".into()),
+        },
+        Device {
+            serial: "28151FDH2000Q4".into(),
+            name: "Pixel 7".into(),
+            model: Some("Pixel 7".into()),
+            device_kind: DeviceKind::Physical,
+            connection_state: DeviceConnectionState::Online,
+            api_level: Some(35),
+            android_version: Some("15".into()),
+            avd_name: None,
         },
         Device {
             serial: "ZX1G22ABCD".into(),
@@ -264,6 +275,7 @@ fn devices() -> Vec<Device> {
             connection_state: DeviceConnectionState::Unauthorized,
             api_level: None,
             android_version: None,
+            avd_name: None,
         },
     ]
 }
