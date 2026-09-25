@@ -1,0 +1,46 @@
+.banner {
+  align-items: center;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  padding: 4px 8px;
+}
+
+.text {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  min-width: 0;
+}
+
+.title {
+  color: var(--text-primary);
+  font-size: var(--font-size-ui-sm);
+  font-weight: 600;
+}
+
+.meta {
+  color: var(--text-secondary);
+  font-size: var(--font-size-ui-sm);
+}
+
+.running {
+  color: var(--info);
+  font-size: var(--font-size-ui-sm);
+}
+
+.notice {
+  padding: 8px;
+}
+
+.loading {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  font-size: var(--font-size-ui-sm);
+  gap: 8px;
+  padding: 12px;
+}

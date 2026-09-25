@@ -9,7 +9,7 @@ import {
   type McpActivityEntry,
 } from "@/stores/mcp.store";
 import { getMcpSetupStatus, clearMcpActivity, type McpSetupStatus } from "@/lib/tauri-api";
-import { Alert, StatusDot, type DotStatus } from "@/components/ui";
+import { Alert, StatusDot, modalFocus, type DotStatus } from "@/components/ui";
 
 // ── Panel visibility signal ───────────────────────────────────────────────────
 
@@ -261,6 +261,7 @@ export function McpPanel(): JSX.Element {
 
       {/* Panel */}
       <div
+        ref={(el) => modalFocus(el, { onEscape: closeMcpPanel })}
         role="dialog"
         aria-modal="true"
         aria-label="MCP Server Activity"

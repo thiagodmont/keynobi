@@ -89,10 +89,10 @@ Use the **Projects** sidebar to add, switch, rename, or remove saved projects.
 
 - `Cmd+O`: add or open a project folder.
 - `Cmd+B`: collapse or expand the Projects sidebar.
-- Click a project row to switch projects.
+- Click a project row to switch projects. From the keyboard, Tab to the list, move with Up/Down, and press Enter or Space.
 - **Rename** changes only the label in Keynobi; it does not rename the folder. Press Enter to save or Esc to cancel.
 - **Remove from list** deletes the saved entry only; it does not delete files on disk.
-- Right-click a project row for **Trust Project** or **Revoke Trust**, and **Remove from List**.
+- Right-click a project row, or press Shift+F10 on it, for **Rename…**, **Trust Project** or **Revoke Trust**, and **Remove from List**.
 
 ### Project trust and Safe Mode
 
@@ -134,7 +134,13 @@ Build output has two views:
 - **Log**: Gradle output, colored by level. Filter by level (**ALL**, **ERR**, **WARN**, **INFO**, **DBG**), by source, or by text; show or hide timestamps; copy the visible lines; or clear the view.
 - **Problems (N)**: parsed errors and warnings.
 
-The **Builds** side panel lists recent builds, with who started a build when it was an AI client, and who cancelled it (you, an AI client, or Keynobi quitting). Click one to see its log, or use **Clear build history**. If a past build's log cannot be read, the panel shows the error with a **Retry** button instead of the log. Keynobi keeps the last 10 builds; log files are removed after 7 days or when the log folder passes 100 MB (both configurable under **Settings → Advanced → Build**).
+The **Builds** side panel lists recent builds, with who started a build when it was an AI client, and who cancelled it (you, an AI client, or Keynobi quitting). Use **Clear build history** to empty it. Keynobi keeps the last 10 builds; log files are removed after 7 days or when the log folder passes 100 MB (both configurable under **Settings → Advanced → Build**).
+
+Select a past build (click it, or Tab to the list, move with Up/Down, and press Enter) to see it instead of the current build. The whole Build tab then describes that build: its log, **Problems**, result and duration, and who started or cancelled it. A bar above the log says **Viewing build #N from** its start time, with **Back to current build**.
+
+- A build you start (**Run App**, **Build Only**, `Cmd+R`, `Cmd+Shift+R`) brings the tab back to the current build.
+- A build an AI client starts does not replace the build you are reading. The bar says a build is running and offers **Show running build**.
+- While a past build's log loads, the tab says so. If the log was removed by the retention settings above, the tab says **This build's log was removed**; its problems and result are still shown. If the log cannot be read, the tab shows the error with a **Retry** button. A build that has dropped out of the last 10 is reported as no longer in the history.
 
 ---
 
@@ -252,13 +258,14 @@ Notes:
 
 The Devices sidebar lists physical devices and emulators. Toggle it with `Cmd+3`.
 
-Each device shows its model or name, whether it is an emulator or physical device, its API level, and a colored status dot. A check mark shows the active deploy target; click a row to make it active. Use **Refresh** to rescan devices.
+Each device shows its model or name, whether it is an emulator or physical device, its API level, and a colored status dot. A check mark shows the active deploy target; click a row to make it active, or Tab to the list, move with Up/Down, and press Enter or Space. Offline devices cannot be selected. Use **Refresh** to rescan devices.
 
 Virtual devices:
 
-- Launch an emulator from its row. Hover over a running emulator and click stop to shut it down.
+- Launch an emulator from its row. To shut a running emulator down, hover over it and click stop, press Shift+F10 on it in the connected list and choose **Stop Emulator**, or use stop on its virtual device row.
 - **New Virtual Device** creates an AVD, and can download a system image if needed.
 - **More options** on an AVD offers **Wipe Data…** and **Delete…**.
+- A virtual device's buttons appear when you hover over its row or Tab to them.
 
 Wireless debugging pairing is not built in. Pair with `adb pair` and `adb connect` in a terminal; the device then appears in the list.
 
@@ -392,6 +399,14 @@ Command Palette actions without a shortcut:
 - Copy MCP Setup Commands
 
 In the Logcat query bar: **Enter** commits a pill, **Up/Down** and **Tab** work with suggestions, **Backspace** in an empty bar removes the last pill, and **Esc** closes suggestions, then clears the query.
+
+### Keyboard navigation
+
+- **Lists** (projects, connected devices, builds): each list is one Tab stop. Up/Down, Home, and End move within it; Enter or Space selects. Shift+F10, or the context-menu key, opens the actions of the focused project or running emulator.
+- **Row action menus** (Shift+F10 or right-click): focus moves to the first item. Up/Down move, Enter runs an item, Esc or Tab closes the menu and returns focus to the row.
+- **More options** menus: Up/Down highlight an item, Enter runs it, Esc closes the menu.
+- **Dialogs** (Settings, Health Center, MCP Activity, Command Palette, confirmations, and the device and variant pickers): focus moves into the dialog and stays there while it is open. Esc closes it, and focus returns to where it was.
+- The shortcuts above do not run while a dialog or menu is open.
 
 ---
 

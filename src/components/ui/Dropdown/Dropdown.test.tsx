@@ -26,6 +26,17 @@ describe("Dropdown", () => {
     expect(screen.getByText("Paste")).not.toBeNull();
   });
 
+  it("an open menu is a menu of menuitems, so app shortcuts pause while it is open", () => {
+    render(() => <Dropdown trigger={<button>Open</button>} items={ITEMS} />);
+    fireEvent.click(screen.getByText("Open"));
+    expect(screen.getByRole("menu")).not.toBeNull();
+    expect(screen.getAllByRole("menuitem").map((i) => i.textContent)).toEqual([
+      "Copy",
+      "Paste",
+      "Delete",
+    ]);
+  });
+
   it("closes on second trigger click", () => {
     render(() => <Dropdown trigger={<button>Open</button>} items={ITEMS} />);
     fireEvent.click(screen.getByText("Open"));

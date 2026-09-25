@@ -8,7 +8,7 @@ import {
   formatError,
 } from "@/lib/tauri-api";
 import { deviceState, setSystemImages, setDeviceDefinitions } from "@/stores/device.store";
-import { Icon } from "@/components/ui";
+import { Icon, modalFocus } from "@/components/ui";
 
 export interface CreateDeviceDialogProps {
   onClose: () => void;
@@ -121,6 +121,10 @@ export function CreateDeviceDialog(props: CreateDeviceDialogProps): JSX.Element 
       >
         {/* Dialog */}
         <div
+          ref={(el) => modalFocus(el)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="New Virtual Device"
           onClick={(e) => e.stopPropagation()}
           style={{
             background: "var(--bg-tertiary)",

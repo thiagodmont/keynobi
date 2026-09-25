@@ -10,7 +10,7 @@ import { AndroidSdkStatus, JavaStatus } from "@/components/settings/ToolStatus";
 import { SettingRow, SettingToggle } from "@/components/settings/SettingRow";
 import { healthChecks, refreshHealthChecks } from "@/stores/health.store";
 import { showToast } from "@/components/ui";
-import { Icon } from "@/components/ui";
+import { Icon, modalFocus } from "@/components/ui";
 import type { CheckStatus } from "@/stores/health.store";
 
 const STEP_LABELS = ["Welcome", "Environment", "Privacy", "Workflow", "Summary"];
@@ -131,6 +131,7 @@ export function OnboardingWizard(): JSX.Element {
         }}
       >
         <div
+          ref={(el) => modalFocus(el)}
           role="dialog"
           aria-modal="true"
           aria-label="Setup wizard"

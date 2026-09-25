@@ -29,6 +29,23 @@ export function cancelledByLabel(actor: BuildActor | null | undefined): string |
   }
 }
 
+/**
+ * Who started a build, when an agent did, and who cancelled it, unless the app
+ * both started and cancelled it (the usual case, which needs no note).
+ */
+export function buildActorLabels(
+  origin: BuildActor | null | undefined,
+  cancelledBy: BuildActor | null | undefined
+): string[] {
+  const agentBuild = isAgent(origin);
+  const labels: string[] = [];
+  if (agentBuild) labels.push(startedByLabel(origin) ?? "");
+  if (cancelledBy && (agentBuild || cancelledBy.kind !== "app")) {
+    labels.push(cancelledByLabel(cancelledBy) ?? "");
+  }
+  return labels.filter(Boolean);
+}
+
 /** Why the app cannot build right now: "A build started by an agent (Claude Code) is running". */
 export function buildRunningLabel(actor: BuildActor | null | undefined): string {
   return actor?.kind === "agent"

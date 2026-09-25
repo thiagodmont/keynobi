@@ -1,13 +1,13 @@
-import { type JSX, For, Show } from "solid-js";
+import { type JSX, For, Show, createMemo } from "solid-js";
 import type { BuildRecord, BuildResult, BuildStatus } from "@/bindings";
 import { buildState } from "@/stores/build.store";
-import { Icon } from "@/components/ui";
-import { cancelledByLabel, isAgent, startedByLabel } from "@/lib/build-actor";
+import { Icon, Listbox } from "@/components/ui";
+import { buildActorLabels, isAgent, startedByLabel } from "@/lib/build-actor";
 
 export interface BuildHistoryPanelProps {
   /** ID of the currently selected history entry. null = current build. */
   selectedId: number | null;
-  /** Called when the user clicks a history entry. null = current build. */
+  /** Called when the user picks a history entry. null = current build. */
   onSelect: (record: BuildRecord | null) => void;
   /** Called when the user clicks the clear-history button. */
   onClear?: () => void;
@@ -43,17 +43,6 @@ export function errorCount(record: BuildRecord): number {
   return record.errors.filter((e) => e.severity === "error").length;
 }
 
-/** "Started by an agent (…)" and who cancelled it; nothing for a plain app build. */
-function actorLabels(record: BuildRecord): string[] {
-  const agentBuild = isAgent(record.origin);
-  const labels: string[] = [];
-  if (agentBuild) labels.push(startedByLabel(record.origin) ?? "");
-  if (record.cancelledBy && (agentBuild || record.cancelledBy.kind !== "app")) {
-    labels.push(cancelledByLabel(record.cancelledBy) ?? "");
-  }
-  return labels.filter(Boolean);
-}
-
 export function relativeTime(isoString: string): string {
   const diffMs = Date.now() - new Date(isoString).getTime();
   const sec = Math.floor(diffMs / 1000);
@@ -63,11 +52,30 @@ export function relativeTime(isoString: string): string {
   return `${Math.floor(sec / 86400)}d ago`;
 }
 
+type HistoryItem = { kind: "live" } | { kind: "record"; record: BuildRecord };
+
+const LIVE: HistoryItem = { kind: "live" };
+
+function itemKey(item: HistoryItem): string {
+  return item.kind === "live" ? "live" : `build-${item.record.id}`;
+}
+
+function recordOf(item: HistoryItem): BuildRecord | null {
+  return item.kind === "record" ? item.record : null;
+}
+
 export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
   const history = () => [...buildState.history].reverse();
   const currentTask = () => buildState.currentTask;
   const currentPhase = () => buildState.phase;
-  const isCurrentSelected = () => props.selectedId === null;
+
+  const items = createMemo<HistoryItem[]>(() => [
+    ...(currentPhase() === "running" && currentTask() ? [LIVE] : []),
+    ...history().map((record): HistoryItem => ({ kind: "record", record })),
+  ]);
+
+  const isSelected = (item: HistoryItem) =>
+    item.kind === "live" ? props.selectedId === null : props.selectedId === item.record.id;
 
   return (
     <div
@@ -100,6 +108,7 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
         <Show when={history().length > 0 && props.onClear}>
           <button
             title="Clear build history"
+            aria-label="Clear build history"
             onClick={() => props.onClear?.()}
             style={{
               background: "transparent",
@@ -123,121 +132,23 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
         </Show>
       </div>
 
-      {/* Current in-progress build */}
-      <Show when={currentPhase() === "running" && currentTask()}>
-        <button
-          onClick={() => props.onSelect(null)}
-          style={{
-            display: "block",
-            width: "100%",
-            padding: "5px 8px",
-            background: isCurrentSelected() ? "rgba(255,255,255,0.09)" : "transparent",
-            "border-left": `2px solid ${isCurrentSelected() ? "var(--info)" : "transparent"}`,
-            "border-right": "none",
-            "border-top": "none",
-            "border-bottom": "1px solid var(--border-subtle, rgba(255,255,255,0.05))",
-            cursor: "pointer",
-            "text-align": "left",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              "align-items": "center",
-              gap: "4px",
-              "margin-bottom": "2px",
-            }}
+      {/* The running build, then past builds newest first */}
+      <Listbox
+        label="Builds"
+        items={items()}
+        getKey={itemKey}
+        isSelected={isSelected}
+        onSelect={(item) => props.onSelect(item.kind === "live" ? null : item.record)}
+      >
+        {(item) => (
+          <Show
+            when={recordOf(item())}
+            fallback={<LiveBuildRow selected={props.selectedId === null} />}
           >
-            <span style={{ "font-size": "9px", color: "var(--info)" }}>⟳</span>
-            <span
-              style={{
-                "font-size": "9px",
-                color: "rgba(255,255,255,0.8)",
-                "font-weight": "600",
-                overflow: "hidden",
-                "text-overflow": "ellipsis",
-                "white-space": "nowrap",
-              }}
-            >
-              {currentTask()}
-            </span>
-          </div>
-          <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>running…</div>
-          <Show when={isAgent(buildState.origin)}>
-            <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>
-              {startedByLabel(buildState.origin)}
-            </div>
+            {(record) => <HistoryRow record={record()} selected={isSelected(item())} />}
           </Show>
-        </button>
-      </Show>
-
-      {/* History entries (newest first) */}
-      <For each={history()}>
-        {(record) => {
-          const icon = statusIcon(record.status);
-          const color = statusColor(record.status);
-          const dur = durationLabel(record.status);
-          const errs = errorCount(record);
-          const rel = relativeTime(record.startedAt);
-          const selected = () => props.selectedId === record.id;
-          const who = actorLabels(record);
-
-          return (
-            <button
-              onClick={() => props.onSelect(record)}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "5px 8px",
-                background: selected() ? "rgba(255,255,255,0.07)" : "transparent",
-                "border-left": `2px solid ${selected() ? color : "transparent"}`,
-                "border-right": "none",
-                "border-top": "none",
-                "border-bottom": "1px solid var(--border-subtle, rgba(255,255,255,0.05))",
-                cursor: "pointer",
-                "text-align": "left",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  "align-items": "center",
-                  gap: "4px",
-                  "margin-bottom": "2px",
-                }}
-              >
-                <span style={{ "font-size": "9px", color, "flex-shrink": "0" }}>{icon}</span>
-                <span
-                  style={{
-                    "font-size": "9px",
-                    color: "rgba(255,255,255,0.6)",
-                    overflow: "hidden",
-                    "text-overflow": "ellipsis",
-                    "white-space": "nowrap",
-                  }}
-                  title={record.task}
-                >
-                  {record.task}
-                </span>
-              </div>
-              <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>
-                {dur ? `${dur} · ` : ""}
-                {rel}
-              </div>
-              <Show when={errs > 0}>
-                <div style={{ "font-size": "9px", color: "var(--error)" }}>
-                  {errs} error{errs !== 1 ? "s" : ""}
-                </div>
-              </Show>
-              <For each={who}>
-                {(label) => (
-                  <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>{label}</div>
-                )}
-              </For>
-            </button>
-          );
-        }}
-      </For>
+        )}
+      </Listbox>
 
       {/* Empty state */}
       <Show when={history().length === 0 && currentPhase() !== "running"}>
@@ -253,6 +164,100 @@ export function BuildHistoryPanel(props: BuildHistoryPanelProps): JSX.Element {
           No builds yet
         </div>
       </Show>
+    </div>
+  );
+}
+
+function rowStyle(selected: boolean, accent: string): JSX.CSSProperties {
+  return {
+    display: "block",
+    width: "100%",
+    padding: "5px 8px",
+    background: selected ? "rgba(255,255,255,0.07)" : "transparent",
+    "border-left": `2px solid ${selected ? accent : "transparent"}`,
+    "border-bottom": "1px solid var(--border-subtle, rgba(255,255,255,0.05))",
+    "text-align": "left",
+  };
+}
+
+function LiveBuildRow(props: { selected: boolean }): JSX.Element {
+  return (
+    <div style={rowStyle(props.selected, "var(--info)")}>
+      <div
+        style={{
+          display: "flex",
+          "align-items": "center",
+          gap: "4px",
+          "margin-bottom": "2px",
+        }}
+      >
+        <span style={{ "font-size": "9px", color: "var(--info)" }}>⟳</span>
+        <span
+          style={{
+            "font-size": "9px",
+            color: "rgba(255,255,255,0.8)",
+            "font-weight": "600",
+            overflow: "hidden",
+            "text-overflow": "ellipsis",
+            "white-space": "nowrap",
+          }}
+        >
+          {buildState.currentTask}
+        </span>
+      </div>
+      <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>running…</div>
+      <Show when={isAgent(buildState.origin)}>
+        <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>
+          {startedByLabel(buildState.origin)}
+        </div>
+      </Show>
+    </div>
+  );
+}
+
+function HistoryRow(props: { record: BuildRecord; selected: boolean }): JSX.Element {
+  const color = () => statusColor(props.record.status);
+  const dur = () => durationLabel(props.record.status);
+  const errs = () => errorCount(props.record);
+
+  return (
+    <div style={rowStyle(props.selected, color())}>
+      <div
+        style={{
+          display: "flex",
+          "align-items": "center",
+          gap: "4px",
+          "margin-bottom": "2px",
+        }}
+      >
+        <span style={{ "font-size": "9px", color: color(), "flex-shrink": "0" }}>
+          {statusIcon(props.record.status)}
+        </span>
+        <span
+          style={{
+            "font-size": "9px",
+            color: "rgba(255,255,255,0.6)",
+            overflow: "hidden",
+            "text-overflow": "ellipsis",
+            "white-space": "nowrap",
+          }}
+          title={props.record.task}
+        >
+          {props.record.task}
+        </span>
+      </div>
+      <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>
+        {dur() ? `${dur()} · ` : ""}
+        {relativeTime(props.record.startedAt)}
+      </div>
+      <Show when={errs() > 0}>
+        <div style={{ "font-size": "9px", color: "var(--error)" }}>
+          {errs()} error{errs() !== 1 ? "s" : ""}
+        </div>
+      </Show>
+      <For each={buildActorLabels(props.record.origin, props.record.cancelledBy)}>
+        {(label) => <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>{label}</div>}
+      </For>
     </div>
   );
 }

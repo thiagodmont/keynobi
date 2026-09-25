@@ -1,0 +1,17 @@
+.avdActions {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+  opacity: 0;
+}
+
+.avdRow:hover .avdActions,
+.avdRow:focus-within .avdActions {
+  opacity: 1;
+}
+
+.avdActions button:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -1px;
+}

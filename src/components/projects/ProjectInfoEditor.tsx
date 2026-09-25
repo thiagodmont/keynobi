@@ -9,7 +9,7 @@ import { type JSX, createSignal, Show, createEffect } from "solid-js";
 import { Portal } from "solid-js/web";
 import { getProjectAppInfo, saveProjectAppInfo, formatError } from "@/lib/tauri-api";
 import { projectState } from "@/stores/project.store";
-import { showToast } from "@/components/ui";
+import { modalFocus, showToast } from "@/components/ui";
 import type { ProjectAppInfo } from "@/bindings";
 
 const MAX_I64 = 9223372036854775807n;
@@ -144,6 +144,10 @@ export function ProjectInfoEditor(): JSX.Element {
         >
           {/* Dialog box */}
           <div
+            ref={(el) => modalFocus(el, { onEscape: closeProjectInfoEditor })}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Project App Info"
             onClick={(e) => e.stopPropagation()}
             style={{
               background: "var(--bg-tertiary)",

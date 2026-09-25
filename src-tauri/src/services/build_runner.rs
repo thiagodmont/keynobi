@@ -2,6 +2,7 @@ use crate::models::build::{
     BuildError, BuildErrorSeverity, BuildLine, BuildLineKind, BuildLinesEvent, BuildRecord,
     BuildResult, BuildStartedEvent, BuildStatus,
 };
+use crate::models::error::AppError;
 use crate::services::build_lock::{self, BuildLock};
 use crate::services::build_parser;
 use crate::services::process_manager::{self, ProcessId, ProcessManager, ProcessTermination};
@@ -464,6 +465,32 @@ pub fn save_build_log_to(id: u32, raw_lines: &VecDeque<String>, build_log_dir: &
 /// Re-parses each raw line into a BuildLine and writes as JSON Lines. Best-effort — failures are silent.
 pub fn save_build_log(id: u32, raw_lines: &VecDeque<String>) {
     save_build_log_to(id, raw_lines, &data_dir().join("build-logs"));
+}
+
+/// Most lines returned for one saved build log.
+pub const MAX_BUILD_LOG_ENTRIES: usize = 10_000;
+
+/// Read the saved log of build `id`.
+///
+/// Every recorded build saves a log file, empty when Gradle printed nothing, so
+/// a missing file means rotation removed it: that is `NotFound`, not an empty log.
+pub async fn read_build_log_in(build_log_dir: &Path, id: u32) -> Result<Vec<BuildLine>, AppError> {
+    let path = build_log_dir.join(format!("build-{id}.jsonl"));
+    let content = match tokio::fs::read_to_string(&path).await {
+        Ok(c) => c,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Err(AppError::NotFound(format!(
+                "The log of build #{id} is no longer on disk"
+            )));
+        }
+        Err(e) => return Err(AppError::io(path.display(), e)),
+    };
+    Ok(content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .take(MAX_BUILD_LOG_ENTRIES)
+        .collect())
 }
 
 /// Rotate the build-logs directory:
@@ -2511,6 +2538,39 @@ mod tests {
         assert_eq!(loaded.len(), 5);
         assert_eq!(loaded[0].task, "task_1");
         assert_eq!(loaded[4].task, "task_5");
+    }
+
+    // ── read_build_log_in tests ────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn read_build_log_returns_the_saved_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut raw: VecDeque<String> = VecDeque::new();
+        raw.push_back("> Task :app:compileDebugKotlin".into());
+        raw.push_back("e: /src/Foo.kt:1:1: Unresolved reference: bar".into());
+        save_build_log_to(7, &raw, dir.path());
+
+        let lines = read_build_log_in(dir.path(), 7).await.unwrap();
+
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[1].kind, BuildLineKind::Error);
+    }
+
+    #[tokio::test]
+    async fn read_build_log_of_a_build_without_output_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        save_build_log_to(8, &VecDeque::new(), dir.path());
+
+        assert!(read_build_log_in(dir.path(), 8).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_build_log_removed_by_rotation_is_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let err = read_build_log_in(dir.path(), 9).await.unwrap_err();
+
+        assert!(matches!(err, AppError::NotFound(_)), "got {err:?}");
     }
 
     // ── save_build_log_to tests ────────────────────────────────────────────────

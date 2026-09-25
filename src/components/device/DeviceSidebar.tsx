@@ -11,6 +11,13 @@
 
 import { type JSX, Show, For, createSignal, onMount } from "solid-js";
 import {
+  ContextMenu,
+  Listbox,
+  MenuListItem,
+  type ListboxContextMenuRequest,
+} from "@/components/ui";
+import styles from "./DeviceSidebar.module.css";
+import {
   deviceState,
   setDevices,
   setAvds,
@@ -51,6 +58,14 @@ function connectionColor(state: Device["connectionState"]): string {
   }
 }
 
+function deviceLabel(device: Device): string {
+  return device.model ?? device.name;
+}
+
+function isRunningEmulator(device: Device): boolean {
+  return device.deviceKind === "emulator" && device.connectionState === "online";
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function DeviceSidebar(): JSX.Element {
@@ -60,6 +75,7 @@ export function DeviceSidebar(): JSX.Element {
   const [launchingName, setLaunchingName] = createSignal<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = createSignal(false);
   const [showDownloadDialog, setShowDownloadDialog] = createSignal(false);
+  const [deviceMenu, setDeviceMenu] = createSignal<ListboxContextMenuRequest<Device> | null>(null);
 
   onMount(() => {
     handleRefresh();
@@ -307,17 +323,28 @@ export function DeviceSidebar(): JSX.Element {
             </Show>
           </Show>
 
-          <For each={deviceState.devices}>
+          <Listbox
+            label="Connected devices"
+            items={deviceState.devices}
+            getKey={(device) => device.serial}
+            isSelected={(device) => deviceState.selectedSerial === device.serial}
+            isDisabled={(device) => device.connectionState !== "online"}
+            getOptionLabel={(device) => (collapsed() ? deviceLabel(device) : undefined)}
+            getOptionTitle={(device) => (collapsed() ? deviceLabel(device) : undefined)}
+            onSelect={(device) => pickDevice(device.serial)}
+            onContextMenu={(request) => {
+              if (isRunningEmulator(request.item)) setDeviceMenu(request);
+            }}
+          >
             {(device) => (
               <ConnectedDeviceRow
-                device={device}
-                selected={deviceState.selectedSerial === device.serial}
+                device={device()}
+                selected={deviceState.selectedSerial === device().serial}
                 collapsed={collapsed()}
-                onSelect={() => pickDevice(device.serial)}
-                onStop={() => handleStopDevice(device.serial)}
+                onStop={() => handleStopDevice(device().serial)}
               />
             )}
-          </For>
+          </Listbox>
 
           {/* Empty connected state — expanded only */}
           <Show
@@ -425,6 +452,28 @@ export function DeviceSidebar(): JSX.Element {
         </div>
       </div>
 
+      <Show when={deviceMenu()}>
+        {(open) => (
+          <ContextMenu
+            x={open().x}
+            y={open().y}
+            label={`Actions for ${deviceLabel(open().item)}`}
+            onClose={() => setDeviceMenu(null)}
+          >
+            <MenuListItem
+              role="menuitem"
+              onClick={() => {
+                const serial = open().item.serial;
+                setDeviceMenu(null);
+                void handleStopDevice(serial);
+              }}
+            >
+              Stop Emulator
+            </MenuListItem>
+          </ContextMenu>
+        )}
+      </Show>
+
       {/* Create Device Dialog — rendered outside sidebar so it's not clipped */}
       <Show when={showCreateDialog()}>
         <CreateDeviceDialog
@@ -456,7 +505,6 @@ function ConnectedDeviceRow(props: {
   device: Device;
   selected: boolean;
   collapsed: boolean;
-  onSelect: () => void;
   onStop: () => void;
 }): JSX.Element {
   const [hover, setHover] = createSignal(false);
@@ -468,10 +516,6 @@ function ConnectedDeviceRow(props: {
     <div
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      onClick={() => {
-        if (isOnline()) props.onSelect();
-      }}
-      title={props.collapsed ? (props.device.model ?? props.device.name) : undefined}
       style={{
         display: "flex",
         "align-items": props.collapsed ? "center" : "flex-start",
@@ -551,13 +595,14 @@ function ConnectedDeviceRow(props: {
           </div>
         </div>
 
-        {/* Stop button for running emulators — show on hover */}
+        {/* Pointer shortcut; from the keyboard, Stop Emulator is in the row's menu. */}
         <Show when={isEmulator() && isOnline() && hover()}>
           <button
             onClick={(e) => {
               e.stopPropagation();
               props.onStop();
             }}
+            tabIndex={-1}
             title="Stop emulator"
             style={{
               background: "none",
@@ -603,6 +648,7 @@ function AvdRow(props: {
 
   return (
     <div
+      class={styles.avdRow}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       title={props.collapsed ? props.avd.displayName : undefined}
@@ -682,110 +728,109 @@ function AvdRow(props: {
           </div>
         </div>
 
-        {/* Hover actions */}
-        <Show when={hover()}>
-          <div style={{ display: "flex", "align-items": "center", gap: "2px", "flex-shrink": "0" }}>
-            <Show
-              when={!props.isRunning}
-              fallback={
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    props.onStop();
-                  }}
-                  title="Stop emulator"
-                  style={{
-                    background: "none",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "var(--text-muted)",
-                    "font-size": "12px",
-                    padding: "2px 4px",
-                    "border-radius": "3px",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLElement).style.color = "var(--error)";
-                    (e.currentTarget as HTMLElement).style.background =
-                      "color-mix(in srgb, var(--error) 10%, transparent)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
-                    (e.currentTarget as HTMLElement).style.background = "none";
-                  }}
-                >
-                  ✕
-                </button>
-              }
-            >
+        {/* Shown on hover, and while one of them has keyboard focus */}
+        <div class={styles.avdActions}>
+          <Show
+            when={!props.isRunning}
+            fallback={
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  props.onLaunch();
+                  props.onStop();
                 }}
-                disabled={props.launching}
-                title={`Launch ${props.avd.displayName}`}
+                title="Stop emulator"
                 style={{
                   background: "none",
                   border: "none",
-                  padding: "2px",
-                  cursor: props.launching ? "default" : "pointer",
+                  cursor: "pointer",
                   color: "var(--text-muted)",
-                  display: "flex",
-                  "align-items": "center",
+                  "font-size": "12px",
+                  padding: "2px 4px",
                   "border-radius": "3px",
-                  opacity: props.launching ? "0.5" : "1",
                 }}
                 onMouseEnter={(e) => {
-                  if (!props.launching) {
-                    (e.currentTarget as HTMLElement).style.color = "var(--success)";
-                    (e.currentTarget as HTMLElement).style.background =
-                      "color-mix(in srgb, var(--success) 10%, transparent)";
-                  }
+                  (e.currentTarget as HTMLElement).style.color = "var(--error)";
+                  (e.currentTarget as HTMLElement).style.background =
+                    "color-mix(in srgb, var(--error) 10%, transparent)";
                 }}
                 onMouseLeave={(e) => {
                   (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
                   (e.currentTarget as HTMLElement).style.background = "none";
                 }}
               >
-                <Icon name="play" size={11} />
+                ✕
               </button>
-            </Show>
-
-            {/* Overflow menu button */}
-            <div onClick={(e) => e.stopPropagation()}>
-              <AvdContextMenu
-                onWipe={props.onWipe}
-                onDelete={props.onDelete}
-                trigger={
-                  <button
-                    type="button"
-                    title="More options"
-                    style={{
-                      background: "none",
-                      border: "none",
-                      cursor: "pointer",
-                      color: "var(--text-muted)",
-                      "font-size": "13px",
-                      padding: "2px 3px",
-                      "border-radius": "3px",
-                      "line-height": "1",
-                      display: "flex",
-                      "align-items": "center",
-                    }}
-                    onMouseEnter={(e) => {
-                      (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)";
-                    }}
-                    onMouseLeave={(e) => {
-                      (e.currentTarget as HTMLElement).style.background = "none";
-                    }}
-                  >
-                    ···
-                  </button>
+            }
+          >
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                props.onLaunch();
+              }}
+              disabled={props.launching}
+              title={`Launch ${props.avd.displayName}`}
+              style={{
+                background: "none",
+                border: "none",
+                padding: "2px",
+                cursor: props.launching ? "default" : "pointer",
+                color: "var(--text-muted)",
+                display: "flex",
+                "align-items": "center",
+                "border-radius": "3px",
+                opacity: props.launching ? "0.5" : "1",
+              }}
+              onMouseEnter={(e) => {
+                if (!props.launching) {
+                  (e.currentTarget as HTMLElement).style.color = "var(--success)";
+                  (e.currentTarget as HTMLElement).style.background =
+                    "color-mix(in srgb, var(--success) 10%, transparent)";
                 }
-              />
-            </div>
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.color = "var(--text-muted)";
+                (e.currentTarget as HTMLElement).style.background = "none";
+              }}
+            >
+              <Icon name="play" size={11} />
+            </button>
+          </Show>
+
+          {/* Overflow menu button */}
+          <div onClick={(e) => e.stopPropagation()}>
+            <AvdContextMenu
+              onWipe={props.onWipe}
+              onDelete={props.onDelete}
+              trigger={
+                <button
+                  type="button"
+                  title="More options"
+                  aria-label={`More options for ${props.avd.displayName}`}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--text-muted)",
+                    "font-size": "13px",
+                    padding: "2px 3px",
+                    "border-radius": "3px",
+                    "line-height": "1",
+                    display: "flex",
+                    "align-items": "center",
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = "var(--bg-tertiary)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = "none";
+                  }}
+                >
+                  ···
+                </button>
+              }
+            />
           </div>
-        </Show>
+        </div>
       </Show>
     </div>
   );

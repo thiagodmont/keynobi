@@ -116,6 +116,7 @@ export function Dropdown(props: DropdownProps): JSX.Element {
         <Portal>
           <div
             ref={menuRef}
+            role="menu"
             class={styles.menu}
             style={{
               left: `${menuPos.x}px`,
@@ -136,6 +137,7 @@ export function Dropdown(props: DropdownProps): JSX.Element {
                     return (
                       <button
                         type="button"
+                        role="menuitem"
                         class={[
                           styles.item,
                           item.disabled ? styles.itemDisabled : "",

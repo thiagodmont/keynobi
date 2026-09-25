@@ -10,7 +10,7 @@ import { type JSX, Show, For, createSignal, createMemo, onMount } from "solid-js
 import { Portal } from "solid-js/web";
 import type { AvailableSystemImage } from "@/bindings";
 import { listAvailableSystemImages, downloadSystemImage } from "@/lib/tauri-api";
-import { Icon } from "@/components/ui";
+import { Icon, modalFocus } from "@/components/ui";
 
 export interface DownloadSystemImageDialogProps {
   onClose: () => void;
@@ -125,6 +125,16 @@ export function DownloadSystemImageDialog(props: DownloadSystemImageDialogProps)
       >
         {/* Dialog */}
         <div
+          ref={(el) =>
+            modalFocus(el, {
+              onEscape: () => {
+                if (!downloading() || downloading()!.done) props.onClose();
+              },
+            })
+          }
+          role="dialog"
+          aria-modal="true"
+          aria-label="Download System Image"
           onClick={(e) => e.stopPropagation()}
           style={{
             background: "var(--bg-tertiary)",
