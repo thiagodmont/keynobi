@@ -18,6 +18,7 @@ export type { LogLevel } from "./LogLevel";
 
 // Health
 export type { SystemHealthReport } from "./SystemHealthReport";
+export type { JdkSource } from "./JdkSource";
 
 // Build system
 export type { BuildLine } from "./BuildLine";

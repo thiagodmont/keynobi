@@ -844,8 +844,9 @@ pub fn build_env_vars(
     gradle_root: &Path,
 ) -> Vec<(String, String)> {
     let mut env = Vec::new();
-    if let Some(java_home) = settings.java.home.as_deref() {
-        env.push(("JAVA_HOME".into(), java_home.into()));
+    if let Some(java_home) = crate::services::jdk::java_home_for_gradle(settings, Some(gradle_root))
+    {
+        env.push(("JAVA_HOME".into(), java_home));
     }
     if let Some(sdk) = settings.android.sdk_path.as_deref() {
         env.push(("ANDROID_HOME".into(), sdk.into()));
@@ -1096,6 +1097,52 @@ pub async fn run_task(
 mod tests {
     use super::*;
     use crate::models::build::BuildLineKind;
+
+    // ── build_env_vars tests ───────────────────────────────────────────────────
+
+    fn java_home_env(env: &[(String, String)]) -> Option<&str> {
+        env.iter()
+            .find(|(k, _)| k == "JAVA_HOME")
+            .map(|(_, v)| v.as_str())
+    }
+
+    #[test]
+    fn build_env_uses_the_gradle_properties_jdk_over_the_setting() {
+        let project = tempfile::tempdir().unwrap();
+        std::fs::write(
+            project.path().join("gradle.properties"),
+            "org.gradle.java.home=/opt/jdk-21\n",
+        )
+        .unwrap();
+        let mut settings = crate::models::settings::AppSettings::default();
+        settings.java.home = Some("/opt/jdk-11".into());
+
+        let env = build_env_vars(&settings, project.path());
+
+        assert_eq!(java_home_env(&env), Some("/opt/jdk-21"));
+    }
+
+    #[test]
+    fn build_env_expands_a_tilde_in_the_java_home_setting() {
+        let project = tempfile::tempdir().unwrap();
+        let mut settings = crate::models::settings::AppSettings::default();
+        settings.java.home = Some("~/jdks/17".into());
+
+        let env = build_env_vars(&settings, project.path());
+
+        let expected = dirs::home_dir().unwrap().join("jdks/17");
+        assert_eq!(java_home_env(&env), Some(expected.to_str().unwrap()));
+    }
+
+    #[test]
+    fn build_env_leaves_java_home_unset_when_no_jdk_resolves() {
+        let project = tempfile::tempdir().unwrap();
+        let env = build_env_vars(
+            &crate::models::settings::AppSettings::default(),
+            project.path(),
+        );
+        assert_eq!(java_home_env(&env), None);
+    }
 
     // ── push_build_error tests ─────────────────────────────────────────────────
 

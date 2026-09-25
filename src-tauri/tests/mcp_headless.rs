@@ -91,6 +91,52 @@ exit 1"#,
 }
 
 #[test]
+fn health_project_info_and_builds_use_the_jdk_from_gradle_properties() {
+    let sandbox = Sandbox::new();
+    let jdk = sandbox.home.join("jdks").join("21");
+    headless::write_fake_jdk(&jdk, "21.0.8");
+    std::fs::write(
+        sandbox.project.join("gradle.properties"),
+        format!("org.gradle.java.home={}\n", jdk.display()),
+    )
+    .unwrap();
+    let seen = sandbox.project.join("java-home.txt");
+    sandbox.write_gradlew(&format!(
+        "echo \"$JAVA_HOME\" > '{}'\necho 'BUILD SUCCESSFUL in 1s'",
+        seen.display()
+    ));
+    let mut client = sandbox.start();
+
+    let expected = json!({
+        "java_home": jdk.to_string_lossy(),
+        "source": "projectGradleProperties",
+        "major_version": 21,
+    });
+    for (tool, pointer) in [
+        ("run_health_check", "/checks/java"),
+        ("get_project_info", "/java"),
+    ] {
+        let out = client.call_tool(tool, json!({}));
+        assert!(!out.is_error, "{}", out.text);
+        let value: serde_json::Value = serde_json::from_str(&out.text).unwrap();
+        let java = value
+            .pointer(pointer)
+            .unwrap_or_else(|| panic!("{}", out.text));
+        assert_eq!(java["ok"], true, "{tool}: {java}");
+        for key in ["java_home", "source", "major_version"] {
+            assert_eq!(java[key], expected[key], "{tool}.{key}: {java}");
+        }
+    }
+
+    let build = client.call_tool("run_gradle_task", json!({ "task": "assembleDebug" }));
+    assert!(!build.is_error, "{}", build.text);
+    assert_eq!(
+        std::fs::read_to_string(&seen).unwrap().trim(),
+        jdk.to_string_lossy()
+    );
+}
+
+#[test]
 fn run_gradle_task_succeeds_when_the_wrapper_succeeds() {
     let sandbox = Sandbox::new();
     let mut client = sandbox.start();

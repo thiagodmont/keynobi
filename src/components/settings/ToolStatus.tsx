@@ -242,7 +242,7 @@ export function JavaStatus(): JSX.Element {
   async function handleDetect() {
     setDetecting(true);
     try {
-      // detect_java_path now tries: process env → login shell → /Library/Java/…
+      // detect_java_path tries: process env → Android Studio's JDK → newest JDK 17+ → login shell
       const path = await detectJavaPath();
       if (path) {
         updateSetting("java", "home", path);

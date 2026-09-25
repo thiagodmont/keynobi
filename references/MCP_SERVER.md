@@ -134,6 +134,8 @@ Every `adb` input command has a 30 s timeout; UI Automator dumps have 25 s.
 | `get_project_info` | R |
 | `run_health_check` | R |
 
+Both return the same `java` object from `services/jdk.rs`, the JDK Gradle builds use: `ok`, `java_home`, `source` (`userGradleProperties`, `projectGradleProperties`, `settings`, `androidStudio`, `installedJdk`, or `null` when `java` on `PATH` was probed), `major_version`, `version`, `bin`, `warning` (JDK below 17), and `hint`. In `run_health_check` it is `checks.java`. See `DOMAIN_PATTERNS.md` § Settings → JDK Resolution and Health.
+
 ## Prompts and Resources
 
 Prompts:
@@ -201,6 +203,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 | `device_inspector.rs` | Direct | Collects screenshots, device properties, app package details, and memory information. |
 | `fs_manager.rs` | Headless setup | Detects the Gradle root for a selected project path. |
 | `health_inspector.rs` | Direct | Checks Java, Android SDK, ADB, Gradle wrapper, and project availability. |
+| `jdk.rs` | Direct | Resolves the JDK Gradle uses and probes `java -version`; shared with GUI Health and the build environment. |
 | `log_pipeline.rs` | Indirect | Enriches raw logcat lines with package, category, JSON, crash, and stats metadata. |
 | `log_store.rs` | Indirect | Stores bounded logcat entries and supports filtered MCP log queries. |
 | `log_stream.rs` | Indirect | Applies backend-side stream filters before logcat batches reach the frontend. |

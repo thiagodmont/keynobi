@@ -1,8 +1,10 @@
 use crate::models::health::SystemHealthReport;
+use crate::models::settings::AppSettings;
+use crate::services::jdk::{self, JdkSearchRoots};
 use crate::services::settings_manager;
 use crate::utils::process::{output_with_timeout, TOOL_PROBE_TIMEOUT};
 use crate::FsState;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Expand a leading `~/` to the real home directory.
 /// Rust's `Path::new` does NOT interpret `~` — it's a shell shorthand only.
@@ -26,39 +28,24 @@ pub async fn run_health_checks(
         (fs.project_root.clone(), fs.gradle_root.clone())
     };
 
-    // ── Java probe ────────────────────────────────────────────────────────────
-    // Prefer the user-configured Java home; fall back to whatever `java` is on
-    // PATH (the bundled JBR handles running the LSP itself, but Gradle tasks
-    // need a separate JDK for compilation).
-    let java_bin: PathBuf = settings
-        .java
-        .home
-        .as_deref()
-        .map(|h| expand_tilde(h).join("bin").join("java"))
-        .unwrap_or_else(|| PathBuf::from("java"));
-
-    let java_bin_used = java_bin.to_string_lossy().into_owned();
-
-    let java_output = output_with_timeout(
-        tokio::process::Command::new(&java_bin)
-            .arg("-version")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped()),
-        TOOL_PROBE_TIMEOUT,
+    Ok(system_report(
+        &settings,
+        project_root.as_deref(),
+        gradle_root.as_deref(),
+        &JdkSearchRoots::system(),
     )
-    .await;
+    .await)
+}
 
-    let (java_executable_found, java_version) = match java_output {
-        Ok(out) if out.status.success() || !out.stderr.is_empty() => {
-            // `java -version` prints to stderr — grab the first non-empty line.
-            let ver = String::from_utf8_lossy(&out.stderr)
-                .lines()
-                .find(|l| !l.trim().is_empty())
-                .map(str::to_owned);
-            (true, ver)
-        }
-        _ => (false, None),
-    };
+async fn system_report(
+    settings: &AppSettings,
+    project_root: Option<&Path>,
+    gradle_root: Option<&Path>,
+    jdk_roots: &JdkSearchRoots,
+) -> SystemHealthReport {
+    // ── Java probe ────────────────────────────────────────────────────────────
+    // The same JDK resolution and probe as Gradle builds and MCP health.
+    let java = jdk::check_java(settings, gradle_root.or(project_root), jdk_roots).await;
 
     // ── Android SDK probe ─────────────────────────────────────────────────────
     // Expand `~/` before any filesystem check — Rust does NOT expand the tilde
@@ -141,10 +128,16 @@ pub async fn run_health_checks(
     .map(|o| o.status.success())
     .unwrap_or(false);
 
-    Ok(SystemHealthReport {
-        java_executable_found,
-        java_version,
-        java_bin_used,
+    SystemHealthReport {
+        java_executable_found: java.found,
+        java_version: java.version_line,
+        java_bin_used: java.bin.to_string_lossy().into_owned(),
+        java_major_version: java.major,
+        java_home: java
+            .jdk
+            .as_ref()
+            .map(|j| j.home.to_string_lossy().into_owned()),
+        java_source: java.jdk.map(|j| j.source),
         android_sdk_valid,
         adb_found,
         adb_version,
@@ -152,30 +145,94 @@ pub async fn run_health_checks(
         gradle_wrapper_found,
         lsp_system_dir_ok,
         studio_command_found,
-    })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::{Path, PathBuf};
+    use crate::models::health::JdkSource;
+    use crate::services::health_inspector;
+    use crate::services::jdk::test_support::*;
 
-    #[test]
-    fn java_bin_defaults_to_java_when_no_home() {
-        // Without a configured home the binary is just "java".
-        let bin: PathBuf = None::<&str>
-            .map(|h| Path::new(h).join("bin").join("java"))
-            .unwrap_or_else(|| PathBuf::from("java"));
-        assert_eq!(bin, PathBuf::from("java"));
+    /// GUI and MCP health, run on the same inputs, against a fake SDK so no
+    /// real `adb` runs.
+    async fn gui_and_mcp_reports(
+        root: &Path,
+        settings: &mut AppSettings,
+        project: &Path,
+        roots: &JdkSearchRoots,
+    ) -> (SystemHealthReport, health_inspector::HealthReport) {
+        let sdk = root.join("sdk");
+        write_script(
+            &sdk.join("platform-tools").join("adb"),
+            "echo 'Android Debug Bridge version 1.0.41'",
+        );
+        settings.android.sdk_path = Some(sdk.to_string_lossy().into_owned());
+        let gui = system_report(settings, Some(project), Some(project), roots).await;
+        let mcp =
+            health_inspector::run_health_check(settings, Some(project), Some(project), roots).await;
+        (gui, mcp)
     }
 
-    #[test]
-    fn java_bin_uses_home_when_configured() {
-        let home = "/usr/lib/jvm/java-17";
-        let bin: PathBuf = Some(home)
-            .map(|h| Path::new(h).join("bin").join("java"))
-            .unwrap_or_else(|| PathBuf::from("java"));
-        assert_eq!(bin, PathBuf::from("/usr/lib/jvm/java-17/bin/java"));
+    fn assert_same_java(gui: &SystemHealthReport, mcp: &health_inspector::HealthReport) {
+        let java = &mcp.java;
+        assert_eq!(gui.java_executable_found, java.found);
+        assert_eq!(gui.java_version, java.version_line);
+        assert_eq!(gui.java_major_version, java.major);
+        assert_eq!(gui.java_bin_used, java.bin.to_string_lossy());
+        assert_eq!(
+            gui.java_home.as_deref().map(PathBuf::from),
+            java.jdk.as_ref().map(|j| j.home.clone())
+        );
+        assert_eq!(gui.java_source, java.jdk.as_ref().map(|j| j.source));
+    }
+
+    #[tokio::test]
+    async fn gui_and_mcp_health_choose_the_same_jdk() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let roots = JdkSearchRoots {
+            gradle_user_home: None,
+            application_dirs: vec![root.join("Applications")],
+            jvm_dir: Some(root.join("jvms")),
+        };
+        fake_installed_jdk(&root.join("jvms"), "jdk-11.jdk", "11.0.21");
+        let jbr = fake_jbr(&root.join("Applications"), "Android Studio.app", "21.0.8");
+        let project = root.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+
+        let (gui, mcp) =
+            gui_and_mcp_reports(&root, &mut AppSettings::default(), &project, &roots).await;
+
+        assert_same_java(&gui, &mcp);
+        assert!(gui.java_executable_found);
+        assert_eq!(gui.java_major_version, Some(21));
+        assert_eq!(gui.java_source, Some(JdkSource::AndroidStudio));
+        assert_eq!(
+            gui.java_home.as_deref(),
+            Some(jbr.to_string_lossy().as_ref())
+        );
+    }
+
+    #[tokio::test]
+    async fn gui_and_mcp_health_both_report_a_java_stub_as_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let stub_home = root.join("stub");
+        write_script(&stub_home.join("bin").join("java"), STUB_JAVA);
+        let project = root.join("project");
+        std::fs::create_dir_all(&project).unwrap();
+        let mut settings = AppSettings::default();
+        settings.java.home = Some(stub_home.to_string_lossy().into_owned());
+
+        let (gui, mcp) =
+            gui_and_mcp_reports(&root, &mut settings, &project, &JdkSearchRoots::default()).await;
+
+        assert_same_java(&gui, &mcp);
+        assert!(!gui.java_executable_found);
+        assert!(!mcp.all_ok);
+        assert_eq!(gui.java_version, None);
     }
 
     #[test]

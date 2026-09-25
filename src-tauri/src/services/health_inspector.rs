@@ -1,11 +1,12 @@
 use crate::models::settings::AppSettings;
+use crate::services::jdk::{self, JavaCheck, JdkSearchRoots};
 use crate::utils::process::{output_with_timeout, TOOL_PROBE_TIMEOUT};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct HealthReport {
     pub all_ok: bool,
-    pub java_ok: bool,
+    pub java: JavaCheck,
     pub sdk_ok: bool,
     pub adb_ok: bool,
     pub gradlew_ok: bool,
@@ -18,30 +19,12 @@ pub async fn run_health_check(
     settings: &AppSettings,
     project_root: Option<&Path>,
     gradle_root: Option<&Path>,
+    jdk_roots: &JdkSearchRoots,
 ) -> HealthReport {
-    let java_bin = settings
-        .java
-        .home
-        .as_deref()
-        .map(|h| {
-            if let Some(rest) = h.strip_prefix("~/") {
-                if let Some(home) = dirs::home_dir() {
-                    return home.join(rest).join("bin").join("java");
-                }
-            }
-            PathBuf::from(h).join("bin").join("java")
-        })
-        .unwrap_or_else(|| PathBuf::from("java"));
     let adb = crate::services::adb_manager::get_adb_path(settings);
 
-    let (java_status, adb_status) = tokio::join!(
-        async {
-            output_with_timeout(
-                tokio::process::Command::new(&java_bin).arg("-version"),
-                TOOL_PROBE_TIMEOUT,
-            )
-            .await
-        },
+    let (java, adb_status) = tokio::join!(
+        jdk::check_java(settings, gradle_root.or(project_root), jdk_roots),
         async {
             output_with_timeout(
                 tokio::process::Command::new(&adb).arg("version"),
@@ -50,7 +33,7 @@ pub async fn run_health_check(
             .await
         },
     );
-    let java_ok = java_status.map(|o| o.status.success()).unwrap_or(false);
+    let java_ok = java.found;
     let adb_ok = adb_status.map(|o| o.status.success()).unwrap_or(false);
 
     let detected_sdk = detect_sdk_path(settings.android.sdk_path.as_deref(), project_root);
@@ -74,7 +57,7 @@ pub async fn run_health_check(
 
     HealthReport {
         all_ok: java_ok && sdk_ok && adb_ok && gradlew_ok && project_root.is_some(),
-        java_ok,
+        java,
         sdk_ok,
         adb_ok,
         gradlew_ok,

@@ -21,6 +21,7 @@ use crate::services::build_runner::{self, BuildState};
 use crate::services::crash_inspector;
 use crate::services::device_inspector;
 use crate::services::health_inspector;
+use crate::services::jdk;
 use crate::services::logcat::{self, LogcatFilter, LogcatState};
 use crate::services::mcp_activity::{self, McpActivityEntry};
 use crate::services::process_manager::ProcessManager;
@@ -2871,7 +2872,7 @@ impl AndroidMcpServer {
 
     /// Get information about the open Android project.
     #[tool(
-        description = "Get the currently open Android project name, path, and detected Gradle root.",
+        description = "Get the currently open Android project name, path, detected Gradle root, and the JDK Gradle builds use (path, major version, and where it was found).",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -2879,19 +2880,30 @@ impl AndroidMcpServer {
         )
     )]
     async fn get_project_info(&self) -> Result<CallToolResult, McpError> {
-        let fs = self.fs_state.0.lock().await;
-        match fs.project_root.as_ref() {
+        let (project_root, gradle_root) = {
+            let fs = self.fs_state.0.lock().await;
+            (fs.project_root.clone(), fs.gradle_root.clone())
+        };
+        let (settings, _) = settings_manager::load_settings();
+        let java = jdk::check_java(
+            &settings,
+            gradle_root.as_deref().or(project_root.as_deref()),
+            &jdk::JdkSearchRoots::system(),
+        )
+        .await
+        .to_json();
+        match project_root.as_ref() {
             None => Ok(CallToolResult::structured(json!({
                 "open": false,
-                "hint": "No project open. Open an Android project in the companion app, or launch with --project /path/to/project."
+                "hint": "No project open. Open an Android project in the companion app, or launch with --project /path/to/project.",
+                "java": java,
             }))),
             Some(root) => {
                 let name = root
                     .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .unwrap_or_else(|| root.to_string_lossy().to_string());
-                let gradle = fs
-                    .gradle_root
+                let gradle = gradle_root
                     .as_ref()
                     .map(|g| g.to_string_lossy().to_string());
                 Ok(CallToolResult::structured(json!({
@@ -2899,6 +2911,7 @@ impl AndroidMcpServer {
                     "name": name,
                     "path": root.to_string_lossy(),
                     "gradle_root": gradle,
+                    "java": java,
                 })))
             }
         }
@@ -2924,6 +2937,7 @@ impl AndroidMcpServer {
             &settings,
             project_root.as_deref(),
             gradle_root.as_deref(),
+            &jdk::JdkSearchRoots::system(),
         )
         .await;
 
@@ -2940,10 +2954,7 @@ impl AndroidMcpServer {
         Ok(CallToolResult::structured(json!({
             "all_ok": report.all_ok,
             "checks": {
-                "java": {
-                    "ok": report.java_ok,
-                    "hint": if report.java_ok { serde_json::Value::Null } else { json!("Set java.home in Settings → Tools") }
-                },
+                "java": report.java.to_json(),
                 "android_sdk": {
                     "ok": report.sdk_ok,
                     "detected_path": report.detected_sdk,
