@@ -1,0 +1,76 @@
+src-tauri/src/services/mapping_snapshots.rs
+  s_1e114e823b9048::t_fb4949dbc087ce 1-231,233-426,432-548,553-724,729-753,755-838
+  s_1e114e823b9048::t_8ab63ea37ff8d3 232,427-431,549-552,725-728
+  s_1e114e823b9048::t_d936dfcc1f7131 754
+src/bindings/BuildRecord.ts
+  s_1e114e823b9048::t_4b71e6e71ec5c8 6,28-33
+src-tauri/src/services/mod.rs
+  s_1e114e823b9048::t_d7f34c0b1ef117 19
+src/test/mock-backend/build.ts
+  s_1e114e823b9048::t_b6963bd1b8b6d0 9,73,87,94-108
+  s_1e114e823b9048::t_8343aedb6efb1f 109-110
+src/stores/build.store.test.ts
+  s_1e114e823b9048::t_98e7131edb0487 130,153,175
+src/components/build/BuildHistoryPanel.test.ts
+  s_1e114e823b9048::t_98e7131edb0487 40
+src/bindings/index.ts
+  s_1e114e823b9048::t_aa164a3ad7c40c 40
+src/components/build/MappingSnapshotSummary.test.tsx
+  s_1e114e823b9048::t_de99923bf0d511 1-77
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_4b71e6e71ec5c8 22,355,373,394,418,452,478-493,521-536,552-567
+src-tauri/src/models/build.rs
+  s_1e114e823b9048::t_4b84d8c0f9fb9e 297-313
+  s_1e114e823b9048::t_55a1fe5bbb03c2 155-177
+src/components/build/BuildHistoryView.tsx
+  s_1e114e823b9048::t_83da866c092401 52-54
+  s_1e114e823b9048::t_2259e4f35901ca 33-34
+  s_1e114e823b9048::t_83dc5e9674c36b 10
+src/bindings/MappingSnapshot.ts
+  s_1e114e823b9048::t_8ab63ea37ff8d3 1-24
+src-tauri/src/services/build_runner.rs
+  s_1e114e823b9048::t_06dd20a3f83c21 1171-1172,1176-1179,1181,1186
+  s_1e114e823b9048::t_4ce7d6df94d50a 1083-1095
+  s_1e114e823b9048::t_68939ec8a34223 1746
+  s_1e114e823b9048::t_4f71f5ea902713 1151
+  s_1e114e823b9048::t_367125d8daa91b 1583-1586
+  s_1e114e823b9048::t_77bf7c91923415 74-77,84,91,99,104-105,116
+  s_1e114e823b9048::t_589ba8d74b18e0 3060-3096,3100-3166,3168-3188,3191-3250,3256-3258
+  s_1e114e823b9048::t_8ab63ea37ff8d3 3097-3099,3189-3190,3251-3255
+  s_1e114e823b9048::t_0993b3283ac753 2945,2960,3449,3477,3516,3574,3604
+  s_1e114e823b9048::t_f0f8a10115acb5 912-914,930,932
+  s_1e114e823b9048::t_51847eca7367f9 9
+  s_1e114e823b9048::t_9dcdb5c9a8ce3a 1132,1134
+  s_1e114e823b9048::t_7487a2aa67d93e 1856
+  s_1e114e823b9048::t_b945b643ad58fa 2768,2790,2823,2852,2939,3348
+  s_1e114e823b9048::t_24bf3eb58e5a81 880-882
+  s_1e114e823b9048::t_ac882d4ed38a12 3167
+  s_1e114e823b9048::t_ecc01ce59b592a 1479
+src/test/factories/build.ts
+  s_1e114e823b9048::t_3b32cc89b7072f 1-8,49-60
+src-tauri/src/commands/build.rs
+  s_1e114e823b9048::t_e8f91873205a1d 290
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_fbe45af08dce0c 227-245,535,547,551
+scripts/ipc-payloads.test.mjs
+  s_1e114e823b9048::t_aba3ef97e424be 309-311
+src/components/build/MappingSnapshotSummary.tsx
+  s_1e114e823b9048::t_c50e4cdbd3e47b 1-34,38-48
+  s_1e114e823b9048::t_eb85c9f3363243 35-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "af41f6c77a367a98c0b180b5e71dc197658bcc6a",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
