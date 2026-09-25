@@ -20,6 +20,8 @@ const A11Y_STORY_IDS = [
   "design-system-components-dockedpanel--log-entry-detail",
   "design-system-components-alert--variants",
   "design-system-components-emptystate--densities",
+  "design-system-components-listbox--devices",
+  "design-system-components-contextmenu--project-actions",
   "design-system-foundations--overview",
 ];
 

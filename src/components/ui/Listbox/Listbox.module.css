@@ -1,0 +1,21 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.option {
+  border-radius: 6px;
+  cursor: pointer;
+  min-width: 0;
+  outline: none;
+}
+
+.option[aria-disabled="true"] {
+  cursor: default;
+}
+
+.option:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}

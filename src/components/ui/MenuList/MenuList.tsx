@@ -6,6 +6,7 @@ export interface MenuListProps {
   class?: string;
   style?: JSX.CSSProperties;
   role?: JSX.HTMLAttributes<HTMLDivElement>["role"];
+  "aria-label"?: string;
   listRef?: (el: HTMLDivElement) => void;
   surface?: "floating";
 }
@@ -35,6 +36,7 @@ export function MenuList(props: MenuListProps): JSX.Element {
     <div
       ref={props.listRef}
       role={props.role}
+      aria-label={props["aria-label"]}
       class={[styles.root, props.surface === "floating" ? styles.floatingSurface : "", props.class]
         .filter(Boolean)
         .join(" ")}

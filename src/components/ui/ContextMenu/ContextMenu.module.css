@@ -1,0 +1,9 @@
+.root {
+  display: contents;
+}
+
+.menu {
+  position: fixed;
+  min-width: 160px;
+  z-index: 1000;
+}

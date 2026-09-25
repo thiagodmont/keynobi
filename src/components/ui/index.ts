@@ -56,7 +56,16 @@ export {
 export { Dropdown, type DropdownProps, type MenuItem } from "./Dropdown";
 export { Toolbar, type ToolbarProps, type ToolbarItemDef } from "./Toolbar";
 export { IconButton, type IconButtonProps } from "./IconButton";
-export { DialogHost, showDialog, type DialogButton, type DialogButtonStyle } from "./Dialog";
+export {
+  DialogHost,
+  showDialog,
+  modalFocus,
+  type DialogButton,
+  type DialogButtonStyle,
+  type ModalFocusOptions,
+} from "./Dialog";
+export { ContextMenu, type ContextMenuProps } from "./ContextMenu";
+export { Listbox, type ListboxContextMenuRequest, type ListboxProps } from "./Listbox";
 export {
   ToastContainer,
   showToast,

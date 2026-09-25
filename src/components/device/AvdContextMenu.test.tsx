@@ -19,7 +19,7 @@ describe("AvdContextMenu", () => {
     const onWipe = vi.fn();
     const onDelete = vi.fn();
     renderMenu(onWipe, onDelete);
-    fireEvent.click(screen.getByRole("button", { name: /Wipe Data/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Wipe Data/i }));
     expect(onWipe).toHaveBeenCalledOnce();
     expect(onDelete).not.toHaveBeenCalled();
   });
@@ -28,7 +28,7 @@ describe("AvdContextMenu", () => {
     const onWipe = vi.fn();
     const onDelete = vi.fn();
     renderMenu(onWipe, onDelete);
-    fireEvent.click(screen.getByRole("button", { name: /Delete/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Delete/i }));
     expect(onDelete).toHaveBeenCalledOnce();
     expect(onWipe).not.toHaveBeenCalled();
   });
@@ -36,7 +36,7 @@ describe("AvdContextMenu", () => {
   it("closes menu after item click", () => {
     const onWipe = vi.fn();
     renderMenu(onWipe);
-    fireEvent.click(screen.getByRole("button", { name: /Wipe Data/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Wipe Data/i }));
     expect(screen.queryByRole("button", { name: /Wipe Data/i })).toBeNull();
   });
 });
