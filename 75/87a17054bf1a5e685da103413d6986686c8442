@@ -1,0 +1,21 @@
+references/CODE_PATTERN.md
+  s_1e114e823b9048::t_5da7930c4350d6 299
+src-tauri/src/services/process_manager.rs
+  s_1e114e823b9048::t_e9eb79f3a58a13 1081-1083,1085
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7587a17054bf1a5e685da103413d6986686c8442",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
