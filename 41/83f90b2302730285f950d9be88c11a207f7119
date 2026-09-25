@@ -1,0 +1,66 @@
+src/components/ui/Listbox/Listbox.stories.tsx
+  s_1e114e823b9048::t_d148209bbca28c 1-68
+src/components/ui/Dialog/modal-focus.ts
+  s_1e114e823b9048::t_8bbe331cd2c9ab 1-59
+src/components/ui/MenuList/MenuList.module.css
+  s_1e114e823b9048::t_853eda937c00bb 23,28-30
+  s_1e114e823b9048::t_036f086d9626ee 31-32
+src/components/ui/Dropdown/Dropdown.test.tsx
+  s_1e114e823b9048::t_17756879c9b988 29-39
+src/components/ui/Dialog/Dialog.tsx
+  s_1e114e823b9048::t_32186b7e52ec39 61
+  s_1e114e823b9048::t_24dc60374a2fda 1,3
+src/components/ui/Listbox/Listbox.test.tsx
+  s_1e114e823b9048::t_3f1de7d670e282 1-147
+e2e/storybook/design-system.spec.ts
+  s_1e114e823b9048::t_5076ac96b1acfd 23-24
+src/components/ui/Dropdown/Dropdown.tsx
+  s_1e114e823b9048::t_b9b4c80894b047 140
+  s_1e114e823b9048::t_c9f761f5e42781 119
+src/components/ui/ContextMenu/ContextMenu.tsx
+  s_1e114e823b9048::t_3b9bcb5c1a8055 1-95
+src/components/ui/Listbox/Listbox.tsx
+  s_1e114e823b9048::t_c49c659e07a92c 1
+  s_1e114e823b9048::t_1146677b073a91 2-24,27-42,46-47,49,51-109,120-122,124,129,132,134-137,139-148
+  s_1e114e823b9048::t_0aef14ffbc4e01 110-112,119,123,125-128,130-131,133,138
+  s_1e114e823b9048::t_d6192048b385ef 113-118
+  s_1e114e823b9048::t_ecc37fc21781b8 43-45,48,50
+  s_1e114e823b9048::t_e2130fae9d9af5 25-26
+src/components/ui/Dialog/index.ts
+  s_1e114e823b9048::t_5b7b1101458e7d 3-4
+src/components/ui/index.ts
+  s_1e114e823b9048::t_430398f25164af 59-68
+src/components/device/AvdContextMenu.test.tsx
+  s_1e114e823b9048::t_a3b55e3a939cfb 22,31,39
+src/components/ui/Listbox/Listbox.module.css
+  s_1e114e823b9048::t_345e3f759a9099 1-21
+src/components/ui/MenuList/MenuList.tsx
+  s_1e114e823b9048::t_8f170ceb684236 39
+  s_1e114e823b9048::t_ebf28f66c95bbe 9
+src/components/ui/ContextMenu/ContextMenu.stories.tsx
+  s_1e114e823b9048::t_3b750b978d1967 1-55
+src/components/ui/ContextMenu/ContextMenu.module.css
+  s_1e114e823b9048::t_8628ed79e4209b 1-9
+src/components/ui/ContextMenu/index.ts
+  s_1e114e823b9048::t_aa7a7e407a249e 1-2
+src/components/ui/Listbox/index.ts
+  s_1e114e823b9048::t_76a9b6e68f5730 1-2
+src/components/ui/ContextMenu/ContextMenu.test.tsx
+  s_1e114e823b9048::t_49df599c5eb62b 1-86
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "4183f90b2302730285f950d9be88c11a207f7119",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
