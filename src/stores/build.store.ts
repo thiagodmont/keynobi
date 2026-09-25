@@ -1,6 +1,13 @@
 import { createStore, produce } from "solid-js/store";
 import { createSignal } from "solid-js";
-import type { BuildActor, BuildError, BuildRecord, BuildLine, LogEntry } from "@/bindings";
+import type {
+  BuildActor,
+  BuildError,
+  BuildRecord,
+  BuildLine,
+  BuildStatus,
+  LogEntry,
+} from "@/bindings";
 import { createLogStore, type LogStore } from "@/stores/log.store";
 import { clearBuildHistory as clearBuildHistoryApi } from "@/lib/tauri-api";
 
@@ -23,6 +30,26 @@ export interface BuildStoreState {
   /** Who started the build shown (the app, or an agent). */
   origin: BuildActor | null;
   /** Who cancelled it, once cancelled. */
+  cancelledBy: BuildActor | null;
+  /** History ID of the past build the Build panel shows; null shows the live build. */
+  viewedHistoryId: number | null;
+}
+
+/** Everything the Build panel says about one build: the live one or a past one. */
+export interface BuildView {
+  source: "live" | "history";
+  /** History ID of a past build; null for the live build. */
+  id: number | null;
+  /** The past build left the history, which keeps the last builds only. */
+  missing: boolean;
+  task: string | null;
+  phase: BuildPhase;
+  durationMs: number | null;
+  /** When a past build started (ISO 8601); null for the live build. */
+  startedAt: string | null;
+  errors: BuildError[];
+  warnings: BuildError[];
+  origin: BuildActor | null;
   cancelledBy: BuildActor | null;
 }
 
@@ -60,6 +87,7 @@ const [buildState, setBuildState] = createStore<BuildStoreState>({
   lastLaunchedPackage: null,
   origin: null,
   cancelledBy: null,
+  viewedHistoryId: null,
 });
 
 export { buildState };
@@ -104,6 +132,50 @@ export function isDeploying(): boolean {
 /** A build an agent started is running. */
 export function isAgentBuilding(): boolean {
   return buildState.phase === "running" && buildState.origin?.kind === "agent";
+}
+
+export function isViewingHistory(): boolean {
+  return buildState.viewedHistoryId !== null;
+}
+
+function recordDurationMs(status: BuildStatus): number | null {
+  if (status.state !== "success" && status.state !== "failed") return null;
+  const ms = Number(status.durationMs);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** The build the Build panel describes: the live build, or the past build being viewed. */
+export function viewedBuild(): BuildView {
+  const id = buildState.viewedHistoryId;
+  if (id === null) {
+    return {
+      source: "live",
+      id: null,
+      missing: false,
+      task: buildState.currentTask,
+      phase: buildState.phase,
+      durationMs: buildState.durationMs,
+      startedAt: null,
+      errors: buildState.errors,
+      warnings: buildState.warnings,
+      origin: buildState.origin,
+      cancelledBy: buildState.cancelledBy,
+    };
+  }
+  const record = buildState.history.find((r) => r.id === id);
+  return {
+    source: "history",
+    id,
+    missing: !record,
+    task: record?.task ?? null,
+    phase: record?.status.state ?? "idle",
+    durationMs: record ? recordDurationMs(record.status) : null,
+    startedAt: record?.startedAt ?? null,
+    errors: record?.errors.filter((e) => e.severity === "error") ?? [],
+    warnings: record?.errors.filter((e) => e.severity === "warning") ?? [],
+    origin: record?.origin ?? null,
+    cancelledBy: record?.cancelledBy ?? null,
+  };
 }
 
 // ── Batching ──────────────────────────────────────────────────────────────────
@@ -190,6 +262,20 @@ export function flushPendingLines(): void {
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
+/** Show a past build in the Build panel: its log, problems, status, and who ran it. */
+export function viewHistoryBuild(id: number): void {
+  setBuildState("viewedHistoryId", id);
+}
+
+/** Show the live build again. */
+export function viewLiveBuild(): void {
+  setBuildState("viewedHistoryId", null);
+}
+
+/**
+ * A build started in this window brings the panel back to the live build; an
+ * agent's build leaves a past build on screen.
+ */
 export function startBuild(task: string, origin: BuildActor = APP): void {
   // Discard any pending lines from a previous build.
   _pendingLines = [];
@@ -207,6 +293,7 @@ export function startBuild(task: string, origin: BuildActor = APP): void {
     deployPhase: null,
     origin,
     cancelledBy: null,
+    viewedHistoryId: origin.kind === "app" ? null : buildState.viewedHistoryId,
   });
   buildLogStore.clearEntries();
   _startTick();
@@ -263,6 +350,7 @@ export function clearBuild(): void {
     lastLaunchedPackage: null,
     origin: null,
     cancelledBy: null,
+    viewedHistoryId: null,
   });
   buildLogStore.clearEntries();
 }
@@ -278,5 +366,5 @@ export function resetBuildState(): void {
 
 export async function clearBuildHistory(): Promise<void> {
   await clearBuildHistoryApi();
-  setBuildState("history", []);
+  setBuildState({ history: [], viewedHistoryId: null });
 }

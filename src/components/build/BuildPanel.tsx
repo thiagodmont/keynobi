@@ -1,12 +1,15 @@
-import { type JSX, Show, For, createMemo, createSignal, createEffect, onCleanup } from "solid-js";
+import { type JSX, Show, For, createMemo, createSignal, createEffect, on, untrack } from "solid-js";
 import {
   buildState,
   buildLogStore,
   isBuilding,
   isDeploying,
   isAgentBuilding,
+  isViewingHistory,
   clearBuildHistory,
-  lineToLogEntry,
+  viewedBuild,
+  viewHistoryBuild,
+  viewLiveBuild,
 } from "@/stores/build.store";
 import {
   runBuild,
@@ -19,88 +22,62 @@ import { askToTrustActiveProject } from "@/services/project.service";
 import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { LogViewer } from "@/components/common/LogViewer";
 import type { BuildError, BuildRecord } from "@/bindings";
-import type { LogEntry } from "@/stores/log.store";
 import { Alert, Button, Icon, IconButton, showToast } from "@/components/ui";
-import { BuildHistoryPanel, relativeTime } from "@/components/build/BuildHistoryPanel";
+import { BuildHistoryPanel } from "@/components/build/BuildHistoryPanel";
+import {
+  HistoricalLogView,
+  HistoryViewBanner,
+  MissingBuildNotice,
+} from "@/components/build/BuildHistoryView";
+import { createHistoricalLog } from "@/components/build/build-history-log";
 import { projectState } from "@/stores/project.store";
 import { settingsState } from "@/stores/settings.store";
-import { formatError, getBuildLogEntries } from "@/lib/tauri-api";
-import {
-  buildRunningLabel,
-  cancelBuildTitle,
-  cancelledByLabel,
-  isAgent,
-  startedByLabel,
-} from "@/lib/build-actor";
+import { formatError } from "@/lib/tauri-api";
+import { buildActorLabels, buildRunningLabel, cancelBuildTitle } from "@/lib/build-actor";
 
 type ViewMode = "log" | "problems";
 
 export function BuildPanel(): JSX.Element {
   const [viewMode, setViewMode] = createSignal<ViewMode>("log");
   const [running, setRunning] = createSignal(false);
-  const [selectedHistoryId, setSelectedHistoryId] = createSignal<number | null>(null);
+
+  let contentRef!: HTMLDivElement;
 
   function handleHistorySelect(record: BuildRecord | null): void {
-    setSelectedHistoryId(record?.id ?? null);
+    if (record) viewHistoryBuild(record.id);
+    else viewLiveBuild();
   }
 
-  const phase = () => buildState.phase;
-  const deployPhase = () => buildState.deployPhase;
-  const errorCount = () => buildState.errors.length;
-  const warnCount = () => buildState.warnings.length;
-  const durationMs = () => buildState.durationMs;
+  /** The Back button disappears with the past build, so focus moves to the Builds list. */
+  function backToLiveBuild(): void {
+    viewLiveBuild();
+    contentRef.querySelector<HTMLElement>('[role="listbox"] [tabindex="0"]')?.focus();
+  }
 
-  // Auto-switch to Problems tab when the build fails and has diagnostics.
+  /** The build every part of the panel describes: live, or the past one picked in Builds. */
+  const view = createMemo(() => viewedBuild());
+  const viewingHistory = () => view().source === "history";
+
+  const phase = () => view().phase;
+  // Install and launch belong to the live build only.
+  const deployPhase = () => (viewingHistory() ? null : buildState.deployPhase);
+  const errorCount = () => view().errors.length;
+  const warnCount = () => view().warnings.length;
+  const durationMs = () => view().durationMs;
+
+  // Auto-switch to Problems when the live build fails with diagnostics.
   createEffect(() => {
-    if (phase() === "failed" && errorCount() + warnCount() > 0) {
-      setViewMode("problems");
-    }
+    const failedWithDiagnostics =
+      buildState.phase === "failed" && buildState.errors.length + buildState.warnings.length > 0;
+    if (failedWithDiagnostics && !untrack(isViewingHistory)) setViewMode("problems");
   });
 
-  // Reset history selection when the project changes so logs from the
-  // previous project cannot bleed through via a stale selectedHistoryId.
-  createEffect(() => {
-    void projectState.projectRoot; // reactive dependency
-    setSelectedHistoryId(null);
-  });
+  // A past build of the previous project must not stay on screen after a switch.
+  createEffect(on(() => projectState.projectRoot, viewLiveBuild, { defer: true }));
 
-  const [historicalLog, setHistoricalLog] = createSignal<LogEntry[]>([]);
-  const [historicalLogError, setHistoricalLogError] = createSignal<string | null>(null);
-  const [historicalLogAttempt, setHistoricalLogAttempt] = createSignal(0);
-
-  createEffect(() => {
-    const id = selectedHistoryId();
-    void historicalLogAttempt(); // reactive dependency: Retry reloads the same id
-    // Solid effects do not support React-style returned cleanups; onCleanup
-    // runs before each re-run so a slow response for a previous id cannot
-    // overwrite the log shown for the newly selected one.
-    let cancelled = false;
-    onCleanup(() => {
-      cancelled = true;
-    });
-    setHistoricalLogError(null);
-    if (id === null) {
-      setHistoricalLog([]);
-      return;
-    }
-    getBuildLogEntries(id)
-      .then((lines) => {
-        if (!cancelled) setHistoricalLog(lines.map(lineToLogEntry));
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        setHistoricalLog([]);
-        setHistoricalLogError(formatError(e));
-      });
-  });
-
-  const logEntries = () => (selectedHistoryId() !== null ? historicalLog() : buildLogStore.entries);
-
-  const selectedRecord = createMemo<BuildRecord | null>(() => {
-    const id = selectedHistoryId();
-    if (id === null) return null;
-    return buildState.history.find((r) => r.id === id) ?? null;
-  });
+  const historicalLog = createHistoricalLog(() =>
+    viewingHistory() && !view().missing ? view().id : null
+  );
 
   const summaryColor = createMemo(() => {
     if (deployPhase() === "installing" || deployPhase() === "launching") return "var(--info)";
@@ -137,13 +114,8 @@ export function BuildPanel(): JSX.Element {
   const summaryLabel = createMemo(() => {
     const base = phaseLabel();
     if (!base || deployPhase()) return base;
-    const agentBuild = isAgent(buildState.origin);
-    const parts = [base];
-    if (agentBuild) parts.push(startedByLabel(buildState.origin) ?? "");
-    if (phase() === "cancelled" && (agentBuild || buildState.cancelledBy?.kind !== "app")) {
-      parts.push(cancelledByLabel(buildState.cancelledBy) ?? "");
-    }
-    return parts.filter(Boolean).join(" · ");
+    const cancelledBy = phase() === "cancelled" ? view().cancelledBy : null;
+    return [base, ...buildActorLabels(view().origin, cancelledBy)].join(" · ");
   });
 
   const busy = () => running() || isDeploying();
@@ -151,7 +123,7 @@ export function BuildPanel(): JSX.Element {
 
   /** Full run: build → install → launch on the selected device. */
   async function handleRunApp() {
-    setSelectedHistoryId(null); // select current build
+    viewLiveBuild();
     setRunning(true);
     setViewMode("log");
     try {
@@ -166,7 +138,7 @@ export function BuildPanel(): JSX.Element {
 
   /** Build only — no install/launch. */
   async function handleBuildOnly() {
-    setSelectedHistoryId(null); // select current build
+    viewLiveBuild();
     setRunning(true);
     setViewMode("log");
     try {
@@ -188,7 +160,6 @@ export function BuildPanel(): JSX.Element {
   async function handleClearHistory() {
     try {
       await clearBuildHistory();
-      setSelectedHistoryId(null);
     } catch (e) {
       console.error(e);
       showToast(`Failed to clear build history: ${formatError(e)}`, "error");
@@ -355,74 +326,53 @@ export function BuildPanel(): JSX.Element {
         </Show>
 
         {/* ── Content: history strip + log/problems ── */}
-        <div style={{ flex: "1", overflow: "hidden", display: "flex" }}>
+        <div ref={contentRef} style={{ flex: "1", overflow: "hidden", display: "flex" }}>
           {/* History side panel */}
           <BuildHistoryPanel
-            selectedId={selectedHistoryId()}
+            selectedId={buildState.viewedHistoryId}
             onSelect={handleHistorySelect}
             onClear={handleClearHistory}
           />
           {/* Log / Problems area */}
-          <div style={{ flex: "1", overflow: "hidden" }}>
-            <Show when={viewMode() === "log"}>
-              <Show when={selectedRecord()}>
-                {(record) => (
-                  <div
-                    style={{
-                      padding: "4px 8px",
-                      "font-size": "11px",
-                      color: "var(--text-muted)",
-                      background: "var(--bg-tertiary)",
-                      "border-bottom": "1px solid var(--border)",
-                      "flex-shrink": "0",
-                    }}
-                  >
-                    Viewing build from {relativeTime(record().startedAt)}
-                  </div>
-                )}
-              </Show>
-              <Show
-                when={historicalLogError()}
-                fallback={
-                  <LogViewer
-                    entries={logEntries()}
-                    defaultAutoScroll={settingsState.build.autoScrollBuildLog}
-                    onClear={
-                      selectedHistoryId() !== null ? undefined : () => buildLogStore.clearEntries()
-                    }
-                    showSource={false}
-                    emptyMessage={
-                      selectedHistoryId() !== null
-                        ? "No log saved for this build"
-                        : "No build output yet — press the run button or Cmd+Shift+R"
-                    }
+          <div
+            style={{
+              flex: "1",
+              overflow: "hidden",
+              display: "flex",
+              "flex-direction": "column",
+              "min-width": "0",
+            }}
+          >
+            <Show when={viewingHistory()}>
+              <HistoryViewBanner view={view()} onBack={backToLiveBuild} />
+            </Show>
+            <div style={{ flex: "1", "min-height": "0", overflow: "hidden" }}>
+              <Show when={viewMode() === "log"}>
+                <Show
+                  when={viewingHistory()}
+                  fallback={
+                    <LogViewer
+                      entries={buildLogStore.entries}
+                      defaultAutoScroll={settingsState.build.autoScrollBuildLog}
+                      onClear={() => buildLogStore.clearEntries()}
+                      showSource={false}
+                      emptyMessage="No build output yet — press the run button or Cmd+Shift+R"
+                    />
+                  }
+                >
+                  <HistoricalLogView
+                    view={view()}
+                    state={historicalLog.state()}
+                    onRetry={historicalLog.retry}
                   />
-                }
-              >
-                {(message) => (
-                  <div style={{ padding: "8px" }}>
-                    <Alert
-                      variant="error"
-                      title="Couldn't load the log for this build"
-                      action={
-                        <Button
-                          variant="outline"
-                          size="xs"
-                          onClick={() => setHistoricalLogAttempt((n) => n + 1)}
-                        >
-                          Retry
-                        </Button>
-                      }
-                    >
-                      {message()}
-                    </Alert>
-                  </div>
-                )}
+                </Show>
               </Show>
-            </Show>
-            <Show when={viewMode() === "problems"}>
-              <ProblemsView errors={buildState.errors} warnings={buildState.warnings} />
-            </Show>
+              <Show when={viewMode() === "problems"}>
+                <Show when={!view().missing} fallback={<MissingBuildNotice id={view().id} />}>
+                  <ProblemsView errors={view().errors} warnings={view().warnings} />
+                </Show>
+              </Show>
+            </div>
           </div>
         </div>
       </Show>
@@ -634,6 +584,7 @@ function ViewToggleBtn(props: {
   return (
     <button
       onClick={() => props.onClick()}
+      aria-pressed={props.active ? "true" : "false"}
       style={{
         padding: "2px 8px",
         "border-radius": "3px",
