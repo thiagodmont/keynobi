@@ -55,7 +55,7 @@ claude mcp add --scope user --transport stdio keynobi -- '/Applications/Keynobi.
 codex mcp add keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp
 ```
 
-The agent runs its own background copy of Keynobi for your project; it does not need the window open. See [AI Client MCP](references/USER_MANUAL.md#ai-client-mcp) for details.
+The agent starts a small Keynobi process in the background. When Keynobi is open on the same project, the agent works through the app: its builds appear in the Build tab and it shares the app's devices and logcat. Otherwise it runs on its own, so the window does not need to be open. See [AI Client MCP](references/USER_MANUAL.md#ai-client-mcp) for details.
 
 ## Get Started
 
