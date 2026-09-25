@@ -37,6 +37,7 @@ function makeRecord(state: BuildStatus["state"], durationMs = 0, errors: any[] =
     origin: null,
     cancelledBy: null,
     launch: null,
+    mappings: [],
   };
 }
 

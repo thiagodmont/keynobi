@@ -287,6 +287,7 @@ mod tests {
                 errors,
                 origin: Some(BuildActor::App),
                 cancelled_by: None,
+                mappings: None,
             },
         )
         .await;

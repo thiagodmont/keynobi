@@ -19,6 +19,7 @@ import type {
   LaunchState,
   LaunchTiming,
   LogStats,
+  MappingSnapshot,
   McpActivityEntry,
   McpAttachedSession,
   McpServerStatus,
@@ -351,6 +352,7 @@ export const typeFixtures = {
       "errors": [],
       "id": 7,
       "launch": null,
+      "mappings": [],
       "origin": {
         "kind": "app"
       },
@@ -368,6 +370,7 @@ export const typeFixtures = {
       "errors": [],
       "id": 8,
       "launch": null,
+      "mappings": [],
       "origin": {
         "kind": "appQuit"
       },
@@ -388,6 +391,7 @@ export const typeFixtures = {
       "errors": [],
       "id": 9,
       "launch": null,
+      "mappings": [],
       "origin": {
         "clientName": "Claude Code",
         "kind": "agent",
@@ -411,6 +415,7 @@ export const typeFixtures = {
       "errors": [],
       "id": 10,
       "launch": null,
+      "mappings": [],
       "origin": {
         "clientName": null,
         "kind": "agent",
@@ -444,6 +449,7 @@ export const typeFixtures = {
       ],
       "id": 11,
       "launch": null,
+      "mappings": [],
       "origin": null,
       "projectRoot": null,
       "startedAt": "2026-04-23T10:00:00Z",
@@ -469,6 +475,22 @@ export const typeFixtures = {
         "totalMs": 812,
         "waitMs": 815
       },
+      "mappings": [
+        {
+          "bytes": 48213771,
+          "module": ":app",
+          "pgMapId": "6b1c2f0",
+          "sha256": "6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a",
+          "variant": "release"
+        },
+        {
+          "bytes": 1024,
+          "module": ":wear",
+          "pgMapId": null,
+          "sha256": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+          "variant": "paidRelease"
+        }
+      ],
       "origin": {
         "kind": "app"
       },
@@ -496,6 +518,22 @@ export const typeFixtures = {
         "totalMs": 640,
         "waitMs": null
       },
+      "mappings": [
+        {
+          "bytes": 48213771,
+          "module": ":app",
+          "pgMapId": "6b1c2f0",
+          "sha256": "6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a",
+          "variant": "release"
+        },
+        {
+          "bytes": 1024,
+          "module": ":wear",
+          "pgMapId": null,
+          "sha256": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+          "variant": "paidRelease"
+        }
+      ],
       "origin": {
         "kind": "app"
       },
@@ -511,6 +549,22 @@ export const typeFixtures = {
       "task": "assembleDebug"
     }
   ] satisfies Wire<BuildRecord>[],
+  MappingSnapshot: [
+    {
+      "bytes": 48213771,
+      "module": ":app",
+      "pgMapId": "6b1c2f0",
+      "sha256": "6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a",
+      "variant": "release"
+    },
+    {
+      "bytes": 1024,
+      "module": ":wear",
+      "pgMapId": null,
+      "sha256": "0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f",
+      "variant": "paidRelease"
+    }
+  ] satisfies Wire<MappingSnapshot>[],
   LaunchState: [
     "cold",
     "warm",

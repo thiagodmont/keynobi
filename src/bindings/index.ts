@@ -37,6 +37,7 @@ export type { BuildCompleteEvent } from "./BuildCompleteEvent";
 export type { LaunchState } from "./LaunchState";
 export type { LaunchTiming } from "./LaunchTiming";
 export type { LaunchResult } from "./LaunchResult";
+export type { MappingSnapshot } from "./MappingSnapshot";
 
 // Devices & variants
 export type { Device } from "./Device";

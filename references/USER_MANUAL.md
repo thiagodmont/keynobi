@@ -149,6 +149,7 @@ Select a past build (click it, or Tab to the list, move with Up/Down, and press 
 - A build you start (**Run App**, **Build Only**, `Cmd+R`, `Cmd+Shift+R`) brings the tab back to the current build.
 - A build an AI client starts does not replace the build you are reading. The bar says a build is running and offers **Show running build**.
 - While a past build's log loads, the tab says so. If the log was removed by the retention settings above, the tab says **This build's log was removed**; its problems and result are still shown. If the log cannot be read, the tab shows the error with a **Retry** button. A build that has dropped out of the last 10 is reported as no longer in the history.
+- **R8 mapping saved: release (map id 6b1c2f0)** means the build shrank and obfuscated the app with R8, and Keynobi kept a copy of the `mapping.txt` it wrote for that variant. The next build of the variant overwrites the project's file; the copy keeps the mapping that matches this build's APK, which is what turns an obfuscated crash from that APK back into class and method names. The map id is the `pg_map_id` R8 writes at the top of the mapping (not every version writes one); the tooltip adds the module, the start of the file's SHA-256, and its size. The line appears only for a successful build that wrote a mapping during that build: a build that reused the previous mapping without rewriting it (nothing changed) shows none. Copies are kept while their build is in the history and removed with it (or with **Clear build history**); mappings over 256 MB are not copied.
 
 ---
 
@@ -465,6 +466,7 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 | `~/.keynobi/settings.json` | Settings and saved projects |
 | `~/.keynobi/logs/` | Keynobi's own app logs |
 | `~/.keynobi/build-history.json`, `~/.keynobi/build-logs/` | Build history and build logs |
+| `~/.keynobi/mappings/` | Copies of the R8 mappings of builds in the history |
 | `~/.keynobi/mcp-activity.jsonl` | Recent AI client activity |
 | `~/.keynobi/mcp.sock`, `~/.keynobi/mcp-sessions/` | The socket AI clients attach through while Keynobi is open, and a record per standalone MCP server |
 | `~/Library/WebKit/com.keynobi.app` | Saved logcat filters, last query, and dismissed updates |

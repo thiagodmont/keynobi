@@ -7,6 +7,7 @@ import { relativeTime } from "@/components/build/BuildHistoryPanel";
 import { buildRunningLabel } from "@/lib/build-actor";
 import type { HistoricalLogState } from "./build-history-log";
 import { LaunchTimingSummary } from "./LaunchTimingSummary";
+import { MappingSnapshotSummary } from "./MappingSnapshotSummary";
 import styles from "./BuildHistoryView.module.css";
 
 export function formatBuildTime(iso: string): string {
@@ -29,6 +30,8 @@ export function HistoryViewBanner(props: { view: BuildView; onBack: () => void }
 
   const launchedRecord = () =>
     buildState.history.find((r) => r.id === props.view.id && r.launch !== null);
+  const savedMappings = () =>
+    buildState.history.find((r) => r.id === props.view.id)?.mappings ?? [];
 
   return (
     <div class={styles.banner} data-testid="build-history-banner">
@@ -45,6 +48,9 @@ export function HistoryViewBanner(props: { view: BuildView; onBack: () => void }
               <LaunchTimingSummary record={r()} history={buildState.history} />
             </span>
           )}
+        </Show>
+        <Show when={savedMappings().length > 0}>
+          <MappingSnapshotSummary mappings={savedMappings()} />
         </Show>
         <Show when={isBuilding()}>
           <span class={styles.running} role="status">

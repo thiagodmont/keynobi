@@ -6,6 +6,7 @@ import type {
   BuildRecord,
   BuildStatus,
   LaunchTiming,
+  MappingSnapshot,
 } from "@/bindings";
 import { triggerEvent } from "./events";
 
@@ -69,7 +70,7 @@ function recordStatus(
 }
 
 function recordBuild(
-  build: Omit<BuildRecord, "id" | "status" | "projectRoot" | "launch"> & {
+  build: Omit<BuildRecord, "id" | "status" | "projectRoot" | "launch" | "mappings"> & {
     state: "success" | "failed" | "cancelled";
   },
   lines: BuildLine[] | null
@@ -83,10 +84,28 @@ function recordBuild(
       status: recordStatus(state, build.errors),
       projectRoot: MOCK_PROJECT_ROOT,
       launch: null,
+      mappings: mockMappings(state, build.task),
     },
     lines,
   });
   return id;
+}
+
+/**
+ * Like the backend, a successful build records the R8 mapping it wrote. Here a
+ * release task stands for a minified variant.
+ */
+function mockMappings(state: "success" | "failed" | "cancelled", task: string): MappingSnapshot[] {
+  if (state !== "success" || !/release/i.test(task)) return [];
+  return [
+    {
+      module: ":app",
+      variant: "release",
+      sha256: "6b1c2f0a".repeat(8),
+      bytes: 48_213_771,
+      pgMapId: "6b1c2f0",
+    },
+  ];
 }
 
 /** Like the backend: a launch time is recorded only on a successful build. */

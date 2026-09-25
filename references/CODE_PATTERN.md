@@ -123,6 +123,7 @@ Never use raw `path.starts_with(root)` for security.
 ### Persistence
 
 - Write files atomically: write a temporary sibling named with `settings_manager::unique_tmp_path`, then `rename` it over the target. See `settings_manager.rs` and `build_runner.rs`. When replacing a file the user owns (a build file), create the temporary file with `create_new`, give it the original's permissions before the rename, and remove it when any step fails (`project_app_info::write_atomically`).
+- Copy a large file into the data directory by streaming it (hash and write in bounded chunks) to a `unique_tmp_path` file without the data lock, then publish it with a rename and record it under the lock in one critical section, so another process never prunes it in between. Tie the temporary file to a guard that removes it when it is not published (`mapping_snapshots::PreparedMapping`).
 - Settings structs use `#[serde(default)]` so older files load after fields are added. Clamp numeric settings to safe ranges on load.
 - Resolve storage paths through `settings_manager::data_dir()`. Tests must not touch the real `~/.keynobi`.
 
@@ -354,4 +355,4 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Store naming.** `layoutViewer.store.ts` uses camelCase instead of kebab-case.
 - **Typed factories are rarely used.** Only one test imports `src/test/factories/`; most tests build IPC data inline.
 - **Event payload types are declared by hand.** `tests/ipc_fixtures.rs` names each event's payload type; nothing ties it to the value the emit site passes.
-- **Some mock checks are vacuous.** Mock commands that return empty lists (`get_build_history`, `get_build_errors`, `get_mcp_activity`, `get_logcat_context_entries` without an anchor, and the AVD and system-image lists) have no elements to compare, and the mock never emits `logcat:reconnecting`, `logcat:stopped`, `monitor://stats`, or `settings:corrupted`.
+- **Some mock checks are vacuous.** Mock commands that return empty lists (`get_build_errors`, `get_mcp_activity`, `get_logcat_context_entries` without an anchor, and the AVD and system-image lists) have no elements to compare, and the mock never emits `logcat:reconnecting`, `logcat:stopped`, `monitor://stats`, or `settings:corrupted`.
