@@ -15,7 +15,7 @@ import { eventFixtures, typeFixtures } from "@/test/ipc-fixtures/fixtures";
 import { inferShape, shapeMismatches } from "@/test/ipc-fixtures/shape";
 import { handleInvoke } from "@/test/mock-backend";
 import { handleListen } from "@/test/mock-backend/events";
-import { startMockBuild } from "@/test/mock-backend/build";
+import { addMockPastBuild, startMockBuild } from "@/test/mock-backend/build";
 import { sampleEntries } from "@/test/mock-backend/logcat";
 
 // vitest runs with the repo root as cwd (see vite.config.ts `test.include`).
@@ -325,9 +325,13 @@ describe("the mock backend matches the real payloads", () => {
   it("command responses", async () => {
     const problems = [];
     let checked = 0;
+    // Commands that look something up need something to find.
+    const args = {
+      get_build_log_entries: { id: addMockPastBuild({ task: "assembleDebug", state: "success" }) },
+    };
     for (const [command, type] of invokedTypes()) {
       if (!isNamedType(type)) continue;
-      const response = await handleInvoke(command, {});
+      const response = await handleInvoke(command, args[command] ?? {});
       checked++;
       for (const problem of mismatchesAgainst(response, type)) {
         problems.push(`${command} (${type}) ${problem}`);

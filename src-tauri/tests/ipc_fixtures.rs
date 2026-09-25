@@ -303,6 +303,7 @@ fn attached_sessions() -> Vec<McpAttachedSession> {
             project: Some("/p".into()),
             connected_at: TIME.into(),
             client_name: Some("Claude Code".into()),
+            version: "0.1.29".into(),
         },
         McpAttachedSession {
             id: 3,
@@ -310,6 +311,7 @@ fn attached_sessions() -> Vec<McpAttachedSession> {
             project: None,
             connected_at: TIME.into(),
             client_name: None,
+            version: "0.1.28".into(),
         },
     ]
 }
@@ -320,7 +322,10 @@ fn client_setup(configured: bool) -> McpClientSetupStatus {
         is_configured: configured,
         configured_command: configured
             .then(|| "/Applications/Keynobi.app/Contents/MacOS/keynobi --mcp".into()),
-        setup_command: "claude mcp add --transport stdio keynobi -- keynobi --mcp".into(),
+        configured_scope: configured.then(|| "user".into()),
+        setup_command: configured.then(|| {
+            "claude mcp add --scope user --transport stdio keynobi -- keynobi --mcp".into()
+        }),
     }
 }
 
@@ -406,6 +411,7 @@ fn fixtures() -> Fixtures {
                 gradle_wrapper_found: true,
                 lsp_system_dir_ok: true,
                 studio_command_found: false,
+                app_location_problem: None,
             },
             SystemHealthReport {
                 java_executable_found: false,
@@ -421,6 +427,7 @@ fn fixtures() -> Fixtures {
                 gradle_wrapper_found: false,
                 lsp_system_dir_ok: true,
                 studio_command_found: false,
+                app_location_problem: Some("Keynobi is running from a disk image.".into()),
             },
         ],
     );
@@ -638,6 +645,7 @@ fn fixtures() -> Fixtures {
             buffer_usage_pct: 0.5,
             buffer_entry_count: 100,
             dropped_lines: 4,
+            backlog_lines: 5,
         }],
     );
 
@@ -647,6 +655,7 @@ fn fixtures() -> Fixtures {
         "McpServerStatus",
         &[McpServerStatus {
             listening: true,
+            app_version: "0.1.29".into(),
             attached: attached_sessions(),
             standalone: vec![
                 McpStandaloneServer {
@@ -654,6 +663,7 @@ fn fixtures() -> Fixtures {
                     started_at: TIME.into(),
                     project: Some("/p".into()),
                     reason: "the Keynobi app is not running".into(),
+                    version: Some("0.1.29".into()),
                     exe: None,
                 },
                 McpStandaloneServer {
@@ -661,6 +671,7 @@ fn fixtures() -> Fixtures {
                     started_at: TIME.into(),
                     project: None,
                     reason: "the Keynobi app is not running".into(),
+                    version: None,
                     exe: None,
                 },
             ],
@@ -692,13 +703,17 @@ fn fixtures() -> Fixtures {
         &[
             McpSetupStatus {
                 exe_path: "/Applications/Keynobi.app/Contents/MacOS/keynobi".into(),
-                setup_command: "/Applications/Keynobi.app/Contents/MacOS/keynobi --mcp".into(),
+                setup_command: Some(
+                    "/Applications/Keynobi.app/Contents/MacOS/keynobi --mcp".into(),
+                ),
+                location_problem: None,
                 claude: client_setup(true),
                 codex: client_setup(true),
             },
             McpSetupStatus {
-                exe_path: "/Applications/Keynobi.app/Contents/MacOS/keynobi".into(),
-                setup_command: "/Applications/Keynobi.app/Contents/MacOS/keynobi --mcp".into(),
+                exe_path: "/Volumes/Keynobi/Keynobi.app/Contents/MacOS/keynobi".into(),
+                setup_command: None,
+                location_problem: Some("Keynobi is running from a disk image.".into()),
                 claude: client_setup(false),
                 codex: client_setup(false),
             },
