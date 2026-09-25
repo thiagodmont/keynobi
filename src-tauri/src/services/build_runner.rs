@@ -1,12 +1,18 @@
-use crate::models::build::{BuildError, BuildErrorSeverity, BuildRecord, BuildResult, BuildStatus};
+use crate::models::build::{
+    BuildError, BuildErrorSeverity, BuildLine, BuildLineKind, BuildLinesEvent, BuildRecord,
+    BuildResult, BuildStartedEvent, BuildStatus,
+};
+use crate::services::build_lock::{self, BuildLock};
 use crate::services::build_parser;
-use crate::services::process_manager::{self, ProcessId, ProcessManager};
+use crate::services::process_manager::{self, ProcessId, ProcessManager, ProcessTermination};
 use crate::services::settings_manager::{data_dir, unique_tmp_path, with_data_lock_in};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::Mutex as StdMutex;
-use tokio::sync::Mutex;
+use std::sync::{Arc, Weak};
+use tokio::sync::{watch, Mutex};
+
+pub use crate::models::build::{AgentActor, BuildActor, BuildCompleteEvent};
 
 // Re-export parsing functions for backward compatibility.
 pub use build_parser::{parse_build_duration, parse_build_line};
@@ -214,6 +220,33 @@ pub struct BuildStateInner {
     pub history: VecDeque<BuildRecord>,
     /// Errors accumulated from the current (or last) build.
     pub current_errors: Vec<BuildError>,
+    /// Who started the build `status` describes.
+    pub status_origin: Option<BuildActor>,
+    /// Who cancelled the build `status` describes, when it was cancelled.
+    pub status_cancelled_by: Option<BuildActor>,
+    /// Counts slot reservations, so a cancel that lands while a build is
+    /// still starting is matched to that build and no other.
+    reservation: u64,
+    /// Why the cancellable run was stopped, until its finalization reads it.
+    stop: Option<(RunKey, StopReason)>,
+}
+
+/// The run a stop request is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RunKey {
+    /// A build still starting, by its reservation.
+    Starting(u64),
+    Run(ProcessId),
+}
+
+/// Why a run was stopped before Gradle finished on its own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StopReason {
+    Cancelled(BuildActor),
+    /// The MCP caller's wait ran out; recorded as a failure, not a cancel.
+    TimedOut {
+        after_sec: u64,
+    },
 }
 
 impl Default for BuildStateInner {
@@ -232,6 +265,10 @@ impl BuildStateInner {
             status: BuildStatus::Idle,
             history,
             current_errors: vec![],
+            status_origin: None,
+            status_cancelled_by: None,
+            reservation: 0,
+            stop: None,
         }
     }
 }
@@ -278,7 +315,15 @@ pub struct BuildState {
     /// before this), so `cancel_build` can always resolve the `ProcessId` even if it runs
     /// before `inner.current_build` is updated (otherwise cancel saw `None` and did not kill Gradle).
     pub active_process_id: Arc<StdMutex<Option<ProcessId>>>,
+    /// Runs started and not yet finalized.
+    runs_in_flight: Arc<watch::Sender<usize>>,
+    /// The cross-process lock this process's runs hold, shared by a run still
+    /// shutting down and its replacement on the same project.
+    project_lock: Arc<StdMutex<Option<HeldProjectLock>>>,
 }
+
+/// A Gradle root and the lock this process's runs hold on it.
+type HeldProjectLock = (PathBuf, Weak<BuildLock>);
 
 impl BuildState {
     pub fn new() -> Self {
@@ -286,6 +331,8 @@ impl BuildState {
             inner: Arc::new(Mutex::new(BuildStateInner::new())),
             build_log: BuildLogSlot::default(),
             active_process_id: Arc::new(StdMutex::new(None)),
+            runs_in_flight: Arc::new(watch::channel(0).0),
+            project_lock: Arc::default(),
         }
     }
 
@@ -293,6 +340,54 @@ impl BuildState {
         match self.active_process_id.lock() {
             Ok(mut guard) => guard.take(),
             Err(poisoned) => poisoned.into_inner().take(),
+        }
+    }
+
+    fn active_process_id(&self) -> Option<ProcessId> {
+        match self.active_process_id.lock() {
+            Ok(guard) => *guard,
+            Err(poisoned) => *poisoned.into_inner(),
+        }
+    }
+
+    /// Wait until every run this state started has been recorded, or
+    /// `timeout` passes. Returns whether none is left.
+    pub async fn wait_for_runs(&self, timeout: std::time::Duration) -> bool {
+        let mut runs = self.runs_in_flight.subscribe();
+        tokio::time::timeout(timeout, runs.wait_for(|n| *n == 0))
+            .await
+            .is_ok_and(|r| r.is_ok())
+    }
+
+    /// The cross-process lock for `gradle_root`, reusing the one a run of
+    /// this process still holds. `Ok(None)` when the lock file is unusable:
+    /// builds then proceed without cross-process exclusion.
+    fn acquire_project_lock(&self, gradle_root: &Path) -> Result<Option<Arc<BuildLock>>, String> {
+        let mut slot = self
+            .project_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some((root, held)) = slot.as_ref() {
+            if root == gradle_root {
+                if let Some(lock) = held.upgrade() {
+                    return Ok(Some(lock));
+                }
+            }
+        }
+        match build_lock::try_acquire(&data_dir(), gradle_root) {
+            Ok(lock) => {
+                let lock = Arc::new(lock);
+                *slot = Some((gradle_root.to_path_buf(), Arc::downgrade(&lock)));
+                Ok(Some(lock))
+            }
+            Err(build_lock::LockError::Held { pid }) => Err(format!(
+                "{BUILD_ALREADY_RUNNING} for this project in another Keynobi process{}",
+                pid.map(|p| format!(" (pid {p})")).unwrap_or_default()
+            )),
+            Err(build_lock::LockError::Io(e)) => {
+                tracing::warn!("Building without the cross-process build lock: {e}");
+                Ok(None)
+            }
         }
     }
 
@@ -322,6 +417,8 @@ impl Clone for BuildState {
             inner: self.inner.clone(),
             build_log: self.build_log.clone(),
             active_process_id: self.active_process_id.clone(),
+            runs_in_flight: self.runs_in_flight.clone(),
+            project_lock: self.project_lock.clone(),
         }
     }
 }
@@ -681,8 +778,7 @@ pub fn find_output_apk(gradle_root: &Path, variant_name: &str) -> Result<PathBuf
 /// Finalize a build and, when running with a GUI attached, notify the frontend.
 ///
 /// Headless MCP runs pass `None` and simply record history. With a handle, the
-/// UI learns about builds an AI agent started — previously the MCP path recorded
-/// state but emitted nothing, so the Build panel silently went stale.
+/// UI learns about builds whoever started them.
 pub async fn emit_build_complete(
     build_state: &BuildState,
     app_handle: Option<&tauri::AppHandle>,
@@ -691,27 +787,17 @@ pub async fn emit_build_complete(
     let event = finalize_completed_build(build_state, finalization).await;
     if let Some(handle) = app_handle {
         use tauri::Emitter;
-        let _ = handle.emit("build:complete", event.clone());
+        let _ = handle.emit(BUILD_COMPLETE_EVENT, event.clone());
     }
     event
 }
 
-/// Payload of the `build:complete` event.
-///
-/// Emitted by every path that runs a build — the Tauri command layer and the
-/// MCP server — so the UI reflects builds an AI agent started too.
-#[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BuildCompleteEvent {
-    /// The run this event belongs to (the Gradle process ID the build started with).
-    pub run_id: ProcessId,
-    pub success: bool,
-    pub cancelled: bool,
-    pub duration_ms: u64,
-    pub error_count: u32,
-    pub warning_count: u32,
-    pub task: String,
-}
+/// Emitted once per run after it spawned, before any of its output.
+pub const BUILD_STARTED_EVENT: &str = "build:started";
+/// Batched output of a run.
+pub const BUILD_LINES_EVENT: &str = "build:lines";
+/// Emitted once per run after its history entry is recorded.
+pub const BUILD_COMPLETE_EVENT: &str = "build:complete";
 
 pub struct BuildFinalization {
     /// The Gradle process ID of the run being finalized.
@@ -725,6 +811,8 @@ pub struct BuildFinalization {
     pub cancelled: bool,
     pub duration_ms: u64,
     pub errors: Vec<BuildError>,
+    pub origin: Option<BuildActor>,
+    pub cancelled_by: Option<BuildActor>,
 }
 
 pub async fn finalize_completed_build(
@@ -747,17 +835,28 @@ pub async fn finalize_completed_build(
         error_count,
         warning_count: warn_count,
     };
+    let status = if finalization.cancelled {
+        BuildStatus::Cancelled
+    } else if result.success {
+        BuildStatus::Success(result)
+    } else {
+        BuildStatus::Failed(result)
+    };
 
-    record_build_result(
+    record_run(
         build_state,
         finalization.run_id,
         &finalization.log,
-        finalization.task.clone(),
-        finalization.started_at,
-        result,
-        finalization.cancelled,
-        finalization.errors,
-        finalization.project_root,
+        BuildRecord {
+            id: 0,
+            task: finalization.task.clone(),
+            status,
+            errors: finalization.errors,
+            started_at: finalization.started_at,
+            project_root: finalization.project_root,
+            origin: finalization.origin.clone(),
+            cancelled_by: finalization.cancelled_by.clone(),
+        },
     )
     .await;
 
@@ -769,6 +868,8 @@ pub async fn finalize_completed_build(
         error_count,
         warning_count: warn_count,
         task: finalization.task,
+        origin: finalization.origin,
+        cancelled_by: finalization.cancelled_by,
     }
 }
 
@@ -808,48 +909,97 @@ pub async fn try_reserve_build_slot(
     task: &str,
     started_at: &str,
 ) -> Result<(), String> {
+    reserve_build_slot(build_state, task, started_at, None)
+        .await
+        .map(|_| ())
+}
+
+/// [`try_reserve_build_slot`] for a build started by `origin`. Returns the
+/// reservation and the status it replaced.
+async fn reserve_build_slot(
+    build_state: &BuildState,
+    task: &str,
+    started_at: &str,
+    origin: Option<BuildActor>,
+) -> Result<(u64, BuildStatus), String> {
     let mut bs = build_state.inner.lock().await;
     if bs.starting || bs.current_build.is_some() || matches!(bs.status, BuildStatus::Running { .. })
     {
         return Err(BUILD_ALREADY_RUNNING.to_string());
     }
     bs.starting = true;
-    bs.status = BuildStatus::Running {
-        task: task.to_owned(),
-        started_at: started_at.to_owned(),
-    };
+    bs.reservation += 1;
+    let previous = std::mem::replace(
+        &mut bs.status,
+        BuildStatus::Running {
+            task: task.to_owned(),
+            started_at: started_at.to_owned(),
+        },
+    );
+    bs.status_origin = origin;
+    bs.status_cancelled_by = None;
     bs.current_errors.clear();
-    Ok(())
+    Ok((bs.reservation, previous))
 }
 
-/// Cancel the currently running build. Returns `true` if a build was running, `false` otherwise.
-pub async fn cancel_build(build_state: &BuildState, process_manager: &ProcessManager) -> bool {
-    let (id, was_running) = {
-        let from_sync = build_state.take_active_process_id();
-        if let Some(id) = from_sync {
-            let mut bs = build_state.inner.lock().await;
-            if bs.current_build == Some(id) {
+/// Cancel the running build, whoever started it, recording `by` as the
+/// canceller. Returns `true` if a build was running, `false` otherwise.
+pub async fn cancel_build(
+    build_state: &BuildState,
+    process_manager: &ProcessManager,
+    by: BuildActor,
+) -> bool {
+    stop_build(
+        build_state,
+        process_manager,
+        None,
+        StopReason::Cancelled(by),
+    )
+    .await
+}
+
+/// Stop the running build (only if it is `only`, when given) for `reason`.
+/// The run's finalization records why.
+async fn stop_build(
+    build_state: &BuildState,
+    process_manager: &ProcessManager,
+    only: Option<ProcessId>,
+    reason: StopReason,
+) -> bool {
+    let pid = {
+        let mut bs = build_state.inner.lock().await;
+        // Set synchronously right after spawn, so it can be ahead of `current_build`.
+        let pid = build_state.active_process_id().or(bs.current_build);
+        if only.is_some() && pid != only {
+            return false;
+        }
+        let key = match pid {
+            Some(pid) => Some(RunKey::Run(pid)),
+            None if bs.starting => Some(RunKey::Starting(bs.reservation)),
+            None => None,
+        };
+        if key.is_none() && !matches!(bs.status, BuildStatus::Running { .. }) {
+            return false;
+        }
+        if let Some(pid) = pid {
+            build_state.release_active_process_id(pid);
+            if bs.current_build == Some(pid) {
                 bs.current_build = None;
             }
-            bs.starting = false;
-            bs.status = BuildStatus::Cancelled;
-            (Some(id), true)
-        } else {
-            let mut bs = build_state.inner.lock().await;
-            let pid = bs.current_build.take();
-            let was_running =
-                pid.is_some() || bs.starting || matches!(bs.status, BuildStatus::Running { .. });
-            if was_running {
-                bs.starting = false;
-                bs.status = BuildStatus::Cancelled;
-            }
-            (pid, was_running)
         }
+        bs.starting = false;
+        bs.status = BuildStatus::Cancelled;
+        bs.status_cancelled_by = match &reason {
+            StopReason::Cancelled(by) => Some(by.clone()),
+            StopReason::TimedOut { .. } => None,
+        };
+        bs.stop = key.map(|key| (key, reason));
+        pid
     };
-    if let Some(id) = id {
+    if let Some(id) = pid {
         process_manager::cancel(&process_manager.0, id).await;
     }
-    was_running
+    true
 }
 
 /// Clear all build history from memory and disk. The in-memory clear always
@@ -865,12 +1015,6 @@ pub async fn clear_history(build_state: &BuildState) -> Result<(), String> {
 }
 
 /// Record the completed build result and push it to history.
-///
-/// Every run gets a history entry, but only the latest run updates the shared
-/// status, errors, and cancellable process. A run cancelled and replaced by a
-/// newer one can finish seconds later; letting it write those would show its
-/// outcome as the newer build's, make the newer build uncancellable, and free
-/// the build slot while the newer Gradle is still running.
 #[allow(clippy::too_many_arguments)]
 pub async fn record_build_result(
     build_state: &BuildState,
@@ -883,38 +1027,60 @@ pub async fn record_build_result(
     errors: Vec<BuildError>,
     project_root: Option<String>,
 ) {
+    let status = if cancelled {
+        BuildStatus::Cancelled
+    } else if result.success {
+        BuildStatus::Success(result)
+    } else {
+        BuildStatus::Failed(result)
+    };
+    record_run(
+        build_state,
+        run_id,
+        log,
+        BuildRecord {
+            id: 0,
+            task,
+            status,
+            errors,
+            started_at,
+            project_root,
+            origin: None,
+            cancelled_by: None,
+        },
+    )
+    .await;
+}
+
+/// Push `record` (its ID is allocated when persisted) to history.
+///
+/// Every run gets a history entry, but only the latest run updates the shared
+/// status, errors, and cancellable process. A run cancelled and replaced by a
+/// newer one can finish seconds later; letting it write those would show its
+/// outcome as the newer build's, make the newer build uncancellable, and free
+/// the build slot while the newer Gradle is still running.
+async fn record_run(
+    build_state: &BuildState,
+    run_id: ProcessId,
+    log: &BuildLog,
+    record: BuildRecord,
+) {
     // Snapshot the run's log before taking the inner lock so we don't hold two
     // locks simultaneously.
     let raw_lines: VecDeque<String> = log.lock().map(|g| g.clone()).unwrap_or_default();
 
     build_state.release_active_process_id(run_id);
 
-    let status = if cancelled {
-        BuildStatus::Cancelled
-    } else if result.success {
-        BuildStatus::Success(result.clone())
-    } else {
-        BuildStatus::Failed(result.clone())
-    };
-
     {
         let mut bs = build_state.inner.lock().await;
         if !bs.starting && bs.latest_run == Some(run_id) {
-            bs.status = status.clone();
-            bs.current_errors = errors.clone();
+            bs.status = record.status.clone();
+            bs.status_origin = record.origin.clone();
+            bs.status_cancelled_by = record.cancelled_by.clone();
+            bs.current_errors = record.errors.clone();
             bs.current_build = None;
         }
     }
-
-    // The ID is allocated when the record is persisted.
-    let record = BuildRecord {
-        id: 0,
-        task,
-        status,
-        errors,
-        started_at,
-        project_root,
-    };
 
     // Disk I/O runs off the async runtime and outside the build-state lock.
     let record_for_io = record.clone();
@@ -993,14 +1159,6 @@ fn build_env_vars(
     env
 }
 
-#[derive(Debug)]
-pub struct GradleTaskResult {
-    pub success: bool,
-    pub timed_out: bool,
-    pub duration_ms: u64,
-    pub errors: Vec<crate::models::build::BuildError>,
-}
-
 /// Format `BuildError` structs into human-readable strings for display.
 ///
 /// Each error is formatted as `[severity] location — message` or `[severity] message`
@@ -1024,202 +1182,491 @@ pub fn format_build_issues(errors: &[crate::models::build::BuildError]) -> Vec<S
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn run_task(
-    task: &str,
-    extra_args: &[&str],
-    gradle_root: &std::path::Path,
-    gradlew: &std::path::Path,
-    timeout_sec: u64,
-    env: Vec<(String, String)>,
-    project_root_for_history: Option<String>,
-    build_state: &BuildState,
-    process_manager: &crate::services::process_manager::ProcessManager,
-    app_handle: Option<&tauri::AppHandle>,
-) -> Result<GradleTaskResult, String> {
-    use crate::models::build::{BuildError, BuildErrorSeverity, BuildLineKind};
-    use crate::services::process_manager::{self as pm, ProcessTermination, SpawnOptions};
-    use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-    use std::sync::Arc;
+// ── Running a build ───────────────────────────────────────────────────────────
 
+/// How often a run's output is sent to the app as `build:lines`.
+pub const BUILD_LINES_FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+/// Most lines in one `build:lines` event.
+pub const MAX_LINES_PER_BATCH: usize = 500;
+/// Most lines waiting for the next flush; past it the oldest are dropped.
+pub const MAX_PENDING_BUILD_LINES: usize = 10_000;
+
+/// A Gradle build to run.
+pub struct BuildRequest {
+    pub task: String,
+    pub extra_args: Vec<String>,
+    pub gradle_root: PathBuf,
+    pub gradlew: PathBuf,
+    /// From [`trusted_gradle_env`].
+    pub env: Vec<(String, String)>,
+    /// Recorded with the build; history is scoped by it.
+    pub project_root: Option<String>,
+    pub origin: BuildActor,
+}
+
+/// Why a build did not start.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StartBuildError {
+    /// Another build of this process holds the slot.
+    Busy(String),
+    /// Another Keynobi process is building the same project.
+    BusyElsewhere(String),
+    /// Gradle could not be started.
+    Spawn(String),
+}
+
+impl std::fmt::Display for StartBuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StartBuildError::Busy(msg)
+            | StartBuildError::BusyElsewhere(msg)
+            | StartBuildError::Spawn(msg) => f.write_str(msg),
+        }
+    }
+}
+
+/// How a canceller reads after "cancelled", for messages to agents.
+pub fn describe_canceller(by: &BuildActor) -> String {
+    match by {
+        BuildActor::App => "in the Keynobi app".into(),
+        BuildActor::AppQuit => "because Keynobi quit".into(),
+        BuildActor::Agent(agent) => match &agent.client_name {
+            Some(name) => format!("by an agent ({name})"),
+            None => "by an agent".into(),
+        },
+    }
+}
+
+/// How a run ended.
+#[derive(Debug, Clone)]
+pub struct BuildOutcome {
+    pub run_id: ProcessId,
+    pub success: bool,
+    pub cancelled: bool,
+    pub cancelled_by: Option<BuildActor>,
+    /// Set when a caller's wait ran out and stopped the build.
+    pub timed_out_after_sec: Option<u64>,
+    pub duration_ms: u64,
+    pub errors: Vec<BuildError>,
+}
+
+/// A started run. Dropping it, or the future waiting on it, does not affect
+/// the build: the run finishes and is recorded on its own.
+pub struct BuildHandle {
+    pub run_id: ProcessId,
+    outcome: watch::Receiver<Option<BuildOutcome>>,
+}
+
+impl BuildHandle {
+    /// Wait for the run to be recorded.
+    pub async fn wait(&mut self) -> BuildOutcome {
+        if let Ok(outcome) = self.outcome.wait_for(Option::is_some).await {
+            if let Some(outcome) = outcome.clone() {
+                return outcome;
+            }
+        }
+        // The run's task ended without an outcome (the runtime is shutting down).
+        BuildOutcome {
+            run_id: self.run_id,
+            success: false,
+            cancelled: false,
+            cancelled_by: None,
+            timed_out_after_sec: None,
+            duration_ms: 0,
+            errors: vec![BuildError {
+                message: "The build ended without a result".into(),
+                file: None,
+                line: None,
+                col: None,
+                severity: BuildErrorSeverity::Error,
+            }],
+        }
+    }
+}
+
+/// Start a Gradle build: the one implementation behind the app's Build and
+/// Run and the MCP build tools.
+///
+/// Takes the cross-process lock for the project and this process's build
+/// slot, spawns Gradle, and returns once it runs. A task owned by the run then
+/// parses its output, streams it to the app (`build:started`, `build:lines`,
+/// `build:complete`, only with an `app_handle`), and records the result,
+/// whether or not anyone waits on the returned handle.
+///
+/// # Errors
+/// [`StartBuildError::Busy`] when a build is running in this or another
+/// Keynobi process; [`StartBuildError::Spawn`] when Gradle cannot start.
+pub async fn start_build(
+    build_state: &BuildState,
+    process_manager: &ProcessManager,
+    app_handle: Option<&tauri::AppHandle>,
+    request: BuildRequest,
+) -> Result<BuildHandle, StartBuildError> {
+    use crate::services::process_manager::SpawnOptions;
+    use tauri::Emitter;
+
+    let BuildRequest {
+        task,
+        extra_args,
+        gradle_root,
+        gradlew,
+        env,
+        project_root,
+        origin,
+    } = request;
     let started_at = chrono::Utc::now().to_rfc3339();
 
-    try_reserve_build_slot(build_state, task, &started_at).await?;
-    // Connected tests hold the devices' UI Automator until this run returns.
-    let _instrumentation =
-        crate::services::ui_automator_lock::begin_instrumentation_for_task(task, &env);
+    // The lock first: a build of this process on the same project already
+    // holds it, and then the slot below gives the usual answer.
+    let project_lock = build_state
+        .acquire_project_lock(&gradle_root)
+        .map_err(StartBuildError::BusyElsewhere)?;
+    let (reservation, _) =
+        reserve_build_slot(build_state, &task, &started_at, Some(origin.clone()))
+            .await
+            .map_err(StartBuildError::Busy)?;
+    let in_flight = RunInFlight::new(build_state);
 
-    let build_log = build_state.build_log.start_run();
+    // Connected tests hold the devices' UI Automator until the run ends.
+    let instrumentation =
+        crate::services::ui_automator_lock::begin_instrumentation_for_task(&task, &env);
+    // This run's own log. Starting it before the spawn means no line is lost.
+    let log = build_state.build_log.start_run();
+    let collector = Arc::new(RunCollector::new(app_handle.is_some()));
+    let (exit_tx, exit_rx) = tokio::sync::oneshot::channel::<ProcessTermination>();
+    let exit_tx = StdMutex::new(Some(exit_tx));
 
-    let mut args = vec![task, "--console=plain"];
-    args.extend_from_slice(extra_args);
-
-    let errors_buf = Arc::new(std::sync::Mutex::new(Vec::<BuildError>::new()));
-    let success_flag = Arc::new(AtomicBool::new(false));
-    let duration_buf = Arc::new(AtomicU64::new(0));
-    let (done_tx, done_rx) = tokio::sync::oneshot::channel::<ProcessTermination>();
-    let done_tx = Arc::new(StdMutex::new(Some(done_tx)));
-
-    let pid = pm::spawn(
+    let mut args: Vec<&str> = vec![&task, "--console=plain"];
+    args.extend(extra_args.iter().map(String::as_str));
+    let spawned = process_manager::spawn(
         &process_manager.0,
         gradlew.to_str().unwrap_or("./gradlew"),
         &args,
-        gradle_root.to_path_buf(),
+        gradle_root.clone(),
         env,
         SpawnOptions {
             on_line: Box::new({
-                let build_log = build_log.clone();
-                let errors_buf = errors_buf.clone();
-                let success_flag = success_flag.clone();
-                let duration_buf = duration_buf.clone();
-                move |proc_line| {
-                    push_build_log(&build_log, proc_line.text.clone());
-                    let line = parse_build_line(&proc_line.text);
-                    if matches!(line.kind, BuildLineKind::Error | BuildLineKind::Warning) {
-                        if let Ok(mut e) = errors_buf.lock() {
-                            push_build_error(
-                                &mut e,
-                                BuildError {
-                                    message: line.content.clone(),
-                                    file: line.file.clone(),
-                                    line: line.line,
-                                    col: line.col,
-                                    severity: if line.kind == BuildLineKind::Error {
-                                        BuildErrorSeverity::Error
-                                    } else {
-                                        BuildErrorSeverity::Warning
-                                    },
-                                },
-                            );
-                        }
-                    }
-                    if line.kind == BuildLineKind::Summary {
-                        let dur = parse_build_duration(&line.content);
-                        duration_buf.store(dur, Ordering::Relaxed);
-                        if line.content.contains("BUILD SUCCESSFUL") {
-                            success_flag.store(true, Ordering::Relaxed);
-                        }
-                    }
-                }
+                let collector = collector.clone();
+                let log = log.clone();
+                move |line| collector.on_line(&log, line.text)
             }),
-            on_exit: Box::new(move |_pid, termination| {
-                if let Ok(mut g) = done_tx.lock() {
-                    if let Some(tx) = g.take() {
-                        let _ = tx.send(termination);
-                    }
+            on_exit: Box::new(move |_, termination| {
+                if let Some(tx) = exit_tx.lock().ok().and_then(|mut tx| tx.take()) {
+                    let _ = tx.send(termination);
                 }
             }),
         },
     )
     .await;
 
-    let pid = match pid {
-        Ok(pid) => pid,
+    let run_id = match spawned {
+        Ok(run_id) => run_id,
         Err(e) => {
-            // Release the slot we reserved above; without this `starting` stays
-            // true and every later build is refused until the app restarts.
-            mark_build_spawn_failed(&mut *build_state.inner.lock().await);
-            return Err(format!("Failed to spawn Gradle: {e}"));
+            let mut bs = build_state.inner.lock().await;
+            // Release the slot only if it is still this build's; without
+            // this every later build is refused until the app restarts.
+            if bs.reservation == reservation {
+                mark_build_spawn_failed(&mut bs);
+            }
+            return Err(StartBuildError::Spawn(e));
         }
     };
 
-    build_state.set_active_process_id(Some(pid));
-    let cancelled_during_spawn = {
+    // Set before any `.await` so a cancel always finds the process.
+    build_state.set_active_process_id(Some(run_id));
+    let cancelled_while_starting = {
         let mut bs = build_state.inner.lock().await;
-        bs.latest_run = Some(pid);
-        if matches!(bs.status, BuildStatus::Cancelled) {
-            bs.starting = false;
-            true
-        } else {
-            bs.starting = false;
-            bs.current_build = Some(pid);
-            false
+        match &mut bs.stop {
+            Some((key, _)) if *key == RunKey::Starting(reservation) => {
+                *key = RunKey::Run(run_id);
+                true
+            }
+            _ => {
+                bs.latest_run = Some(run_id);
+                bs.starting = false;
+                bs.current_build = Some(run_id);
+                false
+            }
         }
     };
-    if cancelled_during_spawn {
-        // The user cancelled between spawn and this lock. Kill the process we
-        // just started — returning here without it orphaned a live Gradle.
-        let _ = build_state.take_active_process_id();
-        process_manager::cancel(&process_manager.0, pid).await;
-        return Ok(GradleTaskResult {
-            success: false,
-            timed_out: false,
-            duration_ms: 0,
-            errors: Vec::new(),
-        });
+    if cancelled_while_starting {
+        // Cancelled before Gradle was up: stop it now; it is still recorded.
+        build_state.release_active_process_id(run_id);
+        process_manager::cancel(&process_manager.0, run_id).await;
     }
 
-    let termination =
-        tokio::time::timeout(std::time::Duration::from_secs(timeout_sec), done_rx).await;
-    let timed_out = termination.is_err();
+    if let Some(app) = app_handle {
+        let _ = app.emit(
+            BUILD_STARTED_EVENT,
+            BuildStartedEvent {
+                run_id,
+                task: task.clone(),
+                origin: origin.clone(),
+                started_at: started_at.clone(),
+                project_root: project_root.clone(),
+            },
+        );
+    }
 
-    if timed_out {
-        cancel_build(build_state, process_manager).await;
-        // A timeout is a build failure, not a user cancellation: record it so
-        // it appears in history with a reason instead of vanishing.
-        let timeout_err = BuildError {
-            message: format!("Build timed out after {timeout_sec}s and was cancelled"),
-            file: None,
-            line: None,
-            col: None,
-            severity: BuildErrorSeverity::Error,
+    let (outcome_tx, outcome_rx) = watch::channel(None);
+    let run = Run {
+        state: build_state.clone(),
+        app: app_handle.cloned(),
+        run_id,
+        task,
+        started_at,
+        project_root,
+        origin,
+        log,
+        collector,
+        _instrumentation: instrumentation,
+        _project_lock: project_lock,
+        _in_flight: in_flight,
+    };
+    tokio::spawn(async move {
+        let termination = run.wait_for_exit(exit_rx).await;
+        let outcome = run.finish(termination).await;
+        let _ = outcome_tx.send(Some(outcome));
+    });
+
+    Ok(BuildHandle {
+        run_id,
+        outcome: outcome_rx,
+    })
+}
+
+/// Stop the running build because the wait of the caller that started it
+/// (`run`, or whichever build runs when `None`) ran out after `after_sec`.
+/// It is recorded as failed with a timeout error, not as cancelled.
+pub async fn time_out_build(
+    build_state: &BuildState,
+    process_manager: &ProcessManager,
+    run: Option<ProcessId>,
+    after_sec: u64,
+) -> bool {
+    stop_build(
+        build_state,
+        process_manager,
+        run,
+        StopReason::TimedOut { after_sec },
+    )
+    .await
+}
+
+/// Counts a run in [`BuildState::wait_for_runs`] until dropped.
+struct RunInFlight(Arc<watch::Sender<usize>>);
+
+impl RunInFlight {
+    fn new(state: &BuildState) -> Self {
+        state.runs_in_flight.send_modify(|n| *n += 1);
+        Self(state.runs_in_flight.clone())
+    }
+}
+
+impl Drop for RunInFlight {
+    fn drop(&mut self) {
+        self.0.send_modify(|n| *n = n.saturating_sub(1));
+    }
+}
+
+/// What a run's output told us so far. Filled from the process reader.
+struct RunCollector {
+    errors: StdMutex<Vec<BuildError>>,
+    /// The last summary line said `BUILD SUCCESSFUL`.
+    succeeded: std::sync::atomic::AtomicBool,
+    duration_ms: std::sync::atomic::AtomicU64,
+    /// Lines waiting for the next `build:lines`; `None` with no app to send them to.
+    pending: Option<StdMutex<VecDeque<BuildLine>>>,
+}
+
+impl RunCollector {
+    fn new(stream_to_app: bool) -> Self {
+        Self {
+            errors: StdMutex::default(),
+            succeeded: Default::default(),
+            duration_ms: Default::default(),
+            pending: stream_to_app.then(StdMutex::default),
+        }
+    }
+
+    fn on_line(&self, log: &BuildLog, text: String) {
+        use std::sync::atomic::Ordering;
+        let line = parse_build_line(&text);
+        push_build_log(log, text);
+        if matches!(line.kind, BuildLineKind::Error | BuildLineKind::Warning) {
+            if let Ok(mut errors) = self.errors.lock() {
+                push_build_error(
+                    &mut errors,
+                    BuildError {
+                        message: line.content.clone(),
+                        file: line.file.clone(),
+                        line: line.line,
+                        col: line.col,
+                        severity: if line.kind == BuildLineKind::Error {
+                            BuildErrorSeverity::Error
+                        } else {
+                            BuildErrorSeverity::Warning
+                        },
+                    },
+                );
+            }
+        }
+        if line.kind == BuildLineKind::Summary {
+            self.duration_ms
+                .store(parse_build_duration(&line.content), Ordering::Relaxed);
+            self.succeeded
+                .store(line.content.contains("BUILD SUCCESSFUL"), Ordering::Relaxed);
+        }
+        if let Some(pending) = &self.pending {
+            if let Ok(mut pending) = pending.lock() {
+                if pending.len() >= MAX_PENDING_BUILD_LINES {
+                    pending.pop_front();
+                }
+                pending.push_back(line);
+            }
+        }
+    }
+
+    fn take_pending(&self) -> Vec<BuildLine> {
+        self.pending
+            .as_ref()
+            .and_then(|pending| pending.lock().ok().map(|mut p| p.drain(..).collect()))
+            .unwrap_or_default()
+    }
+}
+
+/// A spawned run, owned by the task that finishes it.
+struct Run {
+    state: BuildState,
+    app: Option<tauri::AppHandle>,
+    run_id: ProcessId,
+    task: String,
+    started_at: String,
+    project_root: Option<String>,
+    origin: BuildActor,
+    log: BuildLog,
+    collector: Arc<RunCollector>,
+    _instrumentation: Option<crate::services::ui_automator_lock::InstrumentationRun>,
+    _project_lock: Option<Arc<BuildLock>>,
+    _in_flight: RunInFlight,
+}
+
+impl Run {
+    /// Wait for Gradle to exit, sending its output to the app meanwhile.
+    async fn wait_for_exit(
+        &self,
+        exit: tokio::sync::oneshot::Receiver<ProcessTermination>,
+    ) -> ProcessTermination {
+        // Only the process manager's reader drops the sender unsent, when its task dies.
+        let lost = ProcessTermination::Signal(0);
+        if self.app.is_none() {
+            return exit.await.unwrap_or(lost);
+        }
+        tokio::pin!(exit);
+        let mut flush = tokio::time::interval(BUILD_LINES_FLUSH_INTERVAL);
+        flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            tokio::select! {
+                termination = &mut exit => {
+                    self.send_lines();
+                    return termination.unwrap_or(lost);
+                }
+                _ = flush.tick() => self.send_lines(),
+            }
+        }
+    }
+
+    fn send_lines(&self) {
+        use tauri::Emitter;
+        let Some(app) = &self.app else { return };
+        let lines = self.collector.take_pending();
+        for batch in lines.chunks(MAX_LINES_PER_BATCH) {
+            let _ = app.emit(
+                BUILD_LINES_EVENT,
+                BuildLinesEvent {
+                    run_id: self.run_id,
+                    lines: batch.to_vec(),
+                },
+            );
+        }
+    }
+
+    /// Record the run and report it. Consumes the run so its locks are
+    /// released before anyone waiting hears about it.
+    async fn finish(self, termination: ProcessTermination) -> BuildOutcome {
+        use std::sync::atomic::Ordering;
+        let stop = {
+            let mut bs = self.state.inner.lock().await;
+            match &bs.stop {
+                Some((RunKey::Run(id), _)) if *id == self.run_id => {
+                    bs.stop.take().map(|(_, reason)| reason)
+                }
+                _ => None,
+            }
         };
-        let errors = vec![timeout_err];
+        let killed = termination == ProcessTermination::Cancelled;
+        let (cancelled, cancelled_by, timed_out_after_sec) = match (killed, stop) {
+            (true, Some(StopReason::TimedOut { after_sec })) => (false, None, Some(after_sec)),
+            (true, Some(StopReason::Cancelled(by))) => (true, Some(by), None),
+            (true, None) => (true, None, None),
+            // It exited on its own before the stop reached it.
+            (false, _) => (false, None, None),
+        };
+        let mut errors = self
+            .collector
+            .errors
+            .lock()
+            .map(|e| e.clone())
+            .unwrap_or_default();
+        if let Some(after_sec) = timed_out_after_sec {
+            push_build_error(
+                &mut errors,
+                BuildError {
+                    message: format!("Build timed out after {after_sec}s and was cancelled"),
+                    file: None,
+                    line: None,
+                    col: None,
+                    severity: BuildErrorSeverity::Error,
+                },
+            );
+        }
+        // Exit code is authoritative: stray "BUILD SUCCESSFUL" text in the
+        // output must not override a non-zero exit.
+        let success = !cancelled
+            && timed_out_after_sec.is_none()
+            && termination == ProcessTermination::ExitCode(0)
+            && self.collector.succeeded.load(Ordering::Relaxed);
+        let duration_ms = self.collector.duration_ms.load(Ordering::Relaxed);
+
         emit_build_complete(
-            build_state,
-            app_handle,
+            &self.state,
+            self.app.as_ref(),
             BuildFinalization {
-                run_id: pid,
-                log: build_log.clone(),
-                task: task.to_owned(),
-                started_at,
-                project_root: project_root_for_history.clone(),
-                success: false,
-                cancelled: false,
-                duration_ms: 0,
+                run_id: self.run_id,
+                log: self.log.clone(),
+                task: self.task.clone(),
+                started_at: self.started_at.clone(),
+                project_root: self.project_root.clone(),
+                success,
+                cancelled,
+                duration_ms,
                 errors: errors.clone(),
+                origin: Some(self.origin.clone()),
+                cancelled_by: cancelled_by.clone(),
             },
         )
         .await;
-        return Ok(GradleTaskResult {
-            success: false,
-            timed_out: true,
-            duration_ms: 0,
-            errors,
-        });
-    }
 
-    // Exit code is authoritative. The summary line alone is not enough: stray
-    // "BUILD SUCCESSFUL" text in the output must not override a non-zero exit.
-    let exit_ok = matches!(termination, Ok(Ok(ProcessTermination::ExitCode(0))));
-    let success = exit_ok && success_flag.load(Ordering::Acquire);
-    let errors = errors_buf.lock().map(|g| g.clone()).unwrap_or_default();
-    let duration_ms = duration_buf.load(Ordering::Relaxed);
-    // Counts are derived inside finalize_completed_build — single source of truth.
-    let cancelled = matches!(termination, Ok(Ok(ProcessTermination::Cancelled)));
-    emit_build_complete(
-        build_state,
-        app_handle,
-        BuildFinalization {
-            run_id: pid,
-            log: build_log,
-            task: task.to_owned(),
-            started_at,
-            project_root: project_root_for_history,
+        BuildOutcome {
+            run_id: self.run_id,
             success,
             cancelled,
+            cancelled_by,
+            timed_out_after_sec,
             duration_ms,
-            errors: errors.clone(),
-        },
-    )
-    .await;
-
-    Ok(GradleTaskResult {
-        success,
-        timed_out: false,
-        duration_ms,
-        errors,
-    })
+            errors,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1722,7 +2169,7 @@ mod tests {
         let state = BuildState::new();
         let pm = ProcessManager::new();
         *state.active_process_id.lock().unwrap() = Some(99998);
-        let was_running = cancel_build(&state, &pm).await;
+        let was_running = cancel_build(&state, &pm, BuildActor::App).await;
         assert!(
             was_running,
             "cancel must see active_process_id even when inner.current_build is still None"
@@ -1734,7 +2181,7 @@ mod tests {
     async fn cancel_build_returns_false_when_idle() {
         let state = BuildState::new();
         let pm = ProcessManager::new();
-        let was_running = cancel_build(&state, &pm).await;
+        let was_running = cancel_build(&state, &pm, BuildActor::App).await;
         assert!(
             !was_running,
             "cancel_build should return false when no build is running"
@@ -1755,7 +2202,7 @@ mod tests {
             };
         }
 
-        let was_running = cancel_build(&state, &pm).await;
+        let was_running = cancel_build(&state, &pm, BuildActor::App).await;
         let inner = state.inner.lock().await;
 
         assert!(was_running, "starting builds should be cancellable");
@@ -1767,7 +2214,7 @@ mod tests {
     async fn cancel_build_does_not_change_status_when_idle() {
         let state = BuildState::new();
         let pm = ProcessManager::new();
-        cancel_build(&state, &pm).await;
+        cancel_build(&state, &pm, BuildActor::App).await;
         let inner = state.inner.lock().await;
         assert!(
             matches!(inner.status, BuildStatus::Idle),
@@ -1790,7 +2237,7 @@ mod tests {
             };
         }
 
-        let was_running = cancel_build(&state, &pm).await;
+        let was_running = cancel_build(&state, &pm, BuildActor::App).await;
         assert!(
             was_running,
             "cancel_build should return true when a build was running"
@@ -1811,7 +2258,7 @@ mod tests {
             };
         }
 
-        cancel_build(&state, &pm).await;
+        cancel_build(&state, &pm, BuildActor::App).await;
 
         let inner = state.inner.lock().await;
         assert!(
@@ -1834,7 +2281,7 @@ mod tests {
             };
         }
 
-        cancel_build(&state, &pm).await;
+        cancel_build(&state, &pm, BuildActor::App).await;
 
         let inner = state.inner.lock().await;
         assert!(
@@ -1935,6 +2382,8 @@ mod tests {
             errors: vec![],
             started_at: "2026-04-06T12:00:00Z".into(),
             project_root: None,
+            origin: None,
+            cancelled_by: None,
         };
         let json = serde_json::to_string(&record).unwrap();
         let parsed: BuildRecord = serde_json::from_str(&json).unwrap();
@@ -1953,6 +2402,8 @@ mod tests {
                 errors: vec![],
                 started_at: "2026-01-01T00:00:00Z".into(),
                 project_root: None,
+                origin: None,
+                cancelled_by: None,
             })
             .collect();
         // This is the formula that BuildStateInner::new() must use.
@@ -1982,6 +2433,8 @@ mod tests {
                     errors: vec![],
                     started_at: "2026-01-01T00:00:00Z".into(),
                     project_root: None,
+                    origin: None,
+                    cancelled_by: None,
                 });
             }
         }
@@ -2007,6 +2460,8 @@ mod tests {
                 errors: vec![],
                 started_at: "2026-04-06T12:00:00Z".into(),
                 project_root: None,
+                origin: None,
+                cancelled_by: None,
             })
             .collect();
 
@@ -2057,6 +2512,8 @@ mod tests {
             errors: vec![],
             started_at: "2026-01-01T00:00:00Z".into(),
             project_root: None,
+            origin: None,
+            cancelled_by: None,
         }
     }
 
@@ -2153,6 +2610,8 @@ mod tests {
             errors: vec![],
             started_at: "2026-04-09T00:00:00Z".into(),
             project_root: None,
+            origin: None,
+            cancelled_by: None,
         });
 
         rotate_build_logs(dir_path, 365, 1000, &history);
@@ -2251,6 +2710,8 @@ mod tests {
             cancelled: false,
             duration_ms: 0,
             errors: vec![],
+            origin: None,
+            cancelled_by: None,
         }
     }
 
@@ -2276,6 +2737,8 @@ mod tests {
                 cancelled: false,
                 duration_ms: 10,
                 errors: vec![],
+                origin: None,
+                cancelled_by: None,
             },
         )
         .await;
@@ -2312,6 +2775,8 @@ mod tests {
                     col: None,
                     severity: BuildErrorSeverity::Error,
                 }],
+                origin: None,
+                cancelled_by: None,
             },
         )
         .await;
@@ -2362,6 +2827,8 @@ mod tests {
                     mk(BuildErrorSeverity::Warning),
                     mk(BuildErrorSeverity::Error),
                 ],
+                origin: None,
+                cancelled_by: None,
             },
         )
         .await;
@@ -2389,6 +2856,8 @@ mod tests {
                 cancelled: true,
                 duration_ms: 0,
                 errors: vec![],
+                origin: None,
+                cancelled_by: None,
             },
         )
         .await;
@@ -2420,7 +2889,7 @@ mod tests {
             .unwrap();
         let log_a = start_run(&bs, 100).await;
         push_build_log(&log_a, "line from A".into());
-        cancel_build(&bs, &pm).await;
+        cancel_build(&bs, &pm, BuildActor::App).await;
 
         try_reserve_build_slot(&bs, "assembleRelease", "2026-01-01T00:00:05Z")
             .await
@@ -2487,34 +2956,55 @@ mod tests {
         assert_eq!(current, vec!["line from B".to_string()]);
     }
 
-    // ── Slot release on failure paths ────────────────────────────────────────
+    // ── Running a build ──────────────────────────────────────────────────────
 
-    /// Regression: run_task reserved the slot and then returned early via `?`
+    fn request(dir: &Path, gradlew: &Path, task: &str, origin: BuildActor) -> BuildRequest {
+        BuildRequest {
+            task: task.to_string(),
+            extra_args: vec![],
+            gradle_root: dir.to_path_buf(),
+            gradlew: gradlew.to_path_buf(),
+            env: vec![],
+            project_root: Some(dir.to_string_lossy().into_owned()),
+            origin,
+        }
+    }
+
+    fn agent(name: &str) -> BuildActor {
+        BuildActor::Agent(AgentActor {
+            session_id: Some(3),
+            client_name: Some(name.to_string()),
+            standalone: false,
+        })
+    }
+
+    /// Regression: the build reserved the slot and then returned early via `?`
     /// when the spawn failed, leaving `starting = true` forever. Every later
     /// build from either front door was refused until the app restarted.
     #[tokio::test]
-    async fn run_task_releases_the_slot_when_the_spawn_fails() {
+    async fn start_build_releases_the_slot_when_the_spawn_fails() {
         let build_state = BuildState::new();
         let pm = crate::services::process_manager::ProcessManager::new();
         let dir = tempfile::tempdir().unwrap();
         let missing_gradlew = dir.path().join("gradlew-does-not-exist");
 
-        let result = run_task(
-            "assembleDebug",
-            &[],
-            dir.path(),
-            &missing_gradlew,
-            30,
-            vec![],
-            Some(dir.path().to_string_lossy().into_owned()),
+        let result = start_build(
             &build_state,
             &pm,
             None,
+            request(
+                dir.path(),
+                &missing_gradlew,
+                "assembleDebug",
+                BuildActor::App,
+            ),
         )
         .await;
 
-        assert!(result.is_err(), "a missing gradlew must fail the run");
-
+        assert!(
+            matches!(result, Err(StartBuildError::Spawn(_))),
+            "a missing gradlew must fail the run"
+        );
         {
             let bs = build_state.inner.lock().await;
             assert!(
@@ -2523,6 +3013,7 @@ mod tests {
             );
             assert!(bs.current_build.is_none());
         }
+        assert!(build_state.wait_for_runs(std::time::Duration::ZERO).await);
 
         // The decisive assertion: a subsequent build can still start.
         try_reserve_build_slot(&build_state, "assembleDebug", "2026-01-01T00:00:00Z")
@@ -2530,51 +3021,325 @@ mod tests {
             .expect("slot must be free after a failed spawn");
     }
 
+    /// A gradlew that waits for `release` to exist, then succeeds.
+    fn gradlew_waiting_for(dir: &Path, release: &Path) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let gradlew = dir.join("gradlew");
+        std::fs::write(
+            &gradlew,
+            format!(
+                "#!/bin/sh\necho started\nwhile [ ! -e '{}' ]; do sleep 0.05; done\necho 'BUILD SUCCESSFUL in 1s'\n",
+                release.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&gradlew, std::fs::Permissions::from_mode(0o755)).unwrap();
+        gradlew
+    }
+
+    async fn history_record(bs: &BuildState, task: &str) -> Option<BuildRecord> {
+        bs.inner
+            .lock()
+            .await
+            .history
+            .iter()
+            .rev()
+            .find(|r| r.task == task)
+            .cloned()
+    }
+
+    /// Regression: the caller awaited Gradle's exit inside the build call, so
+    /// when that future was dropped (an MCP request abandoned by its client)
+    /// nothing recorded the build or released the slot, and every later build
+    /// was refused until the app restarted.
+    #[tokio::test]
+    async fn a_build_whose_caller_stops_waiting_still_finishes_and_frees_the_slot() {
+        let _history = PERSISTED_HISTORY.lock().await;
+        let build_state = BuildState::new();
+        let pm = crate::services::process_manager::ProcessManager::new();
+        let dir = tempfile::tempdir().unwrap();
+        let release = dir.path().join("release");
+        let gradlew = gradlew_waiting_for(dir.path(), &release);
+        let task = format!("abandoned{}", std::process::id());
+
+        let mut handle = start_build(
+            &build_state,
+            &pm,
+            None,
+            request(dir.path(), &gradlew, &task, agent("gone")),
+        )
+        .await
+        .unwrap();
+        // The caller waits a moment, then gives up and goes away.
+        let _ = tokio::time::timeout(std::time::Duration::from_millis(300), handle.wait()).await;
+        drop(handle);
+        assert!(build_state.inner.lock().await.current_build.is_some());
+
+        std::fs::write(&release, "").unwrap();
+        assert!(
+            build_state
+                .wait_for_runs(std::time::Duration::from_secs(15))
+                .await,
+            "the abandoned build never finished"
+        );
+        let record = history_record(&build_state, &task)
+            .await
+            .expect("the abandoned build is recorded");
+        assert!(matches!(record.status, BuildStatus::Success(_)));
+        assert_eq!(record.origin, Some(agent("gone")));
+        try_reserve_build_slot(&build_state, "assembleDebug", "2026-01-01T00:00:00Z")
+            .await
+            .expect("the slot must be free once the abandoned build ends");
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_build_records_who_cancelled_it() {
+        let _history = PERSISTED_HISTORY.lock().await;
+        let build_state = BuildState::new();
+        let pm = crate::services::process_manager::ProcessManager::new();
+        let dir = tempfile::tempdir().unwrap();
+        let gradlew = gradlew_waiting_for(dir.path(), &dir.path().join("never"));
+        let task = format!("cancelledByAgent{}", std::process::id());
+
+        let mut handle = start_build(
+            &build_state,
+            &pm,
+            None,
+            request(dir.path(), &gradlew, &task, BuildActor::App),
+        )
+        .await
+        .unwrap();
+        assert!(cancel_build(&build_state, &pm, agent("Claude Code")).await);
+        let outcome = handle.wait().await;
+
+        assert!(outcome.cancelled && !outcome.success);
+        assert_eq!(outcome.cancelled_by, Some(agent("Claude Code")));
+        let record = history_record(&build_state, &task).await.unwrap();
+        assert!(matches!(record.status, BuildStatus::Cancelled));
+        assert_eq!(record.origin, Some(BuildActor::App));
+        assert_eq!(record.cancelled_by, Some(agent("Claude Code")));
+        let bs = build_state.inner.lock().await;
+        assert_eq!(bs.status_cancelled_by, Some(agent("Claude Code")));
+        assert_eq!(bs.status_origin, Some(BuildActor::App));
+    }
+
+    /// Regression: a build cancelled while Gradle was still being spawned was
+    /// killed but never recorded.
+    #[tokio::test]
+    async fn a_build_cancelled_while_starting_is_recorded_as_cancelled() {
+        let _history = PERSISTED_HISTORY.lock().await;
+        let build_state = BuildState::new();
+        let pm = crate::services::process_manager::ProcessManager::new();
+        let dir = tempfile::tempdir().unwrap();
+        let gradlew = gradlew_waiting_for(dir.path(), &dir.path().join("never"));
+        let task = format!("cancelledStarting{}", std::process::id());
+
+        // Hold the process table so the spawn waits.
+        let table = pm.0.lock().await;
+        let start = {
+            let (bs, pm) = (build_state.clone(), pm.clone());
+            let request = request(dir.path(), &gradlew, &task, BuildActor::App);
+            tokio::spawn(async move { start_build(&bs, &pm, None, request).await })
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !build_state.inner.lock().await.starting {
+            assert!(std::time::Instant::now() < deadline, "never started");
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        assert!(cancel_build(&build_state, &pm, agent("early")).await);
+        drop(table);
+
+        let mut handle = start.await.unwrap().unwrap();
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(20), handle.wait())
+            .await
+            .expect("the build cancelled while starting kept running");
+        assert!(outcome.cancelled);
+        assert_eq!(outcome.cancelled_by, Some(agent("early")));
+        let record = history_record(&build_state, &task).await.unwrap();
+        assert!(matches!(record.status, BuildStatus::Cancelled));
+        assert!(matches!(
+            build_state.inner.lock().await.status,
+            BuildStatus::Cancelled
+        ));
+    }
+
+    #[tokio::test]
+    async fn a_timed_out_build_is_recorded_as_failed_with_the_reason() {
+        let _history = PERSISTED_HISTORY.lock().await;
+        let build_state = BuildState::new();
+        let pm = crate::services::process_manager::ProcessManager::new();
+        let dir = tempfile::tempdir().unwrap();
+        let gradlew = gradlew_waiting_for(dir.path(), &dir.path().join("never"));
+        let task = format!("timedOut{}", std::process::id());
+
+        let mut handle = start_build(
+            &build_state,
+            &pm,
+            None,
+            request(dir.path(), &gradlew, &task, agent("slow")),
+        )
+        .await
+        .unwrap();
+        // Another run's timeout does not stop this one.
+        assert!(!time_out_build(&build_state, &pm, Some(handle.run_id + 1000), 5).await);
+        assert!(time_out_build(&build_state, &pm, Some(handle.run_id), 5).await);
+        let outcome = handle.wait().await;
+
+        assert!(!outcome.cancelled && !outcome.success);
+        assert_eq!(outcome.timed_out_after_sec, Some(5));
+        assert_eq!(outcome.cancelled_by, None);
+        let record = history_record(&build_state, &task).await.unwrap();
+        assert!(matches!(record.status, BuildStatus::Failed(_)));
+        assert!(record
+            .errors
+            .iter()
+            .any(|e| e.message == "Build timed out after 5s and was cancelled"));
+    }
+
+    /// Two processes (here two build states, each with its own slot) cannot
+    /// build one project at once; the second is told another process builds.
+    #[tokio::test]
+    async fn a_project_being_built_elsewhere_is_busy_until_that_build_ends() {
+        let _history = PERSISTED_HISTORY.lock().await;
+        let pm = crate::services::process_manager::ProcessManager::new();
+        let dir = tempfile::tempdir().unwrap();
+        let release = dir.path().join("release");
+        let gradlew = gradlew_waiting_for(dir.path(), &release);
+        let (here, elsewhere) = (BuildState::new(), BuildState::new());
+
+        let mut first = start_build(
+            &elsewhere,
+            &pm,
+            None,
+            request(dir.path(), &gradlew, "assembleDebug", BuildActor::App),
+        )
+        .await
+        .unwrap();
+        let busy = start_build(
+            &here,
+            &pm,
+            None,
+            request(dir.path(), &gradlew, "assembleDebug", agent("x")),
+        )
+        .await
+        .err()
+        .unwrap();
+        let StartBuildError::BusyElsewhere(message) = busy else {
+            panic!("{busy:?}")
+        };
+        assert!(
+            message.starts_with(BUILD_ALREADY_RUNNING)
+                && message.contains("another Keynobi process")
+                && message.contains(&format!("pid {}", std::process::id())),
+            "{message}"
+        );
+        assert!(
+            matches!(here.inner.lock().await.status, BuildStatus::Idle),
+            "a refused start leaves the slot alone"
+        );
+
+        std::fs::write(&release, "").unwrap();
+        assert!(first.wait().await.success);
+        let mut second = start_build(
+            &here,
+            &pm,
+            None,
+            request(dir.path(), &gradlew, "assembleDebug", agent("x")),
+        )
+        .await
+        .expect("the lock is free once the other build ends");
+        assert!(second.wait().await.success);
+    }
+
+    /// Cancelling frees the slot at once; a new build of the same project in
+    /// this process must not be refused by the lock the old Gradle still holds
+    /// while it shuts down.
+    #[tokio::test]
+    async fn a_new_build_can_start_while_a_cancelled_one_shuts_down() {
+        let _history = PERSISTED_HISTORY.lock().await;
+        let build_state = BuildState::new();
+        let pm = crate::services::process_manager::ProcessManager::new();
+        let dir = tempfile::tempdir().unwrap();
+        let release = dir.path().join("release");
+        let gradlew = gradlew_waiting_for(dir.path(), &release);
+
+        let _old = start_build(
+            &build_state,
+            &pm,
+            None,
+            request(dir.path(), &gradlew, "assembleDebug", BuildActor::App),
+        )
+        .await
+        .unwrap();
+        cancel_build(&build_state, &pm, BuildActor::App).await;
+        let mut new = start_build(
+            &build_state,
+            &pm,
+            None,
+            request(dir.path(), &gradlew, "assembleRelease", BuildActor::App),
+        )
+        .await
+        .expect("the old run's lock is shared, not a refusal");
+        std::fs::write(&release, "").unwrap();
+        assert!(new.wait().await.success);
+    }
+
+    #[test]
+    fn output_for_the_app_is_parsed_and_capped() {
+        let collector = RunCollector::new(true);
+        let log = BuildLog::default();
+        collector.on_line(&log, "> Task :app:compileDebugKotlin".into());
+        collector.on_line(&log, "e: /src/A.kt:1:2: boom".into());
+        let lines = collector.take_pending();
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].kind, BuildLineKind::TaskStart);
+        assert_eq!(lines[1].kind, BuildLineKind::Error);
+        assert!(collector.take_pending().is_empty(), "taken once");
+
+        for n in 0..MAX_PENDING_BUILD_LINES + 5 {
+            collector.on_line(&log, format!("line {n}"));
+        }
+        let lines = collector.take_pending();
+        assert_eq!(lines.len(), MAX_PENDING_BUILD_LINES);
+        assert_eq!(lines[0].content, "line 5", "the oldest are dropped");
+
+        let headless = RunCollector::new(false);
+        headless.on_line(&log, "line".into());
+        assert!(
+            headless.take_pending().is_empty(),
+            "nothing kept without an app"
+        );
+    }
+
     #[tokio::test]
     async fn connected_tests_keep_the_device_busy_until_the_run_ends() {
         use crate::services::ui_automator_lock::test_support::instrumentation_active_on;
-        use std::os::unix::fs::PermissionsExt;
 
         let serial = "build-runner-connected";
         let build_state = BuildState::new();
         let pm = crate::services::process_manager::ProcessManager::new();
         let dir = tempfile::tempdir().unwrap();
         let release = dir.path().join("release");
-        let gradlew = dir.path().join("gradlew");
-        std::fs::write(
-            &gradlew,
-            format!(
-                "#!/bin/sh\nwhile [ ! -e '{}' ]; do sleep 0.05; done\necho 'BUILD SUCCESSFUL in 1s'\n",
-                release.display()
-            ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&gradlew, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let gradlew = gradlew_waiting_for(dir.path(), &release);
 
-        let run = run_task(
-            "connectedDebugAndroidTest",
-            &[],
+        let mut run_request = request(
             dir.path(),
             &gradlew,
-            30,
-            vec![("ANDROID_SERIAL".into(), serial.into())],
-            None,
-            &build_state,
-            &pm,
-            None,
+            "connectedDebugAndroidTest",
+            BuildActor::App,
         );
-        let observe = async {
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-            while !instrumentation_active_on(serial) && std::time::Instant::now() < deadline {
-                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
-            }
-            let seen = instrumentation_active_on(serial);
-            std::fs::write(&release, "").unwrap();
-            seen
-        };
-        let (result, seen_during_run) = tokio::join!(run, observe);
+        run_request.env = vec![("ANDROID_SERIAL".into(), serial.into())];
+        let mut handle = start_build(&build_state, &pm, None, run_request)
+            .await
+            .unwrap();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !instrumentation_active_on(serial) && std::time::Instant::now() < deadline {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let seen_during_run = instrumentation_active_on(serial);
+        std::fs::write(&release, "").unwrap();
 
-        assert!(result.unwrap().success);
+        assert!(handle.wait().await.success);
         assert!(
             seen_during_run,
             "the device was not marked busy during the run"

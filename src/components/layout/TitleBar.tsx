@@ -7,6 +7,7 @@ import { runAndDeploy, cancelBuild, SAFE_MODE_BUILD_TITLE } from "@/services/bui
 import { askToTrustActiveProject } from "@/services/project.service";
 import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { formatError } from "@/lib/tauri-api";
+import { cancelBuildTitle } from "@/lib/build-actor";
 import { Badge, Icon, showToast } from "@/components/ui";
 
 async function startDrag(e: MouseEvent) {
@@ -60,7 +61,7 @@ export function TitleBar(): JSX.Element {
   }
 
   const buildButtonTitle = () => {
-    if (isBuilding()) return "Cancel build";
+    if (isBuilding()) return cancelBuildTitle(buildState.origin);
     if (buildState.deployPhase === "installing") return "Installing APK…";
     if (buildState.deployPhase === "launching") return "Launching app…";
     if (deployingAfterBuild()) return "Deploying…";

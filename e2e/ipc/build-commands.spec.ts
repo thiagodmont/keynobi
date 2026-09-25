@@ -28,8 +28,11 @@ test.describe("build IPC commands", () => {
     });
   });
 
-  test("cancel_build transitions status to cancelled", async ({ page }) => {
-    await page.evaluate(async () => window.__e2e__.invoke("cancel_build"));
+  test("cancel_build transitions a running build to cancelled", async ({ page }) => {
+    await page.evaluate(async () => {
+      await window.__e2e__.invoke("run_gradle_task", { task: "assembleDebug" });
+      await window.__e2e__.invoke("cancel_build");
+    });
     const status = await page.evaluate(async () => {
       return window.__e2e__.invoke("get_build_status") as Promise<{ state: string }>;
     });

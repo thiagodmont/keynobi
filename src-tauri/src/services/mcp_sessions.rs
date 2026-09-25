@@ -86,10 +86,23 @@ struct RegistryInner {
 }
 
 /// Sessions attached to this app process. Cheap to clone; clones share state.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct McpSessionRegistry {
     inner: Arc<Mutex<RegistryInner>>,
     on_change: Option<ChangeListener>,
+    /// Set once, with the message for requests still in flight, when every
+    /// session must close (the app is quitting).
+    closing: Arc<tokio::sync::watch::Sender<Option<String>>>,
+}
+
+impl Default for McpSessionRegistry {
+    fn default() -> Self {
+        Self {
+            inner: Arc::default(),
+            on_change: None,
+            closing: Arc::new(tokio::sync::watch::channel(None).0),
+        }
+    }
 }
 
 impl McpSessionRegistry {
@@ -100,8 +113,31 @@ impl McpSessionRegistry {
     /// Call `listener` with the new list after every change.
     pub fn with_listener(listener: impl Fn(&[McpAttachedSession]) + Send + Sync + 'static) -> Self {
         Self {
-            inner: Arc::default(),
             on_change: Some(Arc::new(listener)),
+            ..Self::default()
+        }
+    }
+
+    /// Ask every session to close, answering its requests in flight with
+    /// `message`. New sessions are refused from then on.
+    pub fn close_all(&self, message: impl Into<String>) {
+        self.closing.send_replace(Some(message.into()));
+    }
+
+    pub fn is_closing(&self) -> bool {
+        self.closing.borrow().is_some()
+    }
+
+    /// Resolves with the message once [`McpSessionRegistry::close_all`] is called.
+    pub async fn closed(&self) -> String {
+        let mut closing = self.closing.subscribe();
+        let message = match closing.wait_for(Option::is_some).await {
+            Ok(message) => message.clone(),
+            Err(_) => None,
+        };
+        match message {
+            Some(message) => message,
+            None => std::future::pending().await,
         }
     }
 

@@ -125,14 +125,16 @@ Builds need a trusted project; in Safe Mode every build action is disabled (see 
 - `Cmd+Shift+R`: build only.
 - `Cmd+Shift+V`, or click the variant pill in the status bar: choose the active build variant.
 - **Clean Project** from the Command Palette: run the Gradle `clean` task.
-- **Cancel Build** from the Command Palette or the title bar: stop the running Gradle task.
+- **Cancel Build** from the Command Palette or the title bar: stop the running Gradle task, including one an AI client started.
+
+Builds an attached AI client starts show in the Build tab like your own, labelled **Started by an agent (client name)**, with their output, errors, and result. Keynobi never installs or launches an AI client's build. While it runs, **Build** is disabled and its tooltip says which agent is building; you can still cancel it.
 
 Build output has two views:
 
 - **Log**: Gradle output, colored by level. Filter by level (**ALL**, **ERR**, **WARN**, **INFO**, **DBG**), by source, or by text; show or hide timestamps; copy the visible lines; or clear the view.
 - **Problems (N)**: parsed errors and warnings.
 
-The **Builds** side panel lists recent builds. Click one to see its log, or use **Clear build history**. If a past build's log cannot be read, the panel shows the error with a **Retry** button instead of the log. Keynobi keeps the last 10 builds; log files are removed after 7 days or when the log folder passes 100 MB (both configurable under **Settings → Advanced → Build**).
+The **Builds** side panel lists recent builds, with who started a build when it was an AI client, and who cancelled it (you, an AI client, or Keynobi quitting). Click one to see its log, or use **Clear build history**. If a past build's log cannot be read, the panel shows the error with a **Retry** button instead of the log. Keynobi keeps the last 10 builds; log files are removed after 7 days or when the log folder passes 100 MB (both configurable under **Settings → Advanced → Build**).
 
 ---
 
@@ -345,8 +347,8 @@ Your AI client starts a small Keynobi MCP process in the background. If Keynobi 
   - If Keynobi has a different project open, or no project, or is not running, the MCP process runs standalone on its own project (falling back to the last project you had open in Keynobi). Keynobi never switches projects for an AI client.
 - **Which mode**: ask the client to call `get_project_info`. `mode` is `attached` or `standalone`, `standalone_reason` says why, and `selected_by` says how the project was chosen. Build results also say which mode ran them.
 - **Trust**: an AI client can build only a project you trusted in Keynobi. For any other project, `run_gradle_task` and `run_tests` fail with a message asking you to open the project in Keynobi and choose **Trust**; the MCP server never asks itself. Other tools keep working.
-- **Builds and logcat**: an attached client shares one build at a time with the app: while either is building, the other is told a build is already running. Builds started by an attached client do not stream into the Build tab yet. Builds and logcat of a standalone server are not visible in the app; its builds can appear in build history the next time Keynobi starts.
-- **Quitting Keynobi** ends attached sessions; restart the MCP server in your AI client afterwards.
+- **Builds and logcat**: an attached client shares one build at a time with the app: while either is building, the other is told a build is already running. Its builds stream into the Build tab, and either side can cancel the other's; the result says who cancelled it. A build keeps running if the AI client disconnects. Builds and logcat of a standalone server are not visible in the app; its builds can appear in build history the next time Keynobi starts. Two Keynobi processes never build the same project at once: the second is told which process is building it.
+- **Quitting Keynobi** cancels a running build (recorded as cancelled because Keynobi quit) and answers the AI client's pending requests with an error. The client then keeps working with a standalone server ("the Keynobi app quit"), without a restart. With `--attach-only` the MCP server exits instead.
 - **Status**: the MCP item in the status bar shows how many AI clients are attached (for example **MCP: 2 agents**) and warns about standalone servers. The **MCP Activity** panel (`Cmd+Shift+M`) lists each session, the setup commands, and recent tool calls from AI clients.
 
 To require the app, add `--attach-only` after `--mcp`: the MCP server then exits with an error instead of running standalone.

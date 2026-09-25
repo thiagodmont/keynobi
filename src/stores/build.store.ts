@@ -1,6 +1,6 @@
 import { createStore, produce } from "solid-js/store";
 import { createSignal } from "solid-js";
-import type { BuildError, BuildRecord, BuildLine, LogEntry } from "@/bindings";
+import type { BuildActor, BuildError, BuildRecord, BuildLine, LogEntry } from "@/bindings";
 import { createLogStore, type LogStore } from "@/stores/log.store";
 import { clearBuildHistory as clearBuildHistoryApi } from "@/lib/tauri-api";
 
@@ -20,7 +20,13 @@ export interface BuildStoreState {
   deployPhase: DeployPhase;
   lastLaunchedAt: number | null;
   lastLaunchedPackage: string | null;
+  /** Who started the build shown (the app, or an agent). */
+  origin: BuildActor | null;
+  /** Who cancelled it, once cancelled. */
+  cancelledBy: BuildActor | null;
 }
+
+const APP: BuildActor = { kind: "app" };
 
 // ── Tick (1-second reactive heartbeat while a build is running) ───────────────
 
@@ -52,6 +58,8 @@ const [buildState, setBuildState] = createStore<BuildStoreState>({
   deployPhase: null,
   lastLaunchedAt: null,
   lastLaunchedPackage: null,
+  origin: null,
+  cancelledBy: null,
 });
 
 export { buildState };
@@ -91,6 +99,11 @@ export function isBuilding(): boolean {
 
 export function isDeploying(): boolean {
   return buildState.deployPhase !== null;
+}
+
+/** A build an agent started is running. */
+export function isAgentBuilding(): boolean {
+  return buildState.phase === "running" && buildState.origin?.kind === "agent";
 }
 
 // ── Batching ──────────────────────────────────────────────────────────────────
@@ -177,7 +190,7 @@ export function flushPendingLines(): void {
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
-export function startBuild(task: string): void {
+export function startBuild(task: string, origin: BuildActor = APP): void {
   // Discard any pending lines from a previous build.
   _pendingLines = [];
   if (_flushTimer !== null) {
@@ -192,6 +205,8 @@ export function startBuild(task: string): void {
     errors: [],
     warnings: [],
     deployPhase: null,
+    origin,
+    cancelledBy: null,
   });
   buildLogStore.clearEntries();
   _startTick();
@@ -224,9 +239,9 @@ export function setBuildResult(opts: { success: boolean; durationMs: number }): 
   });
 }
 
-export function cancelBuildState(): void {
+export function cancelBuildState(cancelledBy: BuildActor | null = APP): void {
   _stopTick();
-  setBuildState({ phase: "cancelled", startedAt: null, deployPhase: null });
+  setBuildState({ phase: "cancelled", startedAt: null, deployPhase: null, cancelledBy });
 }
 
 export function clearBuild(): void {
@@ -246,6 +261,8 @@ export function clearBuild(): void {
     deployPhase: null,
     lastLaunchedAt: null,
     lastLaunchedPackage: null,
+    origin: null,
+    cancelledBy: null,
   });
   buildLogStore.clearEntries();
 }

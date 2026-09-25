@@ -358,7 +358,7 @@ async fn record_build_result_stamps_project_root() {
     );
 }
 
-/// Records with no project_root (e.g. from MCP run_task paths) store None.
+/// Records with no project_root (no project open) store None.
 #[tokio::test]
 async fn record_build_result_stores_none_project_root_when_not_provided() {
     let _history = common::lock_history().await;

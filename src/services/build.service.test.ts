@@ -8,7 +8,13 @@ import {
   runAndDeploy,
   runBuild,
 } from "@/services/build.service";
-import { buildState, resetBuildState, startBuild } from "@/stores/build.store";
+import {
+  buildLogStore,
+  buildState,
+  flushPendingLines,
+  resetBuildState,
+  startBuild,
+} from "@/stores/build.store";
 import { resetDeviceState } from "@/stores/device.store";
 import { resetVariantState, selectVariant } from "@/stores/variant.store";
 import { updateSetting } from "@/stores/settings.store";
@@ -542,5 +548,193 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "install_apk_on_device")).toHaveLength(
       0
     );
+  });
+});
+
+describe("builds this window did not start", () => {
+  const claude = {
+    kind: "agent" as const,
+    sessionId: 3,
+    clientName: "Claude Code",
+    standalone: false,
+  };
+  let handlers: Map<string, (e: { payload: unknown }) => void>;
+
+  function emit(event: string, payload: unknown): void {
+    const handler = handlers.get(event);
+    // Fail loudly rather than pass vacuously when the listener is missing.
+    expect(handler, `${event} listener`).toBeDefined();
+    handler!({ payload });
+  }
+
+  function started(runId: number, task = "assembleDebug", origin: unknown = claude): void {
+    emit("build:started", {
+      runId,
+      task,
+      origin,
+      startedAt: new Date().toISOString(),
+      projectRoot: "/p",
+    });
+  }
+
+  function complete(runId: number, extra: Record<string, unknown> = {}): void {
+    emit("build:complete", {
+      runId,
+      success: true,
+      cancelled: false,
+      durationMs: 2_000,
+      errorCount: 0,
+      warningCount: 0,
+      task: "assembleDebug",
+      origin: claude,
+      cancelledBy: null,
+      ...extra,
+    });
+  }
+
+  function line(content: string) {
+    return { kind: "output", content, file: null, line: null, col: null };
+  }
+
+  function logContents(): string[] {
+    flushPendingLines();
+    return buildLogStore.entries.map((entry) => entry.message);
+  }
+
+  beforeEach(async () => {
+    resetBuildState();
+    resetDeviceState();
+    resetVariantState();
+    vi.clearAllMocks();
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+    handlers = new Map();
+    vi.mocked(listen).mockImplementation(async (event, cb) => {
+      handlers.set(String(event), cb as unknown as (e: { payload: unknown }) => void);
+      return () => {};
+    });
+    await initBuildService();
+  });
+
+  afterEach(() => {
+    resetBuildServiceForTests();
+  });
+
+  it("shows an agent's build with who started it, its output and outcome, and never deploys it", () => {
+    started(4, "assembleRelease");
+
+    expect(buildState.phase).toBe("running");
+    expect(buildState.currentTask).toBe("assembleRelease");
+    expect(buildState.origin).toEqual(claude);
+
+    emit("build:lines", { runId: 4, lines: [line("> Task :app:compileReleaseKotlin")] });
+    emit("build:lines", { runId: 99, lines: [line("another run's output")] });
+    expect(logContents()).toEqual(["> Task :app:compileReleaseKotlin"]);
+
+    complete(4);
+
+    expect(buildState.phase).toBe("success");
+    expect(buildState.origin).toEqual(claude);
+    const deployCalls = mockInvoke.mock.calls.filter(([cmd]) =>
+      ["find_apk_path", "install_apk_on_device", "launch_app_on_device"].includes(String(cmd))
+    );
+    expect(deployCalls).toHaveLength(0);
+  });
+
+  it("refuses to start a build while an agent's build runs, naming the agent", async () => {
+    started(4);
+
+    await expect(runBuild()).rejects.toThrow(
+      "A build started by an agent (Claude Code) is running."
+    );
+    await expect(runAndDeploy()).rejects.toThrow(
+      "A build started by an agent (Claude Code) is running."
+    );
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "run_gradle_task")).toHaveLength(0);
+  });
+
+  it("cancels an agent's build and shows who cancelled it", async () => {
+    started(4);
+
+    await cancelBuild();
+
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "cancel_build")).toHaveLength(1);
+    expect(buildState.phase).toBe("cancelled");
+    expect(buildState.cancelledBy).toEqual({ kind: "app" });
+
+    complete(4, { success: false, cancelled: true, cancelledBy: { kind: "app" } });
+    expect(buildState.phase).toBe("cancelled");
+    expect(buildState.cancelledBy).toEqual({ kind: "app" });
+  });
+
+  it("shows that an agent cancelled its own build", () => {
+    started(4);
+
+    complete(4, { success: false, cancelled: true, cancelledBy: claude });
+
+    expect(buildState.phase).toBe("cancelled");
+    expect(buildState.cancelledBy).toEqual(claude);
+  });
+
+  it("streams this window's own build from build:lines once build:started names it", async () => {
+    let returnRunId: (id: number) => void = () => {};
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "run_gradle_task") {
+        return new Promise<number>((resolve) => {
+          returnRunId = resolve;
+        });
+      }
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    const build = runBuild("assembleDebug");
+    started(5, "assembleDebug", { kind: "app" });
+    emit("build:lines", { runId: 5, lines: [line("> Task :app:preBuild")] });
+
+    expect(logContents()).toContain("> Task :app:preBuild");
+    expect(buildState.origin).toEqual({ kind: "app" });
+
+    complete(5, { origin: { kind: "app" } });
+    returnRunId(5);
+    await build;
+    expect(buildState.phase).toBe("success");
+  });
+
+  it("hands the panel to an agent's build that took the slot first", async () => {
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "run_gradle_task") {
+        // The agent's build started while this request was in flight.
+        started(8, "testDebugUnitTest");
+        emit("build:lines", { runId: 8, lines: [line("> Task :app:testDebugUnitTest")] });
+        return Promise.reject("Invalid input: A build is already running");
+      }
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    await expect(runBuild("assembleDebug")).rejects.toBe(
+      "Invalid input: A build is already running"
+    );
+
+    expect(buildState.phase).toBe("running");
+    expect(buildState.currentTask).toBe("testDebugUnitTest");
+    expect(buildState.origin).toEqual(claude);
+    expect(logContents()).toEqual(["> Task :app:testDebugUnitTest"]);
+
+    complete(8);
+    expect(buildState.phase).toBe("success");
+  });
+
+  it("does not bring back an agent's build that finished after a project switch", () => {
+    started(4);
+    beginProjectOpen();
+    resetBuildState();
+
+    complete(4);
+
+    expect(buildState.phase).toBe("idle");
   });
 });

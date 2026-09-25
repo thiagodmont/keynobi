@@ -8,6 +8,7 @@
 //! from the app's own state; `keynobi --mcp` just pipes its stdio to the socket.
 use crate::services::fs_manager;
 use crate::services::mcp_activity::{self, McpActivityEntry};
+use crate::services::mcp_relay::{write_all_flush, LineReader, Relay, RelayEnd, SessionTracker};
 use crate::services::mcp_server::{AndroidMcpServer, LoggingMcpServer, ProjectSelection};
 use crate::services::mcp_sessions::{McpSessionRegistry, SessionGuard};
 use crate::services::settings_manager;
@@ -35,6 +36,14 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 pub const ATTACH_TIMEOUT: Duration = Duration::from_millis(1500);
 /// How long the forwarder keeps relaying replies after its client closed stdin.
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
+/// Buffer between a session's socket relay and its MCP server.
+const SESSION_PIPE_BYTES: usize = 64 * 1024;
+/// How long a closed session waits for its MCP server to wind down.
+const SESSION_END_TIMEOUT: Duration = Duration::from_secs(1);
+/// How long quitting waits for the cancelled build to be recorded.
+pub const QUIT_BUILD_TIMEOUT: Duration = Duration::from_millis(1500);
+/// How long quitting waits for attached sessions to be answered and closed.
+pub const QUIT_SESSIONS_TIMEOUT: Duration = Duration::from_millis(500);
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -312,6 +321,10 @@ async fn serve_connection(
         }
     };
 
+    if registry.is_closing() {
+        let _ = write_json_line(&mut write_half, &AttachReply::reject(QUITTING)).await;
+        return;
+    }
     let app = AppProject::of(&fs_state).await;
     let pinned = match decide_attach(&request, &app) {
         Ok(pinned) => pinned,
@@ -355,16 +368,44 @@ async fn serve_connection(
         (Some(_), Some(how)) => how,
         (Some(_), None) => ProjectSelection::Argument,
     };
-    let server = make_server().attached(pinned, selection);
+    let server = make_server()
+        .attached(pinned, selection)
+        .with_session_id(id);
     let logging = LoggingMcpServer::new(server).with_session(registry.clone(), id);
-    match logging.serve((reader, write_half)).await {
-        Ok(running) => {
-            if let Err(e) = running.waiting().await {
-                warn!("MCP session {id} ended with an error: {e}");
+    // The session is served through a relay that tracks the client's requests,
+    // so that when the app quits every one still in flight gets an answer.
+    let (server_io, relay_io) = tokio::io::duplex(SESSION_PIPE_BYTES);
+    let session = tokio::spawn(async move {
+        match logging.serve(tokio::io::split(server_io)).await {
+            Ok(running) => {
+                if let Err(e) = running.waiting().await {
+                    warn!("MCP session {id} ended with an error: {e}");
+                }
             }
+            Err(e) => warn!("MCP session {id} failed to initialize: {e}"),
         }
-        Err(e) => warn!("MCP session {id} failed to initialize: {e}"),
+    });
+    let (from_server, to_server) = tokio::io::split(relay_io);
+    let mut relay = Relay {
+        client: LineReader::new(reader),
+        client_out: write_half,
+        server: LineReader::new(BufReader::new(from_server)),
+        server_out: to_server,
+        tracker: SessionTracker::default(),
+    };
+    match relay.run(registry.closed()).await {
+        RelayEnd::Stopped(message) => {
+            relay.answer_unanswered(&message).await;
+            let _ = relay.client_out.shutdown().await;
+        }
+        RelayEnd::ClientClosed => {}
+        RelayEnd::ServerClosed => {
+            let _ = relay.client_out.shutdown().await;
+        }
     }
+    // Closing the pipe ends the MCP session.
+    drop(relay);
+    let _ = tokio::time::timeout(SESSION_END_TIMEOUT, session).await;
     mcp_activity::log_activity(&McpActivityEntry::lifecycle(format!(
         "Client detached (pid {})",
         request
@@ -403,6 +444,45 @@ pub async fn start_app_listener(app: tauri::AppHandle, registry: McpSessionRegis
     .await;
     // Only reached if the accept loop ever ends.
     remove_app_socket(&registry);
+}
+
+/// Why new sessions are refused while the app quits.
+const QUITTING: &str = "Keynobi is quitting";
+
+/// What attached clients are told about their requests still in flight when
+/// the app quits.
+pub fn quit_message(build_cancelled: bool) -> String {
+    if build_cancelled {
+        "Keynobi is quitting; the running build was cancelled. Retry the request: the MCP \
+         server continues without the app."
+            .to_string()
+    } else {
+        "Keynobi is quitting. Retry the request: the MCP server continues without the app."
+            .to_string()
+    }
+}
+
+/// Quit with agents attached: cancel the running build (recorded as
+/// cancelled because Keynobi quit) and wait briefly for it to be recorded,
+/// then answer every attached session's requests still in flight and close
+/// the sessions. Each step is bounded; the whole takes at most
+/// `QUIT_BUILD_TIMEOUT + QUIT_SESSIONS_TIMEOUT`.
+pub async fn quit_sessions(
+    build_state: &crate::services::build_runner::BuildState,
+    process_manager: &crate::services::process_manager::ProcessManager,
+    registry: &McpSessionRegistry,
+) {
+    use crate::services::build_runner::{self, BuildActor};
+    let cancelled =
+        build_runner::cancel_build(build_state, process_manager, BuildActor::AppQuit).await;
+    if cancelled && !build_state.wait_for_runs(QUIT_BUILD_TIMEOUT).await {
+        warn!("The cancelled build was not recorded before quitting");
+    }
+    registry.close_all(quit_message(cancelled));
+    let deadline = tokio::time::Instant::now() + QUIT_SESSIONS_TIMEOUT;
+    while !registry.sessions().is_empty() && tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
 }
 
 /// Remove the socket this process bound (on app exit).
@@ -483,45 +563,134 @@ async fn handshake(path: &Path, request: &AttachRequest) -> Result<Attached, Str
 }
 
 /// How an attached forwarding session ended.
-#[derive(Debug, PartialEq, Eq)]
-pub enum ForwardEnd {
+pub enum ForwardEnd<I> {
     /// The MCP client closed stdin.
     ClientClosed,
-    /// The app closed the socket (for example, it quit).
-    AppClosed,
+    /// The app closed the socket (for example, it quit). Every request it
+    /// left unanswered has been answered with an error; the session can
+    /// continue with a standalone server from `Resume`.
+    AppClosed(Resume<I>),
 }
+
+/// What `keynobi --mcp` needs to continue a session without the app.
+pub struct Resume<I> {
+    /// The rest of the client's input.
+    pub input: LineReader<I>,
+    /// The client's `initialize` request (ID and line), to replay.
+    pub initialize: Option<(serde_json::Value, Vec<u8>)>,
+    /// The client's `notifications/initialized` line, to replay.
+    pub initialized: Option<Vec<u8>>,
+    /// The app never answered `initialize`: the replayed answer goes to the client.
+    pub answer_initialize: bool,
+}
+
+/// Told to the client about requests the app left unanswered when it closed the session.
+pub const APP_CLOSED_REQUEST: &str = "The Keynobi app closed the MCP session before answering \
+     (it may have quit). The MCP server continues without the app; retry the request.";
 
 /// Relay the MCP client (`input`/`output`, normally stdio) to the attached
 /// app until either side closes.
-pub async fn forward<I, O>(attached: Attached, mut input: I, mut output: O) -> ForwardEnd
+pub async fn forward<I, O>(attached: Attached, input: I, output: &mut O) -> ForwardEnd<I>
 where
     I: AsyncRead + Unpin,
     O: AsyncWrite + Unpin,
 {
-    let Attached {
-        mut reader,
-        mut writer,
-        ..
-    } = attached;
-    let down = async {
-        let _ = tokio::io::copy_buf(&mut reader, &mut output).await;
-        let _ = output.flush().await;
+    let Attached { reader, writer, .. } = attached;
+    let mut relay = Relay {
+        client: LineReader::new(BufReader::new(input)),
+        client_out: output,
+        server: LineReader::new(reader),
+        server_out: writer,
+        tracker: SessionTracker::default(),
     };
-    let up = async {
-        let _ = tokio::io::copy(&mut input, &mut writer).await;
-        let _ = writer.shutdown().await;
-    };
-    tokio::pin!(down);
-    tokio::select! {
-        _ = &mut down => ForwardEnd::AppClosed,
-        _ = up => {
+    match relay.run(std::future::pending()).await {
+        RelayEnd::ServerClosed => {
+            let mut unanswered = relay.tracker.take_unanswered();
+            let initialize = relay.tracker.initialize.take();
+            let answer_initialize = initialize
+                .as_ref()
+                .is_some_and(|(id, _)| unanswered.contains(id));
+            if let Some((id, _)) = &initialize {
+                unanswered.retain(|pending| pending != id);
+            }
+            for id in unanswered {
+                let line = crate::services::mcp_relay::error_line(&id, APP_CLOSED_REQUEST);
+                if write_all_flush(&mut relay.client_out, &line).await.is_err() {
+                    break;
+                }
+            }
+            ForwardEnd::AppClosed(Resume {
+                input: relay.client,
+                initialize,
+                initialized: relay.tracker.initialized.take(),
+                answer_initialize,
+            })
+        }
+        RelayEnd::ClientClosed | RelayEnd::Stopped(_) => {
             // Let the app answer requests already sent, then stop.
-            let _ = tokio::time::timeout(DRAIN_TIMEOUT, &mut down).await;
+            relay.drain_server(DRAIN_TIMEOUT).await;
             ForwardEnd::ClientClosed
         }
     }
 }
 
+/// Continue a session the app closed with `server`, a standalone server
+/// reached through `to_server`/`from_server`: replay the client's handshake
+/// (dropping the answer the client already has), then relay the client to it.
+pub async fn resume_with<I, O, SR, SW>(
+    resume: Resume<I>,
+    output: &mut O,
+    from_server: SR,
+    to_server: SW,
+) where
+    I: AsyncRead + Unpin,
+    O: AsyncWrite + Unpin,
+    SR: AsyncRead + Unpin,
+    SW: AsyncWrite + Unpin,
+{
+    use crate::services::mcp_relay::{classify, Chunk, Message};
+    let mut relay = Relay {
+        client: resume.input,
+        client_out: output,
+        server: LineReader::new(BufReader::new(from_server)),
+        server_out: to_server,
+        tracker: SessionTracker::default(),
+    };
+    if let Some((id, line)) = &resume.initialize {
+        if write_all_flush(&mut relay.server_out, line).await.is_err() {
+            return;
+        }
+        loop {
+            let bytes = match relay.server.next().await {
+                Ok(Chunk::Line(line)) => {
+                    if classify(&line) == (Message::Response { id: id.clone() }) {
+                        if resume.answer_initialize {
+                            let _ = write_all_flush(&mut relay.client_out, &line).await;
+                        }
+                        break;
+                    }
+                    line
+                }
+                Ok(Chunk::Part(part)) => part,
+                Ok(Chunk::Eof) | Err(_) => return,
+            };
+            if write_all_flush(&mut relay.client_out, &bytes)
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+    }
+    if let Some(line) = &resume.initialized {
+        if write_all_flush(&mut relay.server_out, line).await.is_err() {
+            return;
+        }
+    }
+    if relay.run(std::future::pending()).await == RelayEnd::ClientClosed {
+        relay.drain_server(DRAIN_TIMEOUT).await;
+    }
+}
 /// The project `keynobi --mcp` asks to attach to: the Gradle build containing
 /// the selected folder, canonicalized.
 pub fn attach_project_key(selected: &Path) -> PathBuf {
@@ -701,7 +870,7 @@ mod tests {
         };
         // stdin that never ends, like an idle MCP client.
         let (_stdin_keepalive, stdin) = tokio::io::duplex(64);
-        let (stdout, mut stdout_reader) = tokio::io::duplex(1024);
+        let (mut stdout, mut stdout_reader) = tokio::io::duplex(1024);
 
         let mut app_side = app_side;
         app_side
@@ -710,12 +879,86 @@ mod tests {
             .unwrap();
         drop(app_side);
 
-        let end = tokio::time::timeout(Duration::from_secs(5), forward(attached, stdin, stdout))
-            .await
-            .expect("forwarder must exit when the app goes away");
-        assert_eq!(end, ForwardEnd::AppClosed);
+        let end = tokio::time::timeout(
+            Duration::from_secs(5),
+            forward(attached, stdin, &mut stdout),
+        )
+        .await
+        .expect("forwarder must exit when the app goes away");
+        assert!(matches!(end, ForwardEnd::AppClosed(_)));
+        drop(stdout);
         let mut out = String::new();
         stdout_reader.read_to_string(&mut out).await.unwrap();
         assert_eq!(out, "{\"jsonrpc\":\"2.0\"}\n");
+    }
+
+    /// When the app goes away mid-request, the client gets an error for each
+    /// request the app did not answer, and the handshake is kept for replay.
+    #[tokio::test]
+    async fn the_forwarder_answers_what_the_app_left_unanswered() {
+        let (app_side, client_side) = UnixStream::pair().unwrap();
+        let (read_half, writer) = client_side.into_split();
+        let attached = Attached {
+            reader: BufReader::new(read_half),
+            writer,
+            reply: AttachReply::accept(None),
+        };
+        let (mut client, stdin) = tokio::io::duplex(4096);
+        let (mut stdout, mut stdout_reader) = tokio::io::duplex(4096);
+        let init = "{\"jsonrpc\":\"2.0\",\"id\":0,\"method\":\"initialize\",\"params\":{}}\n";
+        let initialized = "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n";
+        let call = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{}}\n";
+        client
+            .write_all(format!("{init}{initialized}{call}").as_bytes())
+            .await
+            .unwrap();
+
+        let app = async move {
+            let mut app_side = BufReader::new(app_side);
+            let mut line = String::new();
+            app_side.read_line(&mut line).await.unwrap();
+            app_side
+                .get_mut()
+                .write_all(b"{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{}}\n")
+                .await
+                .unwrap();
+            // Read the notification and the call, then quit without answering.
+            line.clear();
+            app_side.read_line(&mut line).await.unwrap();
+            line.clear();
+            app_side.read_line(&mut line).await.unwrap();
+            assert!(line.contains("tools/call"), "{line}");
+        };
+        let (end, ()) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                forward(attached, stdin, &mut stdout)
+            ),
+            app
+        );
+        let ForwardEnd::AppClosed(resume) = end.expect("forwarder ends") else {
+            panic!("expected the app to have closed");
+        };
+        assert_eq!(
+            resume
+                .initialize
+                .as_ref()
+                .map(|(id, line)| (id.clone(), line.clone())),
+            Some((serde_json::json!(0), init.as_bytes().to_vec()))
+        );
+        assert_eq!(resume.initialized.as_deref(), Some(initialized.as_bytes()));
+        assert!(!resume.answer_initialize);
+        drop(stdout);
+
+        let mut out = String::new();
+        stdout_reader.read_to_string(&mut out).await.unwrap();
+        let lines: Vec<serde_json::Value> = out
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        assert_eq!(lines.len(), 2, "{out}");
+        assert_eq!(lines[0]["id"], 0);
+        assert_eq!(lines[1]["id"], 1);
+        assert_eq!(lines[1]["error"]["message"], APP_CLOSED_REQUEST);
     }
 }

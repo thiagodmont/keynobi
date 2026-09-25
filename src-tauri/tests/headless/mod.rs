@@ -7,7 +7,7 @@
 //! on a sandbox's socket from this test process.
 
 use keynobi_lib::services::adb_manager::DeviceState;
-use keynobi_lib::services::build_runner::BuildState;
+use keynobi_lib::services::build_runner::{BuildState, BuildStateInner};
 use keynobi_lib::services::mcp_attach;
 use keynobi_lib::services::mcp_server::AndroidMcpServer;
 use keynobi_lib::services::mcp_sessions::McpSessionRegistry;
@@ -260,18 +260,39 @@ impl McpClient {
 
     /// Like [`McpClient::request`], but returns a JSON-RPC error instead of panicking.
     pub fn request_result(&mut self, method: &str, params: Value) -> Result<Value, Value> {
+        let id = self.send_request(method, params);
+        self.wait_response(id)
+    }
+
+    /// Send a request without waiting for its response; returns its id.
+    pub fn send_request(&mut self, method: &str, params: Value) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
         self.send(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }));
+        id
+    }
+
+    /// Wait for the response to request `id`, skipping other messages.
+    pub fn wait_response(&mut self, id: u64) -> Result<Value, Value> {
+        self.wait_response_noting(id, |_| {})
+    }
+
+    /// Like [`McpClient::wait_response`], passing every other message to `other`.
+    pub fn wait_response_noting(
+        &mut self,
+        id: u64,
+        mut other: impl FnMut(&Value),
+    ) -> Result<Value, Value> {
         loop {
             let line = self
                 .lines
                 .recv_timeout(REPLY_TIMEOUT)
-                .unwrap_or_else(|_| panic!("no reply to {method} within {REPLY_TIMEOUT:?}"));
+                .unwrap_or_else(|_| panic!("no reply to request {id} within {REPLY_TIMEOUT:?}"));
             let Ok(message) = serde_json::from_str::<Value>(&line) else {
                 panic!("server wrote a non-JSON line to stdout: {line}");
             };
             if message.get("id") != Some(&json!(id)) {
+                other(&message);
                 continue;
             }
             if let Some(error) = message.get("error") {
@@ -279,6 +300,11 @@ impl McpClient {
             }
             return Ok(message["result"].clone());
         }
+    }
+
+    /// PID of the `keynobi --mcp` process.
+    pub fn pid(&self) -> u32 {
+        self.child.id()
     }
 
     /// Names of the tools the server advertises.
@@ -356,6 +382,7 @@ pub struct TestApp {
     rt: Option<tokio::runtime::Runtime>,
     pub fs_state: FsState,
     pub build_state: BuildState,
+    pub process_manager: ProcessManager,
     pub registry: McpSessionRegistry,
 }
 
@@ -371,6 +398,7 @@ impl TestApp {
             rt: None,
             fs_state: FsState::new(),
             build_state: crate::common::isolated_build_state(),
+            process_manager: ProcessManager::new(),
             registry: McpSessionRegistry::new(),
         };
         app.open(project);
@@ -385,7 +413,7 @@ impl TestApp {
         let (fs_state, build_state) = (self.fs_state.clone(), self.build_state.clone());
         let device_state = DeviceState::new();
         let logcat_state = keynobi_lib::commands::logcat::new_logcat_state();
-        let process_manager = ProcessManager::new();
+        let process_manager = self.process_manager.clone();
         rt.spawn(mcp_attach::serve_mcp_socket(
             listener,
             self.fs_state.clone(),
@@ -403,6 +431,25 @@ impl TestApp {
         ));
         self.rt = Some(rt);
         self
+    }
+
+    /// Quit the way the app does: cancel the build, answer and close every
+    /// attached session.
+    pub fn quit(&self) {
+        let rt = self.rt.as_ref().expect("the app is listening");
+        rt.block_on(mcp_attach::quit_sessions(
+            &self.build_state,
+            &self.process_manager,
+            &self.registry,
+        ));
+    }
+
+    /// Run `future` on the app's runtime.
+    pub fn block_on<F: std::future::Future>(&self, future: F) -> F::Output {
+        self.rt
+            .as_ref()
+            .expect("the app is listening")
+            .block_on(future)
     }
 
     /// Switch the app to `project` (or close it).
@@ -427,6 +474,18 @@ impl TestApp {
                 });
         })
         .expect("trust the project");
+    }
+
+    /// Wait until `done` holds for this app's build state.
+    pub fn wait_for_build(&self, what: &str, done: impl Fn(&BuildStateInner) -> bool) {
+        let deadline = std::time::Instant::now() + REPLY_TIMEOUT;
+        loop {
+            if done(&self.build_state.inner.blocking_lock()) {
+                return;
+            }
+            assert!(std::time::Instant::now() < deadline, "timed out: {what}");
+            std::thread::sleep(Duration::from_millis(20));
+        }
     }
 
     /// Wait until `count` sessions are attached.

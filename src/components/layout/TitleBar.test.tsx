@@ -133,6 +133,23 @@ describe("TitleBar", () => {
     expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "cancel_build")).toHaveLength(0);
   });
 
+  it("names the agent whose build Cancel stops, and cancels it", () => {
+    render(() => <TitleBar />);
+    const button = screen.getByRole("button", { name: /^build$/i });
+
+    startBuild("assembleDebug", {
+      kind: "agent",
+      sessionId: 2,
+      clientName: "Codex",
+      standalone: false,
+    });
+    expect(button.getAttribute("title")).toBe("Cancel the build started by an agent (Codex)");
+    expect(button.hasAttribute("disabled")).toBe(false);
+
+    fireEvent.click(button);
+    expect(vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === "cancel_build")).toHaveLength(1);
+  });
+
   describe("Safe Mode", () => {
     function openProject(trusted: boolean | null): void {
       const entry: ProjectEntry = {

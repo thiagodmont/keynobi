@@ -29,6 +29,11 @@ export type { BuildResult } from "./BuildResult";
 export type { BuildStatus } from "./BuildStatus";
 export type { BuildRecord } from "./BuildRecord";
 export type { BuildSettings } from "./BuildSettings";
+export type { BuildActor } from "./BuildActor";
+export type { AgentActor } from "./AgentActor";
+export type { BuildStartedEvent } from "./BuildStartedEvent";
+export type { BuildLinesEvent } from "./BuildLinesEvent";
+export type { BuildCompleteEvent } from "./BuildCompleteEvent";
 
 // Devices & variants
 export type { Device } from "./Device";

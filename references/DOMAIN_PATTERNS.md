@@ -13,7 +13,7 @@ Every domain below runs in two independent contexts (see `BEST_PRACTICES.md` § 
 - **GUI**: Tauri commands operating on the app's managed state. MCP sessions **attached** to the app (see [MCP](#mcp)) run in this process on the same state.
 - **Standalone MCP**: `keynobi --mcp` that could not attach to the app, with its own `FsState`, `BuildState`, `DeviceState`, `LogcatState`, and `ProcessManager`.
 
-Invariants that say "one at a time" or "the GUI sees it" hold **within one process**, so they cover the app and its attached sessions but not standalone servers. Across processes, only files in `~/.keynobi/` are shared.
+Invariants that say "one at a time" or "the GUI sees it" hold **within one process**, so they cover the app and its attached sessions but not standalone servers. Across processes, only files in `~/.keynobi/` are shared; the per-project build lock in `build-locks/` is the one cross-process guard.
 
 ---
 
@@ -32,25 +32,36 @@ Key caps and persistence:
 
 ### Execution Paths
 
-Both front doors reserve the same slot and share finalization:
+The app and agents start builds through one service, `build_runner::start_build(state, pm, app_handle, BuildRequest { .., origin })`:
 
-| Front door | Reserve | Finalize | Output |
-|------------|---------|----------|--------|
-| Tauri `run_gradle_task` (`commands/build.rs`) | `try_reserve_build_slot` | `finalize_completed_build`, then emits `build:complete` | Streams through a Tauri `Channel<BuildLine>` |
-| MCP `build_runner::run_task` | `try_reserve_build_slot` | `emit_build_complete` (wraps `finalize_completed_build`; emits only when an `AppHandle` exists) | Not streamed; the result returns when the build ends |
+| Front door | Origin | Waits for |
+|------------|--------|-----------|
+| Tauri `run_gradle_task` (`commands/build.rs`) | `BuildActor::App` | Nothing: returns the run ID once Gradle spawned; the frontend follows the events. |
+| MCP `run_gradle_task` / `run_tests` (`AndroidMcpServer::run_build`) | `BuildActor::Agent` (session id, client name, standalone) | `BuildHandle::wait()`, bounded by `mcp.buildTimeoutSec`; then `time_out_build`. |
 
-Gradle runs with `--console=plain`. Every path that spawns Gradle must call `try_reserve_build_slot` first.
+`start_build`, in order: takes the project's cross-process lock (`build_lock::try_acquire` on `<data dir>/build-locks/<hash of the canonical Gradle root>.lock`, reused by later builds in the same process), reserves the slot (`try_reserve_build_slot`), starts the run's log buffer, spawns Gradle, and emits `build:started`. A detached task then streams output (`build:lines`, batched every `BUILD_LINES_FLUSH_INTERVAL` of 50 ms, at most `MAX_LINES_PER_BATCH` (500) per event and `MAX_PENDING_BUILD_LINES` (10,000) held), and on exit records history and emits `build:complete`. Finalization does not depend on the caller: a client that disconnects, or a GUI call that returns early, still gets its build recorded. Events are emitted only when an `AppHandle` exists (the app and its attached sessions).
 
-Three paths run the project's `gradlew`: Tauri `run_gradle_task`, MCP `run_gradle_task`/`run_tests` (through `build_runner::run_task`), and Tauri `get_variants_from_gradle`. Each gets its Gradle environment only from `build_runner::trusted_gradle_env`, which refuses an untrusted project before making `gradlew` executable or spawning anything (see [Project Trust](#project-trust)). `build_env_vars` is private so no path can skip the check.
+Gradle runs with `--console=plain`. Every path that spawns Gradle must go through `start_build`, or call `try_reserve_build_slot` first.
+
+Three paths run the project's `gradlew`: Tauri `run_gradle_task`, MCP `run_gradle_task`/`run_tests` (both through `start_build`), and Tauri `get_variants_from_gradle`. Each gets its Gradle environment only from `build_runner::trusted_gradle_env`, which refuses an untrusted project before making `gradlew` executable or spawning anything (see [Project Trust](#project-trust)). `build_env_vars` is private so no path can skip the check.
 
 ### Frontend Flow
 
 `build.service.ts` owns build orchestration:
 
 ```text
+initBuildService()
+  -> listen to build:started, build:lines, build:complete
+
 runBuild()
-  -> runGradleTask (Channel streams lines into build.store, flushed every 50 ms)
+  -> runGradleTask (returns the run ID; build:started with origin "app" names it first)
+  -> build:lines for that run stream into build.store, flushed every 50 ms
   -> wait for build:complete (timeout: settings.mcp.buildTimeoutSec, clamped 60–3600 s)
+
+build:started from another origin (an agent)
+  -> shown in the Build panel with "Started by an agent (<client>)", once this
+     window's own build or deploy is not using it
+  -> its build:lines stream in; build:complete shows the outcome (never deployed)
 
 runAndDeploy()
   -> resolve target device (prompt with the device picker if none is online)
@@ -73,12 +84,14 @@ runAndDeploy()
 - `runBuild()` resolves only after completion/cancellation state is known.
 - Cancellation must clear pending build-completion waiters and process IDs.
 - Parsed build errors are persisted by backend finalization before `build:complete` is emitted.
-- **Only one build at a time per process.** Every path that spawns Gradle must call `try_reserve_build_slot` first.
+- **Only one build at a time per process, and per project across processes.** Every path that spawns Gradle must call `try_reserve_build_slot` first; `start_build` also holds the project's build lock for the build's whole run, so a second Keynobi process building the same project is refused with the holder's pid.
 - **Success requires exit code 0 AND a `BUILD SUCCESSFUL` summary line.** The exit code is authoritative; the summary line alone is not sufficient.
 - A cancelled or timed-out build still records a history entry. A cancelled build is recorded as `cancelled`, not `failed`.
 - **A run is identified by its Gradle process ID** (`BuildFinalization.run_id`, `build:complete` `runId`). Once the process has spawned, both front doors set `latest_run`. Finalization always appends history, but only the latest run may update the shared status, errors, current build, and cancellable process, so a cancelled build that finishes after its replacement started cannot take the replacement over.
-- **The frontend follows only its own run.** `build.service.ts` takes the run ID from `run_gradle_task` and applies a `build:complete` only when `runId` matches; a completion that arrives before the ID is returned is held until it is. Events from cancelled, timed-out, or replaced runs refresh history only.
-- `cancelBuild()` releases the waiting `runBuild()` even when the cancel request fails. Cancel is offered only while Gradle runs; install and launch cannot be cancelled.
+- **The frontend waits only on its own run.** `build.service.ts` takes the run ID from `build:started` (origin `app`) or `run_gradle_task` and completes `runBuild()` only on that run's `build:complete`; output and a completion that arrive before the ID is known are held (capped) until it is. Events from cancelled, timed-out, or replaced runs refresh history only.
+- **Builds the window did not start are shown, never deployed.** An agent's build is observed by run ID: it is shown when the window's own build or deploy is idle, dropped if the project changed before then, and after a project switch its completion does not bring it back. While it runs, Build is disabled with a tooltip naming the agent and new builds are refused with the same reason.
+- **Who started and who cancelled a build are recorded** (`BuildRecord.origin`, `cancelled_by`; `BuildActor`: `app`, `appQuit`, or `agent`). Records saved before these fields existed load with both `null`. A build cancelled while Gradle is still spawning is recorded as cancelled, and one stopped by the MCP timeout is recorded as failed with the reason.
+- `cancelBuild()` cancels any running build, whoever started it, and releases the waiting `runBuild()` even when the cancel request fails. Cancel is offered only while Gradle runs; install and launch cannot be cancelled.
 - **Untrusted projects never build.** The backend refuses (GUI: `AppError::PermissionDenied`; MCP: `invalid_params`), and `runBuild()`/`runAndDeploy()` reject early in Safe Mode with the same instruction.
 - **Project opens are generation-counted** (`beginProjectOpen()` in `project.store.ts`). Every open, select, and restore stops after an `await` once a newer open started, so it cannot write another project's registry entry, variant, or device. Deploy stops before APK lookup and before install when the generation changed.
 - **Each run has its own output buffer** (`BuildLogSlot::start_run`). `get_build_log` reads the latest run's; a run's history entry saves its own lines even when it finishes late.
@@ -345,7 +358,7 @@ Opening a project must not run its code. Only Gradle runs project code, and only
 
 ## Shutdown
 
-On window close the app has a 3 s budget: cancel a running build, stop logcat, stop device polling, and flush settings. New long-running work must register with this shutdown path.
+On window close the app has a 3 s budget: cancel a running build (recorded as cancelled because Keynobi quit) and wait for it to be recorded, answer attached MCP requests still in flight and close the sessions (`mcp_attach::quit_sessions`), stop logcat, stop device polling, and flush settings. New long-running work must register with this shutdown path.
 
 ---
 
@@ -353,11 +366,10 @@ On window close the app has a 3 s budget: cancel a running build, stop logcat, s
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
-- **Cross-process builds.** The app and a standalone MCP server can build at the same time (attached sessions share the app's build slot). Standalone builds appear in the GUI's history only after the GUI's next build or restart, and builds an attached agent starts are not streamed into the Build panel.
+- **Cross-process builds.** The app and a standalone MCP server can still build different projects at the same time (the build lock is per project). Standalone builds are not streamed to the app and appear in its history only after its next build or restart. The build lock is best effort: when its file cannot be created or read, the build runs without it.
 - **Persisted history size.** `MAX_PERSISTED_HISTORY` (20) is effectively unused because load trims to `MAX_HISTORY` (10).
 - **Build error counts after truncation.** Once `MAX_BUILD_ERRORS` is reached, `errorCount`/`warningCount` count only the retained diagnostics, and the truncation notice itself counts as a warning. True totals would need new `BuildResult`/`BuildCompleteEvent` fields.
 - **Duplicate lint diagnostics.** With `abortOnError`, lint prints its first failure from both the report task and the failing task, so that issue is listed twice. The parser is stateless per line, and diagnostics are not de-duplicated.
-- **MCP cancel during spawn.** A build cancelled during spawn on the MCP path returns without recording history.
 - **Unicode typing.** `ui_type_text_unicode` sets the clipboard with a Clipper broadcast, falling back to `content insert`. `am broadcast` exits 0 even when Clipper is not installed, so the fallback may not run and the paste can insert stale clipboard text. Needs verification on a device.
 - **UI Automator across processes.** The device lock and the instrumentation check are per process. A headless MCP server and the GUI (or two headless servers) can still collide on one device, and a connected test run started by one is invisible to the other; the device's "already registered" error is then reported as busy.
 - **Screen hash coverage.** `ui_swipe`, `send_ui_key`, `ui_type_text_unicode`, `clear_focused_input`, and `ui_scroll_until_element` do not accept `expectScreenHash`.

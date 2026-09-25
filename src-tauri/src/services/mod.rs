@@ -1,6 +1,7 @@
 pub mod adb_manager;
 pub mod app_inspector;
 pub mod build_inspector;
+pub mod build_lock;
 pub mod build_parser;
 pub mod build_runner;
 pub mod crash_inspector;
@@ -14,6 +15,7 @@ pub mod log_stream;
 pub mod logcat;
 pub mod mcp_activity;
 pub mod mcp_attach;
+pub mod mcp_relay;
 pub mod mcp_server;
 pub mod mcp_sessions;
 pub mod monitor;
