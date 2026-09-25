@@ -39,6 +39,9 @@ pub struct SystemHealthReport {
     /// Why the app runs from a temporary location (a disk image or App
     /// Translocation) that AI clients cannot rely on, or `None`.
     pub app_location_problem: Option<String>,
+    /// The Android SDK Command-line Tools version (`22.0`, or `unknown`)
+    /// whose `retrace` deobfuscates crash stacks; `None` when it is missing.
+    pub retrace_version: Option<String>,
 }
 
 /// Where the JDK used for Gradle builds was found.
@@ -79,6 +82,7 @@ mod tests {
             lsp_system_dir_ok: true,
             studio_command_found: false,
             app_location_problem: None,
+            retrace_version: Some("22.0".into()),
         };
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("javaExecutableFound"));

@@ -28,6 +28,7 @@ function report(over: Partial<SystemHealthReport> = {}): SystemHealthReport {
     gradleWrapperFound: true,
     lspSystemDirOk: true,
     appLocationProblem: null,
+    retraceVersion: "22.0",
     ...over,
   };
 }
@@ -72,6 +73,23 @@ describe("health.store", () => {
   it("warns on missing ADB when an SDK path is configured", () => {
     setSystemReport(report({ adbFound: false }));
     expect(checkById("adb")?.status).toBe("warning");
+  });
+
+  it("reports retrace found with its Command-line Tools version", () => {
+    setSystemReport(report());
+    const check = checkById("retrace");
+    expect(check?.status).toBe("ok");
+    expect(check?.detail).toContain("Command-line Tools 22.0");
+  });
+
+  it("warns that crash stacks cannot be deobfuscated without retrace", () => {
+    setSystemReport(report({ retraceVersion: null }));
+    const check = checkById("retrace");
+    expect(check?.status).toBe("warning");
+    expect(check?.detail).toContain('install "Android SDK Command-line Tools"');
+
+    updateSetting("android", "sdkPath", null);
+    expect(checkById("retrace")?.status).toBe("skip");
   });
 
   it("shows the chosen JDK, its version, and where it came from", () => {

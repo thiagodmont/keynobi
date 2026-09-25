@@ -293,6 +293,44 @@ fn installed_builds() -> Vec<InstalledBuild> {
     ]
 }
 
+fn retrace_outcomes() -> Vec<RetraceOutcome> {
+    let obfuscated = "java.lang.RuntimeException: boom\n\tat a.a.onCreate(SourceFile:1)\n";
+    vec![
+        RetraceOutcome {
+            status: RetraceStatus::Retraced,
+            trace: "java.lang.RuntimeException: boom\n\
+                    \tat com.example.app.MainActivity.onCreate(MainActivity.kt:24)\n"
+                .into(),
+            build_id: Some(20),
+            mapping: mapping_snapshots().into_iter().next(),
+            matched_by: Some(MappingMatch::InstallRecord),
+            device: Some("Pixel_7".into()),
+            package: Some("com.example.app".into()),
+            reason: None,
+            summary: "Deobfuscated with the R8 mapping of build #20 (:app release, map id \
+                      6b1c2f0), matched by Keynobi's install on Pixel_7 at 2026-04-23T10:00:00Z \
+                      and confirmed by the device (versionCode 42, last updated 2026-04-23 \
+                      10:00:00)."
+                .into(),
+        },
+        RetraceOutcome {
+            status: RetraceStatus::Refused,
+            trace: obfuscated.into(),
+            build_id: None,
+            mapping: None,
+            matched_by: None,
+            device: None,
+            package: None,
+            reason: Some(
+                "logcat did not attribute the crash to a package, so its build is unknown".into(),
+            ),
+            summary: "Not deobfuscated: logcat did not attribute the crash to a package, so its \
+                      build is unknown."
+                .into(),
+        },
+    ]
+}
+
 fn build_result(success: bool) -> BuildResult {
     BuildResult {
         success,
@@ -524,6 +562,7 @@ fn fixtures() -> Fixtures {
                 lsp_system_dir_ok: true,
                 studio_command_found: false,
                 app_location_problem: None,
+                retrace_version: Some("22.0".into()),
             },
             SystemHealthReport {
                 java_executable_found: false,
@@ -540,6 +579,7 @@ fn fixtures() -> Fixtures {
                 lsp_system_dir_ok: true,
                 studio_command_found: false,
                 app_location_problem: Some("Keynobi is running from a disk image.".into()),
+                retrace_version: None,
             },
         ],
     );
@@ -683,6 +723,17 @@ fn fixtures() -> Fixtures {
 
     // Devices and emulators.
     f.add("Device", &devices());
+    f.add("RetraceOutcome", &retrace_outcomes());
+    f.add(
+        "RetraceStatus",
+        &[
+            RetraceStatus::Retraced,
+            RetraceStatus::Unavailable,
+            RetraceStatus::Refused,
+            RetraceStatus::Failed,
+        ],
+    );
+    f.add("MappingMatch", &[MappingMatch::InstallRecord]);
     let device_list = [DeviceListChangedEvent { devices: devices() }];
     f.add("DeviceListChangedEvent", &device_list);
     f.add(

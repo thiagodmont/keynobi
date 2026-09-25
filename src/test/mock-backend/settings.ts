@@ -84,6 +84,7 @@ export function settingsHandlers(): Record<string, (args: unknown) => unknown> {
       lspSystemDirOk: true,
       studioCommandFound: false,
       appLocationProblem: null,
+      retraceVersion: "22.0",
     }),
     send_native_sentry_test_event: () => undefined,
   };

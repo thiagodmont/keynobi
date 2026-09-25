@@ -565,7 +565,12 @@ pub fn installed_build(target: &InstallTarget, package: &str) -> Option<Installe
     installed_build_in(&data_dir(), target, package)
 }
 
-fn installed_build_in(dir: &Path, target: &InstallTarget, package: &str) -> Option<InstalledBuild> {
+/// [`installed_build`] in the data directory `dir`.
+pub fn installed_build_in(
+    dir: &Path,
+    target: &InstallTarget,
+    package: &str,
+) -> Option<InstalledBuild> {
     load_installed_builds_from(dir)
         .into_iter()
         .rev()

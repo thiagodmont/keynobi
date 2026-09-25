@@ -33,6 +33,13 @@
   text-underline-offset: 2px;
 }
 
+.retrace {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
 .filterMenu {
   min-width: 140px;
   position: fixed;

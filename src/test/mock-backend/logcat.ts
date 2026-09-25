@@ -1,4 +1,4 @@
-import type { LogcatFilterSpec, ProcessedEntry, LogStats } from "@/bindings";
+import type { LogcatFilterSpec, ProcessedEntry, LogStats, RetraceOutcome } from "@/bindings";
 import { triggerEvent } from "./events";
 
 let logcatRunning = false;
@@ -147,6 +147,42 @@ function contextEntries(args: unknown): ProcessedEntry[] {
   return [];
 }
 
+/**
+ * Deobfuscate a stored crash group the way the backend reports it: build #12's
+ * mapping for the mock app, matched by Keynobi's install on the emulator.
+ */
+function retraceCrash(args: unknown): RetraceOutcome {
+  const { crashGroupId } = (args ?? {}) as { crashGroupId?: number };
+  const lines = storedEntries.filter((e) => e.crashGroupId === crashGroupId);
+  if (lines.length === 0) {
+    throw { kind: "NotFound", message: `Crash ${crashGroupId} is no longer in the logcat buffer.` };
+  }
+  const trace = lines.map((e) => `${e.message}\n`).join("");
+  return {
+    status: "retraced",
+    trace: trace.replace(
+      /\ba\.a\.b\(SourceFile:(\d+)\)/g,
+      "com.example.mockapp.MainActivity.onCreate(MainActivity.kt:$1)"
+    ),
+    buildId: 12,
+    mapping: {
+      module: ":app",
+      variant: "release",
+      sha256: "6b1c2f0a".repeat(8),
+      bytes: 48_213_771,
+      pgMapId: "6b1c2f0",
+    },
+    matchedBy: "installRecord",
+    device: "Pixel_7",
+    package: lines.find((e) => e.package)?.package ?? null,
+    reason: null,
+    summary:
+      "Deobfuscated with the R8 mapping of build #12 (:app release, map id 6b1c2f0), matched by " +
+      "Keynobi's install on Pixel_7 at 2026-04-23T09:58:00Z and confirmed by the device " +
+      "(versionCode 42, last updated 2026-04-23 09:58:00).",
+  };
+}
+
 export function logcatHandlers(): Record<string, (args: unknown) => unknown> {
   return {
     start_logcat: () => {
@@ -198,6 +234,7 @@ export function logcatHandlers(): Record<string, (args: unknown) => unknown> {
       storedEntries = [...storedEntries, ...nextEntries];
       triggerEvent("logcat:entries", filterEntries(nextEntries, activeFilter));
     },
+    retrace_crash: (args: unknown) => retraceCrash(args),
     get_logcat_stats: (): LogStats => ({
       totalIngested: storedEntries.length,
       countsByLevel: [0, 1, 1, 0, 1, 0, 0],

@@ -99,6 +99,11 @@ impl Sandbox {
         let _ = std::fs::remove_file(&record);
     }
 
+    /// The fake Android SDK the settings name.
+    pub fn sdk(&self) -> &Path {
+        &self.sdk
+    }
+
     /// Replace the project's fake `gradlew` body.
     pub fn write_gradlew(&self, body: &str) {
         write_script(&self.project.join("gradlew"), body);

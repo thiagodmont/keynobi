@@ -22,8 +22,8 @@ use commands::file_system::{
 use commands::health::run_health_checks;
 use commands::logcat::{
     clear_logcat, export_logcat, get_logcat_context_entries, get_logcat_entries, get_logcat_stats,
-    get_logcat_status, list_logcat_packages, new_logcat_state, set_logcat_filter, start_logcat,
-    stop_logcat,
+    get_logcat_status, list_logcat_packages, new_logcat_state, retrace_crash, set_logcat_filter,
+    start_logcat, stop_logcat,
 };
 use commands::mcp::{
     clear_mcp_activity, get_mcp_activity, get_mcp_server_status, get_mcp_setup_status,
@@ -388,6 +388,7 @@ pub fn run() {
             list_logcat_packages,
             set_logcat_filter,
             get_logcat_stats,
+            retrace_crash,
             // MCP Server
             get_mcp_setup_status,
             get_mcp_activity,

@@ -44,6 +44,11 @@ impl IdAllocator {
         self.next_entry.fetch_add(1, Ordering::Relaxed)
     }
 
+    /// The ID the next entry will get.
+    pub fn peek_next_entry_id(&self) -> u64 {
+        self.next_entry.load(Ordering::Relaxed)
+    }
+
     pub fn next_crash_group_id(&self) -> u64 {
         self.next_crash_group.fetch_add(1, Ordering::Relaxed)
     }

@@ -1753,3 +1753,207 @@ fn an_oversized_resource_is_truncated_and_says_so() {
         &text[text.len().saturating_sub(200)..]
     );
 }
+
+// ── Deobfuscating crashes ─────────────────────────────────────────────────────
+
+const CRASH_SERIAL: &str = "R5CT1234ABC";
+const CRASH_MAPPING: &str = "# pg_map_id: 6b1c2f0\ncom.example.app.MainActivity -> a.a:\n";
+
+/// A device whose logcat shows one crash of `com.example.app`, and whose
+/// `dumpsys package` answers with the returned file.
+fn write_crashing_adb(sandbox: &Sandbox) -> std::path::PathBuf {
+    let dumpsys = sandbox.sdk().join("dumpsys.txt");
+    sandbox.write_adb(&format!(
+        r#"case "$*" in
+  devices*) printf 'List of devices attached\n{CRASH_SERIAL}\tdevice\n' ;;
+  *"shell ps"*) printf 'PID NAME\n1234 com.example.app\n' ;;
+  *logcat*)
+    printf '%s\n' \
+      '09-25 10:32:01.100  1234  1234 E AndroidRuntime: FATAL EXCEPTION: main' \
+      '09-25 10:32:01.100  1234  1234 E AndroidRuntime: Process: com.example.app, PID: 1234' \
+      '09-25 10:32:01.100  1234  1234 E AndroidRuntime: java.lang.RuntimeException: boom' \
+      '09-25 10:32:01.100  1234  1234 E AndroidRuntime: 	at a.a.onCreate(SourceFile:1)' \
+      '09-25 10:32:02.000   999   999 I ActivityManager: Process com.example.app (pid 1234) has died'
+    exec sleep 60 ;;
+  *"dumpsys package"*) cat '{}' ;;
+  *"shell date"*) echo "$(date -u +%s):+0000" ;;
+esac"#,
+        dumpsys.display()
+    ));
+    dumpsys
+}
+
+fn write_dumpsys(
+    path: &std::path::Path,
+    version_code: u32,
+    last_update: chrono::DateTime<chrono::Utc>,
+) {
+    std::fs::write(
+        path,
+        format!(
+            "Packages:\n  Package [com.example.app] (1a2b):\n    versionCode={version_code} \
+             minSdk=24 targetSdk=34\n    lastUpdateTime={}\n",
+            last_update.format("%Y-%m-%d %H:%M:%S")
+        ),
+    )
+    .unwrap();
+}
+
+/// Keynobi installed build #12 of `com.example.app` on the device, with its
+/// R8 mapping; returns when.
+fn record_crashing_install(sandbox: &Sandbox) -> chrono::DateTime<chrono::Utc> {
+    use sha2::Digest;
+    let data = sandbox.home.join(".keynobi");
+    let sha256: String = sha2::Sha256::digest(CRASH_MAPPING.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    write_file(
+        &data.join("mappings").join(format!("{sha256}.txt")),
+        CRASH_MAPPING.as_bytes(),
+    );
+    let installed_at = chrono::Utc::now() - chrono::TimeDelta::minutes(10);
+    std::fs::write(
+        data.join("installed-builds.json"),
+        json!([{
+            "serial": CRASH_SERIAL,
+            "avdName": null,
+            "model": null,
+            "package": "com.example.app",
+            "apkSha256": "a1".repeat(32),
+            "buildId": 12,
+            "versionCode": 42,
+            "mappings": [{
+                "module": ":app",
+                "variant": "release",
+                "sha256": sha256,
+                "bytes": CRASH_MAPPING.len(),
+                "pgMapId": "6b1c2f0",
+            }],
+            "installedAt": installed_at.to_rfc3339(),
+        }])
+        .to_string(),
+    )
+    .unwrap();
+    installed_at
+}
+
+/// A `retrace` in the sandbox SDK that deobfuscates `a.a.onCreate` and counts
+/// its runs in the returned file.
+fn write_fake_retrace(sandbox: &Sandbox) -> std::path::PathBuf {
+    let runs = sandbox.sdk().join("retrace-runs.txt");
+    let retrace = sandbox.sdk().join("cmdline-tools/latest/bin/retrace");
+    headless::write_script(
+        &retrace,
+        &format!(
+            "[ $# -eq 0 ] && exit 0\necho run >> '{}'\n\
+             sed 's/a\\.a\\.onCreate(SourceFile:1)/com.example.app.MainActivity.onCreate(MainActivity.kt:24)/' \"$2\"",
+            runs.display()
+        ),
+    );
+    headless::run_once(&retrace);
+    runs
+}
+
+/// Stream logcat from the crashing device and wait until the crash is stored.
+fn stream_the_crash(client: &mut headless::McpClient) {
+    let started = client.call_tool("start_logcat", json!({ "device_serial": CRASH_SERIAL }));
+    assert!(!started.is_error, "{}", started.text);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let logs = client.call_tool_json("get_crash_logs", json!({}));
+        if logs["count"].as_u64().unwrap_or(0) >= 4 {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "no crash arrived: {logs}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+#[test]
+fn crash_tools_deobfuscate_with_the_installed_builds_mapping_only_when_asked() {
+    let sandbox = Sandbox::new();
+    let dumpsys = write_crashing_adb(&sandbox);
+    let installed_at = record_crashing_install(&sandbox);
+    write_dumpsys(&dumpsys, 42, installed_at - chrono::TimeDelta::seconds(2));
+    let runs = write_fake_retrace(&sandbox);
+    let mut client = sandbox.start();
+    stream_the_crash(&mut client);
+
+    // Without `retrace`, the outputs are as before.
+    let plain = client.call_tool_json("get_crash_stack_trace", json!({}));
+    assert_eq!(
+        plain["exception_type"], "java.lang.RuntimeException",
+        "{plain}"
+    );
+    assert!(plain.get("retrace").is_none(), "{plain}");
+    let logs = client.call_tool_json("get_crash_logs", json!({}));
+    assert!(logs.get("retraced").is_none(), "{logs}");
+    assert!(!runs.exists());
+
+    let trace = client.call_tool_json("get_crash_stack_trace", json!({ "retrace": true }));
+    let retrace = &trace["retrace"];
+    assert_eq!(retrace["status"], "retraced", "{trace}");
+    assert!(
+        retrace["trace"]
+            .as_str()
+            .unwrap()
+            .contains("at com.example.app.MainActivity.onCreate(MainActivity.kt:24)"),
+        "{retrace}"
+    );
+    let line = retrace["mapping_line"].as_str().unwrap();
+    assert!(
+        line.contains("R8 mapping of build #12 (:app release, map id 6b1c2f0)")
+            && line.contains(&format!("install on {CRASH_SERIAL}"))
+            && line.contains("versionCode 42"),
+        "{line}"
+    );
+    assert_eq!(retrace["build_id"], 12);
+    assert_eq!(retrace["map_id"], "6b1c2f0");
+    assert_eq!(retrace["matched_by"], "install_record");
+    assert!(
+        sandbox
+            .adb_calls()
+            .iter()
+            .any(|c| c == &format!("-s {CRASH_SERIAL} shell dumpsys package com.example.app")),
+        "{:?}",
+        sandbox.adb_calls()
+    );
+
+    let logs = client.call_tool_json("get_crash_logs", json!({ "retrace": true }));
+    let retraced = logs["retraced"].as_array().expect("retraced list");
+    assert_eq!(retraced.len(), 1, "{logs}");
+    assert_eq!(retraced[0]["status"], "retraced", "{logs}");
+    assert_eq!(retraced[0]["crash_group_id"], trace["crash_group_id"]);
+    // The second request for the same crash came from the cache.
+    assert_eq!(std::fs::read_to_string(&runs).unwrap().lines().count(), 1);
+
+    // Reinstalled outside Keynobi: refused, with the original trace.
+    write_dumpsys(&dumpsys, 43, installed_at + chrono::TimeDelta::minutes(5));
+    let refused = client.call_tool("get_crash_stack_trace", json!({ "retrace": true }));
+    assert!(!refused.is_error, "{}", refused.text);
+    let refused: serde_json::Value = serde_json::from_str(&refused.text).unwrap();
+    let retrace = &refused["retrace"];
+    assert_eq!(retrace["status"], "refused", "{refused}");
+    assert!(
+        retrace["reason"]
+            .as_str()
+            .unwrap()
+            .contains("the app was reinstalled outside Keynobi after build #12"),
+        "{retrace}"
+    );
+    assert!(
+        retrace["trace"]
+            .as_str()
+            .unwrap()
+            .contains("at a.a.onCreate(SourceFile:1)"),
+        "{retrace}"
+    );
+    assert!(retrace["mapping_line"]
+        .as_str()
+        .unwrap()
+        .starts_with("Not deobfuscated: "));
+}

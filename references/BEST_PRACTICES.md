@@ -67,6 +67,7 @@ All persistent app data lives under `~/.keynobi/`, resolved by `settings_manager
 | `build-history.json`, `build-logs/build-{id}.jsonl` | Build history and per-build logs. |
 | `mappings/<sha256>.txt` | Copies of the R8 mappings successful builds wrote, named by content and listed on their history records and on the installs that pin them. |
 | `installed-builds.json` | What Keynobi last installed on each device, per package, and the build that produced it. |
+| `retrace/` | The crash trace `retrace` reads: a private file per call, removed when the call returns (and, if a process died mid-call, after an hour). |
 | `mcp-activity.jsonl` | MCP activity log (appended and rotated under the data lock). |
 | `mcp.sock` | Socket the app serves attached MCP sessions on (`0600`; the data directory is `0700`). |
 | `mcp-sessions/<pid>.json` | One record per running standalone MCP server. |
@@ -109,7 +110,8 @@ Opening a project must never run its code. Anything that executes project-contro
 - Spawn host processes with an argument vector through `tokio::process::Command`. Never build a host shell command string.
 - `adb shell` is different: the adb client joins its arguments with spaces and the device's `/system/bin/sh` parses the result again. Every `adb shell` argument that is not a hard-coded literal goes through `utils::device_shell::quote_device_shell_arg`; allowlist validation is defence in depth on top of that.
 - Reject option-shaped values (leading `-`) where a positional value is expected.
-- Every one-shot external command has a deadline. adb, the device, and SDK tools can hang (a wedged adb server, an install waiting on the device, a JVM stuck on start-up); without a deadline the caller, and loops such as device polling, block forever. A timeout kills the child and reports what timed out and what to try.
+- Every one-shot external command has a deadline. adb, the device, and SDK tools can hang (a wedged adb server, an install waiting on the device, a JVM stuck on start-up); without a deadline the caller, and loops such as device polling, block forever. A timeout kills the child and reports what timed out and what to try. The deadlines are named in `utils/process.rs` (for example `ADB_QUERY_TIMEOUT` 10 s, `ADB_INSTALL_TIMEOUT` 5 min, `RETRACE_TIMEOUT` 120 s).
+- Pass data to a tool through a file or stdin, not by pasting it into an argument a shell reads. `retrace` gets the crash trace as a private file in the data directory, removed whatever happens.
 
 ### Least Privilege
 
@@ -161,6 +163,8 @@ Every long-lived collection, in memory or on disk, must have an explicit, named 
 | Build log files | Age, orphan, and folder-size pruning (settings) |
 | R8 mapping snapshots | `MAX_MAPPING_BYTES` (256 MiB per file), `MAX_MAPPINGS_PER_BUILD` (8), `MAX_MAPPING_SNAPSHOTS` (32 files) unpinned; unreferenced snapshots are pruned with the history, and snapshots installed builds name are never pruned |
 | Installed builds | `MAX_INSTALLED_TARGETS` (16 device and package pairs, oldest dropped); `MAX_APKS_PER_BUILD` (8 hashed APKs per build record) |
+| Crash deobfuscation (`retrace`) | `MAX_RETRACE_INPUT_BYTES` (256 KiB trace), `MAX_RETRACE_OUTPUT_BYTES` (1 MiB), `MAX_RETRACE_CACHE` (32 results, least recently used dropped), `MAX_RETRACED_CRASH_GROUPS` (5 per `get_crash_logs` call), `RETRACE_TIMEOUT` (120 s) |
+| Logcat stream starts remembered (which device an entry came from) | `MAX_STREAM_STARTS` (32, oldest dropped) |
 | UI hierarchy | `MAX_XML_BYTES`, `MAX_NODES`, `MAX_DEPTH`, `MAX_ATTR_LEN` |
 | Saved logcat filters | `MAX_SAVED_FILTERS` (50) |
 | Recent projects | `MAX_RECENT_PROJECTS` (20) |

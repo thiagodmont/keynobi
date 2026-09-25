@@ -439,8 +439,8 @@ export function downloadSystemImage(
 
 // Use the generated ProcessedEntry as the canonical logcat entry type.
 // The type alias keeps existing code working unchanged.
-import type { ProcessedEntry, LogStats, LogcatFilterSpec } from "@/bindings";
-export type { ProcessedEntry, LogStats, LogcatFilterSpec };
+import type { ProcessedEntry, LogStats, LogcatFilterSpec, RetraceOutcome } from "@/bindings";
+export type { ProcessedEntry, LogStats, LogcatFilterSpec, RetraceOutcome };
 export type LogcatEntry = ProcessedEntry;
 
 export async function startLogcat(deviceSerial?: string): Promise<void> {
@@ -510,6 +510,15 @@ export async function setLogcatFilter(spec: LogcatFilterSpec): Promise<void> {
 /** Return running statistics for the current logcat session. */
 export async function getLogcatStats(): Promise<LogStats> {
   return invoke<LogStats>("get_logcat_stats");
+}
+
+/**
+ * Deobfuscate a crash from the logcat buffer with the R8 mapping of the build
+ * Keynobi installed on its device. Refusals and a missing tool are outcomes;
+ * a crash that left the buffer rejects with `NotFound`.
+ */
+export async function retraceCrash(crashGroupId: number): Promise<RetraceOutcome> {
+  return invoke<RetraceOutcome>("retrace_crash", { crashGroupId });
 }
 
 export function listenLogcatEntries(cb: (entries: ProcessedEntry[]) => void): Promise<UnlistenFn> {

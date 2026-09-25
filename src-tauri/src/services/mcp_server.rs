@@ -31,6 +31,7 @@ use crate::services::mcp_activity::{self, McpActivityEntry};
 use crate::services::mcp_sessions::McpSessionRegistry;
 use crate::services::process_manager::ProcessManager;
 use crate::services::project_trust;
+use crate::services::retrace;
 use crate::services::settings_manager;
 use crate::services::ui_automation;
 use crate::services::ui_hierarchy;
@@ -344,6 +345,10 @@ pub struct GetLogcatParams {
 pub struct GetCrashLogsParams {
     #[schemars(description = "Max crash entries to return (default 20, max 200)")]
     pub count: Option<usize>,
+    #[schemars(
+        description = "If true, also deobfuscate the newest crashes among the entries (at most 5) with the R8 mapping of the build Keynobi installed on the device; default false"
+    )]
+    pub retrace: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -452,6 +457,10 @@ pub struct GetCrashStackTraceParams {
         description = "Return a specific crash group by ID (from get_crash_logs crash_group_id field)"
     )]
     pub crash_group_id: Option<u64>,
+    #[schemars(
+        description = "If true, also deobfuscate the trace with the R8 mapping of the build Keynobi installed on the device; default false"
+    )]
+    pub retrace: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -899,7 +908,7 @@ impl AndroidMcpServer {
     /// Get a parsed crash stack trace from the in-memory logcat buffer.
     /// Requires logcat to be running (call start_logcat first).
     #[tool(
-        description = "Get a parsed crash stack trace from logcat. Returns exception type, message, stack frames, and caused-by chain. Requires start_logcat to be running.",
+        description = "Get a parsed crash stack trace from logcat. Returns exception type, message, stack frames, and caused-by chain. Requires start_logcat to be running. With retrace: true, also returns `retrace`: the trace deobfuscated with the R8 mapping of the build Keynobi installed on the device, and a mapping_line naming the build, variant, and map id and how the mapping was matched; when no mapping can be identified with certainty, or retrace or a JDK 17+ is missing, it returns the original trace and the reason.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -940,6 +949,12 @@ impl AndroidMcpServer {
                 Ok(CallToolResult::structured(
                     json!({ "found": false, "message": msg }),
                 ))
+            }
+            Some(crash) if p.retrace.unwrap_or(false) => {
+                let outcome = self.retrace_crash_group(crash.crash_group_id).await;
+                let mut result = json!(crash);
+                result["retrace"] = outcome;
+                Ok(CallToolResult::structured(result))
             }
             Some(crash) => Ok(CallToolResult::structured(json!(crash))),
         }
@@ -1176,7 +1191,7 @@ impl AndroidMcpServer {
 
     /// Get recent crash logs (FATAL EXCEPTION, ANR, native crashes).
     #[tool(
-        description = "Get recent crash logs: FATAL EXCEPTION, ANR, and native crashes from logcat.",
+        description = "Get recent crash logs: FATAL EXCEPTION, ANR, and native crashes from logcat. With retrace: true, also returns `retraced`: the newest crashes among the entries (at most 5), each deobfuscated with the R8 mapping of the build Keynobi installed on the device, with a mapping_line naming the build, variant, and map id, or the original trace and the reason it was not deobfuscated.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -1189,12 +1204,23 @@ impl AndroidMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let count = p.count.unwrap_or(20).min(200);
         let logcat = self.logcat_state.lock().await;
-        let entries: Vec<serde_json::Value> = logcat
+        let newest: Vec<_> = logcat
             .store
             .iter()
             .rev()
             .filter(|e| e.is_crash)
             .take(count)
+            .collect();
+        // Newest first, one per crash group.
+        let mut groups: Vec<u64> = Vec::new();
+        for gid in newest.iter().filter_map(|e| e.crash_group_id) {
+            if !groups.contains(&gid) && groups.len() < retrace::MAX_RETRACED_CRASH_GROUPS {
+                groups.push(gid);
+            }
+        }
+        let entries: Vec<serde_json::Value> = newest
+            .into_iter()
+            .rev()
             .map(|e| {
                 json!({
                     "timestamp": e.timestamp,
@@ -1204,14 +1230,20 @@ impl AndroidMcpServer {
                     "package": e.package,
                 })
             })
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
             .collect();
+        drop(logcat);
 
-        Ok(CallToolResult::structured(
-            json!({ "count": entries.len(), "entries": entries }),
-        ))
+        let mut result = json!({ "count": entries.len(), "entries": entries });
+        if p.retrace.unwrap_or(false) {
+            let mut retraced = Vec::new();
+            for gid in groups {
+                let mut outcome = self.retrace_crash_group(gid).await;
+                outcome["crash_group_id"] = json!(gid);
+                retraced.push(outcome);
+            }
+            result["retraced"] = json!(retraced);
+        }
+        Ok(CallToolResult::structured(result))
     }
 
     /// Clear the in-memory logcat buffer.
@@ -3191,6 +3223,7 @@ impl AndroidMcpServer {
                     "hint": if report.adb_ok { serde_json::Value::Null } else { json!("ADB not found — check Android SDK path") }
                 },
                 "gradle_wrapper": { "ok": report.gradlew_ok, "hint": gradle_hint },
+                "retrace": retrace::health_json(&settings),
                 "project": {
                     "ok": report.project_open,
                     "path": report.project_path.as_ref().map(|p| p.to_string_lossy().to_string())
@@ -3498,6 +3531,27 @@ impl AndroidMcpServer {
                 "Mode: standalone, because {reason}. This server has its own state: its \
                  builds and logcat are not visible in the Keynobi app."
             ),
+        }
+    }
+
+    /// Deobfuscate a crash from the logcat buffer through the shared service,
+    /// as the `retrace` object `get_crash_stack_trace` and `get_crash_logs`
+    /// return. Never an error: a crash that left the buffer is reported in it.
+    async fn retrace_crash_group(&self, crash_group_id: u64) -> serde_json::Value {
+        let (project_root, gradle_root) = {
+            let fs = self.fs_state.0.lock().await;
+            (fs.project_root.clone(), fs.gradle_root.clone())
+        };
+        let (settings, _) = settings_manager::load_settings();
+        let env = retrace::RetraceEnv::new(
+            settings,
+            project_root,
+            gradle_root,
+            self.device_state.clone(),
+        );
+        match retrace::retrace_crash_group(&env, &self.logcat_state, crash_group_id).await {
+            Ok(outcome) => retrace::outcome_json(&outcome),
+            Err(e) => json!({ "status": "refused", "reason": e.to_string() }),
         }
     }
 

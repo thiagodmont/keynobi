@@ -1,5 +1,7 @@
-import { Show, createSignal, onCleanup, onMount } from "solid-js";
+import { Match, Show, Switch, createEffect, createSignal, on, onCleanup, onMount } from "solid-js";
 import {
+  Alert,
+  type AlertVariant,
   Button,
   DockedPanel,
   Icon,
@@ -9,7 +11,8 @@ import {
   MetadataGrid,
   showToast,
 } from "@/components/ui";
-import type { LogcatEntry } from "@/lib/tauri-api";
+import type { RetraceStatus } from "@/bindings";
+import { formatError, retraceCrash, type LogcatEntry, type RetraceOutcome } from "@/lib/tauri-api";
 import {
   buildLogEntryDetailFilterToken,
   type LogEntryDetailFilterField,
@@ -25,6 +28,26 @@ interface LogEntryDetailPanelProps {
   onClose: () => void;
   onAddFilter?: (filter: { token: string; mode: LogEntryDetailFilterMode }) => void;
 }
+
+type RetraceState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "done"; outcome: RetraceOutcome }
+  | { kind: "error"; message: string };
+
+const RETRACE_TITLES: Record<RetraceStatus, string> = {
+  retraced: "Deobfuscated",
+  unavailable: "Retrace not available",
+  refused: "Not deobfuscated",
+  failed: "Retrace failed",
+};
+
+const RETRACE_VARIANTS: Record<RetraceStatus, AlertVariant> = {
+  retraced: "success",
+  unavailable: "info",
+  refused: "warning",
+  failed: "error",
+};
 
 interface FilterMenuState {
   token: string;
@@ -62,6 +85,49 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
   let menuRef: HTMLDivElement | undefined;
   const cfg = () => getLevelConfig(props.entry.level);
   const [filterMenu, setFilterMenu] = createSignal<FilterMenuState | null>(null);
+  const [retrace, setRetrace] = createSignal<RetraceState>({ kind: "idle" });
+  let retraceRequest = 0;
+
+  // A result belongs to one crash; another crash starts over and drops any
+  // answer still on its way.
+  createEffect(
+    on(
+      () => props.entry.crashGroupId,
+      () => {
+        retraceRequest++;
+        setRetrace({ kind: "idle" });
+      },
+      { defer: true }
+    )
+  );
+
+  async function deobfuscate(): Promise<void> {
+    const crashGroupId = props.entry.crashGroupId;
+    if (crashGroupId === null) return;
+    const request = ++retraceRequest;
+    setRetrace({ kind: "loading" });
+    try {
+      const outcome = await retraceCrash(crashGroupId);
+      if (request === retraceRequest) setRetrace({ kind: "done", outcome });
+    } catch (e) {
+      if (request === retraceRequest) setRetrace({ kind: "error", message: formatError(e) });
+    }
+  }
+
+  function copyStack(trace: string): void {
+    copyToClipboard(trace).then(() => {
+      showToast("Deobfuscated stack copied", "info");
+    });
+  }
+
+  const retraceOutcome = () => {
+    const state = retrace();
+    return state.kind === "done" ? state.outcome : null;
+  };
+  const retraceError = () => {
+    const state = retrace();
+    return state.kind === "error" ? state.message : null;
+  };
 
   function menuPositionFor(target: HTMLElement): { x: number; y: number } {
     const rect = target.getBoundingClientRect();
@@ -143,6 +209,18 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
       maxHeight="30vh"
       actions={
         <>
+          <Show when={props.entry.crashGroupId !== null}>
+            <Button
+              variant="ghost"
+              size="xs"
+              tone="accent"
+              loading={retrace().kind === "loading"}
+              onClick={() => void deobfuscate()}
+              title="Deobfuscate this crash with the R8 mapping of the build Keynobi installed"
+            >
+              {retrace().kind === "loading" ? "Deobfuscating…" : "Deobfuscate"}
+            </Button>
+          </Show>
           <Button variant="ghost" size="xs" tone="muted" onClick={copyEntry} title="Copy">
             <Icon name="copy" size={12} /> Copy
           </Button>
@@ -224,6 +302,46 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
         >
           {props.entry.message}
         </pre>
+        <Switch>
+          <Match when={retraceOutcome()}>
+            {(outcome) => (
+              <div class={styles.retrace}>
+                <Alert
+                  variant={RETRACE_VARIANTS[outcome().status]}
+                  title={RETRACE_TITLES[outcome().status]}
+                  action={
+                    outcome().status === "retraced" ? (
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        tone="muted"
+                        onClick={() => copyStack(outcome().trace)}
+                      >
+                        <Icon name="copy" size={12} /> Copy stack
+                      </Button>
+                    ) : undefined
+                  }
+                >
+                  {outcome().status === "retraced" ? outcome().summary : outcome().reason}
+                </Alert>
+                <Show when={outcome().status === "retraced"}>
+                  <pre class={styles.messageValue} aria-label="Deobfuscated stack">
+                    {outcome().trace}
+                  </pre>
+                </Show>
+              </div>
+            )}
+          </Match>
+          <Match when={retraceError()}>
+            {(message) => (
+              <div class={styles.retrace}>
+                <Alert variant="error" title="Retrace failed">
+                  {message()}
+                </Alert>
+              </div>
+            )}
+          </Match>
+        </Switch>
       </div>
 
       <Show when={filterMenu()}>
