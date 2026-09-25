@@ -1,0 +1,53 @@
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_9ddb42ca9dc3b4 212-218,354
+references/CODE_PATTERN.md
+  s_1e114e823b9048::t_9ddb42ca9dc3b4 313
+  s_1e114e823b9048::t_a1bb03a676c8d5 78-79
+src-tauri/src/services/build_runner.rs
+  s_1e114e823b9048::t_747795eef70630 2530-2574,2583-2584
+  s_1e114e823b9048::t_44f2611c03c198 1045-1047
+  s_1e114e823b9048::t_d6efe04c056f2a 2575-2582
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_a1bb03a676c8d5 151
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_9ddb42ca9dc3b4 129-131,283
+src-tauri/src/services/mod.rs
+  s_1e114e823b9048::t_5f40598007c0be 24
+src-tauri/src/utils/process.rs
+  s_1e114e823b9048::t_e50198b8b857a5 73-74
+src-tauri/src/services/ui_hierarchy.rs
+  s_1e114e823b9048::t_3d57dd85a2b0ed 770-771
+  s_1e114e823b9048::t_28873b841310f3 4,8,12,15,25-28
+  s_1e114e823b9048::t_91087167f31c13 570-576,578-623,625-636,638-639,642-649,654-763,765-769,772
+  s_1e114e823b9048::t_2beadad69b4e62 577
+  s_1e114e823b9048::t_d6efe04c056f2a 650-653
+  s_1e114e823b9048::t_847e50381fd66c 11
+  s_1e114e823b9048::t_fe455da5f3fa72 333
+  s_1e114e823b9048::t_98675f53ccc416 624,637,640-641,764
+  s_1e114e823b9048::t_328bb039cfae0c 62-103,105-122,131,133-144,146-151,153,159-160,162,166-176,181-182,184,186-188,190-193,201-204,216-218,226-230,242-244,246-260,301-312,328-331,336-346,352,354,357,365,378-389
+src-tauri/src/services/ui_automator_lock.rs
+  s_1e114e823b9048::t_617d1b743048e1 1-274,287-289
+  s_1e114e823b9048::t_d6efe04c056f2a 275-286
+src-tauri/src/commands/build.rs
+  s_1e114e823b9048::t_ec99019adefa4f 88-91
+  s_1e114e823b9048::t_81d7d4bb249b58 158-160
+src-tauri/src/services/ui_automation.rs
+  s_1e114e823b9048::t_847e50381fd66c 14,598,661
+  s_1e114e823b9048::t_d6efe04c056f2a 655
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e8ce5ce30128669e5aca9988da7d21b6ce25ea26",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
