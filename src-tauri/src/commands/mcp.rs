@@ -1,10 +1,18 @@
 use crate::models::error::AppError;
+use crate::services::app_location;
 use crate::services::mcp_activity;
 pub use crate::services::mcp_activity::McpActivityEntry;
 pub use crate::services::mcp_sessions::McpServerStatus;
 use crate::services::mcp_sessions::{self, McpSessionRegistry};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use ts_rs::TS;
+
+/// Registration checks run here, so that a client's registrations for a
+/// particular folder (Claude Code's `local` and `project` scopes) are not
+/// mistaken for one that works everywhere.
+const REGISTRATION_CHECK_DIR: &str = "/";
+const REGISTRATION_CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Status of the MCP integration with one AI client.
 #[derive(Debug, Serialize, Deserialize, TS)]
@@ -13,12 +21,17 @@ use ts_rs::TS;
 pub struct McpClientSetupStatus {
     /// Whether the client CLI was found (via PATH, common install paths, or login shell).
     pub client_found: bool,
-    /// Whether `keynobi` is already registered in this MCP client.
+    /// Whether `keynobi` is registered in this MCP client for every folder.
     pub is_configured: bool,
     /// The command that is currently registered (if any).
     pub configured_command: Option<String>,
-    /// Full setup command the user can copy into a terminal.
-    pub setup_command: String,
+    /// Scope of the registration found (`user`, `local`, `project`, …), when
+    /// the client reports one. A `local` or `project` registration only works
+    /// in one folder, so it does not count as configured.
+    pub configured_scope: Option<String>,
+    /// Full setup command the user can copy into a terminal, or `None` when
+    /// the app's location must not be registered (see `location_problem`).
+    pub setup_command: Option<String>,
 }
 
 /// Status of the MCP integration with supported AI clients.
@@ -28,8 +41,11 @@ pub struct McpClientSetupStatus {
 pub struct McpSetupStatus {
     /// The real absolute path to this application's binary.
     pub exe_path: String,
-    /// The binary path with `--mcp` flag.
-    pub setup_command: String,
+    /// The binary path with `--mcp` flag, or `None` when `location_problem` is set.
+    pub setup_command: Option<String>,
+    /// Why the app's path must not be registered (it runs from a disk image
+    /// or a temporary App Translocation copy), phrased for the user.
+    pub location_problem: Option<String>,
     /// Claude Code setup and configuration status.
     pub claude: McpClientSetupStatus,
     /// Codex setup and configuration status.
@@ -43,6 +59,14 @@ struct McpSetupCommands {
     codex_setup_command: String,
 }
 
+/// What an MCP client reports about its `keynobi` registration.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Registration {
+    configured: bool,
+    command: Option<String>,
+    scope: Option<String>,
+}
+
 /// Query everything needed to set up or verify the MCP integration.
 ///
 /// Returns the real binary path, whether Claude Code CLI is installed,
@@ -50,11 +74,14 @@ struct McpSetupCommands {
 #[tauri::command]
 pub async fn get_mcp_setup_status() -> Result<McpSetupStatus, String> {
     // ── 1. Resolve the real binary path ──────────────────────────────────────
-    let exe_path = std::env::current_exe()
+    let exe = std::env::current_exe().ok();
+    let exe_path = exe
+        .as_ref()
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "keynobi".to_string());
-
-    let commands = build_mcp_setup_commands(&exe_path);
+        .unwrap_or_else(|| "keynobi".to_string());
+    let location_problem = exe
+        .as_deref()
+        .and_then(app_location::temporary_location_reason);
 
     // ── 2. Find supported MCP client CLIs ────────────────────────────────────
     // GUI apps on macOS do not inherit the user's shell PATH, so we try
@@ -63,44 +90,65 @@ pub async fn get_mcp_setup_status() -> Result<McpSetupStatus, String> {
     let codex_bin = find_client_binary("codex").await;
 
     // ── 3. Check if already configured ───────────────────────────────────────
-    let (claude_configured, claude_command) = if let Some(ref claude) = claude_bin {
-        check_claude_mcp_configured(claude).await
-    } else {
-        (false, None)
-    };
-
-    let (codex_configured, codex_command) = if let Some(ref codex) = codex_bin {
-        check_codex_mcp_configured(codex).await
-    } else {
-        (false, None)
-    };
-
-    Ok(McpSetupStatus {
+    Ok(setup_status(
         exe_path,
-        setup_command: commands.server_command,
+        location_problem,
+        claude_bin.as_deref(),
+        codex_bin.as_deref(),
+    )
+    .await)
+}
+
+async fn setup_status(
+    exe_path: String,
+    location_problem: Option<String>,
+    claude_bin: Option<&str>,
+    codex_bin: Option<&str>,
+) -> McpSetupStatus {
+    let commands = match location_problem {
+        None => Some(build_mcp_setup_commands(&exe_path)),
+        Some(_) => None,
+    };
+    let claude = match claude_bin {
+        Some(claude) => check_claude_mcp_configured(claude).await,
+        None => Registration::default(),
+    };
+    let codex = match codex_bin {
+        Some(codex) => check_codex_mcp_configured(codex).await,
+        None => Registration::default(),
+    };
+
+    McpSetupStatus {
+        exe_path,
+        setup_command: commands.as_ref().map(|c| c.server_command.clone()),
+        location_problem,
         claude: McpClientSetupStatus {
             client_found: claude_bin.is_some(),
-            is_configured: claude_configured,
-            configured_command: claude_command,
-            setup_command: commands.claude_setup_command,
+            is_configured: claude.configured,
+            configured_command: claude.command,
+            configured_scope: claude.scope,
+            setup_command: commands.as_ref().map(|c| c.claude_setup_command.clone()),
         },
         codex: McpClientSetupStatus {
             client_found: codex_bin.is_some(),
-            is_configured: codex_configured,
-            configured_command: codex_command,
-            setup_command: commands.codex_setup_command,
+            is_configured: codex.configured,
+            configured_command: codex.command,
+            configured_scope: codex.scope,
+            setup_command: commands.map(|c| c.codex_setup_command),
         },
-    })
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/// Claude Code is registered at user scope so Keynobi works in every folder.
+/// Codex has no scopes: `codex mcp add` always writes the user's own config.
 fn build_mcp_setup_commands(exe_path: &str) -> McpSetupCommands {
     let quoted_exe = single_quote_arg(exe_path);
     McpSetupCommands {
         server_command: format!("{quoted_exe} --mcp"),
         claude_setup_command: format!(
-            "claude mcp add --transport stdio keynobi -- {quoted_exe} --mcp"
+            "claude mcp add --scope user --transport stdio keynobi -- {quoted_exe} --mcp"
         ),
         codex_setup_command: format!("codex mcp add keynobi -- {quoted_exe} --mcp"),
     }
@@ -124,8 +172,8 @@ fn shell_quote_arg(value: &str) -> String {
 /// Find an MCP client binary, trying PATH, common install paths, then the login shell.
 async fn find_client_binary(name: &str) -> Option<String> {
     // Fast path: the CLI is on the process PATH (works when launched from terminal).
-    if is_executable_on_path(name) {
-        return Some(name.to_string());
+    if let Some(path) = find_on_path(name, &std::env::var("PATH").unwrap_or_default()) {
+        return Some(path.to_string_lossy().to_string());
     }
 
     // Check common installation locations directly.
@@ -180,49 +228,78 @@ fn common_client_paths(name: &str) -> Vec<std::path::PathBuf> {
     paths
 }
 
-/// Check whether `keynobi` is already registered in Claude Code.
-/// Returns `(is_configured, configured_command_if_any)`.
-async fn check_claude_mcp_configured(claude: &str) -> (bool, Option<String>) {
+/// Run a client's registration query from [`REGISTRATION_CHECK_DIR`];
+/// `Some(stdout)` when it exits successfully (the server is registered).
+async fn query_registration(client: &str, args: &[&str]) -> Option<String> {
     let result = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        tokio::process::Command::new(claude)
-            .args(["mcp", "get", "keynobi"])
+        REGISTRATION_CHECK_TIMEOUT,
+        tokio::process::Command::new(client)
+            .args(args)
+            .current_dir(REGISTRATION_CHECK_DIR)
+            .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
             .output(),
     )
     .await;
 
     match result {
         Ok(Ok(out)) if out.status.success() => {
-            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            let cmd = extract_configured_command(&stdout);
-            (true, cmd.or(Some(stdout)))
+            Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
         }
-        _ => (false, None),
+        _ => None,
     }
 }
 
-/// Check whether `keynobi` is already registered in Codex.
-/// Returns `(is_configured, configured_command_if_any)`.
-async fn check_codex_mcp_configured(codex: &str) -> (bool, Option<String>) {
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(5),
-        tokio::process::Command::new(codex)
-            .args(["mcp", "get", "keynobi", "--json"])
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .output(),
-    )
-    .await;
+/// Check whether `keynobi` is registered in Claude Code for every folder.
+async fn check_claude_mcp_configured(claude: &str) -> Registration {
+    match query_registration(claude, &["mcp", "get", "keynobi"]).await {
+        Some(stdout) => parse_claude_mcp_get(&stdout),
+        None => Registration::default(),
+    }
+}
 
-    match result {
-        Ok(Ok(out)) if out.status.success() => {
-            let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            let cmd = extract_configured_command(&stdout);
-            (true, cmd.or(Some(stdout)))
+/// Read `claude mcp get` output: a `Scope:` line naming the config the entry
+/// came from, and `Command:`/`Args:` lines for stdio servers.
+fn parse_claude_mcp_get(stdout: &str) -> Registration {
+    let field = |name: &str| {
+        stdout.lines().find_map(|line| {
+            line.trim()
+                .strip_prefix(name)
+                .and_then(|rest| rest.strip_prefix(':'))
+                .map(|value| value.trim().to_string())
+        })
+    };
+    let scope = field("Scope").and_then(|s| {
+        s.split_whitespace()
+            .next()
+            .map(|word| word.to_ascii_lowercase())
+    });
+    let command = field("Command").map(|cmd| {
+        let mut parts = vec![shell_quote_arg(&cmd)];
+        if let Some(args) = field("Args").filter(|a| !a.is_empty()) {
+            parts.push(args);
         }
-        _ => (false, None),
+        parts.join(" ")
+    });
+    let folder_only = matches!(scope.as_deref(), Some("local" | "project"));
+    Registration {
+        configured: !folder_only,
+        command: command.or_else(|| Some(stdout.to_string())),
+        scope,
+    }
+}
+
+/// Check whether `keynobi` is registered in Codex.
+async fn check_codex_mcp_configured(codex: &str) -> Registration {
+    match query_registration(codex, &["mcp", "get", "keynobi", "--json"]).await {
+        Some(stdout) => Registration {
+            configured: true,
+            command: extract_configured_command(&stdout).or(Some(stdout)),
+            scope: None,
+        },
+        None => Registration::default(),
     }
 }
 
@@ -253,23 +330,24 @@ fn extract_configured_command(stdout: &str) -> Option<String> {
         })
 }
 
-fn is_executable_on_path(name: &str) -> bool {
-    std::env::var("PATH")
-        .unwrap_or_default()
+/// The first file named `name` in the directories of `path_var`.
+fn find_on_path(name: &str, path_var: &str) -> Option<PathBuf> {
+    path_var
         .split(':')
-        .any(|dir| {
-            let p = std::path::Path::new(dir).join(name);
-            p.is_file()
-        })
+        .filter(|dir| !dir.is_empty())
+        .map(|dir| Path::new(dir).join(name))
+        .find(|p| p.is_file())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    const INSTALLED_EXE: &str = "/Applications/Keynobi.app/Contents/MacOS/keynobi";
+
     #[test]
     fn builds_manual_setup_commands_for_claude_and_codex() {
-        let commands = build_mcp_setup_commands("/Applications/Keynobi.app/Contents/MacOS/keynobi");
+        let commands = build_mcp_setup_commands(INSTALLED_EXE);
 
         assert_eq!(
             commands.server_command,
@@ -277,7 +355,7 @@ mod tests {
         );
         assert_eq!(
             commands.claude_setup_command,
-            "claude mcp add --transport stdio keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp"
+            "claude mcp add --scope user --transport stdio keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp"
         );
         assert_eq!(
             commands.codex_setup_command,
@@ -295,7 +373,7 @@ mod tests {
         );
         assert_eq!(
             commands.claude_setup_command,
-            "claude mcp add --transport stdio keynobi -- '/tmp/Key $HOME `touch bad` '\"'\"'App'\"'\"'/keynobi' --mcp"
+            "claude mcp add --scope user --transport stdio keynobi -- '/tmp/Key $HOME `touch bad` '\"'\"'App'\"'\"'/keynobi' --mcp"
         );
         assert_eq!(
             commands.codex_setup_command,
@@ -319,23 +397,185 @@ mod tests {
         );
     }
 
+    fn claude_get_output(scope_line: &str) -> String {
+        format!(
+            "keynobi:\n  Scope: {scope_line}\n  Status: ✓ Connected\n  Type: stdio\n  \
+             Command: /Applications/Keynobi.app/Contents/MacOS/keynobi\n  Args: --mcp\n\n\
+             To remove this server, run: claude mcp remove \"keynobi\" -s user\n"
+        )
+    }
+
+    #[test]
+    fn a_user_scope_claude_registration_is_configured() {
+        let found = parse_claude_mcp_get(&claude_get_output(
+            "User config (available in all your projects)",
+        ));
+        assert_eq!(
+            found,
+            Registration {
+                configured: true,
+                command: Some(format!("{INSTALLED_EXE} --mcp")),
+                scope: Some("user".into()),
+            }
+        );
+    }
+
+    #[test]
+    fn a_folder_scope_claude_registration_is_not_configured() {
+        for (line, scope) in [
+            ("Local config (private to you in this project)", "local"),
+            ("Project config (shared via .mcp.json)", "project"),
+        ] {
+            let found = parse_claude_mcp_get(&claude_get_output(line));
+            assert!(!found.configured, "{scope}");
+            assert_eq!(found.scope.as_deref(), Some(scope));
+            assert!(found.command.is_some());
+        }
+    }
+
+    #[test]
+    fn claude_output_without_a_scope_line_counts_as_configured() {
+        let found = parse_claude_mcp_get("keynobi:\n  Command: keynobi\n  Args: --mcp");
+        assert!(found.configured);
+        assert_eq!(found.scope, None);
+        assert_eq!(found.command.as_deref(), Some("keynobi --mcp"));
+    }
+
+    /// A fake client CLI in a temp dir: records its arguments and working
+    /// directory, prints `stdout`, and exits with `status`.
+    fn fake_client(dir: &Path, name: &str, stdout: &str, status: i32) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::write(dir.join("stdout.txt"), stdout).unwrap();
+        let script = dir.join(name);
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nd=\"$(dirname \"$0\")\"\npwd -P > \"$d/cwd.txt\"\n\
+                 printf '%s\\n' \"$@\" > \"$d/args.txt\"\ncat \"$d/stdout.txt\"\nexit {status}\n"
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        script
+    }
+
+    fn recorded(dir: &Path, file: &str) -> String {
+        std::fs::read_to_string(dir.join(file)).unwrap_or_default()
+    }
+
+    #[tokio::test]
+    async fn claude_detection_asks_outside_any_project_and_needs_user_scope() {
+        let dir = tempfile::tempdir().unwrap();
+        fake_client(
+            dir.path(),
+            "claude",
+            &claude_get_output("User config (available in all your projects)"),
+            0,
+        );
+        let path_var = format!("/nonexistent-dir:{}", dir.path().display());
+        let claude = find_on_path("claude", &path_var).expect("fake claude is on PATH");
+
+        let status = setup_status(
+            INSTALLED_EXE.into(),
+            None,
+            Some(&claude.to_string_lossy()),
+            None,
+        )
+        .await;
+
+        assert_eq!(recorded(dir.path(), "args.txt"), "mcp\nget\nkeynobi\n");
+        assert_eq!(
+            recorded(dir.path(), "cwd.txt").trim(),
+            REGISTRATION_CHECK_DIR
+        );
+        assert!(status.claude.client_found);
+        assert!(status.claude.is_configured);
+        assert_eq!(status.claude.configured_scope.as_deref(), Some("user"));
+        assert_eq!(
+            status.claude.setup_command.as_deref(),
+            Some("claude mcp add --scope user --transport stdio keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp")
+        );
+        assert!(!status.codex.client_found);
+
+        std::fs::write(
+            dir.path().join("stdout.txt"),
+            claude_get_output("Local config (private to you in this project)"),
+        )
+        .unwrap();
+        let status = setup_status(
+            INSTALLED_EXE.into(),
+            None,
+            Some(&claude.to_string_lossy()),
+            None,
+        )
+        .await;
+        assert!(!status.claude.is_configured, "a local registration counted");
+        assert_eq!(status.claude.configured_scope.as_deref(), Some("local"));
+    }
+
+    #[tokio::test]
+    async fn an_unregistered_client_is_not_configured() {
+        let dir = tempfile::tempdir().unwrap();
+        let codex = fake_client(dir.path(), "codex", "No MCP server named 'keynobi'", 1);
+
+        let status = setup_status(
+            INSTALLED_EXE.into(),
+            None,
+            None,
+            Some(&codex.to_string_lossy()),
+        )
+        .await;
+
+        assert_eq!(
+            recorded(dir.path(), "args.txt"),
+            "mcp\nget\nkeynobi\n--json\n"
+        );
+        assert_eq!(
+            recorded(dir.path(), "cwd.txt").trim(),
+            REGISTRATION_CHECK_DIR
+        );
+        assert!(status.codex.client_found);
+        assert!(!status.codex.is_configured);
+        assert_eq!(status.codex.configured_command, None);
+    }
+
+    #[tokio::test]
+    async fn a_temporary_location_offers_no_setup_commands() {
+        let exe = "/Volumes/Keynobi/Keynobi.app/Contents/MacOS/keynobi";
+        let problem = app_location::temporary_location_reason(Path::new(exe));
+        assert!(problem.is_some());
+
+        let status = setup_status(exe.into(), problem.clone(), None, None).await;
+
+        assert_eq!(status.location_problem, problem);
+        assert_eq!(status.setup_command, None);
+        assert_eq!(status.claude.setup_command, None);
+        assert_eq!(status.codex.setup_command, None);
+        assert_eq!(status.exe_path, exe);
+    }
+
     #[test]
     fn mcp_setup_status_serializes_per_client_fields() {
         let status = McpSetupStatus {
             exe_path: "/mock/keynobi".into(),
-            setup_command: "/mock/keynobi --mcp".into(),
+            setup_command: Some("/mock/keynobi --mcp".into()),
+            location_problem: None,
             claude: McpClientSetupStatus {
                 client_found: true,
                 is_configured: true,
                 configured_command: Some("/mock/keynobi --mcp".into()),
-                setup_command:
-                    "claude mcp add --transport stdio keynobi -- \"/mock/keynobi\" --mcp".into(),
+                configured_scope: Some("user".into()),
+                setup_command: Some(
+                    "claude mcp add --scope user --transport stdio keynobi -- \"/mock/keynobi\" --mcp"
+                        .into(),
+                ),
             },
             codex: McpClientSetupStatus {
                 client_found: false,
                 is_configured: false,
                 configured_command: None,
-                setup_command: "codex mcp add keynobi -- \"/mock/keynobi\" --mcp".into(),
+                configured_scope: None,
+                setup_command: Some("codex mcp add keynobi -- \"/mock/keynobi\" --mcp".into()),
             },
         };
 
@@ -343,6 +583,8 @@ mod tests {
         assert!(json.contains("\"claude\""));
         assert!(json.contains("\"codex\""));
         assert!(json.contains("\"clientFound\""));
+        assert!(json.contains("\"locationProblem\":null"));
+        assert!(json.contains("\"configuredScope\":\"user\""));
     }
 }
 
@@ -368,6 +610,7 @@ pub async fn get_mcp_server_status(
         .map_err(|e| AppError::McpError(format!("Failed to list MCP servers: {e}")))?;
     Ok(McpServerStatus {
         listening: registry.is_listening(),
+        app_version: mcp_sessions::APP_VERSION.to_string(),
         attached: registry.sessions(),
         standalone,
     })

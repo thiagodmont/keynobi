@@ -16,6 +16,7 @@ Update this file when a tool, prompt, resource, limit, or security rule changes.
 | `utils/validation.rs`, `utils/path.rs` | Shared validators used by both MCP tools and Tauri commands. |
 | `services/mcp_activity.rs` | Appends activity entries to the JSONL log and rotates it. |
 | `commands/mcp.rs` | Tauri commands for setup commands and registration detection, activity reads (default 200, max 2,000 entries), live sessions (`get_mcp_server_status`), and clearing activity. |
+| `services/app_location.rs` | Tells whether the app runs from a temporary path (a mounted disk image or App Translocation) that must not be registered with MCP clients. |
 | `src/stores/mcp.store.ts` | Frontend MCP state: attached sessions (live through `mcp:sessions_changed`), standalone servers, and recent activity (polled every 3 s while the MCP panel is open). |
 
 ## Modes
@@ -53,18 +54,24 @@ Every MCP client runs `keynobi --mcp`. That process first picks the project it w
 - `run_gradle_task` and `run_tests` end their text with `[mode: …]`; `get_build_status` includes `mode` and `standalone_reason`, plus the build's `origin` and `cancelled_by`.
 - The activity log's lifecycle entries say `Server started (standalone: <reason>)`, or `Client attached (pid N) — project: …` and `Client detached` for attached sessions.
 
+### Versions
+
+An MCP client keeps running the `keynobi --mcp` it started, so after an update it can run an older binary than the app. Every session records its binary's version: attached sessions from the handshake's `version`, standalone servers in their `mcp-sessions/<pid>.json` record (a record without `version` was written by an older release). `get_mcp_server_status` returns `appVersion` and each session's `version`. The frontend compares them (`mcpVersionMismatches` in `mcp.store.ts`): on a mismatch the status bar item turns to a warning and its tooltip, and the MCP panel, name the versions and tell the user to restart the AI client. The panel lists every session with its version.
+
 ## Setup
 
-The Health Center and the **Copy MCP Setup Commands** action generate commands with the running app's path:
+The Health Center, the MCP panel, and the **Copy MCP Setup Commands** action generate commands with the running app's path (`get_mcp_setup_status`):
 
 ```bash
-claude mcp add --transport stdio keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp
+claude mcp add --scope user --transport stdio keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp
 codex mcp add keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp
 ```
 
-Append `--project /path/to/project` to pin a project, or `--attach-only` to refuse running standalone. Registrations made before attaching existed keep working unchanged. Claude Code registers servers in the **local** scope by default (only the directory where the command ran); add `--scope user` to make Keynobi available in every project.
+Append `--project /path/to/project` to pin a project, or `--attach-only` to refuse running standalone. Registrations made before attaching existed keep working unchanged.
 
-Registration is detected with `claude mcp get keynobi` or `codex mcp get keynobi --json` (5 s timeout; exit code 0 means registered). The CLI is found through `PATH`, known install locations, then a login shell's `command -v`.
+- **Stable path.** A path under `/Volumes/` (a mounted disk image or removable volume) or containing an `AppTranslocation` component (macOS runs a quarantined app from a randomized read-only copy) stops working after eject or reboot. `app_location::temporary_location_reason` detects both. `get_mcp_setup_status` then returns `locationProblem` and no commands (`setupCommand: null` at every level), the UI shows the reason instead of commands, and the health report's `appLocationProblem` adds an **App Location** warning to Health Center and the setup wizard's summary.
+- **Scope, per client.** Claude Code registers in the `local` scope (one folder) by default, so the command passes `--scope user`. Codex has no scopes: `codex mcp add` always writes the user's `~/.codex/config.toml`, so its command is unchanged.
+- **Detection.** `claude mcp get keynobi` and `codex mcp get keynobi --json` run with `/` as the working directory (5 s timeout; exit code 0 means registered), so registrations bound to some other folder do not count. Claude Code prints the entry's `Scope:`; a `local` or `project` entry is reported with `configuredScope` but `isConfigured: false`, since it only works in one folder. Any other scope (or none printed) counts as configured. The command shown is read from the `Command:` and `Args:` lines (Claude Code) or the JSON (Codex). The CLI is found through `PATH`, known install locations, then a login shell's `command -v`.
 
 ## Server Identity and Capabilities
 
@@ -287,7 +294,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 ## Testing and Debugging
 
-- Unit tests live in `mcp_server.rs` (validators, build slot, logcat state, session modes), `mcp_attach.rs` (handshake rules, socket binding, relay, standalone fallback), `mcp_relay.rs` (request tracking, replay), `mcp_sessions.rs`, `mcp_activity.rs`, `commands/mcp.rs`, `utils/validation.rs`, and `ui_automation.rs`. `tests/mcp_headless.rs` covers standalone and attached sessions end to end, including builds that outlive their client, two standalone servers sharing a project, the app cancelling an agent's build, build progress notifications, request cancellation, and the app quitting mid-request. `src/stores/mcp.store.test.ts` and `src/components/layout/StatusBar.test.tsx` cover the frontend.
+- Unit tests live in `mcp_server.rs` (validators, build slot, logcat state, session modes), `mcp_attach.rs` (handshake rules, socket binding, relay, standalone fallback), `mcp_relay.rs` (request tracking, replay), `mcp_sessions.rs`, `mcp_activity.rs`, `commands/mcp.rs`, `utils/validation.rs`, and `ui_automation.rs`. `tests/mcp_headless.rs` covers standalone and attached sessions end to end, including builds that outlive their client, two standalone servers sharing a project, the app cancelling an agent's build, build progress notifications, request cancellation, and the app quitting mid-request. `src/stores/mcp.store.test.ts`, `src/components/layout/StatusBar.test.tsx`, and `src/components/mcp/McpPanel.test.tsx` cover the frontend; `services/app_location.rs` covers the install-path rules.
 - Try tools interactively with the MCP Inspector:
 
   ```bash
@@ -313,3 +320,6 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Screenshot coordinate space.** `screenshot` takes `deviceWidth`/`deviceHeight` from the capture itself. With a `wm size` override or on a multi-display device, the capture may not match the space `ui_tap` uses, so `scale` would be off.
 - **UI Automator across processes.** The per-device lock and the instrumentation check live in one process. A headless `keynobi --mcp` and the GUI, or two headless servers, can still collide on one device; the loser gets the busy error from the device.
 - **No end-to-end test.** No test drives JSON-RPC (initialize → `tools/list` → `tools/call`).
+- **Registration checks start the server.** `claude mcp get` health-checks the server it finds, so opening the setup UI briefly starts a `keynobi --mcp` that attaches and detaches (visible in the activity log).
+- **Stale registered paths.** Only the running app's path is checked. A registration that already points at a disk image, a translocated copy, or a deleted app is reported as configured.
+- **External volumes.** Any app under `/Volumes/` counts as temporary, including one installed on an external disk.

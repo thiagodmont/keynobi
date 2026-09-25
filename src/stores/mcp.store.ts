@@ -23,6 +23,8 @@ export type { McpActivityEntry, McpAttachedSession, McpStandaloneServer };
 export interface McpState {
   /** Whether the app accepts MCP sessions on its socket. */
   listening: boolean;
+  /** The app's version, once the status has loaded. */
+  appVersion: string | null;
   /** AI clients attached to the app; they share its builds, logcat, and devices. */
   attached: McpAttachedSession[];
   /** `keynobi --mcp` processes that could not attach and run with their own state. */
@@ -36,6 +38,7 @@ export interface McpState {
 function initialMcpState(): McpState {
   return {
     listening: false,
+    appVersion: null,
     attached: [],
     standalone: [],
     activityLog: [],
@@ -90,6 +93,44 @@ export function mcpStatusSummary(
   };
 }
 
+/** A live MCP server running another Keynobi version than the app. */
+export interface McpVersionMismatch {
+  /** Who runs it, e.g. "claude-code" or "Standalone server (PID 42)". */
+  label: string;
+  /** Its version, or `null` for a standalone server too old to report one. */
+  version: string | null;
+}
+
+/** Live MCP servers whose version differs from the app's. Empty until the app version loads. */
+export function mcpVersionMismatches(
+  state: Pick<McpState, "appVersion" | "attached" | "standalone"> = mcpState
+): McpVersionMismatch[] {
+  const app = state.appVersion;
+  if (!app) return [];
+  const attached = state.attached
+    .filter((s) => s.version !== app)
+    .map((s) => ({ label: s.clientName ?? "AI client", version: s.version }));
+  const standalone = state.standalone
+    .filter((s) => s.version !== app)
+    .map((s) => ({ label: `Standalone server (PID ${s.pid})`, version: s.version }));
+  return [...attached, ...standalone];
+}
+
+/** One sentence warning about version mismatches, or `null` when every server matches. */
+export function mcpVersionWarning(
+  state: Pick<McpState, "appVersion" | "attached" | "standalone"> = mcpState
+): string | null {
+  const mismatches = mcpVersionMismatches(state);
+  if (mismatches.length === 0) return null;
+  const versions = [...new Set(mismatches.map((m) => m.version ?? "older"))];
+  const servers =
+    mismatches.length === 1 ? "1 MCP server runs" : `${mismatches.length} MCP servers run`;
+  return (
+    `${servers} a different Keynobi version (${versions.join(", ")}) than the app ` +
+    `(${state.appVersion}). Restart your AI client to load the app's version.`
+  );
+}
+
 // ── Event listeners ───────────────────────────────────────────────────────────
 
 let mcpLifecycleUnlisteners: UnlistenFn[] | null = null;
@@ -141,6 +182,7 @@ export async function loadMcpActivity(limit = 200): Promise<void> {
       produce((s) => {
         s.activityLog = entries;
         s.listening = status.listening;
+        s.appVersion = status.appVersion;
         s.attached = status.attached;
         s.standalone = status.standalone;
         s.activityLoading = false;

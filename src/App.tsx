@@ -44,7 +44,7 @@ import { initDevices } from "@/stores/device.store";
 import { openVariantPicker } from "@/components/build/VariantSelector";
 import { formatError, notifySettingsFlushed, sendNativeSentryTestEvent } from "@/lib/tauri-api";
 import { projectState } from "@/stores/project.store";
-import { openMcpPanel } from "@/components/mcp/McpPanel";
+import { openMcpPanel, mcpSetupCommandText } from "@/components/mcp/McpPanel";
 import {
   dismissUpdate,
   openUpdateRelease,
@@ -401,10 +401,11 @@ export function App(): JSX.Element {
         try {
           const { getMcpSetupStatus } = await import("@/lib/tauri-api");
           const s = await getMcpSetupStatus();
-          const commands = [
-            `Claude Code: ${s.claude.setupCommand}`,
-            `Codex: ${s.codex.setupCommand}`,
-          ].join("\n");
+          const commands = mcpSetupCommandText(s);
+          if (!commands) {
+            showToast(s.locationProblem ?? "No MCP setup commands are available", "error");
+            return;
+          }
           await navigator.clipboard.writeText(commands);
           showToast(
             "MCP setup commands copied — paste the one for your AI client in a terminal",

@@ -145,6 +145,7 @@ async fn system_report(
         gradle_wrapper_found,
         lsp_system_dir_ok,
         studio_command_found,
+        app_location_problem: crate::services::app_location::current_exe_temporary_reason(),
     }
 }
 

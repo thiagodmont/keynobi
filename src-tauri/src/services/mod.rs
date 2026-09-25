@@ -1,5 +1,6 @@
 pub mod adb_manager;
 pub mod app_inspector;
+pub mod app_location;
 pub mod build_inspector;
 pub mod build_lock;
 pub mod build_parser;

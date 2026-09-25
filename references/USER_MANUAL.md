@@ -41,13 +41,13 @@ Use this guide as a quick reference. Most commands are also available from the C
 2. Open the DMG and drag **Keynobi** to **Applications**.
 3. Launch Keynobi from **Applications**. Release builds are signed and notarized by Apple.
 
-Always run Keynobi from `/Applications` before you set up an AI client. The setup command records the app's current location, and a path inside a mounted DMG stops working after you eject it.
+Always run Keynobi from `/Applications` before you set up an AI client. The setup command records the app's current location, and a path inside a mounted DMG stops working after you eject it. While Keynobi runs from a disk image or from a temporary copy macOS made (App Translocation, which happens when you open the app straight from the Downloads folder or a DMG), Health Center shows an **App Location** warning and the setup commands are not offered.
 
 ### Update
 
 Keynobi checks GitHub for a newer release each time it starts. When one exists, a **New Keynobi Version Available** dialog offers **Download** or **Later**, and an **Update** button stays in the status bar. **Download** opens the release page; install the new DMG the same way you installed the first one. **Later** hides the dialog for that version.
 
-After updating, restart your AI clients so they use the new app binary for MCP.
+After updating, restart your AI clients so they use the new app binary for MCP. Until you do, the MCP status item turns yellow and the **MCP Activity** panel names the servers still running the old version.
 
 ---
 
@@ -290,6 +290,7 @@ Open Health Center with `Cmd+Shift+H` or the Health status item. It checks:
 - Android Studio CLI (`studio`)
 - Java / JDK
 - App Data Directory
+- App Location (a warning while Keynobi runs from a disk image or a temporary App Translocation copy; move it to **Applications**)
 
 The Java / JDK check shows the JDK Gradle builds use, its version, and where it was found. Keynobi picks it in this order:
 
@@ -319,7 +320,7 @@ AI clients can:
 
 ### Recommended setup
 
-Copy the command from **Health Center** or **Copy MCP Setup Commands** in the Command Palette. It includes the correct app path.
+Copy the command from **Health Center**, the **MCP Activity** panel, or **Copy MCP Setup Commands** in the Command Palette. It includes the correct app path. If Keynobi runs from a disk image or a temporary App Translocation copy, no command is offered: move Keynobi to **Applications**, open it from there, and copy the command again.
 
 Claude Code:
 
@@ -327,13 +328,15 @@ Claude Code:
 claude mcp add --scope user --transport stdio keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp
 ```
 
-`--scope user` makes Keynobi available in every folder. Without it, Claude Code registers the server only for the folder where you ran the command. The copied command does not include `--scope user` yet; add it yourself.
+`--scope user` makes Keynobi available in every folder. Without it, Claude Code registers the server only for the folder where you ran the command. Health Center shows **Configured** only for a registration that works in every folder; a registration for a single folder shows as **Registered for one folder only**. Run the copied command to add the user-wide one.
 
 Codex:
 
 ```bash
 codex mcp add keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp
 ```
+
+Codex has no scopes: `codex mcp add` always writes your own Codex configuration, so it works in every folder.
 
 To bind MCP to a specific Android project, append `--project /path/to/MyAndroidProject` to either command. Existing registrations keep working after updating Keynobi; nothing needs to change.
 
@@ -349,7 +352,8 @@ Your AI client starts a small Keynobi MCP process in the background. If Keynobi 
 - **Trust**: an AI client can build only a project you trusted in Keynobi. For any other project, `run_gradle_task` and `run_tests` fail with a message asking you to open the project in Keynobi and choose **Trust**; the MCP server never asks itself. Other tools keep working.
 - **Builds and logcat**: an attached client shares one build at a time with the app: while either is building, the other is told a build is already running. Its builds stream into the Build tab, and either side can cancel the other's; the result says who cancelled it. A build keeps running if the AI client disconnects; an AI client that cancels its build request cancels the build it started. While a build runs, AI clients that support progress show how long it has run and the Gradle task in progress. Builds and logcat of a standalone server are not visible in the app; its builds can appear in build history the next time Keynobi starts. Two Keynobi processes never build the same project at once: the second is told which process is building it.
 - **Quitting Keynobi** cancels a running build (recorded as cancelled because Keynobi quit) and answers the AI client's pending requests with an error. The client then keeps working with a standalone server ("the Keynobi app quit"), without a restart. With `--attach-only` the MCP server exits instead.
-- **Status**: the MCP item in the status bar shows how many AI clients are attached (for example **MCP: 2 agents**) and warns about standalone servers. The **MCP Activity** panel (`Cmd+Shift+M`) lists each session, the setup commands, and recent tool calls from AI clients.
+- **Status**: the MCP item in the status bar shows how many AI clients are attached (for example **MCP: 2 agents**) and warns about standalone servers. The **MCP Activity** panel (`Cmd+Shift+M`) lists each session with the Keynobi version it runs, the setup commands, and recent tool calls from AI clients.
+- **Versions**: an AI client keeps running the Keynobi MCP server it started, even after you update Keynobi. When a server runs another version than the app, the status item turns yellow, its tooltip and the **MCP Activity** panel say which version, and you should restart the AI client (or reconnect its Keynobi MCP server) to load the app's version.
 
 To require the app, add `--attach-only` after `--mcp`: the MCP server then exits with an error instead of running standalone.
 
@@ -460,8 +464,9 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 ### MCP cannot connect
 
 - Copy the setup command again from Health Center.
-- Confirm the app path in the command exists. It must be in `/Applications`, not inside a mounted DMG.
-- In Claude Code, run `claude mcp list` from your project folder. If Keynobi is missing there, re-add it with `--scope user`.
+- Confirm the app path in the command exists. It must be in `/Applications`, not inside a mounted DMG. Health Center's **App Location** check says when Keynobi runs from a temporary location.
+- In Claude Code, run `claude mcp list` from your project folder. If Keynobi is missing there, re-add it with the copied command (it uses `--scope user`).
+- If the MCP status item warns about a different version, restart your AI client.
 - If using `--project`, confirm the folder exists and contains the Android project.
 - With `--attach-only`, the MCP server exits unless Keynobi is open with the same project; the AI client's MCP log shows why.
 

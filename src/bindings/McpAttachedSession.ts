@@ -23,4 +23,8 @@ connectedAt: string,
 /**
  * The MCP client's name, once it has initialized.
  */
-clientName: string | null, };
+clientName: string | null, 
+/**
+ * Version of the `keynobi --mcp` binary, from its attach request.
+ */
+version: string, };

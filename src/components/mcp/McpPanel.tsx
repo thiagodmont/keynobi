@@ -2,13 +2,14 @@ import { type JSX, Show, For, createSignal, onMount, onCleanup, createMemo } fro
 import {
   mcpState,
   mcpStatusSummary,
+  mcpVersionWarning,
   loadMcpActivity,
   startMcpActivityPolling,
   stopMcpActivityPolling,
   type McpActivityEntry,
 } from "@/stores/mcp.store";
-import { getMcpSetupStatus, clearMcpActivity } from "@/lib/tauri-api";
-import { StatusDot, type DotStatus } from "@/components/ui";
+import { getMcpSetupStatus, clearMcpActivity, type McpSetupStatus } from "@/lib/tauri-api";
+import { Alert, StatusDot, type DotStatus } from "@/components/ui";
 
 // ── Panel visibility signal ───────────────────────────────────────────────────
 
@@ -26,19 +27,29 @@ export function closeMcpPanel() {
 
 function sessionDotStatus(): DotStatus {
   const tone = mcpStatusSummary().tone;
-  return tone === "attached" ? "ok" : tone === "standalone" ? "warning" : "idle";
+  if (tone === "standalone" || mcpVersionWarning()) return "warning";
+  return tone === "attached" ? "ok" : "idle";
 }
 
-/** One line per live session, e.g. "Claude Code — follows the app". */
+/** One line per live session, e.g. "Claude Code (Keynobi 0.5.0) — follows the app". */
 export function mcpSessionLines(): string[] {
   const attached = mcpState.attached.map(
-    (s) => `${s.clientName ?? "AI client"} — ${s.project ?? "follows the app"}`
+    (s) =>
+      `${s.clientName ?? "AI client"} (Keynobi ${s.version}) — ${s.project ?? "follows the app"}`
   );
   const standalone = mcpState.standalone.map(
     (s) =>
-      `Standalone server (PID ${s.pid})${s.project ? ` — ${s.project}` : ""}: ${s.reason}. Its builds and logcat are not shown here.`
+      `Standalone server (PID ${s.pid}, ${s.version ? `Keynobi ${s.version}` : "older Keynobi"})${s.project ? ` — ${s.project}` : ""}: ${s.reason}. Its builds and logcat are not shown here.`
   );
   return [...attached, ...standalone];
+}
+
+/** The setup commands to copy, one line per client, or `null` when none are offered. */
+export function mcpSetupCommandText(status: McpSetupStatus): string | null {
+  if (!status.claude.setupCommand || !status.codex.setupCommand) return null;
+  return [`Claude Code: ${status.claude.setupCommand}`, `Codex: ${status.codex.setupCommand}`].join(
+    "\n"
+  );
 }
 
 function formatTime(iso: string): string {
@@ -194,8 +205,12 @@ function ActivityRow(props: { entry: McpActivityEntry }): JSX.Element {
 // ── Panel component ───────────────────────────────────────────────────────────
 
 export function McpPanel(): JSX.Element {
-  const [setupCmd, setSetupCmd] = createSignal<string | null>(null);
+  const [setup, setSetup] = createSignal<McpSetupStatus | null>(null);
   const [copied, setCopied] = createSignal(false);
+  const setupCmd = () => {
+    const status = setup();
+    return status ? mcpSetupCommandText(status) : null;
+  };
 
   const reversedLog = createMemo(() => [...mcpState.activityLog].reverse());
 
@@ -204,10 +219,7 @@ export function McpPanel(): JSX.Element {
     startMcpActivityPolling(3000);
 
     try {
-      const s = await getMcpSetupStatus();
-      setSetupCmd(
-        [`Claude Code: ${s.claude.setupCommand}`, `Codex: ${s.codex.setupCommand}`].join("\n")
-      );
+      setSetup(await getMcpSetupStatus());
     } catch {
       // non-fatal
     }
@@ -337,49 +349,69 @@ export function McpPanel(): JSX.Element {
           >
             Register with an AI client
           </div>
-          <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
-            <code
-              style={{
-                flex: "1",
-                "font-family": "var(--font-mono)",
-                "font-size": "11px",
-                background: "rgba(0,0,0,0.3)",
-                border: "1px solid rgba(255,255,255,0.08)",
-                "border-radius": "4px",
-                padding: "5px 8px",
-                color: "var(--text-primary)",
-                overflow: "hidden",
-                "white-space": "pre-wrap",
-                "word-break": "break-word",
-              }}
+          <Show
+            when={!setup()?.locationProblem}
+            fallback={
+              <Alert variant="warning" title="Move Keynobi to Applications first">
+                {setup()?.locationProblem}
+              </Alert>
+            }
+          >
+            <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+              <code
+                style={{
+                  flex: "1",
+                  "font-family": "var(--font-mono)",
+                  "font-size": "11px",
+                  background: "rgba(0,0,0,0.3)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  "border-radius": "4px",
+                  padding: "5px 8px",
+                  color: "var(--text-primary)",
+                  overflow: "hidden",
+                  "white-space": "pre-wrap",
+                  "word-break": "break-word",
+                }}
+              >
+                {setupCmd() ?? "Loading…"}
+              </code>
+              <button
+                onClick={handleCopy}
+                title="Copy to clipboard"
+                style={{
+                  background: copied()
+                    ? "color-mix(in srgb, var(--success) 15%, transparent)"
+                    : "rgba(255,255,255,0.08)",
+                  border: `1px solid ${copied() ? "color-mix(in srgb, var(--success) 30%, transparent)" : "rgba(255,255,255,0.12)"}`,
+                  color: copied() ? "var(--success)" : "rgba(255,255,255,0.7)",
+                  "border-radius": "4px",
+                  padding: "4px 10px",
+                  cursor: "pointer",
+                  "font-size": "11px",
+                  "white-space": "nowrap",
+                  "flex-shrink": "0",
+                }}
+              >
+                {copied() ? "Copied!" : "Copy"}
+              </button>
+            </div>
+            <div
+              style={{ "font-size": "10px", color: "rgba(255,255,255,0.3)", "margin-top": "4px" }}
             >
-              {setupCmd() ?? "Loading…"}
-            </code>
-            <button
-              onClick={handleCopy}
-              title="Copy to clipboard"
-              style={{
-                background: copied()
-                  ? "color-mix(in srgb, var(--success) 15%, transparent)"
-                  : "rgba(255,255,255,0.08)",
-                border: `1px solid ${copied() ? "color-mix(in srgb, var(--success) 30%, transparent)" : "rgba(255,255,255,0.12)"}`,
-                color: copied() ? "var(--success)" : "rgba(255,255,255,0.7)",
-                "border-radius": "4px",
-                padding: "4px 10px",
-                cursor: "pointer",
-                "font-size": "11px",
-                "white-space": "nowrap",
-                "flex-shrink": "0",
-              }}
-            >
-              {copied() ? "Copied!" : "Copy"}
-            </button>
-          </div>
-          <div style={{ "font-size": "10px", color: "rgba(255,255,255,0.3)", "margin-top": "4px" }}>
-            While Keynobi is open, AI clients attach to it and use the project it has open. Append{" "}
-            <code style={{ "font-family": "var(--font-mono)" }}>--project /path</code> to limit a
-            client to one project.
-          </div>
+              While Keynobi is open, AI clients attach to it and use the project it has open. Append{" "}
+              <code style={{ "font-family": "var(--font-mono)" }}>--project /path</code> to limit a
+              client to one project.
+            </div>
+          </Show>
+          <Show when={mcpVersionWarning()}>
+            {(warning) => (
+              <div style={{ "margin-top": "8px" }}>
+                <Alert variant="warning" title="MCP server version differs from the app">
+                  {warning()}
+                </Alert>
+              </div>
+            )}
+          </Show>
           <Show when={mcpSessionLines().length > 0}>
             <ul
               aria-label="MCP sessions"

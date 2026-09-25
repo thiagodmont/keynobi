@@ -15,4 +15,9 @@ project: string | null,
 /**
  * Why it could not attach to the app.
  */
-reason: string, };
+reason: string, 
+/**
+ * Version of the binary, or `None` for records written by releases
+ * that did not record it (older than the app reading them).
+ */
+version: string | null, };

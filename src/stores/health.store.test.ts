@@ -27,6 +27,7 @@ function report(over: Partial<SystemHealthReport> = {}): SystemHealthReport {
     studioCommandFound: true,
     gradleWrapperFound: true,
     lspSystemDirOk: true,
+    appLocationProblem: null,
     ...over,
   };
 }
@@ -121,6 +122,20 @@ describe("health.store", () => {
     const check = checkById("java");
     expect(check?.status).toBe("warning");
     expect(check?.detail).toContain("JDK 17 or newer");
+  });
+
+  it("reports a permanent app location as ok", () => {
+    setSystemReport(report());
+    expect(checkById("app-location")?.status).toBe("ok");
+  });
+
+  it("warns, with the reason, when the app runs from a disk image", () => {
+    const problem = "Keynobi is running from a disk image or removable volume (/Volumes/Keynobi).";
+    setSystemReport(report({ appLocationProblem: problem }));
+
+    const check = checkById("app-location");
+    expect(check?.status).toBe("warning");
+    expect(check?.detail).toBe(problem);
   });
 
   it("stores the report and marks the run finished", async () => {

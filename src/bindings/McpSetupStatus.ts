@@ -10,9 +10,14 @@ export type McpSetupStatus = {
  */
 exePath: string, 
 /**
- * The binary path with `--mcp` flag.
+ * The binary path with `--mcp` flag, or `None` when `location_problem` is set.
  */
-setupCommand: string, 
+setupCommand: string | null, 
+/**
+ * Why the app's path must not be registered (it runs from a disk image
+ * or a temporary App Translocation copy), phrased for the user.
+ */
+locationProblem: string | null, 
 /**
  * Claude Code setup and configuration status.
  */

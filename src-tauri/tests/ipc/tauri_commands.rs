@@ -116,7 +116,7 @@ fn tauri_ipc_mcp_server_status_lists_attached_sessions() {
     let registry = McpSessionRegistry::new();
     registry.set_listening(Some("/tmp/kn-test/mcp.sock".into()));
     let id = registry
-        .add(Some(4242), Some(std::path::Path::new("/p/app")))
+        .add(Some(4242), Some(std::path::Path::new("/p/app")), "0.0.1")
         .unwrap();
     registry.set_client_name(id, "claude-code");
     let app = create_app_with(registry);
@@ -133,6 +133,8 @@ fn tauri_ipc_mcp_server_status_lists_attached_sessions() {
     assert_eq!(status["attached"][0]["pid"], 4242);
     assert_eq!(status["attached"][0]["project"], "/p/app");
     assert_eq!(status["attached"][0]["clientName"], "claude-code");
+    assert_eq!(status["attached"][0]["version"], "0.0.1");
+    assert_eq!(status["appVersion"], env!("CARGO_PKG_VERSION"));
     assert!(status["standalone"].is_array());
 }
 

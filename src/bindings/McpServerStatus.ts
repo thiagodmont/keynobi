@@ -9,4 +9,9 @@ export type McpServerStatus = {
 /**
  * Whether the app is accepting MCP sessions on its socket.
  */
-listening: boolean, attached: Array<McpAttachedSession>, standalone: Array<McpStandaloneServer>, };
+listening: boolean, 
+/**
+ * Version of the app; a session whose version differs runs another
+ * release and needs its AI client restarted.
+ */
+appVersion: string, attached: Array<McpAttachedSession>, standalone: Array<McpStandaloneServer>, };
