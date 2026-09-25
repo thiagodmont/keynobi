@@ -5,7 +5,8 @@
  *   registerKeybinding({ key: "s", metaKey: true, action: save, description: "Save" });
  *
  * Shortcuts are matched on every `keydown` event. Matches in input/textarea/
- * contentEditable elements are skipped unless `context: "global"` is set.
+ * contentEditable elements are skipped unless `context: "global"` is set, and
+ * none run while a modal dialog or a menu is open.
  */
 
 export interface Keybinding {
@@ -61,10 +62,24 @@ function matchesBinding(e: KeyboardEvent, binding: Keybinding): boolean {
   return true;
 }
 
+/** Open modal dialogs and menus mark themselves with these. */
+const OVERLAY_SELECTOR = '[aria-modal="true"], [role="menu"]';
+
+/** A modal dialog or a menu is open, so shortcuts for the window behind it must not run. */
+export function isOverlayOpen(): boolean {
+  return document.querySelector(OVERLAY_SELECTOR) !== null;
+}
+
 export function initKeybindings(): void {
   document.addEventListener("keydown", (e: KeyboardEvent) => {
     for (const binding of registry) {
       if (!matchesBinding(e, binding)) continue;
+
+      if (isOverlayOpen()) {
+        // Still keep the webview from acting on an app shortcut (Cmd+R reloads).
+        e.preventDefault();
+        return;
+      }
 
       const target = e.target as HTMLElement;
       const isInputContext =

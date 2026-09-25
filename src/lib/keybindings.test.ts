@@ -141,3 +141,59 @@ describe("initKeybindings", () => {
     expect(action).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("initKeybindings while a dialog or menu is open", () => {
+  function withOverlay(attributes: Record<string, string>, run: () => void): void {
+    const overlay = document.createElement("div");
+    for (const [name, value] of Object.entries(attributes)) overlay.setAttribute(name, value);
+    document.body.appendChild(overlay);
+    try {
+      run();
+    } finally {
+      overlay.remove();
+    }
+  }
+
+  it("does not run a shortcut behind a modal dialog, but keeps the webview from acting on it", () => {
+    const action = vi.fn();
+    registerKeybinding({
+      key: "j",
+      metaKey: true,
+      action,
+      description: "Run behind dialog",
+      context: "global",
+    });
+
+    withOverlay({ role: "dialog", "aria-modal": "true" }, () => {
+      const event = dispatchKey("j", { metaKey: true });
+      expect(action).not.toHaveBeenCalled();
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    dispatchKey("j", { metaKey: true });
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run a shortcut while a menu is open", () => {
+    const action = vi.fn();
+    registerKeybinding({ key: "u", metaKey: true, action, description: "Run behind menu" });
+
+    withOverlay({ role: "menu" }, () => {
+      dispatchKey("u", { metaKey: true });
+    });
+    expect(action).not.toHaveBeenCalled();
+
+    dispatchKey("u", { metaKey: true });
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+
+  it("a dialog that is not modal does not block shortcuts", () => {
+    const action = vi.fn();
+    registerKeybinding({ key: "y", metaKey: true, action, description: "Non-modal" });
+
+    withOverlay({ role: "dialog" }, () => {
+      dispatchKey("y", { metaKey: true });
+    });
+    expect(action).toHaveBeenCalledTimes(1);
+  });
+});
