@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::Command;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
 // ── External tool argument validation ─────────────────────────────────────────
 
@@ -1456,7 +1456,12 @@ fn parse_sdkmanager_progress(line: &str) -> Option<u32> {
 pub struct DeviceStateInner {
     pub devices: Vec<Device>,
     pub selected_serial: Option<String>,
-    pub polling: bool,
+    polling: bool,
+    /// Bumped by every start and stop; a polling loop runs only while its
+    /// generation is current, so a stop followed by a start never leaves two.
+    polling_generation: u64,
+    /// Wakes a sleeping polling loop so a stop takes effect at once.
+    polling_wake: Arc<Notify>,
 }
 
 impl Default for DeviceStateInner {
@@ -1471,7 +1476,32 @@ impl DeviceStateInner {
             devices: vec![],
             selected_serial: None,
             polling: false,
+            polling_generation: 0,
+            polling_wake: Arc::new(Notify::new()),
         }
+    }
+
+    /// Mark polling as running and return the new loop's generation and wake
+    /// signal, or `None` when a loop is already running.
+    pub fn begin_polling(&mut self) -> Option<(u64, Arc<Notify>)> {
+        if self.polling {
+            return None;
+        }
+        self.polling = true;
+        self.polling_generation += 1;
+        Some((self.polling_generation, self.polling_wake.clone()))
+    }
+
+    /// Stop the running polling loop and wake it so it exits now.
+    pub fn stop_polling(&mut self) {
+        self.polling = false;
+        self.polling_generation += 1;
+        self.polling_wake.notify_waiters();
+    }
+
+    /// Whether the polling loop of `generation` should keep running.
+    pub fn is_current_polling(&self, generation: u64) -> bool {
+        self.polling && self.polling_generation == generation
     }
 }
 

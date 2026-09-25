@@ -9,13 +9,17 @@ use crate::services::adb_manager::{
     launch_emulator, list_available_system_images, list_avds, list_device_definitions,
     list_devices, list_system_images, stop_app, stop_emulator, validate_avd_name,
     validate_device_profile_id, validate_system_image_id, wipe_avd_data, DeviceState,
+    DeviceStateInner,
 };
 use crate::services::settings_manager;
 use crate::FsState;
 use serde::Serialize;
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
+use tokio::sync::{Mutex, Notify};
 
 // ── Event payloads ─────────────────────────────────────────────────────────────
 
@@ -207,64 +211,102 @@ pub async fn start_device_polling(
     app_handle: AppHandle,
     device_state: State<'_, DeviceState>,
 ) -> Result<(), String> {
-    let already_polling = {
-        let mut ds = device_state.0.lock().await;
-        if ds.polling {
-            true
-        } else {
-            ds.polling = true;
-            false
-        }
-    };
-    if already_polling {
-        return Ok(());
-    }
-
-    let app = app_handle.clone();
-    let device_state_bg = device_state.0.clone();
-    tokio::spawn(async move {
-        let (settings, _) = settings_manager::load_settings();
-        let adb = get_adb_path(&settings);
-        let mut last_snapshot: Vec<(String, DeviceConnectionState)> = vec![];
-
-        loop {
-            tokio::time::sleep(Duration::from_secs(3)).await;
-
-            // Exit cleanly when stop_device_polling or graceful shutdown sets this to false.
-            if !device_state_bg.lock().await.polling {
-                tracing::debug!("Device polling stopped");
-                break;
-            }
-
-            let mut current = list_devices(&adb).await;
-            let current_snapshot = device_snapshot(&current);
-
-            if current_snapshot != last_snapshot {
-                // Enrich online devices with API level / version.
-                for d in &mut current {
-                    enrich_device_props(&adb, d).await;
-                }
-                last_snapshot = current_snapshot;
-                let event = {
-                    let mut state = device_state_bg.lock().await;
-                    record_polled_devices(&mut state, current)
-                };
-                let _ = app.emit("device:list_changed", event);
-            }
-        }
-    });
-
+    start_polling_loop(
+        &device_state.0,
+        DEVICE_POLL_INTERVAL,
+        // Resolved on every tick so an Android SDK path change takes effect.
+        || get_adb_path(&settings_manager::load_settings().0),
+        move |event| {
+            let _ = app_handle.emit("device:list_changed", event);
+        },
+    )
+    .await;
     Ok(())
 }
 
 /// Stop the background device polling.
 #[tauri::command]
 pub async fn stop_device_polling(device_state: State<'_, DeviceState>) -> Result<(), String> {
-    device_state.0.lock().await.polling = false;
-    // Note: the background task will continue for one more interval before
-    // stopping on the next iteration check. A full cancellation token is
-    // left as a future enhancement (Phase 4 cleanup).
+    device_state.0.lock().await.stop_polling();
     Ok(())
+}
+
+/// Time between two device polls.
+const DEVICE_POLL_INTERVAL: Duration = Duration::from_secs(3);
+
+/// Spawn a polling loop unless one is already running.
+async fn start_polling_loop<A, E>(
+    state: &Arc<Mutex<DeviceStateInner>>,
+    interval: Duration,
+    resolve_adb: A,
+    emit: E,
+) -> Option<tokio::task::JoinHandle<()>>
+where
+    A: Fn() -> PathBuf + Send + 'static,
+    E: Fn(DeviceListChangedEvent) + Send + 'static,
+{
+    let (generation, wake) = state.lock().await.begin_polling()?;
+    Some(tokio::spawn(poll_devices(
+        state.clone(),
+        generation,
+        wake,
+        interval,
+        resolve_adb,
+        emit,
+    )))
+}
+
+/// Poll `adb devices` every `interval` and emit the list when it changes,
+/// until `generation` is no longer current (stop, restart, or shutdown).
+async fn poll_devices<A, E>(
+    state: Arc<Mutex<DeviceStateInner>>,
+    generation: u64,
+    wake: Arc<Notify>,
+    interval: Duration,
+    resolve_adb: A,
+    emit: E,
+) where
+    A: Fn() -> PathBuf,
+    E: Fn(DeviceListChangedEvent),
+{
+    let mut last_snapshot: Vec<(String, DeviceConnectionState)> = vec![];
+    loop {
+        // Registered before the check, so a stop from here on wakes the sleep.
+        let woken = wake.notified();
+        tokio::pin!(woken);
+        woken.as_mut().enable();
+        if !state.lock().await.is_current_polling(generation) {
+            break;
+        }
+        tokio::select! {
+            _ = tokio::time::sleep(interval) => {}
+            _ = &mut woken => {}
+        }
+        if !state.lock().await.is_current_polling(generation) {
+            break;
+        }
+
+        let adb = resolve_adb();
+        let mut current = list_devices(&adb).await;
+        let current_snapshot = device_snapshot(&current);
+
+        if current_snapshot != last_snapshot {
+            // Enrich online devices with API level / version.
+            for d in &mut current {
+                enrich_device_props(&adb, d).await;
+            }
+            last_snapshot = current_snapshot;
+            let event = {
+                let mut state = state.lock().await;
+                if !state.is_current_polling(generation) {
+                    break;
+                }
+                record_polled_devices(&mut state, current)
+            };
+            emit(event);
+        }
+    }
+    tracing::debug!("Device polling stopped");
 }
 
 // ── AVD management commands ────────────────────────────────────────────────────
@@ -417,11 +459,7 @@ mod tests {
             api_level: Some(35),
             android_version: Some("15".to_string()),
         };
-        let mut state = DeviceStateInner {
-            devices: vec![],
-            selected_serial: None,
-            polling: true,
-        };
+        let mut state = DeviceStateInner::new();
 
         let event = record_polled_devices(&mut state, vec![device.clone()]);
 
@@ -507,5 +545,143 @@ mod tests {
         assert!(validate_activity_name(".MainActivity\nOther").is_err());
         assert!(validate_activity_name(&format!(".{}", "A".repeat(256))).is_err());
         assert!(validate_activity_name(&format!(".{}", "A".repeat(255))).is_ok());
+    }
+
+    // ── Device polling loop ───────────────────────────────────────────────────
+
+    /// An `adb` named `name` that appends `name` to `calls` on every call and
+    /// reports one online emulator.
+    fn fake_adb(dir: &std::path::Path, name: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let adb = dir.join(name);
+        std::fs::write(
+            &adb,
+            format!(
+                "#!/bin/sh\necho {name} >> '{}'\ncase \"$1\" in\n\
+                 devices) printf 'List of devices attached\\nemulator-5554\\tdevice\\n' ;;\n\
+                 *) echo 34 ;;\nesac\n",
+                dir.join("calls").display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        adb
+    }
+
+    fn calls(dir: &std::path::Path) -> Vec<String> {
+        std::fs::read_to_string(dir.join("calls"))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    async fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !done() {
+            assert!(std::time::Instant::now() < deadline, "timed out: {what}");
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    fn polling_state() -> Arc<Mutex<DeviceStateInner>> {
+        Arc::new(Mutex::new(DeviceStateInner::new()))
+    }
+
+    #[tokio::test]
+    async fn stop_then_start_leaves_exactly_one_loop() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = fake_adb(dir.path(), "adb");
+        let state = polling_state();
+        let resolver = move || adb.clone();
+        let interval = Duration::from_millis(50);
+
+        let first = start_polling_loop(&state, interval, resolver.clone(), |_| {})
+            .await
+            .expect("first start spawns a loop");
+        assert!(
+            start_polling_loop(&state, interval, resolver.clone(), |_| {})
+                .await
+                .is_none(),
+            "a start while polling must not spawn a second loop"
+        );
+
+        // Restart inside one interval: the old loop wakes to a polling flag
+        // that is true again, but for a newer generation.
+        state.lock().await.stop_polling();
+        let second = start_polling_loop(&state, interval, resolver, |_| {})
+            .await
+            .expect("restart spawns a loop");
+
+        tokio::time::timeout(Duration::from_secs(2), first)
+            .await
+            .expect("the stale loop keeps running after a restart")
+            .unwrap();
+        tokio::time::sleep(interval * 4).await;
+        assert!(!second.is_finished(), "the current loop must keep running");
+
+        state.lock().await.stop_polling();
+        tokio::time::timeout(Duration::from_secs(2), second)
+            .await
+            .expect("the loop outlived its stop")
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn stop_wakes_a_sleeping_loop_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = fake_adb(dir.path(), "adb");
+        let state = polling_state();
+        let task = start_polling_loop(&state, Duration::from_secs(60), move || adb.clone(), |_| {})
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        state.lock().await.stop_polling();
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .expect("stop waited for the 60 s interval")
+            .unwrap();
+        assert!(calls(dir.path()).is_empty(), "a stopped loop must not poll");
+    }
+
+    #[tokio::test]
+    async fn every_tick_uses_the_current_adb_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let old_adb = fake_adb(dir.path(), "old-sdk-adb");
+        let new_adb = fake_adb(dir.path(), "new-sdk-adb");
+        let configured = Arc::new(std::sync::Mutex::new(old_adb));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let state = polling_state();
+        let task = start_polling_loop(
+            &state,
+            Duration::from_millis(30),
+            {
+                let configured = configured.clone();
+                move || configured.lock().unwrap().clone()
+            },
+            move |event: DeviceListChangedEvent| {
+                let _ = tx.send(event);
+            },
+        )
+        .await
+        .unwrap();
+
+        let event = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("no device:list_changed")
+            .unwrap();
+        assert_eq!(event.devices[0].serial, "emulator-5554");
+        assert_eq!(state.lock().await.devices.len(), 1);
+
+        // The SDK path changes in settings.
+        *configured.lock().unwrap() = new_adb;
+        wait_until("a poll with the new adb", || {
+            calls(dir.path()).iter().any(|c| c == "new-sdk-adb")
+        })
+        .await;
+
+        state.lock().await.stop_polling();
+        task.await.unwrap();
     }
 }

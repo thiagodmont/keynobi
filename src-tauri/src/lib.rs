@@ -287,7 +287,7 @@ pub fn run() {
 
                         // Stop ADB device polling.
                         let device_state = app.state::<DeviceState>();
-                        device_state.0.lock().await.polling = false;
+                        device_state.0.lock().await.stop_polling();
                     };
 
                     if tokio::time::timeout(std::time::Duration::from_secs(3), shutdown)
