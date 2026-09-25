@@ -34,6 +34,7 @@
     "dev:web": "vite --mode e2e",
     "perf:collect": "node scripts/collect-metrics.mjs",
     "perf:report": "node scripts/collect-metrics.mjs --report",
+    "perf:soak": "node scripts/logcat-soak.mjs",
     "version:sync": "node scripts/sync-version.mjs",
     "version:check": "node scripts/sync-version.mjs --check",
     "version:bump": "node scripts/bump-version.mjs",

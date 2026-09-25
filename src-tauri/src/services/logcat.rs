@@ -1,6 +1,7 @@
 use crate::models::logcat::{LogcatFilterSpec, LogcatLevel, ProcessedEntry};
 use crate::services::log_pipeline::{
-    parse_logcat_line, IdAllocator, LogPipeline, PipelineContext, RawLogLine,
+    parse_logcat_line, DrainBudget, IdAllocator, LogPipeline, PipelineContext, RawLogLine,
+    MAX_TRACKED_PACKAGES,
 };
 use crate::services::log_store::LogStore;
 use crate::services::log_stream::StreamState;
@@ -8,6 +9,7 @@ use crate::utils::line_reader::CappedLines;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::Emitter;
 use tokio::io::BufReader;
 use tokio::sync::mpsc::error::TrySendError;
@@ -239,6 +241,20 @@ pub const MAX_BATCH_SIZE: usize = 500;
 /// processing task or frontend event emission temporarily falls behind.
 pub const RAW_LOG_LINE_CHANNEL_CAPACITY: usize = 10_000;
 
+/// Most raw lines one pipeline batch processes before storing, emitting, and
+/// yielding. At the 100 ms tick this is 50,000 lines/s before batches run
+/// back to back.
+pub const PIPELINE_BATCH_MAX_ROWS: usize = 5_000;
+
+/// Longest one pipeline batch may spend draining the channel, for lines that
+/// are slow to process (large JSON bodies near `MAX_LINE_BYTES`).
+pub const PIPELINE_BATCH_MAX_DURATION: Duration = Duration::from_millis(20);
+
+const PIPELINE_BATCH_BUDGET: DrainBudget = DrainBudget {
+    max_rows: PIPELINE_BATCH_MAX_ROWS,
+    max_elapsed: PIPELINE_BATCH_MAX_DURATION,
+};
+
 /// How long to wait before reconnecting after an unexpected ADB disconnect.
 /// Short in tests so the reconnect loop runs fast without sleeping 1.5 s.
 #[cfg(not(test))]
@@ -326,7 +342,9 @@ fn store_and_filter_processed_entries(
 ) -> Vec<ProcessedEntry> {
     if !ctx.new_packages.is_empty() {
         for pkg in ctx.new_packages.drain(..) {
-            state.known_packages.insert(pkg);
+            if state.known_packages.len() < MAX_TRACKED_PACKAGES {
+                state.known_packages.insert(pkg);
+            }
         }
         state.store.stats.packages_seen = state.known_packages.len();
     }
@@ -375,6 +393,21 @@ async fn give_up(
     if let Some(handle) = app_handle {
         let _ = handle.emit("logcat:stopped", reason.to_string());
     }
+}
+
+/// Tracing target of the per-batch pipeline event (rows, elapsed_us, backlog,
+/// tracked_pids), emitted at `trace` level for measurement tools.
+pub const PIPELINE_BATCH_TRACE_TARGET: &str = "keynobi::logcat_batch";
+
+/// Discard the lines queued in `rx` right now. Bounded by the queue depth at
+/// the start, so a producer refilling the channel cannot keep this running.
+fn discard_queued(rx: &mut mpsc::Receiver<RawLogLine>) -> usize {
+    let queued = rx.len();
+    let mut discarded = 0;
+    while discarded < queued && rx.try_recv().is_ok() {
+        discarded += 1;
+    }
+    discarded
 }
 
 /// Fires the reader-shutdown signal when the pipeline task ends, however it ends.
@@ -587,8 +620,18 @@ pub async fn start_logcat_stream(
             let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
+            // Set when the last batch stopped on its budget or the reader has
+            // closed the channel: run the next batch as soon as other tasks
+            // have had a turn instead of waiting for the next tick.
+            let mut drain_again = false;
+
             loop {
-                interval.tick().await;
+                if drain_again {
+                    tokio::task::yield_now().await;
+                } else {
+                    interval.tick().await;
+                }
+                let batch_started = std::time::Instant::now();
 
                 // Exit cleanly on graceful shutdown or stop_logcat.
                 // Also check whether a clear happened since the last tick.
@@ -602,77 +645,79 @@ pub async fn start_logcat_stream(
                         // A clear_logcat() call happened — flush any lines that the
                         // reader task had already pushed into the channel so they do
                         // not reappear on the frontend after the clear.
-                        while rx.try_recv().is_ok() {}
+                        discard_queued(&mut rx);
                         my_epoch = state.clear_epoch;
                         ctx = PipelineContext::new().with_ids(ids.clone());
+                        drain_again = false;
                         continue;
                     }
                 }
 
-                // Publish the reader's drop count so the UI can show that the
-                // view is incomplete.
-                {
-                    let dropped = dropped_lines.load(std::sync::atomic::Ordering::Relaxed);
-                    let mut state = logcat_state.lock().await;
-                    if state.store.stats.dropped_lines != dropped {
-                        state.store.stats.dropped_lines = dropped;
-                    }
-                }
+                // Once the reader has closed the channel nothing new arrives,
+                // so a batch that ends within budget has taken the last line.
+                let closed = rx.is_closed();
 
-                // Drain all available raw lines and process them through the pipeline.
-                // `run_batch_into` pushes directly into `processed`, avoiding a
-                // temporary Vec per line.
+                // Process queued lines through the pipeline, within the batch
+                // budget. `run_batch_into` pushes directly into `processed`,
+                // avoiding a temporary Vec per line.
                 let mut processed: Vec<ProcessedEntry> = Vec::new();
-                pipeline.run_batch_into(&mut rx, &mut ctx, &mut processed);
+                let drain = pipeline.run_batch_into(
+                    &mut rx,
+                    &mut ctx,
+                    &mut processed,
+                    PIPELINE_BATCH_BUDGET,
+                );
+                let backlog = rx.len() as u64;
+                let dropped = dropped_lines.load(std::sync::atomic::Ordering::Relaxed);
 
-                if !processed.is_empty() {
-                    // Lock state once per tick to batch-write entries.
-                    //
-                    // Single-pass filter+store: for each processed entry we move it
-                    // into the store (no clone) and only clone entries that pass the
-                    // active filter — the entries destined for the frontend.
-                    // With a level:error filter this means ~5 % of entries are cloned
-                    // instead of 100 %.
-                    //
-                    // Ownership is re-checked under the same lock: a stop→start
-                    // restart may have superseded this task between the tick-top
-                    // check and here. Storing a superseded stream's entries would
-                    // interleave its IDs with the replacement's and break the
-                    // store's ID ordering.
-                    let to_emit = {
-                        let mut state = logcat_state.lock().await;
-                        if !owns_stream(&state, generation) {
+                // Lock state once per batch to publish the drop and backlog
+                // counts and batch-write entries.
+                //
+                // Single-pass filter+store: for each processed entry we move it
+                // into the store (no clone) and only clone entries that pass the
+                // active filter — the entries destined for the frontend.
+                // With a level:error filter this means ~5 % of entries are cloned
+                // instead of 100 %.
+                //
+                // Ownership is re-checked under the same lock: a stop→start
+                // restart may have superseded this task between the tick-top
+                // check and here. Storing a superseded stream's entries would
+                // interleave its IDs with the replacement's and break the
+                // store's ID ordering.
+                let to_emit = {
+                    let mut state = logcat_state.lock().await;
+                    if !owns_stream(&state, generation) {
+                        Vec::new()
+                    } else {
+                        state.store.stats.dropped_lines = dropped;
+                        state.store.stats.backlog_lines = backlog;
+                        if processed.is_empty() {
                             Vec::new()
                         } else {
                             store_and_filter_processed_entries(&mut state, &mut ctx, processed)
                         }
-                        // Lock dropped here.
-                    };
+                    }
+                    // Lock dropped here.
+                };
 
-                    // Emit the filtered entries in chunks of MAX_BATCH_SIZE.
-                    emit_entry_batches(app_handle.as_ref(), &to_emit);
+                // Emit the filtered entries in chunks of MAX_BATCH_SIZE.
+                emit_entry_batches(app_handle.as_ref(), &to_emit);
+
+                if drain.rows > 0 {
+                    tracing::trace!(
+                        target: PIPELINE_BATCH_TRACE_TARGET,
+                        rows = drain.rows as u64,
+                        elapsed_us = batch_started.elapsed().as_micros() as u64,
+                        backlog,
+                        tracked_pids = ctx.tracked_pid_count() as u64,
+                        "logcat pipeline batch"
+                    );
                 }
 
-                // Exit once the channel is closed (reader task finished).
-                if rx.is_closed() {
-                    // Drain any remaining lines after EOF before exiting.
-                    // Same ownership guard as above — the final drain must not
-                    // write into the store on behalf of a superseded stream.
-                    let mut remaining: Vec<ProcessedEntry> = Vec::new();
-                    pipeline.run_batch_into(&mut rx, &mut ctx, &mut remaining);
-                    if !remaining.is_empty() {
-                        let to_emit = {
-                            let mut state = logcat_state.lock().await;
-                            if !owns_stream(&state, generation) {
-                                Vec::new()
-                            } else {
-                                store_and_filter_processed_entries(&mut state, &mut ctx, remaining)
-                            }
-                        };
-                        emit_entry_batches(app_handle.as_ref(), &to_emit);
-                    }
+                if closed && !drain.budget_exhausted {
                     break;
                 }
+                drain_again = drain.budget_exhausted || rx.is_closed();
             }
         });
 
@@ -2334,6 +2379,130 @@ mod reconnect_tests {
             restarted[0].id
         );
         assert!(terminated, "fake adb children must exit after stop");
+    }
+
+    // ── Per-batch budget ─────────────────────────────────────────────────────
+
+    /// A flood larger than several batch budgets, delivered faster than one
+    /// tick and followed by EOF, is stored completely and in order: batches
+    /// run back to back until the queue is empty, including the lines still
+    /// queued when the reader closed the channel. Only lines the reader
+    /// counted as dropped may be missing.
+    #[tokio::test]
+    async fn a_flood_is_stored_in_order_across_budgeted_batches() {
+        let _serial = PROCESS_TESTS.lock().await;
+        use std::io::Write;
+        const TOTAL: usize = 4 * PIPELINE_BATCH_MAX_ROWS;
+
+        let dir = tempfile::tempdir().unwrap();
+        let adb = dir.path().join("adb");
+        let marker = dir.path().join("flooded");
+        let mut f = std::fs::File::create(&adb).unwrap();
+        writeln!(f, "#!/bin/sh").unwrap();
+        writeln!(f, "for a in \"$@\"; do").unwrap();
+        writeln!(f, "  if [ \"$a\" = logcat ]; then").unwrap();
+        // Flood once; later reconnects find the device quiet.
+        writeln!(f, "    if [ ! -e '{}' ]; then", marker.display()).unwrap();
+        writeln!(f, "      touch '{}'", marker.display()).unwrap();
+        writeln!(
+            f,
+            "      awk 'BEGIN {{ for (i = 0; i < {TOTAL}; i++) \
+             printf \"01-01 00:00:00.000  1000  1001 I FakeTag: line %d\\n\", i }}'"
+        )
+        .unwrap();
+        writeln!(f, "    fi").unwrap();
+        writeln!(f, "    exit 0").unwrap();
+        writeln!(f, "  fi").unwrap();
+        writeln!(f, "done").unwrap();
+        writeln!(f, "exit 0").unwrap();
+        drop(f);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+
+        let state = make_state(false);
+        let generation = claim_generation(&state, None).await;
+        let s = state.clone();
+        let handle = tokio::spawn(async move {
+            start_logcat_stream(adb, None, s, None, None, generation).await;
+        });
+
+        let accounted = |state: &LogcatStateInner| {
+            state.store.len() as u64
+                + state
+                    .dropped_lines
+                    .load(std::sync::atomic::Ordering::Relaxed)
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        while accounted(&*state.lock().await) < TOTAL as u64 && std::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        let (entries, dropped, backlog) = {
+            let s = state.lock().await;
+            (
+                s.store.iter().cloned().collect::<Vec<_>>(),
+                s.store.stats.dropped_lines,
+                s.store.stats.backlog_lines,
+            )
+        };
+        request_stop(&state).await;
+        let _ = tokio::time::timeout(Duration::from_secs(3), handle).await;
+
+        assert_eq!(
+            entries.len() as u64 + dropped,
+            TOTAL as u64,
+            "{} stored, {dropped} dropped",
+            entries.len()
+        );
+        assert!(
+            entries.len() > PIPELINE_BATCH_MAX_ROWS,
+            "{} stored",
+            entries.len()
+        );
+        let numbers: Vec<usize> = entries
+            .iter()
+            .map(|e| e.message.trim_start_matches("line ").parse().unwrap())
+            .collect();
+        assert!(
+            numbers.windows(2).all(|w| w[0] < w[1]),
+            "lines out of order"
+        );
+        assert_strictly_increasing(&ids(&entries), "flood");
+        assert_eq!(backlog, 0, "the backlog is reported drained");
+    }
+
+    /// Clearing discards what is queued at that moment and no more, so a
+    /// producer that keeps refilling the channel cannot hold the pipeline
+    /// (and the state lock) in the discard loop.
+    #[test]
+    fn discarding_on_clear_is_bounded_by_the_queue_depth() {
+        const QUEUED: usize = 20_000;
+        let (tx, mut rx) = mpsc::channel::<RawLogLine>(1_000_000);
+        let line = parse_logcat_line("01-01 00:00:00.000  1000  1001 I T: x").unwrap();
+        let producer = std::thread::spawn(move || {
+            for _ in 0..200_000 {
+                if tx.blocking_send(line.clone()).is_err() {
+                    break;
+                }
+            }
+        });
+        while rx.len() < QUEUED {
+            std::thread::yield_now();
+        }
+
+        // The producer keeps sending during the discard; everything it adds
+        // after the discard started must stay queued.
+        let queued_before = rx.len();
+        let discarded = discard_queued(&mut rx);
+        assert!(
+            discarded < queued_before + 1_000,
+            "discarded {discarded} with {queued_before} queued"
+        );
+        drop(rx);
+        producer.join().unwrap();
     }
 
     /// App shutdown and both front doors stop through this, so it must bump

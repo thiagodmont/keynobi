@@ -2,6 +2,7 @@ use crate::models::logcat::{EntryCategory, EntryFlags, LogcatKind, LogcatLevel, 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 // ── RawLogLine ────────────────────────────────────────────────────────────────
 
@@ -56,11 +57,26 @@ impl Default for IdAllocator {
 
 // ── PipelineContext ───────────────────────────────────────────────────────────
 
+/// Most PIDs the PID → package map tracks. Dead processes are evicted when
+/// ActivityManager reports their death; this cap is the backstop for deaths
+/// the stream never saw (dropped lines, a missed buffer). A device runs a few
+/// hundred app processes at most, so the cap is only reached when deaths go
+/// unobserved. Past it, the oldest mapping is evicted.
+pub const MAX_TRACKED_PIDS: usize = 4_096;
+
+/// Most distinct package names a session remembers for restart separators and
+/// the package list. Past it, new packages still resolve by PID but are not
+/// remembered.
+pub const MAX_TRACKED_PACKAGES: usize = 4_096;
+
 /// Mutable context threaded through all processors for a given session.
 /// Owned by the pipeline task — no mutex required.
 pub struct PipelineContext {
     ids: Arc<IdAllocator>,
-    pub pid_to_package: HashMap<i32, String>,
+    /// PID → (package, insertion sequence). The sequence picks the oldest
+    /// mapping when `MAX_TRACKED_PIDS` is reached.
+    pid_to_package: HashMap<i32, (String, u64)>,
+    next_pid_seq: u64,
     pub seen_packages: HashSet<String>,
     active_crash_group: Option<u64>,
     /// Packages discovered since the last sync to `LogcatStateInner.known_packages`.
@@ -73,6 +89,7 @@ impl PipelineContext {
         PipelineContext {
             ids: Arc::new(IdAllocator::new()),
             pid_to_package: HashMap::new(),
+            next_pid_seq: 0,
             seen_packages: HashSet::new(),
             active_crash_group: None,
             new_packages: Vec::new(),
@@ -84,15 +101,12 @@ impl PipelineContext {
     /// `package` field populated from the first entry, without waiting for an
     /// ActivityManager "Start proc" event.
     pub fn with_initial_pids(pid_to_package: HashMap<i32, String>) -> Self {
-        let seen_packages: HashSet<String> = pid_to_package.values().cloned().collect();
-        let new_packages: Vec<String> = seen_packages.iter().cloned().collect();
-        PipelineContext {
-            ids: Arc::new(IdAllocator::new()),
-            pid_to_package,
-            seen_packages,
-            active_crash_group: None,
-            new_packages,
+        let mut ctx = PipelineContext::new();
+        for (pid, package) in pid_to_package {
+            ctx.remember_package(&package);
+            ctx.track_pid(pid, package);
         }
+        ctx
     }
 
     /// Draw IDs from a long-lived allocator instead of this context's own, so
@@ -108,6 +122,54 @@ impl PipelineContext {
 
     pub fn next_crash_group_id(&mut self) -> u64 {
         self.ids.next_crash_group_id()
+    }
+
+    /// Package currently running as `pid`, if known.
+    pub fn package_for_pid(&self, pid: i32) -> Option<&str> {
+        self.pid_to_package.get(&pid).map(|(pkg, _)| pkg.as_str())
+    }
+
+    pub fn tracked_pid_count(&self) -> usize {
+        self.pid_to_package.len()
+    }
+
+    /// Map `pid` to `package`, replacing whatever process held the PID before.
+    pub fn track_pid(&mut self, pid: i32, package: String) {
+        if !self.pid_to_package.contains_key(&pid) && self.pid_to_package.len() >= MAX_TRACKED_PIDS
+        {
+            let oldest = self
+                .pid_to_package
+                .iter()
+                .min_by_key(|(_, (_, seq))| *seq)
+                .map(|(pid, _)| *pid);
+            if let Some(oldest) = oldest {
+                self.pid_to_package.remove(&oldest);
+            }
+        }
+        let seq = self.next_pid_seq;
+        self.next_pid_seq += 1;
+        self.pid_to_package.insert(pid, (package, seq));
+    }
+
+    /// Forget `pid` after its process died, unless the PID already belongs to
+    /// a different package (a newer process started on it).
+    pub fn forget_pid(&mut self, pid: i32, package: &str) {
+        if self.package_for_pid(pid) == Some(package) {
+            self.pid_to_package.remove(&pid);
+        }
+    }
+
+    /// Record a package for restart detection and the package list. Returns
+    /// whether it had been seen before.
+    fn remember_package(&mut self, package: &str) -> bool {
+        if self.seen_packages.contains(package) {
+            return true;
+        }
+        if self.seen_packages.len() < MAX_TRACKED_PACKAGES {
+            self.seen_packages.insert(package.to_owned());
+            self.new_packages.push(package.to_owned());
+        }
+        false
     }
 
     /// Reset per-session enrichment state. IDs keep counting.
@@ -197,8 +259,13 @@ impl LogPipeline {
         result
     }
 
-    /// Drain `rx`, run each raw line through the full pipeline, and push all
-    /// output entries (separators + processed) directly into `out`.
+    /// Drain `rx` until it is empty or `budget` is spent, run each raw line
+    /// through the full pipeline, and push all output entries (separators +
+    /// processed) directly into `out`, in arrival order.
+    ///
+    /// The producer refills the channel while this runs, so draining "until
+    /// empty" alone is unbounded under a flood. Lines past the budget stay
+    /// queued for the next call. At least one line is taken per call.
     ///
     /// This is the preferred hot path: it avoids allocating a temporary
     /// `Vec<ProcessedEntry>` per line (which `run_with_separators` does).
@@ -208,8 +275,24 @@ impl LogPipeline {
         rx: &mut tokio::sync::mpsc::Receiver<RawLogLine>,
         ctx: &mut PipelineContext,
         out: &mut Vec<ProcessedEntry>,
-    ) {
-        while let Ok(raw) = rx.try_recv() {
+        budget: DrainBudget,
+    ) -> DrainReport {
+        let started = Instant::now();
+        let mut rows = 0;
+        loop {
+            if rows > 0 && (rows >= budget.max_rows || started.elapsed() >= budget.max_elapsed) {
+                return DrainReport {
+                    rows,
+                    budget_exhausted: true,
+                };
+            }
+            let Ok(raw) = rx.try_recv() else {
+                return DrainReport {
+                    rows,
+                    budget_exhausted: false,
+                };
+            };
+            rows += 1;
             // Only ActivityManager lines can produce separator entries.
             // For all others we skip the separator check entirely.
             if raw.tag == "ActivityManager" {
@@ -218,6 +301,22 @@ impl LogPipeline {
             out.push(self.run(raw, ctx));
         }
     }
+}
+
+/// Upper bound on one `run_batch_into` call.
+#[derive(Debug, Clone, Copy)]
+pub struct DrainBudget {
+    pub max_rows: usize,
+    pub max_elapsed: Duration,
+}
+
+/// What one `run_batch_into` call did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DrainReport {
+    /// Raw lines taken from the channel.
+    pub rows: usize,
+    /// True when the call stopped on its budget; lines may still be queued.
+    pub budget_exhausted: bool,
 }
 
 // ── Separator generation (process lifecycle) ──────────────────────────────────
@@ -250,14 +349,16 @@ fn generate_lifecycle_separators_into(
         ));
     }
 
+    // A dead process's PID can be reused by any process, including native
+    // ones that never get a "Start proc" line, so stop attributing it.
+    if let Some((dead_pid, pkg)) = extract_dead_pid(&raw.tag, &raw.message) {
+        ctx.forget_pid(dead_pid, &pkg);
+    }
+
     // Check for process start / restart
     if let Some((new_pid, pkg)) = extract_pid_package(&raw.tag, &raw.message) {
-        let is_restart = ctx.seen_packages.contains(&pkg);
-        if !ctx.seen_packages.contains(&pkg) {
-            ctx.seen_packages.insert(pkg.clone());
-            ctx.new_packages.push(pkg.clone()); // track for dirty sync
-        }
-        ctx.pid_to_package.insert(new_pid, pkg.clone());
+        let is_restart = ctx.remember_package(&pkg);
+        ctx.track_pid(new_pid, pkg.clone());
 
         if is_restart {
             let sep_id = ctx.next_id();
@@ -313,7 +414,7 @@ pub struct PackageResolver;
 
 impl LogProcessor for PackageResolver {
     fn process(&self, entry: &mut ProcessedEntry, ctx: &mut PipelineContext) {
-        entry.package = ctx.pid_to_package.get(&entry.pid).cloned();
+        entry.package = ctx.package_for_pid(entry.pid).map(str::to_owned);
     }
 }
 
@@ -576,6 +677,32 @@ pub fn extract_process_death(tag: &str, message: &str) -> Option<String> {
     None
 }
 
+/// Extract the (pid, package) of a process ActivityManager reports as gone:
+/// `Process <pkg> (pid <n>) has died` or `Killing <n>:<pkg>/<uid> ...`.
+pub fn extract_dead_pid(tag: &str, message: &str) -> Option<(i32, String)> {
+    if tag != "ActivityManager" {
+        return None;
+    }
+    if let Some(rest) = message.strip_prefix("Process ") {
+        let (name, rest) = rest.split_once(" (pid ")?;
+        let (pid, rest) = rest.split_once(')')?;
+        let pkg = strip_process_suffix(name);
+        if rest.trim_start().starts_with("has died") && looks_like_package(pkg) {
+            return Some((pid.trim().parse().ok()?, pkg.to_owned()));
+        }
+        return None;
+    }
+    if let Some(rest) = message.strip_prefix("Killing ") {
+        let (pid, after) = rest.split_once(':')?;
+        let end = after.find(['/', ' ', ':']).unwrap_or(after.len());
+        let pkg = strip_process_suffix(&after[..end]);
+        if looks_like_package(pkg) {
+            return Some((pid.trim().parse().ok()?, pkg.to_owned()));
+        }
+    }
+    None
+}
+
 fn strip_process_suffix(name: &str) -> &str {
     name.find(':').map_or(name, |i| &name[..i])
 }
@@ -617,7 +744,7 @@ mod tests {
     fn package_resolver_attaches_package_for_known_pid() {
         let pipeline = LogPipeline::default_pipeline();
         let mut ctx = PipelineContext::new();
-        ctx.pid_to_package.insert(1234, "com.example.app".into());
+        ctx.track_pid(1234, "com.example.app".into());
 
         let raw = RawLogLine {
             timestamp: "01-01 00:00:00.000".into(),
@@ -845,14 +972,8 @@ mod tests {
 
         let ctx = PipelineContext::with_initial_pids(map);
 
-        assert_eq!(
-            ctx.pid_to_package.get(&1234).map(String::as_str),
-            Some("com.example.app")
-        );
-        assert_eq!(
-            ctx.pid_to_package.get(&5678).map(String::as_str),
-            Some("com.google.android.gms")
-        );
+        assert_eq!(ctx.package_for_pid(1234), Some("com.example.app"));
+        assert_eq!(ctx.package_for_pid(5678), Some("com.google.android.gms"));
     }
 
     #[test]
@@ -918,8 +1039,8 @@ mod tests {
         let ctx_plain = PipelineContext::new();
 
         assert_eq!(
-            ctx_seeded.pid_to_package.len(),
-            ctx_plain.pid_to_package.len()
+            ctx_seeded.tracked_pid_count(),
+            ctx_plain.tracked_pid_count()
         );
         assert_eq!(
             ctx_seeded.seen_packages.len(),
@@ -975,5 +1096,269 @@ mod tests {
 
         assert!(g1.is_some() && g2.is_some());
         assert_ne!(g1, g2, "separate crashes must not share a group id");
+    }
+
+    // ── Budgeted drain ────────────────────────────────────────────────────────
+
+    fn numbered_line(n: usize) -> RawLogLine {
+        info_line(&format!("line {n}"))
+    }
+
+    fn line_number(entry: &ProcessedEntry) -> usize {
+        entry
+            .message
+            .strip_prefix("line ")
+            .and_then(|n| n.parse().ok())
+            .expect("numbered line")
+    }
+
+    const NO_TIME_LIMIT: Duration = Duration::from_secs(3600);
+
+    /// A producer refilling the channel while it is drained must not make one
+    /// call run unbounded: every call stops at its row budget, and across calls
+    /// every line comes out once, in order.
+    #[test]
+    fn budgeted_drain_takes_a_flood_across_calls_without_loss_or_reordering() {
+        const CAPACITY: usize = 10_000;
+        const TOTAL: usize = 30_000;
+        const MAX_ROWS: usize = 1_000;
+        let pipeline = LogPipeline::default_pipeline();
+        let mut ctx = PipelineContext::new();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(CAPACITY);
+        for n in 0..CAPACITY {
+            tx.try_send(numbered_line(n)).expect("channel has room");
+        }
+        let producer = std::thread::spawn(move || {
+            for n in CAPACITY..TOTAL {
+                tx.blocking_send(numbered_line(n)).expect("receiver alive");
+            }
+        });
+
+        let budget = DrainBudget {
+            max_rows: MAX_ROWS,
+            max_elapsed: NO_TIME_LIMIT,
+        };
+        let mut out = Vec::new();
+        let mut calls = 0;
+        let mut taken = 0;
+        while taken < TOTAL {
+            let report = pipeline.run_batch_into(&mut rx, &mut ctx, &mut out, budget);
+            assert!(
+                report.rows <= MAX_ROWS,
+                "one call took {} rows, budget is {MAX_ROWS}",
+                report.rows
+            );
+            if report.rows == 0 {
+                std::thread::yield_now();
+            }
+            taken += report.rows;
+            calls += 1;
+        }
+        producer.join().expect("producer thread");
+
+        assert!(calls >= TOTAL / MAX_ROWS, "{calls} calls");
+        assert_eq!(out.len(), TOTAL);
+        for (expected, entry) in out.iter().enumerate() {
+            assert_eq!(line_number(entry), expected, "lines out of order");
+        }
+        assert!(out.windows(2).all(|w| w[0].id < w[1].id));
+        let last = pipeline.run_batch_into(&mut rx, &mut ctx, &mut out, budget);
+        assert_eq!(
+            last,
+            DrainReport {
+                rows: 0,
+                budget_exhausted: false
+            }
+        );
+    }
+
+    /// The time budget ends a call even when rows remain under the row budget,
+    /// and each call still makes progress.
+    #[test]
+    fn budgeted_drain_stops_on_elapsed_time() {
+        let pipeline = LogPipeline::default_pipeline();
+        let mut ctx = PipelineContext::new();
+        let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+        for n in 0..3 {
+            tx.try_send(numbered_line(n)).expect("channel has room");
+        }
+        let budget = DrainBudget {
+            max_rows: usize::MAX,
+            max_elapsed: Duration::ZERO,
+        };
+        let mut out = Vec::new();
+        let reports: Vec<DrainReport> = (0..4)
+            .map(|_| pipeline.run_batch_into(&mut rx, &mut ctx, &mut out, budget))
+            .collect();
+
+        assert_eq!(
+            reports.iter().map(|r| r.rows).collect::<Vec<_>>(),
+            [1, 1, 1, 0]
+        );
+        assert!(reports[..2].iter().all(|r| r.budget_exhausted));
+        assert_eq!(out.iter().map(line_number).collect::<Vec<_>>(), [0, 1, 2]);
+    }
+
+    // ── PID lifecycle ─────────────────────────────────────────────────────────
+
+    fn activity_manager(message: &str) -> RawLogLine {
+        RawLogLine {
+            pid: 1500,
+            tid: 1500,
+            tag: "ActivityManager".into(),
+            ..info_line(message)
+        }
+    }
+
+    fn from_pid(pid: i32) -> RawLogLine {
+        RawLogLine {
+            pid,
+            tid: pid,
+            ..info_line("app line")
+        }
+    }
+
+    fn package_of(pipeline: &LogPipeline, ctx: &mut PipelineContext, pid: i32) -> Option<String> {
+        pipeline.run(from_pid(pid), ctx).package
+    }
+
+    #[test]
+    fn extract_dead_pid_reads_death_and_kill_lines() {
+        assert_eq!(
+            extract_dead_pid(
+                "ActivityManager",
+                "Process com.example.app (pid 4321) has died: cch CRE"
+            ),
+            Some((4321, "com.example.app".into()))
+        );
+        assert_eq!(
+            extract_dead_pid(
+                "ActivityManager",
+                "Process com.example.app:remote (pid 77) has died"
+            ),
+            Some((77, "com.example.app".into()))
+        );
+        assert_eq!(
+            extract_dead_pid(
+                "ActivityManager",
+                "Killing 4321:com.example.app/u0a123 (adj 900): empty #17"
+            ),
+            Some((4321, "com.example.app".into()))
+        );
+        assert_eq!(
+            extract_dead_pid(
+                "ActivityManager",
+                "Force finishing activity com.example.app/.Main"
+            ),
+            None
+        );
+        assert_eq!(
+            extract_dead_pid("SomeTag", "Process com.example.app (pid 1) has died"),
+            None
+        );
+        assert_eq!(
+            extract_dead_pid(
+                "ActivityManager",
+                "Process com.example.app (pid x) has died"
+            ),
+            None
+        );
+    }
+
+    /// A dead process's PID stops resolving to its package, a PID reused by a
+    /// new process resolves to the new package, and an app that restarts on a
+    /// new PID keeps resolving — so `package:mine` follows the app across
+    /// restarts without picking up whatever process inherits its old PID.
+    #[test]
+    fn dead_pids_are_evicted_and_reused_pids_map_to_the_new_process() {
+        let pipeline = LogPipeline::default_pipeline();
+        let mut ctx = PipelineContext::new();
+        let feed = |ctx: &mut PipelineContext, message: &str| {
+            pipeline.run_with_separators(activity_manager(message), ctx)
+        };
+
+        feed(&mut ctx, "Start proc 100:com.mine.app/u0a1 for activity");
+        assert_eq!(
+            package_of(&pipeline, &mut ctx, 100).as_deref(),
+            Some("com.mine.app")
+        );
+
+        feed(&mut ctx, "Process com.mine.app (pid 100) has died: fg TOP");
+        assert_eq!(
+            package_of(&pipeline, &mut ctx, 100),
+            None,
+            "dead PID must not resolve"
+        );
+        assert_eq!(ctx.tracked_pid_count(), 0);
+
+        feed(&mut ctx, "Start proc 100:com.other.app/u0a2 for service");
+        assert_eq!(
+            package_of(&pipeline, &mut ctx, 100).as_deref(),
+            Some("com.other.app")
+        );
+
+        let restart = feed(&mut ctx, "Start proc 200:com.mine.app/u0a1 for activity");
+        assert!(restart.iter().any(|e| e.kind == LogcatKind::ProcessStarted));
+        assert_eq!(
+            package_of(&pipeline, &mut ctx, 200).as_deref(),
+            Some("com.mine.app")
+        );
+
+        // A late death report for the old process must not unmap the PID's
+        // new owner.
+        feed(&mut ctx, "Process com.mine.app (pid 100) has died");
+        assert_eq!(
+            package_of(&pipeline, &mut ctx, 100).as_deref(),
+            Some("com.other.app")
+        );
+
+        feed(
+            &mut ctx,
+            "Killing 200:com.mine.app/u0a1 (adj 900): stop com.mine.app",
+        );
+        assert_eq!(package_of(&pipeline, &mut ctx, 200), None);
+        assert_eq!(ctx.tracked_pid_count(), 1);
+    }
+
+    /// When deaths go unobserved the PID map stops at its cap by evicting the
+    /// oldest mapping, and the newest processes keep resolving.
+    #[test]
+    fn pid_map_is_capped_and_evicts_the_oldest_mapping() {
+        let pipeline = LogPipeline::default_pipeline();
+        let mut ctx = PipelineContext::new();
+        let extra = 10;
+        for n in 0..MAX_TRACKED_PIDS + extra {
+            let message = format!("Start proc {}:com.app.p{n}/u0a1 for activity", 10_000 + n);
+            pipeline.run_with_separators(activity_manager(&message), &mut ctx);
+        }
+
+        assert_eq!(ctx.tracked_pid_count(), MAX_TRACKED_PIDS);
+        for n in 0..extra {
+            assert_eq!(
+                ctx.package_for_pid((10_000 + n) as i32),
+                None,
+                "oldest evicted"
+            );
+        }
+        let newest = MAX_TRACKED_PIDS + extra - 1;
+        assert_eq!(
+            ctx.package_for_pid((10_000 + newest) as i32),
+            Some(format!("com.app.p{newest}").as_str())
+        );
+        assert_eq!(ctx.seen_packages.len(), MAX_TRACKED_PACKAGES);
+        assert!(ctx.new_packages.len() <= MAX_TRACKED_PACKAGES);
+    }
+
+    #[test]
+    fn replacing_a_pid_at_the_cap_does_not_evict_another() {
+        let mut ctx = PipelineContext::new();
+        for n in 0..MAX_TRACKED_PIDS {
+            ctx.track_pid(n as i32, format!("com.app.p{n}"));
+        }
+        ctx.track_pid(5, "com.app.replacement".into());
+
+        assert_eq!(ctx.tracked_pid_count(), MAX_TRACKED_PIDS);
+        assert_eq!(ctx.package_for_pid(0), Some("com.app.p0"));
+        assert_eq!(ctx.package_for_pid(5), Some("com.app.replacement"));
     }
 }
