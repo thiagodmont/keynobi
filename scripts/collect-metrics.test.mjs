@@ -186,7 +186,7 @@ describe("collect-metrics", () => {
       cargo: "cargo 1.97.1 (fake)",
       node: process.version,
     });
-    expect(p.hardware.model).toBe(
+    expect(p.hardware.model).toEqual(
       process.platform === "darwin" ? "FakeMac1,1" : expect.any(String)
     );
   });
@@ -202,7 +202,8 @@ describe("collect-metrics", () => {
 
   it("warns when snapshots come from different machines or profiles", () => {
     const base = collectProvenance({ exec: fakeExec(), profile: "release" });
-    const other = { ...base, arch: "x64", hardware: { ...base.hardware, model: "Other" } };
+    const otherArch = base.arch === "x64" ? "arm64" : "x64";
+    const other = { ...base, arch: otherArch, hardware: { ...base.hardware, model: "Other" } };
 
     const warnings = comparabilityWarnings({ provenance: other }, { provenance: base });
 
