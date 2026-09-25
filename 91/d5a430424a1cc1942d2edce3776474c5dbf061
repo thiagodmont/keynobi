@@ -1,0 +1,22 @@
+CHANGELOG.md
+  h_5539fd3470b479 10-55
+package.json
+  h_5539fd3470b479 3
+src-tauri/Cargo.lock
+  h_5539fd3470b479 2353
+src-tauri/Cargo.toml
+  h_5539fd3470b479 3
+src-tauri/tauri.conf.json
+  h_5539fd3470b479 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "91d5a430424a1cc1942d2edce3776474c5dbf061",
+  "prompts": {},
+  "humans": {
+    "h_5539fd3470b479": {
+      "author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
