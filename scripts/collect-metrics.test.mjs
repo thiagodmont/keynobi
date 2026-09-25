@@ -29,7 +29,10 @@ function writeEstimate(dir, parts, meanNs, mtimeMs) {
   const folder = join(dir, ...parts);
   mkdirSync(folder, { recursive: true });
   const file = join(folder, "estimates.json");
-  writeFileSync(file, JSON.stringify({ mean: { point_estimate: meanNs }, std_dev: { point_estimate: 1 } }));
+  writeFileSync(
+    file,
+    JSON.stringify({ mean: { point_estimate: meanNs }, std_dev: { point_estimate: 1 } })
+  );
   utimesSync(file, mtimeMs / 1000, mtimeMs / 1000);
 }
 
@@ -166,7 +169,9 @@ describe("collect-metrics", () => {
     expect(entry.gitCommit).toBe("0123456");
     expect(archiveName(entry)).toBe("metrics_0123456-dirty.json");
     expect(archiveName({ ...entry, dirty: false })).toBe("metrics_0123456.json");
-    expect(comparabilityWarnings(entry, null)).toContain("latest snapshot was taken on a dirty tree");
+    expect(comparabilityWarnings(entry, null)).toContain(
+      "latest snapshot was taken on a dirty tree"
+    );
   });
 
   it("records toolchain, profile, arch, and hardware", () => {
@@ -181,7 +186,9 @@ describe("collect-metrics", () => {
       cargo: "cargo 1.97.1 (fake)",
       node: process.version,
     });
-    expect(p.hardware.model).toBe(process.platform === "darwin" ? "FakeMac1,1" : expect.any(String));
+    expect(p.hardware.model).toBe(
+      process.platform === "darwin" ? "FakeMac1,1" : expect.any(String)
+    );
   });
 
   it("treats an unreadable git status as dirty", () => {
@@ -225,7 +232,10 @@ describe("logcat-soak", () => {
         },
       });
 
-      expect(calls).toEqual(["cargo build --release --example logcat_soak", "run --duration-secs 5"]);
+      expect(calls).toEqual([
+        "cargo build --release --example logcat_soak",
+        "run --duration-secs 5",
+      ]);
       expect(result.kind).toBe("logcat-soak");
       expect(result.entries.ingested).toBe(5);
       expect(result.provenance.profile).toBe("release");

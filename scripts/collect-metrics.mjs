@@ -97,7 +97,10 @@ export function parseArgs(argv) {
     skipFrontend: args.includes("--skip-frontend"),
     skipRust: args.includes("--skip-rust"),
     skipBench: args.includes("--skip-bench"),
-    outDir: outIndex >= 0 && args[outIndex + 1] ? resolve(args[outIndex + 1]) : join(ROOT, "perf-metrics"),
+    outDir:
+      outIndex >= 0 && args[outIndex + 1]
+        ? resolve(args[outIndex + 1])
+        : join(ROOT, "perf-metrics"),
   };
 }
 
@@ -202,7 +205,7 @@ export function collectMetrics({
 
   const provenance = collectProvenance({
     exec,
-    profile: RUST_PROFILE,
+    profile: options.skipRust && options.skipBench ? null : RUST_PROFILE,
     artifacts: {
       frontendDist: frontend ? distDir : null,
       rustBinary: binarySizeBytes == null ? null : binaryPath,
@@ -289,6 +292,12 @@ function countMetricsFiles(metricsDir) {
 
 // ── Report mode ───────────────────────────────────────────────────────────────
 
+/** Repo-relative path when inside the repo, absolute otherwise. */
+function displayPath(path) {
+  const rel = relative(ROOT, path);
+  return rel.startsWith("..") ? path : rel || ".";
+}
+
 function describe(entry) {
   const p = entry.provenance;
   if (!p) return `${entry.timestamp} (${entry.gitCommit}, no provenance recorded)`;
@@ -335,7 +344,7 @@ function printReport(metricsDir) {
   if (previous) {
     console.log(`Previous: ${describe(previous)}`);
   }
-  console.log(`Metrics:  ${relative(ROOT, metricsDir) || "."}/ (${countMetricsFiles(metricsDir)} files)`);
+  console.log(`Metrics:  ${displayPath(metricsDir)}/ (${countMetricsFiles(metricsDir)} files)`);
   for (const warning of comparabilityWarnings(latest, previous)) {
     console.log(`\x1b[33mWarning:  ${warning}\x1b[0m`);
   }
@@ -343,15 +352,30 @@ function printReport(metricsDir) {
 
   // Frontend
   console.log("── Frontend Bundle ──");
-  printMetric("JS bundle", latest.frontend?.bundleSizeBytes, previous?.frontend?.bundleSizeBytes, "bytes");
+  printMetric(
+    "JS bundle",
+    latest.frontend?.bundleSizeBytes,
+    previous?.frontend?.bundleSizeBytes,
+    "bytes"
+  );
   printMetric("CSS", latest.frontend?.cssSizeBytes, previous?.frontend?.cssSizeBytes, "bytes");
   printMetric("Chunks", latest.frontend?.chunkCount, previous?.frontend?.chunkCount, "");
-  printMetric("Largest chunk", latest.frontend?.largestChunkBytes, previous?.frontend?.largestChunkBytes, "bytes");
+  printMetric(
+    "Largest chunk",
+    latest.frontend?.largestChunkBytes,
+    previous?.frontend?.largestChunkBytes,
+    "bytes"
+  );
   console.log("");
 
   // Rust
   console.log("── Rust Binary ──");
-  printMetric("Binary size", latest.rust?.binarySizeBytes, previous?.rust?.binarySizeBytes, "bytes");
+  printMetric(
+    "Binary size",
+    latest.rust?.binarySizeBytes,
+    previous?.rust?.binarySizeBytes,
+    "bytes"
+  );
   console.log("");
 
   // Benchmarks
@@ -407,11 +431,13 @@ function main() {
   archiveLatest(options.outDir);
   writeFileSync(join(options.outDir, "metrics_latest.json"), JSON.stringify(entry, null, 2) + "\n");
 
-  const where = relative(ROOT, options.outDir) || ".";
+  const where = displayPath(options.outDir);
   console.log(
     `\nMetrics saved to ${where}/metrics_latest.json (${countMetricsFiles(options.outDir)} total snapshots)`
   );
-  console.log(`  Commit:     ${entry.provenance.gitCommitShort}${entry.dirty ? " (dirty tree)" : ""}`);
+  console.log(
+    `  Commit:     ${entry.provenance.gitCommitShort}${entry.dirty ? " (dirty tree)" : ""}`
+  );
   if (entry.frontend) {
     console.log(`  JS bundle:  ${(entry.frontend.bundleSizeBytes / 1024).toFixed(1)} KB`);
     console.log(`  CSS:        ${(entry.frontend.cssSizeBytes / 1024).toFixed(1)} KB`);

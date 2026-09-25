@@ -88,7 +88,8 @@ export function collectProvenance({ exec = defaultExec, profile, artifacts = {} 
   const cpus = os.cpus();
   const hashed = {};
   for (const [name, path] of Object.entries(artifacts)) {
-    hashed[name] = path && existsSync(path) ? { path: relative(ROOT, path), sha256: hashArtifact(path) } : null;
+    hashed[name] =
+      path && existsSync(path) ? { path: relative(ROOT, path), sha256: hashArtifact(path) } : null;
   }
   return {
     gitCommit: commit,

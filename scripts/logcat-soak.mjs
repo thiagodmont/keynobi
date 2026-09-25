@@ -63,7 +63,11 @@ export function runSoak({
   const binary = join(targetDir, PROFILE, "examples", "logcat_soak");
   if (!existsSync(binary)) throw new Error(`cargo build did not produce ${binary}`);
 
-  const provenance = collectProvenance({ exec, profile: PROFILE, artifacts: { soakBinary: binary } });
+  const provenance = collectProvenance({
+    exec,
+    profile: PROFILE,
+    artifacts: { soakBinary: binary },
+  });
   const startedAt = new Date(now()).toISOString();
   const report = JSON.parse(runBinary(binary, soakArgs));
   if (report.error) throw new Error(`soak failed: ${report.error}`);
@@ -82,9 +86,14 @@ function main() {
   writeFileSync(file, JSON.stringify(result, null, 2) + "\n");
 
   const { rss, entries, batches, trackedPids, giantLine, provenance } = result;
-  console.log(`\nSoak saved to ${relative(ROOT, file)}`);
-  console.log(`  Commit:      ${provenance.gitCommitShort}${provenance.dirty ? " (dirty tree)" : ""}`);
-  console.log(`  RSS:         start ${mib(rss.startBytes)}, peak ${mib(rss.peakBytes)}, end ${mib(rss.endBytes)}`);
+  const rel = relative(ROOT, file);
+  console.log(`\nSoak saved to ${rel.startsWith("..") ? file : rel}`);
+  console.log(
+    `  Commit:      ${provenance.gitCommitShort}${provenance.dirty ? " (dirty tree)" : ""}`
+  );
+  console.log(
+    `  RSS:         start ${mib(rss.startBytes)}, peak ${mib(rss.peakBytes)}, end ${mib(rss.endBytes)}`
+  );
   console.log(
     `  Entries:     ${entries.ingested} ingested (${entries.ingestedPerSec.toFixed(0)}/s), ${entries.dropped} dropped`
   );

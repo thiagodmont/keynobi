@@ -420,11 +420,12 @@ async fn soak(config: Config) -> serde_json::Value {
     let elapsed = started.elapsed();
     let rss_end = rss_bytes(&mut system);
     rss_peak = rss_peak.max(rss_end);
-    let (ingested, dropped, stored, packages_seen) = {
+    let (ingested, dropped, backlog, stored, packages_seen) = {
         let s = state.lock().await;
         (
             s.store.stats.total_ingested,
             s.store.stats.dropped_lines,
+            s.store.stats.backlog_lines,
             s.store.len(),
             s.store.stats.packages_seen,
         )
@@ -434,6 +435,7 @@ async fn soak(config: Config) -> serde_json::Value {
         "rssBytes": rss_end,
         "ingested": ingested,
         "dropped": dropped,
+        "backlog": backlog,
         "stored": stored,
     }));
     request_stop(&state).await;
