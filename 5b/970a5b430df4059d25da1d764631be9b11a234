@@ -1,0 +1,33 @@
+src-tauri/src/services/process_manager.rs
+  s_1e114e823b9048::t_ac0eae7339d500 440-455,521-528,531,648,680,737,770,885,939,978,1015,1036-1040,1042
+src-tauri/src/commands/mcp.rs
+  s_1e114e823b9048::t_5a2cf4eea2bccf 459-462
+src-tauri/src/services/jdk.rs
+  s_1e114e823b9048::t_5a2cf4eea2bccf 383-386,686
+src-tauri/src/utils/process.rs
+  s_1e114e823b9048::t_01eb968624a2d2 86-106
+  s_1e114e823b9048::t_c0a01ef19aa094 85
+src-tauri/src/services/ui_hierarchy.rs
+  s_1e114e823b9048::t_e95205e0e827fb 603-605
+src-tauri/src/services/logcat.rs
+  s_1e114e823b9048::t_a7a19ae5a0c1bd 1589-1592,1640,1651,1665,1699,1703,1744,1748,1781,1785,1898,1918,1955-1957,1961,1965,1968,2002,2032,2034,2044-2058,2064,2070-2071,2079,2155-2159,2378
+src-tauri/src/commands/device.rs
+  s_1e114e823b9048::t_6bc8c82b41ad0f 585-588,590,607-609,620-621,630,634,638,642,656,685
+  s_1e114e823b9048::t_30411bf0c33a46 571-573
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "5b970a5b430df4059d25da1d764631be9b11a234",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
