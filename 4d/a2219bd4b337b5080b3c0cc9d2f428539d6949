@@ -18,6 +18,7 @@ src-tauri/tests/build_integration.rs
   s_1e114e823b9048::t_46abda9e304e67 319-333
 src-tauri/tests/mcp_headless.rs
   s_1e114e823b9048::t_96437b940f79eb 148,286-326
+  s_1e114e823b9048::t_73d8c60b172b90 285
 src-tauri/src/services/build_runner.rs
   s_1e114e823b9048::t_93767323df62b8 1919
   s_1e114e823b9048::t_d94c35ffa05dd5 2051-2054,2056,2060
