@@ -3,7 +3,6 @@ use crate::models::logcat::{LogStats, LogcatFilterSpec, ProcessedEntry};
 use crate::services::logcat::{self, LogcatFilter, LogcatState, LogcatStateInner};
 use crate::services::settings_manager;
 use std::sync::Arc;
-use std::time::Duration;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 use tokio::sync::Mutex;
@@ -20,55 +19,15 @@ pub async fn start_logcat(
 ) -> Result<(), String> {
     let (settings, _) = settings_manager::load_settings();
     let adb_bin = logcat::find_adb_binary(settings.android.sdk_path.as_deref());
-
-    // KEEP IN SYNC WITH services/mcp_server.rs::start_logcat.
-    let generation = {
-        let mut state = logcat_state.lock().await;
-        // Already streaming the same device — nothing to do. A *different*
-        // device must supersede the running stream, otherwise the user sees the
-        // old device's logs with no indication anything went wrong.
-        if state.streaming && state.device_serial == device_serial {
-            return Ok(());
-        }
-        state.stream_generation = state.stream_generation.wrapping_add(1);
-        state.streaming = true;
-        state.device_serial = device_serial.clone();
-        state.stream_generation
-    };
-
-    let state_clone = logcat_state.inner().clone();
-    let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
-    tokio::spawn(async move {
-        logcat::start_logcat_stream(
-            adb_bin,
-            device_serial,
-            state_clone,
-            Some(app_handle),
-            Some(startup_tx),
-            generation,
-        )
-        .await;
-    });
-
-    match tokio::time::timeout(Duration::from_secs(5), startup_rx).await {
-        Ok(Ok(Ok(()))) => Ok(()),
-        Ok(Ok(Err(e))) => Err(e),
-        Ok(Err(_)) => Err("Logcat startup task exited before reporting status".to_string()),
-        Err(_) => {
-            logcat_state.lock().await.streaming = false;
-            Err("Timed out waiting for logcat to start".to_string())
-        }
-    }
+    logcat::request_start(&logcat_state, adb_bin, device_serial, Some(app_handle))
+        .await
+        .map(|_| ())
 }
 
 /// Stop the logcat stream.
 #[tauri::command]
 pub async fn stop_logcat(logcat_state: State<'_, LogcatState>) -> Result<(), String> {
-    let mut state = logcat_state.lock().await;
-    state.streaming = false;
-    // Bump the generation so an in-flight task exits even if `streaming` is
-    // flipped back to true before it observes the false (stop→start restart).
-    state.stream_generation = state.stream_generation.wrapping_add(1);
+    logcat::request_stop(&logcat_state).await;
     Ok(())
 }
 
@@ -78,18 +37,7 @@ pub async fn clear_logcat(
     logcat_state: State<'_, LogcatState>,
     app_handle: AppHandle,
 ) -> Result<(), String> {
-    use tauri::Emitter;
-    let mut state = logcat_state.lock().await;
-    state.store.clear();
-    state.known_packages.clear();
-    state.clear_epoch = state.clear_epoch.wrapping_add(1);
-    // Reset the shared counter too: the pipeline publishes it into
-    // stats every tick, so clearing only the stat lets the old value
-    // reappear on the very next tick.
-    state
-        .dropped_lines
-        .store(0, std::sync::atomic::Ordering::Relaxed);
-    let _ = app_handle.emit("logcat:cleared", ());
+    logcat::request_clear(&logcat_state, Some(&app_handle)).await;
     Ok(())
 }
 

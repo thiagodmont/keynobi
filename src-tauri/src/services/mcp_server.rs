@@ -945,58 +945,25 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
 
-        // KEEP IN SYNC WITH commands/logcat.rs::start_logcat.
-        let generation = {
-            let mut state = self.logcat_state.lock().await;
-            if state.streaming && state.device_serial == serial {
-                return Ok(CallToolResult::success(vec![ContentBlock::text(
-                    "Logcat is already streaming.",
-                )]));
-            }
-            state.stream_generation = state.stream_generation.wrapping_add(1);
-            state.streaming = true;
-            state.device_serial = serial.clone();
-            state.stream_generation
-        };
-
         let (settings, _) = settings_manager::load_settings();
         let adb_bin =
             crate::services::logcat::find_adb_binary(settings.android.sdk_path.as_deref());
-        let logcat_state = self.logcat_state.clone();
-        let app_handle = self.app_handle.clone();
 
-        let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
-        tokio::spawn(async move {
-            crate::services::logcat::start_logcat_stream(
-                adb_bin,
-                serial,
-                logcat_state,
-                app_handle,
-                Some(startup_tx),
-                generation,
-            )
-            .await;
-        });
-
-        match tokio::time::timeout(std::time::Duration::from_secs(5), startup_rx).await {
-            Ok(Ok(Ok(()))) => {}
-            Ok(Ok(Err(e))) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
-            Ok(Err(_)) => {
-                return Ok(CallToolResult::error(vec![ContentBlock::text(
-                    "Logcat startup task exited before reporting status.",
+        match logcat::request_start(&self.logcat_state, adb_bin, serial, self.app_handle.clone())
+            .await
+        {
+            Ok(logcat::StartOutcome::AlreadyStreaming) => {
+                Ok(CallToolResult::success(vec![ContentBlock::text(
+                    "Logcat is already streaming.",
                 )]))
             }
-            Err(_) => {
-                self.logcat_state.lock().await.streaming = false;
-                return Ok(CallToolResult::error(vec![ContentBlock::text(
-                    "Timed out waiting for logcat to start.",
-                )]));
+            Ok(logcat::StartOutcome::Started) => {
+                Ok(CallToolResult::success(vec![ContentBlock::text(
+                    "Logcat streaming started. Use get_logcat_entries to read entries.",
+                )]))
             }
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
-
-        Ok(CallToolResult::success(vec![ContentBlock::text(
-            "Logcat streaming started. Use get_logcat_entries to read entries.",
-        )]))
     }
 
     /// Stop the logcat stream.
@@ -1009,11 +976,7 @@ impl AndroidMcpServer {
         )
     )]
     async fn stop_logcat(&self) -> Result<CallToolResult, McpError> {
-        let mut state = self.logcat_state.lock().await;
-        state.streaming = false;
-        // See commands/logcat.rs::stop_logcat — the generation bump is what
-        // guarantees an in-flight stream task actually exits.
-        state.stream_generation = state.stream_generation.wrapping_add(1);
+        logcat::request_stop(&self.logcat_state).await;
         Ok(CallToolResult::success(vec![ContentBlock::text(
             "Logcat stream stopped.",
         )]))
@@ -1129,24 +1092,7 @@ impl AndroidMcpServer {
         )
     )]
     async fn clear_logcat(&self) -> Result<CallToolResult, McpError> {
-        // KEEP IN SYNC WITH commands/logcat.rs::clear_logcat.
-        {
-            let mut state = self.logcat_state.lock().await;
-            state.store.clear();
-            state.known_packages.clear();
-            // Reset the shared counter too: the pipeline publishes it into
-            // stats every tick, so clearing only the stat lets the old value
-            // reappear on the very next tick.
-            state
-                .dropped_lines
-                .store(0, std::sync::atomic::Ordering::Relaxed);
-            // Without the epoch bump the pipeline keeps lines that were already
-            // buffered, so they reappear right after the clear.
-            state.clear_epoch = state.clear_epoch.wrapping_add(1);
-        }
-        // And without the event the UI keeps rendering the entries an agent
-        // just cleared.
-        self.emit_event("logcat:cleared", ());
+        logcat::request_clear(&self.logcat_state, self.app_handle.as_ref()).await;
         Ok(CallToolResult::success(vec![ContentBlock::text(
             "Logcat buffer cleared.",
         )]))

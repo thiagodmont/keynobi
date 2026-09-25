@@ -25,7 +25,7 @@ import {
   exportLogcat,
   type LogcatEntry,
 } from "@/lib/tauri-api";
-import { selectedDevice } from "@/stores/device.store";
+import { deviceState, selectedDevice } from "@/stores/device.store";
 import { logcatRowHeightForFontSize, settingsState } from "@/stores/settings.store";
 import { EmptyState, Icon, MenuList, MenuListItem, showToast } from "@/components/ui";
 import { VirtualList, type VirtualListHandle, isPaletteOpen } from "@/components/ui";
@@ -73,6 +73,7 @@ import {
 } from "@/stores/logcat.store";
 import { createLatestOnlyGuard } from "@/services/logcat.service";
 import { JsonDetailPanel } from "./LogcatJsonDetailPanel";
+import { pickAutoStartSerial } from "./logcat-auto-start";
 import { LogcatVirtualRow, SeparatorRow } from "./LogcatRows";
 import {
   LogcatFilterControls,
@@ -562,6 +563,24 @@ export function LogcatPanel(): JSX.Element {
     const restoredGroups = savedQuery ? parseFilterGroups(savedQuery) : null;
     const restoredSpec = restoredGroups ? groupsToFilterSpec(restoredGroups) : null;
 
+    // Listen for clears before backfilling, so a clear that lands while the
+    // backfill is in flight invalidates it instead of being missed.
+    const _unlistenCleared = await listenLogcatCleared(() => {
+      // Every clear (Clear button, restart, or an MCP client) arrives here. A
+      // backfill still in flight holds pre-clear entries, so drop it.
+      filterSyncGuard.invalidate();
+      exitReadMode();
+      clearExpandedContext();
+      clearLogcatEntries();
+      suggestions.clear();
+      setAutoScroll(true);
+      virtualListRef?.scrollToBottom();
+      void refreshLogcatRingStats();
+    });
+    if (disposed) _unlistenCleared();
+    else unlistenCleared = _unlistenCleared;
+
+    const backfillToken = filterSyncGuard.begin();
     if (restoredSpec && savedQuery) {
       await setLogcatFilter(restoredSpec).catch((err) => {
         showToast(`Failed to restore logcat filter: ${formatError(err)}`, "error");
@@ -578,9 +597,11 @@ export function LogcatPanel(): JSX.Element {
         package: restoredSpec?.package ?? undefined,
         onlyCrashes: restoredSpec?.onlyCrashes ?? false,
       });
-      replaceLogcatEntries(entries);
-      suggestions.ingest(entries);
-      suggestions.flush(true);
+      if (filterSyncGuard.isLatest(backfillToken)) {
+        replaceLogcatEntries(entries);
+        suggestions.ingest(entries);
+        suggestions.flush(true);
+      }
     } catch (err) {
       showToast(`Failed to load logcat entries: ${formatError(err)}`, "error");
     }
@@ -611,26 +632,14 @@ export function LogcatPanel(): JSX.Element {
     if (disposed) _unlistenEntries();
     else unlistenEntries = _unlistenEntries;
 
-    const _unlistenCleared = await listenLogcatCleared(() => {
-      exitReadMode();
-      clearExpandedContext();
-      clearLogcatEntries();
-      suggestions.clear();
-      setAutoScroll(true);
-      virtualListRef?.scrollToBottom();
-      void refreshLogcatRingStats();
-    });
-    if (disposed) _unlistenCleared();
-    else unlistenCleared = _unlistenCleared;
-
     // Auto-start on device connect
     const _unlistenDevices = await listenDeviceListChanged((devices) => {
       if (logcatState.streaming) return;
       const hasAutoStart = settingsState.logcat?.autoStart !== false;
       if (!hasAutoStart) return;
-      const online = devices.find((d) => d.connectionState === "online");
-      if (online) {
-        startLogcat(online.serial)
+      const serial = pickAutoStartSerial(devices, deviceState.selectedSerial);
+      if (serial) {
+        startLogcat(serial)
           .then(() => setLogcatStreaming(true))
           .catch((err) => showToast(`Failed to auto-start logcat: ${formatError(err)}`, "error"));
       }

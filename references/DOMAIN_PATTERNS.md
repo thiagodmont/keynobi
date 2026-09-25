@@ -143,7 +143,19 @@ The stream is owned by a **generation token**, not by the `streaming` bool. `Log
 - Lines dropped on a saturated ingest channel are counted in `LogStats.dropped_lines` and surfaced in the toolbar. Never drop silently.
 - Clear bumps `clear_epoch`, resets the pipeline context fully (including pre-seeded PIDs), and emits `logcat:cleared`. It clears Keynobi's buffer only, not the device's logcat buffer.
 
-`commands/logcat.rs` and the MCP tools must apply identical start/stop/clear handling. Until they share one service function, changes to either copy must be mirrored (they are marked `KEEP IN SYNC`).
+Start, stop, and clear go through `services::logcat::{request_start, request_stop, request_clear}`. The Tauri commands, the MCP tools, and app shutdown all call them; do not re-implement the state transitions at a call site.
+
+### Entry Identity
+
+Entry IDs and crash-group IDs come from one `IdAllocator` on `LogcatStateInner`, shared by every pipeline context. They increase for the life of the process and are never reset: not on reconnect, on stop→start, on a device switch, or on clear.
+
+- `LogStore` binary-searches by ID for context queries, crash lookup picks the newest group by ID, and the frontend selects rows, de-duplicates expanded context, and orders merged rows by ID. A reused ID breaks all of them.
+- Clear resets the ring but not the IDs: the frontend may still hold, or be about to receive, entries from before the clear.
+- Only the stream task that owns the current generation stores entries, so the store stays in ID order even while a superseded task is winding down.
+
+On the frontend, every clear (Clear, Restart, or an MCP client) arrives as `logcat:cleared`, which invalidates the filter-sync guard. A backfill still in flight when the clear lands is dropped instead of restoring pre-clear entries. The mount backfill takes a guard token too, and the panel subscribes to `logcat:cleared` before starting it.
+
+Auto-start on device connect uses the selected device when it is online and falls back to the first online device (`components/logcat/logcat-auto-start.ts`).
 
 ### Filtering
 
@@ -172,6 +184,7 @@ Keep `LogcatPanel.tsx` as composition/orchestration. It is large (about 1,100 li
 | Query interaction | `QueryBar.tsx`, `QueryBarParts.tsx`, `querybar-query-state.ts`, `querybar-styles.ts` |
 | Row selection and navigation | `logcat-row-selection.ts`, `logcat-selection-nav.ts` |
 | Context expansion | `logcat-context-expansion.ts` |
+| Auto-start device choice | `logcat-auto-start.ts` |
 | Saved filter menu | `saved-filter-presets.ts`, `SavedFilterMenu.tsx`, `SavedFilterMenuParts.tsx` |
 | Copy/export formatting | `logcat-entry-format.ts` |
 | Levels and toolbar counts | `logcat-levels.ts`, `logcat-toolbar-count.ts` |
@@ -315,7 +328,7 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **MCP cancel during spawn.** A build cancelled during spawn on the MCP path returns without recording history.
 - **Unicode typing.** `ui_type_text_unicode` sets the clipboard with a Clipper broadcast, falling back to `content insert`. `am broadcast` exits 0 even when Clipper is not installed, so the fallback may not run and the paste can insert stale clipboard text. Needs verification on a device.
 - **Screen hash coverage.** `ui_swipe`, `send_ui_key`, `ui_type_text_unicode`, `clear_focused_input`, and `ui_scroll_until_element` do not accept `expectScreenHash`.
-- **Logcat duplication.** Start/stop/clear is duplicated between `commands/logcat.rs` and `mcp_server.rs`. Shutdown sets `streaming = false` without bumping the generation.
+- **Logcat clear mid-tick.** The pipeline checks `clear_epoch` at the top of each 100 ms tick but not again when it stores the batch, so lines drained just before a clear can still be stored (and emitted) just after it. They get fresh IDs, so identity is safe; at most one tick of pre-clear lines survives.
 - **MCP error model.** Coordinate, permission, and deep-link validation failures return `CallToolResult::error` instead of `McpError::invalid_params`.
 - **Validator duplication.** MCP `validate_apk_path` duplicates `validate_apk_within_build_outputs` and hard-codes the `app` module.
 - **Activity log.** `mcp-activity.jsonl` is trimmed only at server start (over 1,000 lines → last 500), and summaries are not redacted.

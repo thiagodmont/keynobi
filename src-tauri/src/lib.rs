@@ -287,7 +287,7 @@ pub fn run() {
 
                         // Stop logcat streaming (best-effort).
                         let logcat_state = app.state::<services::logcat::LogcatState>();
-                        logcat_state.lock().await.streaming = false;
+                        services::logcat::request_stop(&logcat_state).await;
 
                         // Stop ADB device polling.
                         let device_state = app.state::<DeviceState>();

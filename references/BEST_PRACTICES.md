@@ -253,6 +253,6 @@ Do not log secrets, full MCP tool arguments, or raw device text at `info` or abo
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
 - **Cross-process state.** GUI and headless MCP do not share live state or a build lock, and both write `build-history.json` (last writer wins).
-- **Duplicated logic.** Logcat start/stop/clear is duplicated between `commands/logcat.rs` and `mcp_server.rs`. APK path validation exists twice (`utils/path.rs` and MCP `validate_apk_path`).
+- **Duplicated logic.** APK path validation exists twice (`utils/path.rs` and MCP `validate_apk_path`).
 - **`unwrap()` policy.** Enforced by review only. About 15 production `unwrap()` calls remain, mostly `Regex::new` in `build_parser.rs`. Consider `clippy::unwrap_used`.
 - **Unbounded activity log.** `mcp-activity.jsonl` is trimmed only at MCP server start.

@@ -1,5 +1,7 @@
 use crate::models::logcat::{LogcatFilterSpec, LogcatLevel, ProcessedEntry};
-use crate::services::log_pipeline::{parse_logcat_line, LogPipeline, PipelineContext, RawLogLine};
+use crate::services::log_pipeline::{
+    parse_logcat_line, IdAllocator, LogPipeline, PipelineContext, RawLogLine,
+};
 use crate::services::log_store::LogStore;
 use crate::services::log_stream::StreamState;
 use crate::utils::line_reader::CappedLines;
@@ -178,6 +180,10 @@ pub struct LogcatStateInner {
     /// increment it without taking the state lock, preserving the
     /// "reader holds no lock" invariant.
     pub dropped_lines: Arc<std::sync::atomic::AtomicU64>,
+    /// Entry and crash-group ID source for every stream this process runs.
+    /// Never reset, so IDs stay unique across reconnects, device switches,
+    /// and clears.
+    pub ids: Arc<IdAllocator>,
 }
 
 impl LogcatStateInner {
@@ -191,6 +197,7 @@ impl LogcatStateInner {
             clear_epoch: 0,
             stream_generation: 0,
             dropped_lines: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            ids: Arc::new(IdAllocator::new()),
         }
     }
 
@@ -571,19 +578,11 @@ pub async fn start_logcat_stream(
             let logcat_state = logcat_state_pipeline;
             let app_handle = app_handle_pipeline;
             let pipeline = LogPipeline::default_pipeline();
-            // Seed the ID allocator from the store so IDs stay monotonic across
-            // reconnects. Without this, a fresh context restarts IDs at 1 while
-            // the ring still holds entries from the previous generation, which
-            // breaks LogStore's binary-search invariant for context queries.
-            // The seed and the clear epoch are captured in ONE locked snapshot:
-            // if a clear lands right after seeding we must adopt its epoch,
-            // otherwise the first tick would keep this pre-clear-seeded context.
-            let (seed_next_id, mut my_epoch) = {
+            let (ids, mut my_epoch) = {
                 let state = logcat_state.lock().await;
-                (state.store.max_id().saturating_add(1), state.clear_epoch)
+                (state.ids.clone(), state.clear_epoch)
             };
-            let mut ctx =
-                PipelineContext::with_initial_pids(initial_pid_map).with_next_id(seed_next_id);
+            let mut ctx = PipelineContext::with_initial_pids(initial_pid_map).with_ids(ids.clone());
 
             let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(100));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -605,7 +604,7 @@ pub async fn start_logcat_stream(
                         // not reappear on the frontend after the clear.
                         while rx.try_recv().is_ok() {}
                         my_epoch = state.clear_epoch;
-                        ctx = PipelineContext::new();
+                        ctx = PipelineContext::new().with_ids(ids.clone());
                         continue;
                     }
                 }
@@ -637,8 +636,9 @@ pub async fn start_logcat_stream(
                     //
                     // Ownership is re-checked under the same lock: a stop→start
                     // restart may have superseded this task between the tick-top
-                    // check and here. Storing after the replacement stream seeded
-                    // its ID allocator would hand it duplicate IDs.
+                    // check and here. Storing a superseded stream's entries would
+                    // interleave its IDs with the replacement's and break the
+                    // store's ID ordering.
                     let to_emit = {
                         let mut state = logcat_state.lock().await;
                         if !owns_stream(&state, generation) {
@@ -735,6 +735,102 @@ pub async fn start_logcat_stream(
     let mut state = logcat_state.lock().await;
     if state.stream_generation == generation {
         state.streaming = false;
+    }
+}
+
+// ── Start / stop / clear ──────────────────────────────────────────────────────
+//
+// The Tauri commands and the MCP tools both call these, so the two front doors
+// cannot drift apart.
+
+/// How long `request_start` waits for the stream task to report that `adb`
+/// spawned.
+const STARTUP_TIMEOUT_MS: u64 = 5_000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StartOutcome {
+    /// A new stream was spawned, superseding any stream for another device.
+    Started,
+    /// The requested device was already streaming; nothing changed.
+    AlreadyStreaming,
+}
+
+/// Start streaming from `device_serial`. A running stream for the same device
+/// is left alone; one for a *different* device is superseded, otherwise the
+/// user would keep seeing the old device's logs with no sign anything is wrong.
+pub async fn request_start(
+    logcat_state: &LogcatState,
+    adb_bin: PathBuf,
+    device_serial: Option<String>,
+    app_handle: Option<tauri::AppHandle>,
+) -> Result<StartOutcome, String> {
+    let generation = {
+        let mut state = logcat_state.lock().await;
+        if state.streaming && state.device_serial == device_serial {
+            return Ok(StartOutcome::AlreadyStreaming);
+        }
+        state.stream_generation = state.stream_generation.wrapping_add(1);
+        state.streaming = true;
+        state.device_serial = device_serial.clone();
+        state.stream_generation
+    };
+
+    let (startup_tx, startup_rx) = tokio::sync::oneshot::channel();
+    tokio::spawn(start_logcat_stream(
+        adb_bin,
+        device_serial,
+        logcat_state.clone(),
+        app_handle,
+        Some(startup_tx),
+        generation,
+    ));
+
+    let timeout = tokio::time::Duration::from_millis(STARTUP_TIMEOUT_MS);
+    match tokio::time::timeout(timeout, startup_rx).await {
+        Ok(Ok(Ok(()))) => Ok(StartOutcome::Started),
+        Ok(Ok(Err(e))) => Err(e),
+        Ok(Err(_)) => Err("Logcat startup task exited before reporting status".to_string()),
+        Err(_) => {
+            // Stop only the stream this call started; a newer start owns the
+            // state otherwise.
+            let mut state = logcat_state.lock().await;
+            if state.stream_generation == generation {
+                state.streaming = false;
+                state.stream_generation = state.stream_generation.wrapping_add(1);
+            }
+            Err("Timed out waiting for logcat to start".to_string())
+        }
+    }
+}
+
+/// Stop the stream. Bumping the generation, not just clearing `streaming`, is
+/// what makes an in-flight task exit even if a start follows immediately.
+pub async fn request_stop(logcat_state: &LogcatState) {
+    let mut state = logcat_state.lock().await;
+    state.streaming = false;
+    state.stream_generation = state.stream_generation.wrapping_add(1);
+}
+
+/// Clear Keynobi's buffer (not the device's) and emit `logcat:cleared`.
+///
+/// Entry IDs are deliberately not reset (see `IdAllocator`): the frontend may
+/// still hold, or be about to receive, entries from before the clear.
+pub async fn request_clear(logcat_state: &LogcatState, app_handle: Option<&tauri::AppHandle>) {
+    {
+        let mut state = logcat_state.lock().await;
+        state.store.clear();
+        state.known_packages.clear();
+        // Without the epoch bump the pipeline keeps lines that were already
+        // buffered, so they reappear right after the clear.
+        state.clear_epoch = state.clear_epoch.wrapping_add(1);
+        // Reset the shared counter too: the pipeline publishes it into stats
+        // every tick, so clearing only the stat lets the old value reappear.
+        state
+            .dropped_lines
+            .store(0, std::sync::atomic::Ordering::Relaxed);
+    }
+    if let Some(handle) = app_handle {
+        let _ = handle.emit("logcat:cleared", ());
     }
 }
 
@@ -1439,6 +1535,12 @@ mod reconnect_tests {
     use super::*;
     use std::time::Duration;
 
+    /// Serializes the tests that spawn fake `adb` processes. On macOS a pipe
+    /// is marked close-on-exec only after it is created, so a process spawned
+    /// by a concurrent test can inherit it; a fake that stays alive then holds
+    /// that pipe open and another test waits minutes for EOF.
+    static PROCESS_TESTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     fn make_state(streaming: bool) -> LogcatState {
         let mut inner = LogcatStateInner::new();
         inner.streaming = streaming;
@@ -1536,6 +1638,7 @@ mod reconnect_tests {
     /// is reconnecting from an unexpected disconnect (binary exits immediately).
     #[tokio::test]
     async fn streaming_is_false_on_return_after_unexpected_disconnect() {
+        let _serial = PROCESS_TESTS.lock().await;
         let state = make_state(true);
         let stopper = state.clone();
         tokio::spawn(async move {
@@ -1566,6 +1669,7 @@ mod reconnect_tests {
     /// exits immediately, mimicking a process that keeps dying unexpectedly.
     #[tokio::test]
     async fn reconnects_at_least_once_after_unexpected_disconnect() {
+        let _serial = PROCESS_TESTS.lock().await;
         use std::sync::atomic::AtomicUsize;
         use std::sync::Arc as StdArc;
 
@@ -1609,6 +1713,7 @@ mod reconnect_tests {
     /// top-of-loop streaming check.
     #[tokio::test]
     async fn stop_during_reconnect_delay_exits_cleanly() {
+        let _serial = PROCESS_TESTS.lock().await;
         let state = make_state(true);
         let stopper = state.clone();
 
@@ -1711,20 +1816,14 @@ mod reconnect_tests {
         }
     }
 
-    /// Mirrors `commands/logcat.rs::start_logcat`'s state transition.
-    async fn request_start(state: &LogcatState, serial: Option<String>) -> u64 {
+    /// `request_start`'s state transition without spawning, for tests that
+    /// drive `start_logcat_stream` themselves.
+    async fn claim_generation(state: &LogcatState, serial: Option<String>) -> u64 {
         let mut s = state.lock().await;
         s.stream_generation = s.stream_generation.wrapping_add(1);
         s.streaming = true;
         s.device_serial = serial;
         s.stream_generation
-    }
-
-    /// Mirrors `commands/logcat.rs::stop_logcat`.
-    async fn request_stop(state: &LogcatState) {
-        let mut s = state.lock().await;
-        s.streaming = false;
-        s.stream_generation = s.stream_generation.wrapping_add(1);
     }
 
     /// C1: `stop_logcat()` followed immediately by `start_logcat()` must not
@@ -1733,13 +1832,14 @@ mod reconnect_tests {
     /// store, producing duplicated entries from two concurrent adb processes.
     #[tokio::test]
     async fn stop_then_start_does_not_leave_two_streams() {
+        let _serial = PROCESS_TESTS.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let adb = streaming_adb_bin(dir.path(), 3);
 
         let state = make_state(false);
 
         // Stream #1.
-        let g1 = request_start(&state, None).await;
+        let g1 = claim_generation(&state, None).await;
         let s1 = state.clone();
         let a1 = adb.clone();
         let h1 = tokio::spawn(async move {
@@ -1757,7 +1857,7 @@ mod reconnect_tests {
         request_stop(&state).await;
 
         // start_logcat() races back in before the old task's 100 ms tick.
-        let g2 = request_start(&state, None).await;
+        let g2 = claim_generation(&state, None).await;
         let s2 = state.clone();
         let a2 = adb.clone();
         let h2 = tokio::spawn(async move {
@@ -1790,11 +1890,12 @@ mod reconnect_tests {
     /// the process survives the stop indefinitely.
     #[tokio::test]
     async fn stop_on_idle_device_terminates_child() {
+        let _serial = PROCESS_TESTS.lock().await;
         let dir = tempfile::tempdir().unwrap();
         let adb = streaming_adb_bin(dir.path(), 1);
 
         let state = make_state(false);
-        let generation = request_start(&state, None).await;
+        let generation = claim_generation(&state, None).await;
         let s = state.clone();
         let a = adb.clone();
         let handle = tokio::spawn(async move {
@@ -1844,7 +1945,7 @@ mod reconnect_tests {
     #[tokio::test]
     async fn gives_up_after_max_attempts_and_sets_streaming_false() {
         let state = make_state(false);
-        let generation = request_start(&state, None).await;
+        let generation = claim_generation(&state, None).await;
 
         tokio::time::timeout(
             Duration::from_secs(10),
@@ -1874,13 +1975,14 @@ mod reconnect_tests {
     /// regressing the auto-reconnect behaviour the budget was meant to protect.
     #[tokio::test]
     async fn a_connection_that_streamed_output_resets_the_reconnect_budget() {
+        let _serial = PROCESS_TESTS.lock().await;
         let dir = tempfile::tempdir().unwrap();
         // Emits lines then exits immediately, so every reconnect "works" and
         // then disconnects — far more times than RECONNECT_MAX_ATTEMPTS.
         let adb = exiting_adb_bin(dir.path(), 2);
 
         let state = make_state(false);
-        let generation = request_start(&state, None).await;
+        let generation = claim_generation(&state, None).await;
 
         let s = state.clone();
         let handle = tokio::spawn(async move {
@@ -1939,6 +2041,7 @@ mod reconnect_tests {
     /// neither ends the connection nor loses the lines that follow it.
     #[tokio::test]
     async fn overlong_and_invalid_utf8_lines_are_bounded_and_keep_streaming() {
+        let _serial = PROCESS_TESTS.lock().await;
         use crate::utils::line_reader::MAX_LINE_BYTES;
         use std::io::Write;
 
@@ -1977,7 +2080,7 @@ mod reconnect_tests {
         }
 
         let state = make_state(false);
-        let generation = request_start(&state, None).await;
+        let generation = claim_generation(&state, None).await;
         let s = state.clone();
         let handle = tokio::spawn(async move {
             start_logcat_stream(adb, None, s, None, None, generation).await;
@@ -2023,7 +2126,7 @@ mod reconnect_tests {
 
         // Simulate a stop→start cycle; nothing in the lifecycle should reset it.
         request_stop(&state).await;
-        let _ = request_start(&state, None).await;
+        let _ = claim_generation(&state, None).await;
 
         assert_eq!(
             state
@@ -2049,15 +2152,7 @@ mod reconnect_tests {
             s.store.stats.dropped_lines = 42;
         }
 
-        // Mirror commands/logcat.rs::clear_logcat.
-        {
-            let mut s = state.lock().await;
-            s.store.clear();
-            s.known_packages.clear();
-            s.clear_epoch = s.clear_epoch.wrapping_add(1);
-            s.dropped_lines
-                .store(0, std::sync::atomic::Ordering::Relaxed);
-        }
+        request_clear(&state, None).await;
 
         let s = state.lock().await;
         assert_eq!(s.store.stats.dropped_lines, 0);
@@ -2066,5 +2161,193 @@ mod reconnect_tests {
             0,
             "the shared counter must be cleared too, or the stat is restored next tick"
         );
+    }
+
+    // ── Entry identity across stream lifecycles ──────────────────────────────
+
+    /// Writes a fake adb whose `logcat` prints one threadtime line per entry
+    /// of `bodies` (everything after the TID column), then either exits or
+    /// stays alive.
+    fn scripted_adb_bin(dir: &std::path::Path, bodies: &[&str], stay_alive: bool) -> PathBuf {
+        use std::io::Write;
+        let bin = dir.join("adb");
+        let mut f = std::fs::File::create(&bin).unwrap();
+        writeln!(f, "#!/bin/sh").unwrap();
+        writeln!(f, "for a in \"$@\"; do").unwrap();
+        writeln!(f, "  if [ \"$a\" = logcat ]; then").unwrap();
+        for body in bodies {
+            writeln!(f, "    echo '01-01 00:00:00.000  1000  1001 {body}'").unwrap();
+        }
+        if stay_alive {
+            writeln!(f, "    sleep 300").unwrap();
+        }
+        writeln!(f, "    exit 0").unwrap();
+        writeln!(f, "  fi").unwrap();
+        writeln!(f, "done").unwrap();
+        writeln!(f, "exit 0").unwrap();
+        drop(f);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        bin
+    }
+
+    /// Poll the store until `done` holds or `timeout` elapses, returning the
+    /// last snapshot either way.
+    async fn wait_for_store(
+        state: &LogcatState,
+        timeout: Duration,
+        done: impl Fn(&[ProcessedEntry]) -> bool,
+    ) -> Vec<ProcessedEntry> {
+        let start = std::time::Instant::now();
+        loop {
+            let entries: Vec<ProcessedEntry> = state.lock().await.store.iter().cloned().collect();
+            if done(&entries) || start.elapsed() >= timeout {
+                return entries;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    fn ids(entries: &[ProcessedEntry]) -> Vec<u64> {
+        entries.iter().map(|e| e.id).collect()
+    }
+
+    fn assert_strictly_increasing(ids: &[u64], context: &str) {
+        assert!(
+            ids.windows(2).all(|w| w[0] < w[1]),
+            "{context}: ids must be unique and increasing, got {ids:?}"
+        );
+    }
+
+    /// Every connection of a reconnecting stream, and everything after a
+    /// clear, must draw fresh IDs. Restarting at 1 after a clear let entries
+    /// the frontend still held collide with new ones.
+    #[tokio::test]
+    async fn entry_ids_keep_increasing_across_reconnects_and_clear() {
+        let _serial = PROCESS_TESTS.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        // Two lines per connection, then a disconnect, so the stream keeps
+        // reconnecting for as long as it runs.
+        let adb = scripted_adb_bin(dir.path(), &["I FakeTag: a", "I FakeTag: b"], false);
+        let state = make_state(false);
+
+        let started = request_start(&state, adb, None, None).await;
+        assert_eq!(started, Ok(StartOutcome::Started));
+
+        let timeout = Duration::from_secs(20);
+        let before = wait_for_store(&state, timeout, |e| e.len() >= 6).await;
+        request_clear(&state, None).await;
+        let after = wait_for_store(&state, timeout, |e| e.len() >= 4).await;
+        request_stop(&state).await;
+
+        assert!(
+            before.len() >= 6,
+            "expected several connections, got {before:?}"
+        );
+        assert_strictly_increasing(&ids(&before), "across reconnects");
+        assert!(after.len() >= 4, "stream must keep going after a clear");
+        assert_strictly_increasing(&ids(&after), "after clear");
+        let last_before = before.last().map(|e| e.id).unwrap_or(0);
+        assert!(
+            after[0].id > last_before,
+            "ids after a clear must not reuse earlier ids: first after {}, last before {last_before}",
+            after[0].id
+        );
+    }
+
+    /// Crash groups from separate connections are separate crashes. Reusing a
+    /// group id merged them, and "latest crash" lookups picked the wrong one.
+    #[tokio::test]
+    async fn crash_group_ids_stay_unique_across_reconnects() {
+        let _serial = PROCESS_TESTS.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let adb = scripted_adb_bin(
+            dir.path(),
+            &["E AndroidRuntime: FATAL EXCEPTION: main"],
+            false,
+        );
+        let state = make_state(false);
+
+        let started = request_start(&state, adb, None, None).await;
+        assert_eq!(started, Ok(StartOutcome::Started));
+        let entries = wait_for_store(&state, Duration::from_secs(20), |e| e.len() >= 3).await;
+        request_stop(&state).await;
+
+        let groups: Vec<u64> = entries.iter().filter_map(|e| e.crash_group_id).collect();
+        assert!(
+            groups.len() >= 3,
+            "expected one crash per connection, got {entries:?}"
+        );
+        assert_strictly_increasing(&groups, "crash groups");
+    }
+
+    /// Starting the same device again is a no-op; a different device and a
+    /// stop→clear→start restart both start a new stream that must not reuse
+    /// IDs already handed out.
+    #[tokio::test]
+    async fn device_switch_and_restart_never_reuse_ids() {
+        let _serial = PROCESS_TESTS.lock().await;
+        let dir = tempfile::tempdir().unwrap();
+        let adb = scripted_adb_bin(
+            dir.path(),
+            &["I FakeTag: a", "I FakeTag: b", "I FakeTag: c"],
+            true,
+        );
+        let state = make_state(false);
+        let timeout = Duration::from_secs(20);
+        let first = Some("emulator-5554".to_string());
+        let second = Some("emulator-5556".to_string());
+
+        let r = request_start(&state, adb.clone(), first.clone(), None).await;
+        assert_eq!(r, Ok(StartOutcome::Started));
+        wait_for_store(&state, timeout, |e| e.len() >= 3).await;
+        let r = request_start(&state, adb.clone(), first, None).await;
+        assert_eq!(r, Ok(StartOutcome::AlreadyStreaming));
+
+        let r = request_start(&state, adb.clone(), second.clone(), None).await;
+        assert_eq!(r, Ok(StartOutcome::Started));
+        let switched = wait_for_store(&state, timeout, |e| e.len() >= 6).await;
+
+        request_stop(&state).await;
+        request_clear(&state, None).await;
+        let r = request_start(&state, adb.clone(), second, None).await;
+        assert_eq!(r, Ok(StartOutcome::Started));
+        let restarted = wait_for_store(&state, timeout, |e| e.len() >= 3).await;
+
+        request_stop(&state).await;
+        let terminated = wait_until(Duration::from_secs(5), || {
+            live_fake_logcat_pids(&adb).is_empty()
+        })
+        .await;
+
+        assert_eq!(switched.len(), 6, "got {switched:?}");
+        assert_strictly_increasing(&ids(&switched), "after device switch");
+        assert_eq!(restarted.len(), 3, "got {restarted:?}");
+        assert_strictly_increasing(&ids(&restarted), "after restart");
+        let last_before = switched.last().map(|e| e.id).unwrap_or(0);
+        assert!(
+            restarted[0].id > last_before,
+            "a restart must not reuse ids: first after {}, last before {last_before}",
+            restarted[0].id
+        );
+        assert!(terminated, "fake adb children must exit after stop");
+    }
+
+    /// App shutdown and both front doors stop through this, so it must bump
+    /// the generation: a bare `streaming = false` lets a start that follows
+    /// immediately revive the old task.
+    #[tokio::test]
+    async fn request_stop_clears_streaming_and_bumps_the_generation() {
+        let state = make_state(true);
+        let before = state.lock().await.stream_generation;
+
+        request_stop(&state).await;
+
+        let s = state.lock().await;
+        assert!(!s.streaming);
+        assert_ne!(s.stream_generation, before);
     }
 }
