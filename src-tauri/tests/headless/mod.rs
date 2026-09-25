@@ -90,10 +90,13 @@ impl Sandbox {
     /// first; see [`Sandbox::adb_calls`].
     pub fn write_adb(&self, body: &str) {
         let record = self.adb_record();
+        let adb = self.sdk.join("platform-tools").join("adb");
         write_script(
-            &self.sdk.join("platform-tools").join("adb"),
+            &adb,
             &format!("echo \"$*\" >> '{}'\n{body}", record.display()),
         );
+        run_once(&adb);
+        let _ = std::fs::remove_file(&record);
     }
 
     /// Replace the project's fake `gradlew` body.
@@ -201,10 +204,28 @@ pub fn write_fake_jdk(home: &Path, version: &str) {
         format!("JAVA_VERSION=\"{version}\"\n"),
     )
     .unwrap();
+    let java = home.join("bin").join("java");
     write_script(
-        &home.join("bin").join("java"),
+        &java,
         &format!("echo 'openjdk version \"{version}\" 2025-07-15' >&2"),
     );
+    run_once(&java);
+}
+
+/// Run a freshly written fake executable once, with no arguments, and wait
+/// for it.
+///
+/// macOS checks a new executable on its first run, which takes seconds on a
+/// busy machine; later runs start at once. The server gives `adb` and
+/// `java -version` only a few seconds, so a fake it runs against a deadline
+/// is run once here first. The fake must exit promptly when run this way.
+pub fn run_once(path: &Path) {
+    Command::new(path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .unwrap_or_else(|e| panic!("could not run {}: {e}", path.display()));
 }
 
 pub fn write_script(path: &Path, body: &str) {

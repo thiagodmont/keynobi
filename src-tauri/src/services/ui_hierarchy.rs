@@ -600,6 +600,9 @@ mod tests {
         )
         .unwrap();
         std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // The captures below run against short deadlines.
+        crate::utils::process::test_support::run_once(&adb);
+        let _ = std::fs::remove_file(dir.join("calls"));
         adb
     }
 

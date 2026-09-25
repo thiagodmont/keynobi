@@ -369,6 +369,7 @@ mod tests {
         )
         .unwrap();
         std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::utils::process::test_support::run_once(&adb);
 
         let err = restart_app(&adb, "emulator-5554", "com.example.app", false)
             .await

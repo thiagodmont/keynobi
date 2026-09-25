@@ -437,6 +437,22 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex as StdMutex};
 
+    /// Bounds a wait that only fails on a hang. Spawning and reaping a child
+    /// can take seconds on a loaded machine.
+    const HANG_GUARD: Duration = Duration::from_secs(30);
+
+    /// Poll `done` every 20 ms until it holds; false after [`HANG_GUARD`].
+    async fn eventually(mut done: impl AsyncFnMut() -> bool) -> bool {
+        let deadline = tokio::time::Instant::now() + HANG_GUARD;
+        while !done().await {
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        true
+    }
+
     /// Gradle can leave a descendant holding its stdout/stderr open after the
     /// wrapper exits. The exit used to be observed only after both pipes hit
     /// EOF, so the build never finished and the build slot stayed taken.
@@ -502,12 +518,17 @@ mod tests {
         .await
         .unwrap();
 
-        // Give the reader task a moment to drain.
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        let collected = eventually(async || {
+            lines
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|l| l.contains("hello world"))
+        })
+        .await;
         remove(&manager.0, id).await;
 
-        let collected = lines.lock().unwrap();
-        assert!(collected.iter().any(|l| l.contains("hello world")));
+        assert!(collected, "got {:?}", lines.lock().unwrap());
     }
 
     /// A tool printing a multi-megabyte line must not be buffered whole, and a
@@ -624,7 +645,7 @@ mod tests {
         cancel(&manager.0, id).await;
         assert!(manager.0.lock().await.processes.contains_key(&id));
 
-        let termination = tokio::time::timeout(Duration::from_secs(5), rx)
+        let termination = tokio::time::timeout(HANG_GUARD, rx)
             .await
             .expect("SIGTERM must stop it")
             .unwrap();
@@ -656,12 +677,7 @@ mod tests {
             .unwrap();
         }
 
-        for _ in 0..20 {
-            if exited.load(Ordering::SeqCst) == 10 {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        eventually(async || exited.load(Ordering::SeqCst) == 10).await;
 
         assert_eq!(exited.load(Ordering::SeqCst), 10);
         assert_eq!(manager.0.lock().await.processes.len(), 0);
@@ -718,10 +734,7 @@ mod tests {
         .await
         .unwrap();
 
-        let len_during_callback = tokio::time::timeout(std::time::Duration::from_secs(1), rx)
-            .await
-            .unwrap()
-            .unwrap();
+        let len_during_callback = tokio::time::timeout(HANG_GUARD, rx).await.unwrap().unwrap();
 
         assert_eq!(
             len_during_callback, 9,
@@ -751,12 +764,7 @@ mod tests {
         .await
         .unwrap();
 
-        for _ in 0..20 {
-            if manager.0.lock().await.processes.is_empty() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        eventually(async || manager.0.lock().await.processes.is_empty()).await;
         std::panic::set_hook(previous_hook);
 
         assert_eq!(manager.0.lock().await.processes.len(), 0);
@@ -871,13 +879,7 @@ mod tests {
 
         cancel(&manager.0, id).await;
 
-        // SIGTERM should land well inside a second.
-        for _ in 0..40 {
-            if exited.load(Ordering::SeqCst) {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
+        eventually(async || exited.load(Ordering::SeqCst)).await;
 
         assert!(
             exited.load(Ordering::SeqCst),
@@ -931,7 +933,7 @@ mod tests {
         }
 
         async fn line(&mut self) -> String {
-            tokio::time::timeout(Duration::from_secs(5), self.lines.recv())
+            tokio::time::timeout(HANG_GUARD, self.lines.recv())
                 .await
                 .expect("the script must print its next line")
                 .expect("output ended early")
@@ -970,13 +972,7 @@ mod tests {
     }
 
     async fn wait_until_gone(pid: libc::pid_t) -> bool {
-        for _ in 0..100 {
-            if !alive(pid) {
-                return true;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
-        false
+        eventually(async || !alive(pid)).await
     }
 
     /// The only signal path goes through the child's handle, which gives no
@@ -1013,7 +1009,7 @@ mod tests {
         cancel(&manager.0, script.id).await;
 
         assert_eq!(
-            script.termination(Duration::from_secs(5)).await,
+            script.termination(HANG_GUARD).await,
             ProcessTermination::ExitCode(0)
         );
         assert_eq!(script.exit_count(), 1);
@@ -1034,9 +1030,13 @@ mod tests {
         cancel_with_grace(&manager.0, script.id, grace).await;
 
         tokio::time::sleep(grace / 2).await;
-        assert_eq!(script.exit_count(), 0, "SIGTERM is ignored");
+        // Only meaningful while the grace lasts; a stalled test thread can
+        // wake after it.
+        if started.elapsed() < grace {
+            assert_eq!(script.exit_count(), 0, "SIGTERM is ignored");
+        }
         assert_eq!(
-            script.termination(Duration::from_secs(5)).await,
+            script.termination(HANG_GUARD).await,
             ProcessTermination::Cancelled
         );
         assert!(started.elapsed() >= grace);
@@ -1075,8 +1075,11 @@ mod tests {
         expected.sort_unstable();
         assert_eq!(killed, expected);
         assert!(report.unresponsive.is_empty());
+        // The bound is grace + FORCE_KILL_WAIT; the slack only absorbs a
+        // test thread that wakes late, and stays far below the 60 s grace
+        // and 30 s sleeps an unbounded wait would take.
         assert!(
-            elapsed < grace + FORCE_KILL_WAIT,
+            elapsed < grace + FORCE_KILL_WAIT + Duration::from_secs(5),
             "shutdown took {elapsed:?}"
         );
         assert!(manager.0.lock().await.processes.is_empty());

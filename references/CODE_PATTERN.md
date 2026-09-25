@@ -300,6 +300,7 @@ Visual regression tests live under `e2e/visual/` and run through `playwright.vis
 - IPC payload samples live in `tests/ipc_fixtures.rs`; see [Payload fixtures](#payload-fixtures).
 - End-to-end MCP behavior goes in `tests/mcp_headless.rs`. `headless::Sandbox` gives each server process its own `HOME` (so its data dir is a temp dir, created under `/tmp` to keep the socket path short), a fake SDK whose `adb` records its arguments, and a project whose `gradlew` runs the script you give it; `Sandbox::start()` launches `keynobi --mcp` and completes the MCP handshake. `headless::TestApp::listen` serves attach requests on the sandbox's socket from the test process, standing in for the app.
 - Security validators need negative tests: traversal, symlinks, option-shaped values, and shell metacharacters.
+- Tests must pass on a loaded machine (parallel builds and test runs). Wait for a condition (a channel, a file the fake writes, a polled state) instead of sleeping for a fixed time, and give a wait that only catches a hang a generous bound (30 s). macOS checks a newly written executable on its first run, which can take several seconds under load: a test that runs a fake script against a short deadline runs it once first with `utils::process::test_support::run_once` (`headless::run_once` in integration tests).
 
 ### Packaged binary
 

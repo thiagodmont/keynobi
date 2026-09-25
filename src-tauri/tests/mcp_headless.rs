@@ -1159,7 +1159,7 @@ fn settings_saved_with_the_removed_mcp_auto_start_still_load() {
 fn build_noting_progress(
     client: &mut headless::McpClient,
     meta: Option<serde_json::Value>,
-    mut on_progress: impl FnMut(),
+    mut on_progress: impl FnMut(&serde_json::Value),
 ) -> (serde_json::Value, Vec<serde_json::Value>) {
     let mut params = json!({
         "name": "run_gradle_task",
@@ -1173,8 +1173,8 @@ fn build_noting_progress(
     let result = client
         .wait_response_noting(id, |message| {
             if message["method"] == "notifications/progress" {
+                on_progress(&message["params"]);
                 progress.push(message["params"].clone());
-                on_progress();
             }
         })
         .expect("run_gradle_task");
@@ -1189,14 +1189,22 @@ fn a_build_reports_progress_to_a_client_that_asks() {
     let release = gradlew_waiting_for(&sandbox);
     let mut client = sandbox.start();
 
-    let mut seen = 0;
+    const TASK: &str = "> Task :app:compileDebugKotlin";
+    let names_task = |report: &serde_json::Value| {
+        report["message"]
+            .as_str()
+            .is_some_and(|message| message.contains(TASK))
+    };
+    let (mut reports, mut with_task) = (0, 0);
     let (result, progress) = build_noting_progress(
         &mut client,
         Some(json!({ "progressToken": "build-1" })),
-        || {
-            seen += 1;
-            // Let the build finish once it has reported twice.
-            if seen == 2 {
+        |report| {
+            reports += 1;
+            with_task += usize::from(names_task(report));
+            // Let the build finish once it has reported the task twice, or
+            // after 30 s of reports without it, so the assertions below fail.
+            if with_task == 2 || reports == 15 {
                 std::fs::write(&release, "").unwrap();
             }
         },
@@ -1204,15 +1212,20 @@ fn a_build_reports_progress_to_a_client_that_asks() {
 
     let text = result["content"][0]["text"].as_str().unwrap_or_default();
     assert!(text.starts_with("BUILD SUCCESSFUL"), "{result}");
-    assert!(progress.len() >= 2, "{progress:?}");
     for report in &progress {
         assert_eq!(report["progressToken"], "build-1", "{report}");
         let message = report["message"].as_str().unwrap_or_default();
         assert!(message.contains("s elapsed"), "{report}");
-        assert!(
-            message.contains("> Task :app:compileDebugKotlin"),
-            "{report}"
-        );
+    }
+    // A report sent before Gradle printed a task (a slow start) has none;
+    // every report after the first that names it does.
+    let first = progress
+        .iter()
+        .position(names_task)
+        .unwrap_or_else(|| panic!("no report named the task: {progress:?}"));
+    assert!(progress[first..].len() >= 2, "{progress:?}");
+    for report in &progress[first..] {
+        assert!(names_task(report), "{report}");
     }
     let values: Vec<f64> = progress
         .iter()
@@ -1233,7 +1246,7 @@ fn a_build_sends_no_progress_without_a_token() {
         std::fs::write(&release, "").unwrap();
     });
 
-    let (result, progress) = build_noting_progress(&mut client, None, || {});
+    let (result, progress) = build_noting_progress(&mut client, None, |_| {});
     releasing.join().unwrap();
 
     let text = result["content"][0]["text"].as_str().unwrap_or_default();

@@ -380,7 +380,10 @@ pub(crate) mod test_support {
             format!("IMPLEMENTOR=\"Test\"\nJAVA_VERSION=\"{version}\"\n"),
         )
         .unwrap();
-        write_script(&home.join("bin").join("java"), &real_java(version));
+        let java = home.join("bin").join("java");
+        write_script(&java, &real_java(version));
+        // Probes of it run against a deadline.
+        crate::utils::process::test_support::run_once(&java);
         home.to_path_buf()
     }
 
@@ -680,6 +683,7 @@ mod tests {
         let f = Fixture::new();
         let bin = f.root.join("bin/java");
         write_script(&bin, &real_java("21.0.8"));
+        crate::utils::process::test_support::run_once(&bin);
         assert_eq!(
             probe_java(&bin).await,
             Some(("openjdk version \"21.0.8\" 2025-07-15".into(), 21))

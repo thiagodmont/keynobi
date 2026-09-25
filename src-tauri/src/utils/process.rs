@@ -83,6 +83,28 @@ pub fn format_duration(d: Duration) -> String {
 }
 
 #[cfg(test)]
+pub(crate) mod test_support {
+    use std::path::Path;
+    use std::process::{Command, Stdio};
+
+    /// Run a freshly written fake executable once, with no arguments, and
+    /// wait for it.
+    ///
+    /// macOS checks a new executable on its first run, which takes seconds
+    /// on a busy machine; later runs start at once. A test that times the
+    /// fake against a deadline calls this first, so the check does not count
+    /// against the deadline. The fake must exit promptly when run this way.
+    pub fn run_once(path: &Path) {
+        Command::new(path)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .unwrap_or_else(|e| panic!("could not run {}: {e}", path.display()));
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::time::Instant;

@@ -1578,6 +1578,7 @@ PID NAME
 #[cfg(test)]
 mod reconnect_tests {
     use super::*;
+    use crate::utils::process::test_support::run_once;
     use std::time::Duration;
 
     /// Serializes the tests that spawn fake `adb` processes. On macOS a pipe
@@ -1585,6 +1586,10 @@ mod reconnect_tests {
     /// by a concurrent test can inherit it; a fake that stays alive then holds
     /// that pipe open and another test waits minutes for EOF.
     static PROCESS_TESTS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// Bounds a wait that only fails on a hang. Each connection spawns the
+    /// fake `adb`, which a loaded machine can slow down by seconds.
+    const HANG_GUARD: Duration = Duration::from_secs(30);
 
     fn make_state(streaming: bool) -> LogcatState {
         let mut inner = LogcatStateInner::new();
@@ -1633,7 +1638,7 @@ mod reconnect_tests {
         });
 
         tokio::time::timeout(
-            Duration::from_secs(5),
+            HANG_GUARD,
             start_logcat_stream(
                 PathBuf::from("/definitely/does/not/exist/adb"),
                 None,
@@ -1644,7 +1649,7 @@ mod reconnect_tests {
             ),
         )
         .await
-        .expect("start_logcat_stream must return within 5 s");
+        .expect("start_logcat_stream must return");
 
         assert!(
             !state.lock().await.streaming,
@@ -1658,7 +1663,7 @@ mod reconnect_tests {
         let (tx, rx) = tokio::sync::oneshot::channel();
 
         tokio::time::timeout(
-            Duration::from_secs(5),
+            HANG_GUARD,
             start_logcat_stream(
                 PathBuf::from("/definitely/does/not/exist/adb"),
                 None,
@@ -1692,11 +1697,11 @@ mod reconnect_tests {
         });
 
         tokio::time::timeout(
-            Duration::from_secs(5),
+            HANG_GUARD,
             start_logcat_stream(instant_exit_bin(), None, state.clone(), None, None, 0),
         )
         .await
-        .expect("start_logcat_stream must return within 5 s");
+        .expect("start_logcat_stream must return");
 
         assert!(
             !state.lock().await.streaming,
@@ -1737,11 +1742,11 @@ mod reconnect_tests {
         });
 
         tokio::time::timeout(
-            Duration::from_secs(5),
+            HANG_GUARD,
             start_logcat_stream(instant_exit_bin(), None, state.clone(), None, None, 0),
         )
         .await
-        .expect("start_logcat_stream must return within 5 s");
+        .expect("start_logcat_stream must return");
 
         // We can't easily count spawns without wrapping the binary, but we CAN
         // assert that streaming ended up false — which only happens if the loop
@@ -1774,11 +1779,11 @@ mod reconnect_tests {
         });
 
         tokio::time::timeout(
-            Duration::from_secs(5),
+            HANG_GUARD,
             start_logcat_stream(instant_exit_bin(), None, state.clone(), None, None, 0),
         )
         .await
-        .expect("start_logcat_stream must return within 5 s after stop during reconnect sleep");
+        .expect("start_logcat_stream must return after stop during reconnect sleep");
 
         assert!(
             !state.lock().await.streaming,
@@ -1828,6 +1833,7 @@ mod reconnect_tests {
             perms.set_mode(0o755);
             std::fs::set_permissions(&bin, perms).unwrap();
         }
+        run_once(&bin);
         bin
     }
 
@@ -1891,10 +1897,7 @@ mod reconnect_tests {
             start_logcat_stream(a1, None, s1, None, None, g1).await;
         });
 
-        let started = wait_until(Duration::from_secs(5), || {
-            live_fake_logcat_pids(&adb).len() == 1
-        })
-        .await;
+        let started = wait_until(HANG_GUARD, || live_fake_logcat_pids(&adb).len() == 1).await;
         assert!(started, "stream #1 never started adb logcat");
         let old = live_fake_logcat_pids(&adb)[0];
 
@@ -1911,7 +1914,7 @@ mod reconnect_tests {
 
         // The old child must die and exactly one new one must take its place.
         // With the race, the old task keeps its child alive indefinitely.
-        let replaced = wait_until(Duration::from_secs(5), || {
+        let replaced = wait_until(HANG_GUARD, || {
             let live = live_fake_logcat_pids(&adb);
             live.len() == 1 && live[0] != old
         })
@@ -1948,21 +1951,20 @@ mod reconnect_tests {
         });
 
         // Let the single line flow through, then the fake adb goes quiet.
-        tokio::time::sleep(Duration::from_millis(300)).await;
+        let quiet = wait_for_store(&state, HANG_GUARD, |e| !e.is_empty()).await;
+        assert_eq!(quiet.len(), 1, "the line never arrived");
+        assert_eq!(live_fake_logcat_pids(&adb).len(), 1);
 
         request_stop(&state).await;
 
-        let exited = tokio::time::timeout(Duration::from_secs(3), handle).await;
+        let exited = tokio::time::timeout(HANG_GUARD, handle).await;
 
         assert!(
             exited.is_ok(),
-            "start_logcat_stream must return within 3 s of stop on an idle device"
+            "start_logcat_stream must return after stop on an idle device"
         );
 
-        let terminated = wait_until(Duration::from_secs(3), || {
-            live_fake_logcat_pids(&adb).is_empty()
-        })
-        .await;
+        let terminated = wait_until(HANG_GUARD, || live_fake_logcat_pids(&adb).is_empty()).await;
         assert!(
             terminated,
             "adb child must be terminated after stop, found {:?}",
@@ -1993,7 +1995,7 @@ mod reconnect_tests {
         let generation = claim_generation(&state, None).await;
 
         tokio::time::timeout(
-            Duration::from_secs(10),
+            HANG_GUARD,
             start_logcat_stream(
                 PathBuf::from("/definitely/does/not/exist/adb"),
                 None,
@@ -2023,8 +2025,9 @@ mod reconnect_tests {
         let _serial = PROCESS_TESTS.lock().await;
         let dir = tempfile::tempdir().unwrap();
         // Emits lines then exits immediately, so every reconnect "works" and
-        // then disconnects — far more times than RECONNECT_MAX_ATTEMPTS.
+        // then disconnects — more times than RECONNECT_MAX_ATTEMPTS.
         let adb = exiting_adb_bin(dir.path(), 2);
+        let connections = dir.path().join("connections");
 
         let state = make_state(false);
         let generation = claim_generation(&state, None).await;
@@ -2034,21 +2037,34 @@ mod reconnect_tests {
             start_logcat_stream(adb, None, s, None, None, generation).await;
         });
 
-        // Must comfortably exceed the time RECONNECT_MAX_ATTEMPTS worth of
-        // backoff would take (~2.6s with the test constants), so that a missing
-        // reset would definitely have tripped the give-up.
-        tokio::time::sleep(Duration::from_millis(4000)).await;
+        // Past the attempt a missing reset would have given up on.
+        let wanted = RECONNECT_MAX_ATTEMPTS as usize + 2;
+        let connected = || {
+            std::fs::read_to_string(&connections)
+                .unwrap_or_default()
+                .lines()
+                .count()
+        };
+        let deadline = std::time::Instant::now() + HANG_GUARD;
+        while connected() < wanted
+            && state.lock().await.streaming
+            && std::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
 
         assert!(
             state.lock().await.streaming,
             "a stream that keeps delivering output must not hit the give-up cap"
         );
+        assert!(connected() >= wanted, "only {} connections", connected());
 
         request_stop(&state).await;
         let _ = tokio::time::timeout(Duration::from_secs(3), handle).await;
     }
 
-    /// Writes a fake adb that prints `line_count` logcat lines and exits 0.
+    /// Writes a fake adb that prints `line_count` logcat lines and exits 0,
+    /// and appends a line to `connections` in `dir` on each `logcat` call.
     fn exiting_adb_bin(dir: &std::path::Path, line_count: usize) -> PathBuf {
         use std::io::Write;
         let bin = dir.join("adb");
@@ -2056,6 +2072,7 @@ mod reconnect_tests {
         writeln!(f, "#!/bin/sh").unwrap();
         writeln!(f, "for a in \"$@\"; do").unwrap();
         writeln!(f, "  if [ \"$a\" = logcat ]; then").unwrap();
+        writeln!(f, "    echo x >> '{}'", dir.join("connections").display()).unwrap();
         for i in 0..line_count {
             writeln!(
                 f,
@@ -2077,6 +2094,7 @@ mod reconnect_tests {
             perms.set_mode(0o755);
             std::fs::set_permissions(&bin, perms).unwrap();
         }
+        run_once(&bin);
         bin
     }
 
@@ -2123,6 +2141,7 @@ mod reconnect_tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
+        run_once(&adb);
 
         let state = make_state(false);
         let generation = claim_generation(&state, None).await;
@@ -2131,20 +2150,11 @@ mod reconnect_tests {
             start_logcat_stream(adb, None, s, None, None, generation).await;
         });
 
-        let mut messages = Vec::new();
-        for _ in 0..250 {
-            messages = state
-                .lock()
-                .await
-                .store
-                .iter()
-                .map(|e| e.message.clone())
-                .collect::<Vec<_>>();
-            if messages.len() >= 3 {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        }
+        let messages: Vec<String> = wait_for_store(&state, HANG_GUARD, |e| e.len() >= 3)
+            .await
+            .into_iter()
+            .map(|e| e.message)
+            .collect();
         request_stop(&state).await;
         let _ = tokio::time::timeout(Duration::from_secs(3), handle).await;
 
@@ -2236,6 +2246,7 @@ mod reconnect_tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
+        run_once(&bin);
         bin
     }
 
@@ -2363,10 +2374,7 @@ mod reconnect_tests {
         let restarted = wait_for_store(&state, timeout, |e| e.len() >= 3).await;
 
         request_stop(&state).await;
-        let terminated = wait_until(Duration::from_secs(5), || {
-            live_fake_logcat_pids(&adb).is_empty()
-        })
-        .await;
+        let terminated = wait_until(HANG_GUARD, || live_fake_logcat_pids(&adb).is_empty()).await;
 
         assert_eq!(switched.len(), 6, "got {switched:?}");
         assert_strictly_increasing(&ids(&switched), "after device switch");
@@ -2421,6 +2429,7 @@ mod reconnect_tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
+        run_once(&adb);
 
         let state = make_state(false);
         let generation = claim_generation(&state, None).await;
