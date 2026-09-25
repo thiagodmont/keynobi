@@ -282,6 +282,7 @@ echo 'Error: Activity not started, unable to resolve Intent { act=android.intent
         "{}",
         out.text
     );
+}
 
 #[test]
 fn two_servers_building_at_once_keep_both_builds_in_the_shared_history() {

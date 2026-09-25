@@ -2157,6 +2157,10 @@ mod tests {
 
     /// What both front doors do once Gradle has spawned as `pid`: the run
     /// becomes the latest one and the cancellable process. Returns its log.
+    /// Unit tests share one data directory, so tests that record builds and
+    /// then read the history hold this to keep other tests' builds out of it.
+    static PERSISTED_HISTORY: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     async fn start_run(bs: &BuildState, pid: ProcessId) -> BuildLog {
         let log = bs.build_log.start_run();
         bs.set_active_process_id(Some(pid));
@@ -2183,6 +2187,7 @@ mod tests {
 
     #[tokio::test]
     async fn build_slot_is_released_after_finalization() {
+        let _history = PERSISTED_HISTORY.lock().await;
         let bs = BuildState::new();
         try_reserve_build_slot(&bs, "assembleDebug", "2026-01-01T00:00:00Z")
             .await
@@ -2216,6 +2221,7 @@ mod tests {
 
     #[tokio::test]
     async fn emit_build_complete_records_history_without_an_app_handle() {
+        let _history = PERSISTED_HISTORY.lock().await;
         let bs = BuildState::new();
         let log = start_run(&bs, 7).await;
         let event = emit_build_complete(
@@ -2260,6 +2266,7 @@ mod tests {
 
     #[tokio::test]
     async fn finalization_counts_warnings_separately_from_errors() {
+        let _history = PERSISTED_HISTORY.lock().await;
         let bs = BuildState::new();
         let log = start_run(&bs, 7).await;
         let mk = |sev| BuildError {
@@ -2297,6 +2304,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancelled_build_is_finalized_as_cancelled() {
+        let _history = PERSISTED_HISTORY.lock().await;
         let bs = BuildState::new();
         let log = start_run(&bs, 7).await;
         let event = emit_build_complete(
@@ -2335,6 +2343,7 @@ mod tests {
     /// could start next to it, and B's panel showed A's result.
     #[tokio::test]
     async fn late_finalization_of_a_replaced_run_leaves_the_newer_run_alone() {
+        let _history = PERSISTED_HISTORY.lock().await;
         let bs = BuildState::new();
         let pm = ProcessManager::new();
         try_reserve_build_slot(&bs, "assembleDebug", "2026-01-01T00:00:00Z")
