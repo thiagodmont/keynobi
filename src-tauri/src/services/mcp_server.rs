@@ -552,8 +552,7 @@ impl AndroidMcpServer {
         Parameters(p): Parameters<RunGradleTaskParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        self.run_build(p.task, self.agent(&ctx.peer), Some(&ctx))
-            .await
+        self.run_build(p.task, self.agent(&ctx.peer)).await
     }
 
     /// Get the current build status.
@@ -859,7 +858,7 @@ impl AndroidMcpServer {
         Parameters(p): Parameters<RunTestsParams>,
         ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        self.run_build(test_task(&p.test_type)?, self.agent(&ctx.peer), Some(&ctx))
+        self.run_build(test_task(&p.test_type)?, self.agent(&ctx.peer))
             .await
     }
 
@@ -3420,15 +3419,10 @@ impl AndroidMcpServer {
     /// `mcp.buildTimeoutSec`; when it runs out the build is stopped and
     /// recorded as timed out. The build does not depend on this call: if the
     /// client goes away, it still finishes and is recorded.
-    ///
-    /// With the tool call's `request`, the wait reports progress when the
-    /// client sent a progress token, and a client that cancels the request
-    /// cancels this build (only this one), recorded as cancelled by `origin`.
     async fn run_build(
         &self,
         task: String,
         origin: BuildActor,
-        request: Option<&RequestContext<RoleServer>>,
     ) -> Result<CallToolResult, McpError> {
         validate_gradle_task(&task)?;
         if !settings_manager::load_settings()
@@ -3484,7 +3478,7 @@ impl AndroidMcpServer {
                 gradlew,
                 env,
                 project_root: project_root_for_history,
-                origin: origin.clone(),
+                origin,
             },
         )
         .await;
@@ -3510,74 +3504,11 @@ impl AndroidMcpServer {
         };
 
         let timeout_sec = settings.mcp.build_timeout_sec as u64;
-        let started_at = tokio::time::Instant::now();
-        let deadline = tokio::time::sleep(std::time::Duration::from_secs(timeout_sec));
-        tokio::pin!(deadline);
-        let progress_token = request.and_then(|r| r.meta.get_progress_token());
-        let mut progress = tokio::time::interval_at(
-            started_at + BUILD_PROGRESS_INTERVAL,
-            BUILD_PROGRESS_INTERVAL,
-        );
-        let mut watch_cancel = request.is_some();
-
-        enum Waited {
-            Done(build_runner::BuildOutcome),
-            TimedOut,
-            RequestCancelled,
-            ReportProgress,
-        }
-        let result = loop {
-            let waited = tokio::select! {
-                outcome = handle.wait() => Waited::Done(outcome),
-                _ = &mut deadline => Waited::TimedOut,
-                _ = request_cancelled(request), if watch_cancel => Waited::RequestCancelled,
-                _ = progress.tick(), if progress_token.is_some() => Waited::ReportProgress,
-            };
-            match waited {
-                Waited::Done(outcome) => break Some(outcome),
-                Waited::TimedOut => break None,
-                Waited::ReportProgress => {
-                    let (Some(token), Some(request)) = (&progress_token, request) else {
-                        continue;
-                    };
-                    if request.peer.is_transport_closed() {
-                        continue;
-                    }
-                    let elapsed = started_at.elapsed().as_secs();
-                    let message = match handle.current_task() {
-                        Some(current) => {
-                            format!("Building '{task}' — {elapsed}s elapsed — > Task {current}")
-                        }
-                        None => format!("Building '{task}' — {elapsed}s elapsed"),
-                    };
-                    let _ = request
-                        .peer
-                        .notify_progress(
-                            ProgressNotificationParam::new(token.clone(), elapsed as f64)
-                                .with_message(message),
-                        )
-                        .await;
-                }
-                Waited::RequestCancelled => {
-                    watch_cancel = false;
-                    // The request's token also fires when the client goes away;
-                    // that must not stop the build.
-                    if request.is_some_and(|r| r.peer.is_transport_closed()) {
-                        continue;
-                    }
-                    build_runner::cancel_run(
-                        &self.build_state,
-                        &self.process_manager,
-                        handle.run_id,
-                        origin.clone(),
-                    )
-                    .await;
-                }
-            }
-        };
-        let result = match result {
-            Some(result) => result,
-            None => {
+        let waited =
+            tokio::time::timeout(std::time::Duration::from_secs(timeout_sec), handle.wait()).await;
+        let result = match waited {
+            Ok(result) => result,
+            Err(_) => {
                 build_runner::time_out_build(
                     &self.build_state,
                     &self.process_manager,
@@ -3744,17 +3675,6 @@ fn resolve_variant(explicit: Option<&str>, persisted: Option<&str>) -> String {
 /// How long a timed-out build call waits for the stopped build to be
 /// recorded before answering. Gradle is killed 5 s after being asked to stop.
 const TIMEOUT_RECORD_GRACE: std::time::Duration = std::time::Duration::from_secs(10);
-
-/// How often a build call reports progress to a client that asked for it.
-const BUILD_PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
-
-/// Resolves when the client cancels `request`; never without one.
-async fn request_cancelled(request: Option<&RequestContext<RoleServer>>) {
-    match request {
-        Some(request) => request.ct.cancelled().await,
-        None => std::future::pending().await,
-    }
-}
 
 /// The Gradle task `run_tests` runs for `test_type`.
 fn test_task(test_type: &str) -> Result<String, McpError> {
@@ -4462,7 +4382,7 @@ mod tests {
         let server = headless_server();
         for task in ["publishReleaseBundle", "pRB", ":app:uninstallAll"] {
             let err = server
-                .run_build(task.into(), BuildActor::App, None)
+                .run_build(task.into(), BuildActor::App)
                 .await
                 .unwrap_err();
             assert!(
@@ -4474,7 +4394,7 @@ mod tests {
 
         // run_tests goes through the same build path, so it is covered too.
         let err = server
-            .run_build(test_task("publish").unwrap(), BuildActor::App, None)
+            .run_build(test_task("publish").unwrap(), BuildActor::App)
             .await
             .unwrap_err();
         assert!(
@@ -4485,7 +4405,7 @@ mod tests {
 
         // Ordinary tasks pass the policy and fail later only for lack of a project.
         let err = server
-            .run_build("assembleDebug".into(), BuildActor::App, None)
+            .run_build("assembleDebug".into(), BuildActor::App)
             .await
             .unwrap_err();
         assert!(err.message.contains("No project open"), "{}", err.message);
@@ -4777,7 +4697,7 @@ mod tests {
     async fn run_gradle_task_rejects_an_invalid_task_name() {
         let server = headless_server();
         let err = server
-            .run_build("assembleDebug; rm -rf /".to_string(), BuildActor::App, None)
+            .run_build("assembleDebug; rm -rf /".to_string(), BuildActor::App)
             .await;
         assert!(err.is_err(), "shell metacharacters must be rejected");
     }
