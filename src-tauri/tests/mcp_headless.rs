@@ -453,3 +453,110 @@ fn the_working_directory_beats_a_stale_last_active_project() {
     assert_eq!(info["path"], stale.to_string_lossy().as_ref());
     assert_eq!(info["selected_by"], "last_active_project", "{info}");
 }
+
+/// A white `width`x`height` screen, as `adb exec-out screencap -p` prints it.
+fn write_screencap(sandbox: &Sandbox, width: u32, height: u32) -> Vec<u8> {
+    let mut png_bytes = Vec::new();
+    let mut encoder = png::Encoder::new(&mut png_bytes, width, height);
+    encoder.set_color(png::ColorType::Rgba);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().unwrap();
+    writer
+        .write_image_data(&vec![255; width as usize * height as usize * 4])
+        .unwrap();
+    writer.finish().unwrap();
+
+    let path = sandbox.home.join("screen.png");
+    std::fs::write(&path, &png_bytes).unwrap();
+    sandbox.write_adb(&format!(
+        "case \"$*\" in *\"exec-out screencap -p\") cat '{}' ;; esac",
+        path.display()
+    ));
+    png_bytes
+}
+
+/// The screenshot's PNG bytes and its geometry JSON.
+fn call_screenshot(
+    client: &mut headless::McpClient,
+    arguments: serde_json::Value,
+) -> (Vec<u8>, serde_json::Value) {
+    use base64::Engine as _;
+    let result = client.request(
+        "tools/call",
+        json!({ "name": "screenshot", "arguments": arguments }),
+    );
+    assert_ne!(result["isError"], json!(true), "{result}");
+    let content = result["content"].as_array().expect("content");
+    assert_eq!(content[0]["type"], "image", "{result}");
+    assert_eq!(content[0]["mimeType"], "image/png", "{result}");
+    let image = base64::engine::general_purpose::STANDARD
+        .decode(content[0]["data"].as_str().expect("image data"))
+        .expect("base64 image");
+    let geometry = serde_json::from_str(content[1]["text"].as_str().expect("geometry text"))
+        .expect("geometry JSON");
+    (image, geometry)
+}
+
+fn png_dimensions(bytes: &[u8]) -> (u32, u32) {
+    let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
+    decoder.read_info().expect("valid PNG").info().size()
+}
+
+#[test]
+fn screenshot_is_downscaled_and_reports_the_scale_back_to_device_pixels() {
+    let sandbox = Sandbox::new();
+    let original = write_screencap(&sandbox, 1080, 2400);
+    let mut client = sandbox.start();
+
+    let (image, geometry) =
+        call_screenshot(&mut client, json!({ "device_serial": "emulator-5554" }));
+    assert_eq!(png_dimensions(&image), (576, 1280));
+    assert_eq!(geometry["deviceWidth"], 1080, "{geometry}");
+    assert_eq!(geometry["deviceHeight"], 2400, "{geometry}");
+    assert_eq!(geometry["imageWidth"], 576, "{geometry}");
+    assert_eq!(geometry["imageHeight"], 1280, "{geometry}");
+    assert_eq!(geometry["scale"], 1.875, "{geometry}");
+    assert!(
+        geometry["hint"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("ui_tap"),
+        "{geometry}"
+    );
+
+    let (image, geometry) = call_screenshot(
+        &mut client,
+        json!({ "device_serial": "emulator-5554", "full_size": true }),
+    );
+    assert_eq!(image, original);
+    assert_eq!(geometry["scale"], 1.0, "{geometry}");
+    assert_eq!(geometry["imageWidth"], 1080, "{geometry}");
+}
+
+#[test]
+fn screenshot_rejects_an_out_of_range_size_without_touching_the_device() {
+    let sandbox = Sandbox::new();
+    write_screencap(&sandbox, 1080, 2400);
+    let mut client = sandbox.start();
+
+    let message = client.call_tool_rejected(
+        "screenshot",
+        json!({ "device_serial": "emulator-5554", "max_dimension": 10 }),
+    );
+
+    assert!(message.contains("max_dimension"), "{message}");
+    assert!(sandbox.adb_calls().is_empty(), "{:?}", sandbox.adb_calls());
+}
+
+#[test]
+fn screenshot_reports_adb_output_that_is_not_an_image() {
+    let sandbox = Sandbox::new();
+    sandbox.write_adb("echo 'error: device unauthorized'");
+    let mut client = sandbox.start();
+
+    let out = client.call_tool("screenshot", json!({ "device_serial": "emulator-5554" }));
+
+    assert!(out.is_error, "{}", out.text);
+    assert!(out.text.contains("did not return a PNG"), "{}", out.text);
+    assert!(out.text.contains("device unauthorized"), "{}", out.text);
+}

@@ -96,7 +96,7 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 | Tool | Kind | Notes |
 |------|------|-------|
 | `list_devices`, `get_device_info` | R | |
-| `screenshot` | R | 20 s timeout. |
+| `screenshot` | R | `device_serial`, `max_dimension?` (long edge, default 1,280, 256–8,192), `full_size?`. Returns the PNG, then a JSON text item with `deviceWidth`/`deviceHeight` (the capture's size: the screen in its current rotation, the space `ui_tap` uses), `imageWidth`/`imageHeight`, `scale` (device pixels per image pixel), and a hint to multiply image coordinates by `scale` or use `ui_tap_element`. Larger captures are area-averaged down on the host and re-encoded; a capture that already fits, or `full_size: true`, is returned byte for byte. Passing both parameters, or a `max_dimension` out of range, is `invalid_params`. Captures over 32 MiB or 16 Mpx, and output that is not a PNG, are tool errors. 30 s timeout. |
 | `dump_app_info`, `get_memory_info`, `get_app_runtime_state` | R | |
 | `install_apk` | D | `device_serial`, `apk_path` (must be an `.apk` under the build outputs). |
 | `launch_app` | W | `device_serial`, `package`, `activity?`. Fails when `am start` reports an error, even with exit code 0. |
@@ -278,4 +278,5 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Multi-client PID file.** The PID file is single-slot. With two clients, the first to exit deletes it and the GUI reports MCP as stopped.
 - **Unbounded activity log.** The activity log grows without limit during a session, and summaries are not redacted.
 - **Package scope sources.** The scope reads only the `app` module (or the root build file). An `applicationIdSuffix` set in a convention plugin or through a variable is known only after that variant is built; until then its package needs `allow_foreign_package: true`.
+- **Screenshot coordinate space.** `screenshot` takes `deviceWidth`/`deviceHeight` from the capture itself. With a `wm size` override or on a multi-display device, the capture may not match the space `ui_tap` uses, so `scale` would be off.
 - **No end-to-end test.** No test drives JSON-RPC (initialize → `tools/list` → `tools/call`).
