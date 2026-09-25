@@ -1,0 +1,27 @@
+src-tauri/examples/logcat_soak.rs
+  s_1e114e823b9048::t_e19697e58fe122 443
+  s_1e114e823b9048::t_7a4e13a90419da 191
+  s_1e114e823b9048::t_17bf92c0a3b15d 432-438
+  s_1e114e823b9048::t_a17a0146f47c31 1-149,153-190,198-431,439-442,444-489
+  s_1e114e823b9048::t_67cceeadddc9a1 150-152,192-197
+package.json
+  s_1e114e823b9048::t_61889af588ef47 36
+scripts/logcat-soak.mjs
+  s_1e114e823b9048::t_c0b87d62296ea6 1-105
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "71bab15c38d0417b3e1fc036098f47cd5eaca025",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
