@@ -1,0 +1,58 @@
+src/lib/telemetry/sentry-web.ts
+  s_1e114e823b9048::t_0e3f1161d1c674 77-79
+  s_1e114e823b9048::t_6a8e5a380b647d 238-239
+  s_1e114e823b9048::t_d3944ebb4cefb6 2,5-13,17-18,21-55,73-76,82-96,98-106,108-115,117-119,121-128,131-138,140,143-144,148-149,151-174,177-184,186-189,191-203,205-225,228-237,240-258,260-286,289-290,292,294
+README.md
+  s_1e114e823b9048::t_b81f95235f47d0 75
+src-tauri/src/services/settings_manager.rs
+  s_1e114e823b9048::t_6cee55a6d10899 274-276,407-410
+  s_1e114e823b9048::t_537c8f73469e20 414,523-525,530-534,539-543
+  s_1e114e823b9048::t_b278ecefca3482 411-412
+  s_1e114e823b9048::t_31f57bdd9772d5 526-529
+  s_1e114e823b9048::t_1fb9f48ac4205b 535-538
+  s_1e114e823b9048::t_59c5b6d5bdf5b8 544
+src/components/settings/SettingsPanel.tsx
+  s_1e114e823b9048::t_6f2681dffb1ccc 666
+src/stores/settings.store.flush.test.ts
+  s_1e114e823b9048::t_24c2dd59ec77ab 42-53
+src/components/onboarding/OnboardingWizard.tsx
+  s_1e114e823b9048::t_c64741fb590ae8 92,286-288
+src-tauri/src/services/telemetry_sentry.rs
+  s_1e114e823b9048::t_1fb9f48ac4205b 652-655
+  s_1e114e823b9048::t_31f57bdd9772d5 49-52,765-768
+  s_1e114e823b9048::t_d4a4ca73f24fc0 1,3-9,11-15,17,19-21,24-48,53-55,58-73,75-105,107-110,113-127,129-136,139-152,154-163,167-185,187-197,199-217,220-224,227-233,237,240-243,245-252,255-256,259-260,262,264-267,269-275,278-288,290-305,307-313,326-335,338-339,341-352,355-365,372-373,375,377-403,406-412,415-438,440-447,450-484,487-549,552-583,587-594,596-597,600-644,647-648,650-651,656,660-674,676,680-683,685,687-688,691-692,696-704,708-724,726-748,750-752,754-755,761-764,769-772
+  s_1e114e823b9048::t_3eb94cbf2e4943 550-551,749,753,756-760
+src/stores/settings.store.ts
+  s_1e114e823b9048::t_a5a3dede15f385 146-147
+src/lib/telemetry/sentry-web.test.ts
+  s_1e114e823b9048::t_f155043447ab1b 1-10,12-130,133-147,151-166,171-174,176-185,190-263,266-319
+  s_1e114e823b9048::t_2337b85f1d5eef 264-265
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_b81f95235f47d0 125-127
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_b81f95235f47d0 238
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_b81f95235f47d0 394
+references/CODE_PATTERN.md
+  s_1e114e823b9048::t_b81f95235f47d0 21
+src-tauri/src/commands/telemetry.rs
+  s_1e114e823b9048::t_b278ecefca3482 7-8,17,31
+RELEASING.md
+  s_1e114e823b9048::t_b81f95235f47d0 94,96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "fbccebd04c2ec149c9a91db9cf5813b950dbe850",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
