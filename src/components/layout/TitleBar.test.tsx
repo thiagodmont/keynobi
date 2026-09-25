@@ -134,6 +134,7 @@ describe("TitleBar", () => {
   });
 
   it("names the agent whose build Cancel stops, and cancels it", () => {
+    vi.mocked(invoke).mockResolvedValueOnce(undefined);
     render(() => <TitleBar />);
     const button = screen.getByRole("button", { name: /^build$/i });
 

@@ -73,12 +73,18 @@ git diff src/bindings/   # should be empty after commit; CI fails if stale
 
 You can also run `npm run check:bindings` to regenerate and assert a clean diff.
 
+Then regenerate the IPC payload fixtures, which the frontend tests compare with the bindings and the mock backend (`cargo test` fails while they are stale):
+
+```bash
+npm run generate:ipc-fixtures
+```
+
 ## Pull requests
 
 - Keep PRs **small and focused** (one concern per PR when possible).
 - Describe **what** changed and **why** (motivation / tradeoffs).
 - **UI changes:** note how to verify (panel, menu path, shortcut). Screenshots help reviewers.
-- **New Tauri command:** add the Rust handler, the `tauri-api.ts` wrapper, and a mock-backend handler; `scripts/ipc-contract.test.mjs` fails otherwise.
+- **New Tauri command:** add the Rust handler, the `tauri-api.ts` wrapper, and a mock-backend handler; `scripts/ipc-contract.test.mjs` fails otherwise. A new response or event type also needs samples in `src-tauri/tests/ipc_fixtures.rs`; `scripts/ipc-payloads.test.mjs` fails otherwise.
 - Link a related **issue** when one exists.
 - **Do not commit** API keys, tokens, machine-specific paths, or personal project data.
 

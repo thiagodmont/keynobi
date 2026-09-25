@@ -2,11 +2,16 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use tauri::{AppHandle, Emitter};
+use ts_rs::TS;
 
-#[derive(Debug, Clone, Serialize)]
+/// Payload of `monitor://stats`.
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
 pub struct MonitorStats {
+    #[ts(type = "number")]
     pub app_memory_bytes: u64,
+    #[ts(type = "number")]
     pub log_folder_bytes: u64,
     pub rotation_triggered: bool,
 }

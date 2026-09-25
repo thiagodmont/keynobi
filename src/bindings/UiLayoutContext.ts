@@ -7,16 +7,16 @@ export type UiLayoutContext = {
 /**
  * First bytes of `dumpsys window windows` (focus / window tokens).
  */
-windowExcerpt: string | null, 
+windowExcerpt?: string, 
 /**
  * First bytes of `dumpsys display`.
  */
-displayExcerpt: string | null, 
+displayExcerpt?: string, 
 /**
  * Output of `wm size`.
  */
-wmSize: string | null, 
+wmSize?: string, 
 /**
  * Output of `wm density`.
  */
-wmDensity: string | null, };
+wmDensity?: string, };

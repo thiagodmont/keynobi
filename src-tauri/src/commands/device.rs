@@ -20,11 +20,14 @@ use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 use tokio::sync::{Mutex, Notify};
+use ts_rs::TS;
 
 // ── Event payloads ─────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+/// Payload of `device:list_changed`.
+#[derive(Debug, Clone, Serialize, TS)]
 #[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
 pub struct DeviceListChangedEvent {
     pub devices: Vec<Device>,
 }

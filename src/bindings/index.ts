@@ -44,6 +44,7 @@ export type { SystemImageInfo } from "./SystemImageInfo";
 export type { DeviceDefinition } from "./DeviceDefinition";
 export type { AvailableSystemImage } from "./AvailableSystemImage";
 export type { SdkDownloadProgress } from "./SdkDownloadProgress";
+export type { DeviceListChangedEvent } from "./DeviceListChangedEvent";
 export type { BuildVariant } from "./BuildVariant";
 export type { VariantList } from "./VariantList";
 
@@ -74,6 +75,9 @@ export type { LogcatKind } from "./LogcatKind";
 export type { EntryCategory } from "./EntryCategory";
 export type { LogStats } from "./LogStats";
 export type { LogcatFilterSpec } from "./LogcatFilterSpec";
+
+// App monitor
+export type { MonitorStats } from "./MonitorStats";
 
 // UI hierarchy (layout viewer)
 export type { UiNode } from "./UiNode";

@@ -30,4 +30,4 @@ commandLog: Array<string>,
  * Base64-encoded PNG screenshot captured alongside the hierarchy dump (optional).
  * Captured via `adb exec-out screencap -p`. Omitted when capture fails or is skipped.
  */
-screenshotB64: string | null, };
+screenshotB64?: string, };

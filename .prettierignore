@@ -1,1 +1,2 @@
 src/bindings/
+src/test/ipc-fixtures/fixtures.ts

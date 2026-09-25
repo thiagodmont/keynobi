@@ -19,6 +19,7 @@
     "rust:check": "cd src-tauri && cargo check",
     "generate:bindings": "cd src-tauri && cargo test --lib export_bindings && echo 'TypeScript bindings regenerated in src/bindings/'",
     "check:bindings": "npm run generate:bindings && BINDINGS_STATUS=$(git status --porcelain src/bindings/) && test -z \"$BINDINGS_STATUS\"",
+    "generate:ipc-fixtures": "cd src-tauri && UPDATE_IPC_FIXTURES=1 cargo test --test ipc_fixtures && echo 'IPC fixtures regenerated in src/test/ipc-fixtures/'",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:ds": "npm run typescript:check && npm run lint && npm run test:storybook",

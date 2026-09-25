@@ -43,14 +43,8 @@ function makeSnapshot(screenHash: string): UiHierarchySnapshot {
     screenHash,
     interactiveCount: 1,
     foregroundActivity: null,
-    layoutContext: {
-      windowExcerpt: null,
-      displayExcerpt: null,
-      wmSize: null,
-      wmDensity: null,
-    },
+    layoutContext: {},
     commandLog: [],
-    screenshotB64: null,
   };
 }
 

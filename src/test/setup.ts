@@ -6,9 +6,27 @@
  * mock instead of crashing.
  */
 
+// Every IPC call a test makes must be stubbed (`vi.mocked(invoke)...`). An
+// unstubbed call rejects and fails the test, so a missing stub cannot pass
+// silently on `undefined`.
+const unstubbedInvokes = vi.hoisted(() => [] as string[]);
+
+afterEach(() => {
+  const commands = unstubbedInvokes.splice(0);
+  if (commands.length > 0) {
+    throw new Error(
+      `Unstubbed IPC call(s): ${[...new Set(commands)].join(", ")}. ` +
+        "Stub them with vi.mocked(invoke).mockImplementation(...)."
+    );
+  }
+});
+
 // Mock @tauri-apps/api/core
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn().mockResolvedValue(undefined),
+  invoke: vi.fn((command: string) => {
+    unstubbedInvokes.push(command);
+    return Promise.reject(new Error(`Unstubbed IPC call: ${command}`));
+  }),
   Channel: class MockChannel<T = unknown> {
     onmessage: ((message: T) => void) | null = null;
   },

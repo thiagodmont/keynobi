@@ -285,6 +285,7 @@ import type {
   AvailableSystemImage,
   SdkDownloadProgress,
   UiHierarchySnapshot,
+  DeviceListChangedEvent,
 } from "@/bindings";
 export type {
   Device,
@@ -360,7 +361,9 @@ export async function stopDevicePolling(): Promise<void> {
 }
 
 export function listenDeviceListChanged(cb: (devices: Device[]) => void): Promise<UnlistenFn> {
-  return listen<{ devices: Device[] }>("device:list_changed", (event) => cb(event.payload.devices));
+  return listen<DeviceListChangedEvent>("device:list_changed", (event) =>
+    cb(event.payload.devices)
+  );
 }
 
 export async function listSystemImages(): Promise<SystemImageInfo[]> {

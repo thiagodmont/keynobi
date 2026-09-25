@@ -36,15 +36,19 @@ pub struct UiNode {
 pub struct UiLayoutContext {
     /// First bytes of `dumpsys window windows` (focus / window tokens).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub window_excerpt: Option<String>,
     /// First bytes of `dumpsys display`.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub display_excerpt: Option<String>,
     /// Output of `wm size`.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub wm_size: Option<String>,
     /// Output of `wm density`.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub wm_density: Option<String>,
 }
 
@@ -70,6 +74,7 @@ pub struct UiHierarchySnapshot {
     /// Base64-encoded PNG screenshot captured alongside the hierarchy dump (optional).
     /// Captured via `adb exec-out screencap -p`. Omitted when capture fails or is skipped.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub screenshot_b64: Option<String>,
 }
 

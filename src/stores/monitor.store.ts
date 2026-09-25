@@ -9,12 +9,7 @@
 
 import { createSignal } from "solid-js";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-
-export interface MonitorStats {
-  appMemoryBytes: number;
-  logFolderBytes: number;
-  rotationTriggered: boolean;
-}
+import type { MonitorStats } from "@/bindings";
 
 const [appMemoryBytes, setAppMemoryBytes] = createSignal(0);
 const [logFolderBytes, setLogFolderBytes] = createSignal(0);
