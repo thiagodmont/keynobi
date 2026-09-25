@@ -124,7 +124,15 @@ adb and SDK tool calls have per-operation deadlines (`utils/process.rs`): 10 s f
 
 ### AVDs
 
-AVD lifecycle commands go through Android SDK tools. `create_avd_device` and `delete_avd_device` return the refreshed AVD list so the frontend updates in one round-trip; `launch_avd` returns the new serial and emits `device:list_changed`. Validate AVD names, system image IDs, and device profile IDs with the validators in `adb_manager.rs`.
+AVD lifecycle commands go through Android SDK tools. `create_avd_device` and `delete_avd_device` return the refreshed AVD list so the frontend updates in one round-trip; `launch_avd` returns the emulator's serial and emits `device:list_changed`. Validate AVD names, system image IDs, and device profile IDs with the validators in `adb_manager.rs`.
+
+**An emulator is identified by its AVD name, never by its model or display name.** The `model` in `adb devices -l` is the system image's (`sdk_gphone64_arm64` for every Google image), and name prefixes collide (`Pixel_7`, `Pixel_7_Pro`). `enrich_device_props` sets `Device.avd_name` for each online emulator with `adb_manager::resolve_avd_name` (`adb -s <serial> emu avd name`, else `getprop ro.boot.qemu.avd_name` / `ro.kernel.qemu.avd_name`). The poll loop asks again for an emulator whose name did not resolve (console still starting) for up to `AVD_NAME_RETRY_POLLS` (10) polls while the list is unchanged. The frontend (`runningAvdNames`, `serialForAvd` in `device.store.ts`) matches `avdName` exactly; an emulator without one is not treated as any AVD.
+
+Emulator operations report what happened:
+
+- **Launch** (`launch_emulator`, Tauri `launch_avd`, MCP `launch_avd`) returns the serial of the emulator whose resolved AVD name matches, among emulators that came online after the launch started, so simultaneous launches each get their own serial. An AVD already running is not started again; its serial is returned (`already_running`). A second request for an AVD this process is already starting waits for that emulator instead of starting another (`StartingAvd`). An emulator process that exits with an error before its AVD is online (for example on the AVD's lock) fails the launch at once.
+- **Stop** (`stop_emulator`) fails when `adb emu kill` exits non-zero or prints an error (`error: …`, or the console's `KO: …`, which can come with exit status 0), and succeeds only once `adb devices` no longer lists the serial, within `STOP_WAIT` (30 s).
+- **Wipe** (`wipe_avd_data`) is refused while the AVD is running (any listed emulator whose AVD name matches) or being started, since the `-wipe-data` relaunch would fail on the AVD's lock. It then waits for that AVD's emulator by name, like launch.
 
 ### Frontend
 
@@ -419,6 +427,7 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **APK lookup module.** `find_output_apk` and `validate_apk_within_build_outputs` look only under `app/build/outputs`, so projects whose application module is not named `app` cannot deploy.
 - **Project App Info.** When the app module is not named `app`, the root build file is read instead; it usually sets no versions, so both fields show as unavailable. `applicationId` is still read with a first-match pattern, so a commented-out `applicationId` above the real one is shown (and used for `package:mine`).
 - **Airplane-mode fallback.** On devices without `cmd connectivity airplane-mode`, the fallback broadcast is a protected broadcast that a non-root shell is normally refused; the setting is then restored and the step reported as failed. Needs verification on a device.
+- **Starting an AVD across processes.** The guard against starting one AVD twice is per process. If the app and a standalone MCP server launch the same AVD at the same moment, the second emulator fails on the AVD's lock and that launch reports the failure even though the AVD comes up. An emulator whose AVD name never resolves (no console answer and neither property) is shown as a device but not as its AVD, so Stop is offered only from the connected list.
 - **Dead code.** `DevicePanel.tsx` (panel/popover modes) is not imported anywhere.
 - **Trust is lost with the registry entry.** Removing a project, or eviction past `MAX_RECENT_PROJECTS`, forgets its trust; reopening asks again. Downgrading to a version without trust drops the field, and upgrading again treats those entries as trusted.
 - **Revoking does not stop other processes.** Revoking trust cancels only the open project's build in the app (including one an attached agent started); a build a standalone MCP server already started runs to completion. New builds are refused everywhere.

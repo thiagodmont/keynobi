@@ -39,6 +39,12 @@ pub struct Device {
     pub api_level: Option<u32>,
     /// Android version string (from `ro.build.version.release`).
     pub android_version: Option<String>,
+    /// For an online emulator, the AVD it runs (the name used with
+    /// `emulator @<name>`), when the emulator reported it. Identifies which AVD
+    /// is running; `name` and `model` are for display only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub avd_name: Option<String>,
 }
 
 /// Metadata about an Android Virtual Device.
@@ -137,6 +143,7 @@ mod tests {
             connection_state: DeviceConnectionState::Online,
             api_level: Some(34),
             android_version: Some("14".into()),
+            avd_name: Some("Pixel_7_API_34".into()),
         };
         let json = serde_json::to_string(&d).unwrap();
         assert!(json.contains("emulator-5554"));

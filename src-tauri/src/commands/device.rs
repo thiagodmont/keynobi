@@ -1,5 +1,5 @@
 use crate::models::device::{
-    AvailableSystemImage, AvdInfo, Device, DeviceConnectionState, DeviceDefinition,
+    AvailableSystemImage, AvdInfo, Device, DeviceConnectionState, DeviceDefinition, DeviceKind,
     SdkDownloadProgress, SystemImageInfo,
 };
 use crate::models::error::AppError;
@@ -167,7 +167,8 @@ pub async fn list_avd_devices() -> Result<Vec<AvdInfo>, String> {
     Ok(list_avds())
 }
 
-/// Launch an emulator and wait for it to come online.
+/// Launch an emulator and wait for it to come online. Returns the serial of
+/// the emulator running `avd_name`, which may have been running already.
 ///
 /// Emits `device:list_changed` once the emulator appears in `adb devices`.
 #[tauri::command]
@@ -182,7 +183,7 @@ pub async fn launch_avd(
     let adb = get_adb_path(&settings);
     let emulator = get_emulator_path(&settings);
 
-    let serial = launch_emulator(&emulator, &adb, &avd_name).await?;
+    let serial = launch_emulator(&emulator, &adb, &avd_name).await?.serial;
 
     // Refresh device list and notify frontend.
     let mut devices = list_devices(&adb).await;
@@ -195,7 +196,7 @@ pub async fn launch_avd(
     Ok(serial)
 }
 
-/// Kill an emulator.
+/// Kill an emulator and wait until adb no longer lists it.
 #[tauri::command]
 pub async fn stop_avd(serial: String) -> Result<(), AppError> {
     validate_device_serial(&serial)?;
@@ -237,6 +238,18 @@ pub async fn stop_device_polling(device_state: State<'_, DeviceState>) -> Result
 /// Time between two device polls.
 const DEVICE_POLL_INTERVAL: Duration = Duration::from_secs(3);
 
+/// Polls on which an online emulator whose AVD name did not resolve (its
+/// console still starting) is asked again while the device list is unchanged.
+const AVD_NAME_RETRY_POLLS: u32 = 10;
+
+fn has_unnamed_emulator(devices: &[Device]) -> bool {
+    devices.iter().any(|d| {
+        d.device_kind == DeviceKind::Emulator
+            && d.connection_state == DeviceConnectionState::Online
+            && d.avd_name.is_none()
+    })
+}
+
 /// Spawn a polling loop unless one is already running.
 async fn start_polling_loop<A, E>(
     state: &Arc<Mutex<DeviceStateInner>>,
@@ -273,6 +286,8 @@ async fn poll_devices<A, E>(
     E: Fn(DeviceListChangedEvent),
 {
     let mut last_snapshot: Vec<(String, DeviceConnectionState)> = vec![];
+    let mut last_avd_names: Vec<Option<String>> = vec![];
+    let mut avd_name_retries = 0;
     loop {
         // Registered before the check, so a stop from here on wakes the sleep.
         let woken = wake.notified();
@@ -293,12 +308,26 @@ async fn poll_devices<A, E>(
         let mut current = list_devices(&adb).await;
         let current_snapshot = device_snapshot(&current);
 
-        if current_snapshot != last_snapshot {
-            // Enrich online devices with API level / version.
+        let changed = current_snapshot != last_snapshot;
+        if changed || avd_name_retries > 0 {
+            // Enrich online devices with API level / version / AVD name.
             for d in &mut current {
                 enrich_device_props(&adb, d).await;
             }
+            let avd_names: Vec<Option<String>> =
+                current.iter().map(|d| d.avd_name.clone()).collect();
+            avd_name_retries = if !has_unnamed_emulator(&current) {
+                0
+            } else if changed {
+                AVD_NAME_RETRY_POLLS
+            } else {
+                avd_name_retries - 1
+            };
+            if !changed && avd_names == last_avd_names {
+                continue;
+            }
             last_snapshot = current_snapshot;
+            last_avd_names = avd_names;
             let event = {
                 let mut state = state.lock().await;
                 if !state.is_current_polling(generation) {
@@ -461,6 +490,7 @@ mod tests {
             connection_state: DeviceConnectionState::Online,
             api_level: Some(35),
             android_version: Some("15".to_string()),
+            avd_name: None,
         };
         let mut state = DeviceStateInner::new();
 
@@ -481,6 +511,7 @@ mod tests {
             connection_state,
             api_level: None,
             android_version: None,
+            avd_name: None,
         }
     }
 
@@ -683,6 +714,58 @@ mod tests {
             calls(dir.path()).iter().any(|c| c == "new-sdk-adb")
         })
         .await;
+
+        state.lock().await.stop_polling();
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_emulator_named_late_is_reported_without_a_list_change() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let adb = dir.path().join("adb");
+        // The console does not answer the first two AVD name queries (booting).
+        std::fs::write(
+            &adb,
+            format!(
+                "#!/bin/sh\ncd '{}'\n\
+                 if [ \"$1\" = devices ]; then printf 'List of devices attached\\nemulator-5554\\tdevice\\n'; exit 0; fi\n\
+                 if [ \"$3\" = emu ]; then echo x >> queries; \
+                 [ \"$(wc -l < queries)\" -gt 2 ] && {{ echo Pixel_7; echo OK; exit 0; }}; exit 1; fi\n\
+                 case \"$5\" in *avd_name) echo ;; *) echo 34 ;; esac\n",
+                dir.path().display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let state = polling_state();
+        let task = start_polling_loop(
+            &state,
+            Duration::from_millis(30),
+            move || adb.clone(),
+            move |event: DeviceListChangedEvent| {
+                let _ = tx.send(event);
+            },
+        )
+        .await
+        .unwrap();
+
+        async fn next(
+            rx: &mut tokio::sync::mpsc::UnboundedReceiver<DeviceListChangedEvent>,
+        ) -> DeviceListChangedEvent {
+            tokio::time::timeout(Duration::from_secs(10), rx.recv())
+                .await
+                .expect("no device:list_changed")
+                .unwrap()
+        }
+        assert_eq!(next(&mut rx).await.devices[0].avd_name, None);
+        let named = next(&mut rx).await;
+        assert_eq!(named.devices[0].avd_name.as_deref(), Some("Pixel_7"));
+        assert_eq!(
+            state.lock().await.devices[0].avd_name.as_deref(),
+            Some("Pixel_7")
+        );
 
         state.lock().await.stop_polling();
         task.await.unwrap();

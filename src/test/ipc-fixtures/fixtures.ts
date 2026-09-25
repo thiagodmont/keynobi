@@ -624,11 +624,21 @@ export const typeFixtures = {
     {
       "androidVersion": "14",
       "apiLevel": 34,
+      "avdName": "Pixel_7_API_34",
       "connectionState": "online",
       "deviceKind": "emulator",
       "model": "sdk_gphone64_arm64",
       "name": "Pixel 7",
       "serial": "emulator-5554"
+    },
+    {
+      "androidVersion": "15",
+      "apiLevel": 35,
+      "connectionState": "online",
+      "deviceKind": "physical",
+      "model": "Pixel 7",
+      "name": "Pixel 7",
+      "serial": "28151FDH2000Q4"
     },
     {
       "androidVersion": null,
@@ -646,11 +656,21 @@ export const typeFixtures = {
         {
           "androidVersion": "14",
           "apiLevel": 34,
+          "avdName": "Pixel_7_API_34",
           "connectionState": "online",
           "deviceKind": "emulator",
           "model": "sdk_gphone64_arm64",
           "name": "Pixel 7",
           "serial": "emulator-5554"
+        },
+        {
+          "androidVersion": "15",
+          "apiLevel": 35,
+          "connectionState": "online",
+          "deviceKind": "physical",
+          "model": "Pixel 7",
+          "name": "Pixel 7",
+          "serial": "28151FDH2000Q4"
         },
         {
           "androidVersion": null,
@@ -1167,11 +1187,21 @@ export const eventFixtures = {
           {
             "androidVersion": "14",
             "apiLevel": 34,
+            "avdName": "Pixel_7_API_34",
             "connectionState": "online",
             "deviceKind": "emulator",
             "model": "sdk_gphone64_arm64",
             "name": "Pixel 7",
             "serial": "emulator-5554"
+          },
+          {
+            "androidVersion": "15",
+            "apiLevel": 35,
+            "connectionState": "online",
+            "deviceKind": "physical",
+            "model": "Pixel 7",
+            "name": "Pixel 7",
+            "serial": "28151FDH2000Q4"
           },
           {
             "androidVersion": null,

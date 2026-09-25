@@ -9,8 +9,9 @@ use crate::utils::process::{
     ADB_LAUNCH_TIMEOUT, ADB_QUERY_TIMEOUT, ADB_UNRESPONSIVE_HINT, AVDMANAGER_TIMEOUT,
     EMULATOR_STOP_TIMEOUT, SDKMANAGER_LIST_TIMEOUT, SDK_TOOL_HINT,
 };
+use std::collections::{BTreeSet, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError};
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::sync::{Mutex, Notify};
@@ -232,6 +233,7 @@ pub fn parse_devices_output(output: &str) -> Vec<Device> {
             connection_state: state,
             api_level: None,
             android_version: None,
+            avd_name: None,
         });
     }
     devices
@@ -254,26 +256,39 @@ pub async fn list_devices(adb: &Path) -> Vec<Device> {
 }
 
 async fn list_devices_within(adb: &Path, timeout: Duration) -> Vec<Device> {
-    let output = output_with_timeout(Command::new(adb).args(["devices", "-l"]), timeout).await;
-
-    match output {
-        Ok(out) => parse_devices_output(&String::from_utf8_lossy(&out.stdout)),
-        Err(e) => {
-            tracing::warn!(
-                "{}",
-                describe_failure("adb devices", &e, ADB_UNRESPONSIVE_HINT)
-            );
+    try_list_devices_within(adb, timeout)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("{e}");
             vec![]
-        }
-    }
+        })
 }
 
-/// Enrich a device's API level and Android version by querying device props.
+/// `adb devices -l`, or why it could not be listed. Unlike [`list_devices`],
+/// a failure here is not an empty list.
+async fn try_list_devices_within(adb: &Path, timeout: Duration) -> Result<Vec<Device>, String> {
+    let out = output_with_timeout(Command::new(adb).args(["devices", "-l"]), timeout)
+        .await
+        .map_err(|e| describe_failure("adb devices", &e, ADB_UNRESPONSIVE_HINT))?;
+    if !out.status.success() {
+        return Err(format!(
+            "adb devices failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(parse_devices_output(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// Enrich an online device's API level and Android version from its
+/// properties, and an emulator's AVD name (see [`resolve_avd_name`]).
 pub async fn enrich_device_props(adb: &Path, device: &mut Device) {
     if device.connection_state != DeviceConnectionState::Online {
         return;
     }
     let serial = device.serial.clone();
+    if device.device_kind == DeviceKind::Emulator {
+        device.avd_name = resolve_avd_name(adb, &serial).await;
+    }
 
     let sdk_out = output_with_timeout(
         Command::new(adb).args(["-s", &serial, "shell", "getprop", "ro.build.version.sdk"]),
@@ -725,68 +740,266 @@ fn parse_ini_value<'a>(content: &'a str, key: &str) -> Option<&'a str> {
     None
 }
 
-/// Launch an Android emulator for the given AVD name.
+// ── Emulators ──────────────────────────────────────────────────────────────────
+
+/// Upper bound for one `emu avd name` console query. Device enrichment and the
+/// launch and wipe waits call it; a stuck console connection must not stall
+/// them beyond this.
+const EMU_AVD_NAME_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// System properties an emulator sets to its AVD name (newer images first).
+const AVD_NAME_PROPS: [&str; 2] = ["ro.boot.qemu.avd_name", "ro.kernel.qemu.avd_name"];
+
+/// How often and how long to poll `adb devices` while an emulator starts or stops.
+#[derive(Debug, Clone, Copy)]
+struct EmulatorWait {
+    interval: Duration,
+    limit: Duration,
+}
+
+/// Launch: the AVD's emulator must come online.
+const LAUNCH_WAIT: EmulatorWait = EmulatorWait {
+    interval: Duration::from_secs(2),
+    limit: Duration::from_secs(60),
+};
+/// Wipe: the AVD's emulator, relaunched with `-wipe-data`, must come online.
+const WIPE_WAIT: EmulatorWait = EmulatorWait {
+    interval: Duration::from_secs(2),
+    limit: Duration::from_secs(30),
+};
+/// Stop: after `emu kill`, the emulator must leave `adb devices`. It may save
+/// a Quick Boot snapshot first.
+const STOP_WAIT: EmulatorWait = EmulatorWait {
+    interval: Duration::from_secs(1),
+    limit: Duration::from_secs(30),
+};
+
+/// Resolve the AVD a running emulator was started from: the console's
+/// `emu avd name`, else the AVD name properties. `None` while the emulator
+/// cannot answer yet (still booting) or when the answer is not an AVD name.
+pub async fn resolve_avd_name(adb: &Path, serial: &str) -> Option<String> {
+    if let Some(name) = emulator_avd_name(adb, serial).await {
+        return Some(name);
+    }
+    for prop in AVD_NAME_PROPS {
+        match output_with_timeout(
+            Command::new(adb).args(["-s", serial, "shell", "getprop", prop]),
+            ADB_QUERY_TIMEOUT,
+        )
+        .await
+        {
+            Ok(out) if out.status.success() => {
+                if let Some(name) = parse_avd_name(&String::from_utf8_lossy(&out.stdout)) {
+                    return Some(name);
+                }
+            }
+            Ok(_) => {}
+            // An unresponsive device must not stall the caller once per property.
+            Err(e) => {
+                tracing::debug!("adb getprop {prop} on {serial}: {e}");
+                return None;
+            }
+        }
+    }
+    None
+}
+
+/// `adb -s <serial> emu avd name`: the AVD name on the first line, then `OK`.
+async fn emulator_avd_name(adb: &Path, serial: &str) -> Option<String> {
+    let output = output_with_timeout(
+        Command::new(adb).args(["-s", serial, "emu", "avd", "name"]),
+        EMU_AVD_NAME_TIMEOUT,
+    )
+    .await
+    .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_avd_name(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// The AVD name on the first line of `output`. A console error such as
+/// `KO: unknown command` or an empty property is not a name.
+fn parse_avd_name(output: &str) -> Option<String> {
+    let name = output.lines().next()?.trim();
+    validate_avd_name(name).ok()?;
+    Some(name.to_string())
+}
+
+/// The serial of a listed emulator running `avd_name`. `online_only` skips
+/// emulators that are still booting or disconnected.
+async fn avd_serial(
+    adb: &Path,
+    devices: &[Device],
+    avd_name: &str,
+    online_only: bool,
+) -> Option<String> {
+    for d in devices.iter().filter(|d| {
+        d.device_kind == DeviceKind::Emulator
+            && (!online_only || d.connection_state == DeviceConnectionState::Online)
+    }) {
+        if resolve_avd_name(adb, &d.serial).await.as_deref() == Some(avd_name) {
+            return Some(d.serial.clone());
+        }
+    }
+    None
+}
+
+/// AVDs this process is starting (launch or wipe). Starting an AVD that is
+/// already starting would fail on the AVD's lock.
+static STARTING_AVDS: std::sync::Mutex<BTreeSet<String>> = std::sync::Mutex::new(BTreeSet::new());
+
+/// Marks an AVD as starting until dropped.
+struct StartingAvd(String);
+
+impl StartingAvd {
+    /// `None` when another request in this process is already starting it.
+    fn claim(avd_name: &str) -> Option<Self> {
+        let mut starting = STARTING_AVDS.lock().unwrap_or_else(PoisonError::into_inner);
+        starting
+            .insert(avd_name.to_string())
+            .then(|| StartingAvd(avd_name.to_string()))
+    }
+}
+
+impl Drop for StartingAvd {
+    fn drop(&mut self) {
+        STARTING_AVDS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.0);
+    }
+}
+
+/// Spawn `emulator @<avd_name> <extra_args> -no-boot-anim -gpu auto`. The
+/// emulator outlives the call; the handle only tells whether it exited early.
+fn spawn_emulator(
+    emulator_bin: &Path,
+    avd_name: &str,
+    extra_args: &[&str],
+) -> Result<tokio::process::Child, String> {
+    Command::new(emulator_bin)
+        .arg(format!("@{avd_name}"))
+        .args(extra_args)
+        .args(["-no-boot-anim", "-gpu", "auto"])
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map_err(|e| format!("Failed to start emulator: {e}"))
+}
+
+/// Poll until an emulator running `avd_name` is online and return its serial.
 ///
-/// Spawns `emulator @avd_name -no-boot-anim -gpu auto` and then polls
-/// `adb devices` until the emulator appears as online (30s timeout).
+/// Only emulators that were not online in `before` are candidates, and each is
+/// confirmed by its AVD name, so another emulator coming online cannot satisfy
+/// the wait. `child` is the emulator process this request started: if it exits
+/// with a failure before its AVD is online (for example on the AVD's lock),
+/// that is reported at once.
+async fn wait_for_avd_online(
+    adb: &Path,
+    avd_name: &str,
+    before: &[Device],
+    mut child: Option<tokio::process::Child>,
+    wait: EmulatorWait,
+) -> Result<String, String> {
+    let mut other_avds: HashSet<String> = HashSet::new();
+    let deadline = std::time::Instant::now() + wait.limit;
+    loop {
+        tokio::time::sleep(wait.interval).await;
+        let devices = list_devices(adb).await;
+        for serial in newly_online_emulator_serials_since(before, &devices) {
+            if other_avds.contains(&serial) {
+                continue;
+            }
+            match resolve_avd_name(adb, &serial).await {
+                Some(name) if name == avd_name => return Ok(serial),
+                Some(_) => {
+                    other_avds.insert(serial);
+                }
+                // Not answering yet (booting); ask again on the next poll.
+                None => {}
+            }
+        }
+        if let Some(status) = child.as_mut().and_then(|c| c.try_wait().ok().flatten()) {
+            if !status.success() {
+                return Err(format!(
+                    "The emulator for '{avd_name}' exited ({status}) before it came online. \
+                     Check that the AVD is not already running in another window or tool."
+                ));
+            }
+            child = None;
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(format!(
+                "Emulator '{avd_name}' did not come online within {} s",
+                wait.limit.as_secs()
+            ));
+        }
+    }
+}
+
+/// An emulator returned by [`launch_emulator`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchedEmulator {
+    pub serial: String,
+    /// The AVD was already running, or another request in this process was
+    /// starting it, so this call did not start another emulator.
+    pub already_running: bool,
+}
+
+/// Launch an Android emulator for the given AVD name and return its serial
+/// once it is online in `adb devices` (60 s limit).
+///
+/// An AVD that is already running is not started again; its serial is
+/// returned. The serial is always that of the emulator running `avd_name`,
+/// even while other emulators start at the same time.
 pub async fn launch_emulator(
     emulator_bin: &Path,
     adb: &Path,
     avd_name: &str,
-) -> Result<String, String> {
-    let before = list_devices(adb).await;
-
-    // Spawn detached — we don't wait for the emulator process to exit.
-    tokio::process::Command::new(emulator_bin)
-        .args([&format!("@{avd_name}"), "-no-boot-anim", "-gpu", "auto"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Failed to start emulator: {e}"))?;
-
-    // Poll `adb devices` until the new emulator appears (up to 60 seconds).
-    let deadline = std::time::Instant::now() + Duration::from_secs(60);
-    while std::time::Instant::now() < deadline {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        let devices = list_devices(adb).await;
-        if let Some(serial) = newly_online_emulator_serial(&before, &devices) {
-            return Ok(serial);
-        }
-    }
-    Err(format!(
-        "Emulator '{avd_name}' did not come online within 60 seconds"
-    ))
+) -> Result<LaunchedEmulator, String> {
+    launch_emulator_with(emulator_bin, adb, avd_name, LAUNCH_WAIT).await
 }
 
-fn newly_online_emulator_serial(before: &[Device], after: &[Device]) -> Option<String> {
-    let before_serials: std::collections::HashSet<&str> = before
-        .iter()
-        .filter(|d| d.device_kind == DeviceKind::Emulator)
-        .map(|d| d.serial.as_str())
-        .collect();
-
-    after
-        .iter()
-        .find(|d| {
-            d.device_kind == DeviceKind::Emulator
-                && d.connection_state == DeviceConnectionState::Online
-                && !before_serials.contains(d.serial.as_str())
-        })
-        .map(|d| d.serial.clone())
+async fn launch_emulator_with(
+    emulator_bin: &Path,
+    adb: &Path,
+    avd_name: &str,
+    wait: EmulatorWait,
+) -> Result<LaunchedEmulator, String> {
+    let Some(_starting) = StartingAvd::claim(avd_name) else {
+        let serial = wait_for_avd_online(adb, avd_name, &[], None, wait).await?;
+        return Ok(LaunchedEmulator {
+            serial,
+            already_running: true,
+        });
+    };
+    let before = list_devices(adb).await;
+    if let Some(serial) = avd_serial(adb, &before, avd_name, true).await {
+        return Ok(LaunchedEmulator {
+            serial,
+            already_running: true,
+        });
+    }
+    let child = spawn_emulator(emulator_bin, avd_name, &[])?;
+    let serial = wait_for_avd_online(adb, avd_name, &before, Some(child), wait).await?;
+    Ok(LaunchedEmulator {
+        serial,
+        already_running: false,
+    })
 }
 
 /// Emulator serials online in `after` that were NOT online in `before`.
 ///
-/// Unlike [`newly_online_emulator_serial`], this also counts a serial that was
-/// listed (offline) before and came back online. This matters for
-/// `wipe_avd_data`: a relaunched emulator typically reacquires its previous
-/// console port (`emulator-5554`), so "absent from the before list" would
-/// never match and the wait would time out on a successful wipe.
+/// This also counts a serial that was listed (offline) before and came back
+/// online: a relaunched emulator typically reacquires its previous console
+/// port (`emulator-5554`).
 ///
-/// Returns ALL matching serials — an unrelated emulator becoming online before
-/// the wiped AVD must not shadow it.
+/// Returns ALL matching serials — an unrelated emulator becoming online first
+/// must not shadow the one being waited for.
 fn newly_online_emulator_serials_since(before: &[Device], after: &[Device]) -> Vec<String> {
-    let before_online: std::collections::HashSet<&str> = before
+    let before_online: HashSet<&str> = before
         .iter()
         .filter(|d| {
             d.device_kind == DeviceKind::Emulator
@@ -806,15 +1019,92 @@ fn newly_online_emulator_serials_since(before: &[Device], after: &[Device]) -> V
         .collect()
 }
 
-/// Kill an emulator via `adb -s <serial> emu kill`.
+/// Stop an emulator with `adb -s <serial> emu kill` and wait until it has left
+/// `adb devices` (30 s limit). A refused or failed kill is an error, and so is
+/// an emulator still listed at the limit.
 pub async fn stop_emulator(adb: &Path, serial: &str) -> Result<(), String> {
-    output_with_timeout(
+    stop_emulator_with(adb, serial, STOP_WAIT).await
+}
+
+async fn stop_emulator_with(adb: &Path, serial: &str, wait: EmulatorWait) -> Result<(), String> {
+    let out = output_with_timeout(
         Command::new(adb).args(["-s", serial, "emu", "kill"]),
         EMULATOR_STOP_TIMEOUT,
     )
     .await
-    .map(|_| ())
-    .map_err(|e| describe_failure("adb emu kill", &e, ADB_UNRESPONSIVE_HINT))
+    .map_err(|e| describe_failure("adb emu kill", &e, ADB_UNRESPONSIVE_HINT))?;
+    let output = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    if let Some(reason) = emu_kill_failure(out.status.success(), &output) {
+        return Err(format!("Could not stop {serial}: {reason}"));
+    }
+
+    let deadline = std::time::Instant::now() + wait.limit;
+    loop {
+        tokio::time::sleep(wait.interval).await;
+        match try_list_devices_within(adb, ADB_QUERY_TIMEOUT).await {
+            Ok(devices) if !devices.iter().any(|d| d.serial == serial) => return Ok(()),
+            Ok(_) => {}
+            // adb not answering says nothing about the emulator; keep waiting.
+            Err(e) => tracing::debug!("{e}"),
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(format!(
+                "{serial} accepted the stop request but is still listed by adb after {} s",
+                wait.limit.as_secs()
+            ));
+        }
+    }
+}
+
+/// Why `adb emu kill` failed, if it did. adb reports some failures with exit
+/// status 0, and the emulator console answers `KO: …` to a refused command.
+fn emu_kill_failure(success: bool, output: &str) -> Option<String> {
+    let error_line = output
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("KO") || line.to_ascii_lowercase().starts_with("error"));
+    match (success, error_line) {
+        (_, Some(line)) => Some(line.to_string()),
+        (true, None) => None,
+        (false, None) if output.trim().is_empty() => Some("adb exited with an error".to_string()),
+        (false, None) => Some(output.trim().to_string()),
+    }
+}
+
+/// Wipe an emulator's user data by relaunching it with `-wipe-data`, and wait
+/// until that AVD's emulator is online again (30 s limit).
+///
+/// Refused while the AVD is running or being started: the relaunch would fail
+/// on the AVD's lock.
+pub async fn wipe_avd_data(emulator_bin: &Path, adb: &Path, avd_name: &str) -> Result<(), String> {
+    wipe_avd_data_with(emulator_bin, adb, avd_name, WIPE_WAIT).await
+}
+
+async fn wipe_avd_data_with(
+    emulator_bin: &Path,
+    adb: &Path,
+    avd_name: &str,
+    wait: EmulatorWait,
+) -> Result<(), String> {
+    let Some(_starting) = StartingAvd::claim(avd_name) else {
+        return Err(format!(
+            "'{avd_name}' is starting. Stop it once it is running, then wipe its data."
+        ));
+    };
+    let before = list_devices(adb).await;
+    if let Some(serial) = avd_serial(adb, &before, avd_name, false).await {
+        return Err(format!(
+            "'{avd_name}' is running as {serial}. Stop it before wiping its data."
+        ));
+    }
+    let child = spawn_emulator(emulator_bin, avd_name, &["-wipe-data"])?;
+    wait_for_avd_online(adb, avd_name, &before, Some(child), wait)
+        .await
+        .map(|_| ())
 }
 
 // ── avdmanager operations ──────────────────────────────────────────────────────
@@ -1147,82 +1437,6 @@ pub async fn delete_avd(avdmanager: &Path, name: &str) -> Result<(), String> {
     } else {
         Err(format!("AVD deletion failed: {stderr}"))
     }
-}
-
-/// Upper bound for one `emu avd name` console query. The wipe wait loop polls
-/// every 2s against a 30s deadline; a stuck console connection must not stall
-/// a single poll beyond this window.
-const EMU_AVD_NAME_TIMEOUT: Duration = Duration::from_secs(5);
-
-/// Query an emulator's AVD identity via `adb -s <serial> emu avd name`.
-/// Returns the AVD name (first stdout line), or `None` if the query fails or
-/// times out — e.g. the emulator is still booting or the console connection
-/// is stuck. Callers should treat `None` as "not confirmed yet" and
-/// keep polling rather than as a hard failure.
-async fn emulator_avd_name(adb: &Path, serial: &str) -> Option<String> {
-    let output = output_with_timeout(
-        tokio::process::Command::new(adb).args(["-s", serial, "emu", "avd", "name"]),
-        EMU_AVD_NAME_TIMEOUT,
-    )
-    .await
-    .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .next()
-        .map(|line| line.trim().to_string())
-        .filter(|name| !name.is_empty())
-}
-
-/// Wipe an emulator's user data by relaunching it with `-wipe-data`.
-pub async fn wipe_avd_data(emulator_bin: &Path, adb: &Path, avd_name: &str) -> Result<(), String> {
-    let before = list_devices(adb).await;
-
-    tokio::process::Command::new(emulator_bin)
-        .args([
-            &format!("@{avd_name}"),
-            "-wipe-data",
-            "-no-boot-anim",
-            "-gpu",
-            "auto",
-        ])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .map_err(|e| format!("Failed to start emulator: {e}"))?;
-
-    // Wait up to 30s for the wiped AVD's emulator to come online. Compare
-    // online-state against the pre-spawn snapshot so an unrelated emulator
-    // that was already online cannot satisfy the wait, then confirm each
-    // candidate's AVD identity via `emu avd name` so an unrelated emulator
-    // that merely transitioned offline→online also cannot satisfy it.
-    // Candidates whose identity does not match are remembered and skipped on
-    // later polls so they cannot shadow the wiped AVD.
-    let mut rejected_serials: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let deadline = std::time::Instant::now() + Duration::from_secs(30);
-    while std::time::Instant::now() < deadline {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-        let devices = list_devices(adb).await;
-        for serial in newly_online_emulator_serials_since(&before, &devices) {
-            if rejected_serials.contains(&serial) {
-                continue;
-            }
-            match emulator_avd_name(adb, &serial).await.as_deref() {
-                Some(name) if name == avd_name => return Ok(()),
-                // Confirmed to be a different AVD — never re-check it.
-                Some(_) => {
-                    rejected_serials.insert(serial);
-                }
-                // Unconfirmed (booting or console not ready) — retry next poll.
-                None => {}
-            }
-        }
-    }
-    Err(format!(
-        "Emulator '{avd_name}' did not come online within 30 seconds after wiping data"
-    ))
 }
 
 // ── sdkmanager operations ──────────────────────────────────────────────────────
@@ -1731,6 +1945,7 @@ mod tests {
             connection_state,
             api_level: None,
             android_version: None,
+            avd_name: None,
         }
     }
 
@@ -1783,70 +1998,6 @@ emulator-5554          device product:sdk model:sdk_gphone transport_id:1\n";
     fn parse_ini_value_finds_key() {
         let content = "path=/home/user/.android/avd/Pixel_7.avd\ntarget=android-34\n";
         assert_eq!(parse_ini_value(content, "target"), Some("android-34"));
-    }
-
-    #[test]
-    fn newly_online_emulator_serial_ignores_existing_emulators() {
-        let before = vec![test_device(
-            "emulator-5554",
-            DeviceKind::Emulator,
-            DeviceConnectionState::Online,
-        )];
-        let after = vec![
-            test_device(
-                "emulator-5554",
-                DeviceKind::Emulator,
-                DeviceConnectionState::Online,
-            ),
-            test_device(
-                "emulator-5556",
-                DeviceKind::Emulator,
-                DeviceConnectionState::Online,
-            ),
-        ];
-
-        assert_eq!(
-            newly_online_emulator_serial(&before, &after),
-            Some("emulator-5556".to_string())
-        );
-    }
-
-    #[test]
-    fn newly_online_emulator_serial_returns_none_for_only_existing_emulators() {
-        let before = vec![test_device(
-            "emulator-5554",
-            DeviceKind::Emulator,
-            DeviceConnectionState::Online,
-        )];
-        let after = before.clone();
-
-        assert_eq!(newly_online_emulator_serial(&before, &after), None);
-    }
-
-    #[test]
-    fn newly_online_emulator_serial_ignores_existing_offline_emulators() {
-        let before = vec![test_device(
-            "emulator-5554",
-            DeviceKind::Emulator,
-            DeviceConnectionState::Offline,
-        )];
-        let after = vec![
-            test_device(
-                "emulator-5554",
-                DeviceKind::Emulator,
-                DeviceConnectionState::Online,
-            ),
-            test_device(
-                "emulator-5556",
-                DeviceKind::Emulator,
-                DeviceConnectionState::Online,
-            ),
-        ];
-
-        assert_eq!(
-            newly_online_emulator_serial(&before, &after),
-            Some("emulator-5556".to_string())
-        );
     }
 
     #[test]
@@ -1979,5 +2130,387 @@ emulator-5554          device product:sdk model:sdk_gphone transport_id:1\n";
         )];
 
         assert!(newly_online_emulator_serials_since(&before, &after).is_empty());
+    }
+
+    // ── Emulator lifecycle against a fake SDK ─────────────────────────────────
+
+    /// A fake `adb` and `emulator` sharing a state directory. A running
+    /// emulator is a file named after its serial holding its AVD name. Every
+    /// `adb devices` line reports the Google image's model, never the AVD name.
+    ///
+    /// Markers in the state directory: `<serial>.offline` (listed offline),
+    /// `<serial>.noconsole` (`emu` commands fail), `<serial>.kill-error`
+    /// (`emu kill` fails), `<serial>.kill-ko` (the console refuses it with exit
+    /// status 0), `<serial>.kill-ignored` (accepted but the emulator keeps
+    /// running), `delay-<avd>` (seconds before the emulator comes online).
+    struct FakeSdk {
+        _dir: tempfile::TempDir,
+        state: PathBuf,
+        adb: PathBuf,
+        emulator: PathBuf,
+    }
+
+    const FAKE_ADB: &str = r#"#!/bin/sh
+cd "$STATE" || exit 1
+if [ "$1" = devices ]; then
+  echo "List of devices attached"
+  for f in emulator-*; do
+    case "$f" in *.*|'emulator-*'|emulator-calls) continue ;; esac
+    st=device; [ -f "$f.offline" ] && st=offline
+    printf '%s\t%s product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a\n' "$f" "$st"
+  done
+  exit 0
+fi
+serial="$2"; shift 2
+if [ ! -f "$serial" ]; then echo "error: device '$serial' not found" >&2; exit 1; fi
+if [ "$1" = emu ]; then
+  if [ -f "$serial.noconsole" ]; then echo "error: could not connect to TCP port" >&2; exit 1; fi
+  if [ "$2" = avd ]; then cat "$serial"; echo; echo OK; exit 0; fi
+  if [ "$2" = kill ]; then
+    if [ -f "$serial.kill-error" ]; then echo "error: could not connect to TCP port 5554: Connection refused" >&2; exit 1; fi
+    if [ -f "$serial.kill-ko" ]; then echo "KO: permission denied"; exit 0; fi
+    echo "OK: killing emulator, bye bye"; echo OK
+    [ -f "$serial.kill-ignored" ] || (sleep 1; rm -f "$serial") >/dev/null 2>&1 &
+    exit 0
+  fi
+fi
+if [ "$1" = shell ] && [ "$2" = getprop ]; then
+  case "$3" in
+    ro.boot.qemu.avd_name) cat "$serial"; echo ;;
+    ro.kernel.qemu.avd_name) echo ;;
+    *) echo 34 ;;
+  esac
+  exit 0
+fi
+exit 0
+"#;
+
+    const FAKE_EMULATOR: &str = r#"#!/bin/sh
+cd "$STATE" || exit 1
+avd="${1#@}"
+echo "$@" >> emulator-calls
+for f in emulator-*; do
+  case "$f" in *.*|'emulator-*'|emulator-calls) continue ;; esac
+  if [ "$(cat "$f")" = "$avd" ]; then echo "ERROR | the AVD is already running" >&2; exit 1; fi
+done
+[ -f "fail-$avd" ] && exit 1
+port=5554
+while ! mkdir "port-$port" 2>/dev/null; do port=$((port + 2)); done
+[ -f "delay-$avd" ] && sleep "$(cat "delay-$avd")"
+printf '%s' "$avd" > "tmp-$port" && mv "tmp-$port" "emulator-$port"
+"#;
+
+    impl FakeSdk {
+        fn new() -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            let dir = tempfile::tempdir().unwrap();
+            let state = dir.path().join("state");
+            std::fs::create_dir(&state).unwrap();
+            let write = |name: &str, body: &str| {
+                let path = dir.path().join(name);
+                let script = body.replacen(
+                    "#!/bin/sh\n",
+                    &format!("#!/bin/sh\nSTATE='{}'\n", state.display()),
+                    1,
+                );
+                std::fs::write(&path, script).unwrap();
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+                path
+            };
+            let adb = write("adb", FAKE_ADB);
+            let emulator = write("emulator", FAKE_EMULATOR);
+            FakeSdk {
+                state,
+                adb,
+                emulator,
+                _dir: dir,
+            }
+        }
+
+        /// An emulator already running `avd` on `serial`.
+        fn running(&self, serial: &str, avd: &str) -> &Self {
+            std::fs::write(self.state.join(serial), avd).unwrap();
+            let port = serial.trim_start_matches("emulator-");
+            std::fs::create_dir_all(self.state.join(format!("port-{port}"))).unwrap();
+            self
+        }
+
+        fn mark(&self, name: &str, contents: &str) -> &Self {
+            std::fs::write(self.state.join(name), contents).unwrap();
+            self
+        }
+
+        fn is_listed(&self, serial: &str) -> bool {
+            self.state.join(serial).exists()
+        }
+
+        fn emulator_calls(&self) -> Vec<String> {
+            std::fs::read_to_string(self.state.join("emulator-calls"))
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect()
+        }
+    }
+
+    /// Polls quickly; the limit is generous because a loaded machine can slow
+    /// the fake scripts, and waits that succeed return as soon as they can.
+    const QUICK: EmulatorWait = EmulatorWait {
+        interval: Duration::from_millis(50),
+        limit: Duration::from_secs(20),
+    };
+
+    #[tokio::test]
+    async fn enrichment_names_the_avd_even_when_the_model_differs() {
+        let sdk = FakeSdk::new();
+        sdk.running("emulator-5554", "Pixel_7_Pro");
+
+        let mut devices = list_devices(&sdk.adb).await;
+        assert_eq!(devices[0].model.as_deref(), Some("sdk gphone64 arm64"));
+        enrich_device_props(&sdk.adb, &mut devices[0]).await;
+
+        assert_eq!(devices[0].avd_name.as_deref(), Some("Pixel_7_Pro"));
+    }
+
+    #[tokio::test]
+    async fn avd_name_falls_back_to_the_boot_property_without_a_console() {
+        let sdk = FakeSdk::new();
+        sdk.running("emulator-5554", "Pixel_7")
+            .mark("emulator-5554.noconsole", "");
+
+        assert_eq!(
+            resolve_avd_name(&sdk.adb, "emulator-5554").await.as_deref(),
+            Some("Pixel_7")
+        );
+    }
+
+    #[test]
+    fn console_errors_are_not_avd_names() {
+        assert_eq!(parse_avd_name("KO: unknown command, try 'help'\n"), None);
+        assert_eq!(parse_avd_name("\n"), None);
+        assert_eq!(
+            parse_avd_name("Pixel_7\r\nOK\r\n").as_deref(),
+            Some("Pixel_7")
+        );
+    }
+
+    #[tokio::test]
+    async fn physical_devices_get_no_avd_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let adb = adb_printing(dir.path(), "Pixel_7");
+        let mut device = test_device(
+            "ZX1G22ABCD",
+            DeviceKind::Physical,
+            DeviceConnectionState::Online,
+        );
+
+        enrich_device_props(&adb, &mut device).await;
+
+        assert_eq!(device.avd_name, None);
+    }
+
+    #[tokio::test]
+    async fn a_failed_stop_is_reported() {
+        let sdk = FakeSdk::new();
+        sdk.running("emulator-5554", "StopFails")
+            .mark("emulator-5554.kill-error", "");
+
+        let err = stop_emulator_with(&sdk.adb, "emulator-5554", QUICK)
+            .await
+            .unwrap_err();
+
+        assert!(err.contains("Connection refused"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn a_stop_the_console_refuses_is_reported_despite_exit_zero() {
+        let sdk = FakeSdk::new();
+        sdk.running("emulator-5554", "StopRefused")
+            .mark("emulator-5554.kill-ko", "");
+
+        let err = stop_emulator_with(&sdk.adb, "emulator-5554", QUICK)
+            .await
+            .unwrap_err();
+
+        assert!(err.contains("KO: permission denied"), "{err}");
+        assert!(sdk.is_listed("emulator-5554"));
+    }
+
+    #[tokio::test]
+    async fn stop_waits_until_the_emulator_leaves_the_device_list() {
+        let sdk = FakeSdk::new();
+        sdk.running("emulator-5554", "StopWaits");
+
+        stop_emulator_with(&sdk.adb, "emulator-5554", QUICK)
+            .await
+            .unwrap();
+
+        assert!(
+            !sdk.is_listed("emulator-5554"),
+            "reported stopped while adb still lists the emulator"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_emulator_that_keeps_running_is_not_reported_stopped() {
+        let sdk = FakeSdk::new();
+        sdk.running("emulator-5554", "StopIgnored")
+            .mark("emulator-5554.kill-ignored", "");
+        let wait = EmulatorWait {
+            interval: Duration::from_millis(50),
+            limit: Duration::from_millis(500),
+        };
+
+        let err = stop_emulator_with(&sdk.adb, "emulator-5554", wait)
+            .await
+            .unwrap_err();
+
+        assert!(err.contains("still listed"), "{err}");
+    }
+
+    #[test]
+    fn emu_kill_output_is_checked() {
+        assert_eq!(
+            emu_kill_failure(true, "OK: killing emulator, bye bye\nOK\n"),
+            None
+        );
+        assert!(emu_kill_failure(true, "KO: bad command\n").is_some());
+        assert!(emu_kill_failure(true, "error: device offline\n").is_some());
+        assert!(emu_kill_failure(false, "\n").is_some());
+    }
+
+    #[tokio::test]
+    async fn wiping_a_running_avd_is_refused_without_relaunching_it() {
+        let sdk = FakeSdk::new();
+        sdk.running("emulator-5554", "WipeRunning");
+
+        let err = wipe_avd_data_with(&sdk.emulator, &sdk.adb, "WipeRunning", QUICK)
+            .await
+            .unwrap_err();
+
+        assert!(err.contains("is running as emulator-5554"), "{err}");
+        assert!(
+            sdk.emulator_calls().is_empty(),
+            "the emulator was relaunched"
+        );
+    }
+
+    #[tokio::test]
+    async fn wipe_waits_for_its_own_avd_while_another_emulator_runs() {
+        let sdk = FakeSdk::new();
+        sdk.running("emulator-5554", "WipeBystander")
+            .mark("delay-WipeTarget", "0.3");
+
+        wipe_avd_data_with(&sdk.emulator, &sdk.adb, "WipeTarget", QUICK)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(sdk.state.join("emulator-5556")).unwrap(),
+            "WipeTarget",
+            "wipe returned before the wiped AVD came online"
+        );
+        assert_eq!(
+            sdk.emulator_calls(),
+            vec!["@WipeTarget -wipe-data -no-boot-anim -gpu auto"]
+        );
+    }
+
+    #[tokio::test]
+    async fn wipe_fails_at_once_when_the_emulator_exits_with_an_error() {
+        let sdk = FakeSdk::new();
+        sdk.mark("fail-WipeBroken", "");
+        let wait = EmulatorWait {
+            interval: Duration::from_millis(50),
+            limit: Duration::from_secs(120),
+        };
+
+        let start = std::time::Instant::now();
+        let err = wipe_avd_data_with(&sdk.emulator, &sdk.adb, "WipeBroken", wait)
+            .await
+            .unwrap_err();
+
+        assert!(err.contains("exited"), "{err}");
+        assert!(start.elapsed() < Duration::from_secs(60));
+    }
+
+    #[tokio::test]
+    async fn simultaneous_launches_each_return_their_own_emulator() {
+        let sdk = FakeSdk::new();
+        // The first AVD comes online after the second one.
+        sdk.mark("delay-LaunchSlow", "0.6")
+            .mark("delay-LaunchFast", "0.1");
+
+        let (slow, fast) = tokio::join!(
+            launch_emulator_with(&sdk.emulator, &sdk.adb, "LaunchSlow", QUICK),
+            launch_emulator_with(&sdk.emulator, &sdk.adb, "LaunchFast", QUICK),
+        );
+        let (slow, fast) = (slow.unwrap(), fast.unwrap());
+
+        assert_ne!(slow.serial, fast.serial);
+        for (launched, avd) in [(&slow, "LaunchSlow"), (&fast, "LaunchFast")] {
+            assert_eq!(
+                std::fs::read_to_string(sdk.state.join(&launched.serial)).unwrap(),
+                avd
+            );
+            assert!(!launched.already_running);
+        }
+    }
+
+    #[tokio::test]
+    async fn launching_the_same_avd_twice_at_once_starts_one_emulator() {
+        let sdk = FakeSdk::new();
+        sdk.mark("delay-LaunchTwice", "0.3");
+
+        let (first, second) = tokio::join!(
+            launch_emulator_with(&sdk.emulator, &sdk.adb, "LaunchTwice", QUICK),
+            launch_emulator_with(&sdk.emulator, &sdk.adb, "LaunchTwice", QUICK),
+        );
+
+        assert_eq!(first.unwrap().serial, second.unwrap().serial);
+        assert_eq!(sdk.emulator_calls().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn launching_a_running_avd_returns_its_serial() {
+        let sdk = FakeSdk::new();
+        sdk.running("emulator-5554", "LaunchOther")
+            .running("emulator-5556", "LaunchRunning");
+
+        let launched = launch_emulator_with(&sdk.emulator, &sdk.adb, "LaunchRunning", QUICK)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            launched,
+            LaunchedEmulator {
+                serial: "emulator-5556".into(),
+                already_running: true
+            }
+        );
+        assert!(sdk.emulator_calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn another_emulator_coming_online_does_not_satisfy_a_launch() {
+        let sdk = FakeSdk::new();
+        // Its own emulator is still booting when the wait ends.
+        sdk.mark("delay-LaunchNever", "3");
+        // An unrelated emulator that finishes booting during the launch.
+        sdk.running("emulator-5554", "LaunchBystander")
+            .mark("emulator-5554.offline", "");
+        let state = sdk.state.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            let _ = std::fs::remove_file(state.join("emulator-5554.offline"));
+        });
+        let wait = EmulatorWait {
+            interval: Duration::from_millis(50),
+            limit: Duration::from_millis(600),
+        };
+
+        let result = launch_emulator_with(&sdk.emulator, &sdk.adb, "LaunchNever", wait).await;
+
+        assert!(result.is_err(), "{result:?}");
     }
 }

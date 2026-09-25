@@ -2895,7 +2895,7 @@ impl AndroidMcpServer {
 
     /// Launch an Android Virtual Device (emulator).
     #[tool(
-        description = "Launch an Android Virtual Device (emulator). Returns the emulator serial when ready.",
+        description = "Launch an Android Virtual Device (emulator) and return the serial of the emulator running it once it is online. An AVD that is already running is not started again (already_running: true).",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -2912,18 +2912,22 @@ impl AndroidMcpServer {
         let emulator = adb_manager::get_emulator_path(&settings);
         let adb = adb_manager::get_adb_path(&settings);
 
-        let serial = adb_manager::launch_emulator(&emulator, &adb, &p.name)
-            .await
-            .map_err(|e| McpError::internal_error(format!("Failed to launch AVD: {e}"), None))?;
-
-        Ok(CallToolResult::structured(
-            json!({ "serial": serial, "avd_name": p.name }),
-        ))
+        match adb_manager::launch_emulator(&emulator, &adb, &p.name).await {
+            Ok(launched) => Ok(CallToolResult::structured(json!({
+                "serial": launched.serial,
+                "avd_name": p.name,
+                "already_running": launched.already_running,
+            }))),
+            Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "Failed to launch AVD '{}': {e}",
+                p.name
+            ))])),
+        }
     }
 
     /// Stop a running emulator.
     #[tool(
-        description = "Stop a running Android emulator by its ADB serial.",
+        description = "Stop a running Android emulator by its ADB serial. Succeeds only once the emulator has left the device list.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -2939,9 +2943,11 @@ impl AndroidMcpServer {
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
-        adb_manager::stop_emulator(&adb, &p.serial)
-            .await
-            .map_err(|e| McpError::internal_error(format!("Failed to stop emulator: {e}"), None))?;
+        if let Err(e) = adb_manager::stop_emulator(&adb, &p.serial).await {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                "Failed to stop emulator: {e}"
+            ))]));
+        }
 
         Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "Emulator {} stopped.",

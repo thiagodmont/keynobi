@@ -52,44 +52,28 @@ export function deviceCount(): number {
   return onlineDevices().length;
 }
 
+function onlineEmulators(): Device[] {
+  return deviceState.devices.filter(
+    (d) => d.deviceKind === "emulator" && d.connectionState === "online"
+  );
+}
+
 /**
- * Set of AVD names that have a running emulator in the connected device list.
- * Matches by display name (lowercased, spaces normalized) against the emulator model name.
+ * Names of the AVDs with an online emulator. Matches the AVD name the backend
+ * resolved for each emulator exactly; the model and display names only label
+ * devices and can differ from the AVD name or collide between AVDs.
  */
 export function runningAvdNames(): Set<string> {
   const running = new Set<string>();
-  const emulators = deviceState.devices.filter(
-    (d) => d.deviceKind === "emulator" && d.connectionState === "online"
-  );
-  for (const avd of deviceState.avds) {
-    // The emulator model name from ADB is usually the AVD name with underscores replaced.
-    const normalizedAvd = avd.name.toLowerCase().replace(/[\s_-]/g, "");
-    for (const em of emulators) {
-      const emModel = (em.model ?? em.name).toLowerCase().replace(/[\s_-]/g, "");
-      if (
-        normalizedAvd === emModel ||
-        emModel.includes(normalizedAvd) ||
-        normalizedAvd.includes(emModel)
-      ) {
-        running.add(avd.name);
-        break;
-      }
-    }
+  for (const em of onlineEmulators()) {
+    if (em.avdName) running.add(em.avdName);
   }
   return running;
 }
 
-/** Running serial for a given AVD name, if it's currently online. */
+/** Serial of the online emulator running the given AVD, if any. */
 export function serialForAvd(avdName: string): string | null {
-  const normalized = avdName.toLowerCase().replace(/[\s_-]/g, "");
-  for (const d of deviceState.devices) {
-    if (d.deviceKind !== "emulator" || d.connectionState !== "online") continue;
-    const emModel = (d.model ?? d.name).toLowerCase().replace(/[\s_-]/g, "");
-    if (normalized === emModel || emModel.includes(normalized) || normalized.includes(emModel)) {
-      return d.serial;
-    }
-  }
-  return null;
+  return onlineEmulators().find((d) => d.avdName === avdName)?.serial ?? null;
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────

@@ -272,7 +272,7 @@ Virtual devices:
 
 - Launch an emulator from its row. To shut a running emulator down, hover over it and click stop, press Shift+F10 on it in the connected list and choose **Stop Emulator**, or use stop on its virtual device row.
 - **New Virtual Device** creates an AVD, and can download a system image if needed.
-- **More options** on an AVD offers **Wipe Data…** and **Delete…**.
+- **More options** on an AVD offers **Wipe Data…** and **Delete…**. Stop a running emulator before wiping its data; Keynobi refuses to wipe an AVD that is running.
 - A virtual device's buttons appear when you hover over its row or Tab to them.
 
 Wireless debugging pairing is not built in. Pair with `adb pair` and `adb connect` in a terminal; the device then appears in the list.
