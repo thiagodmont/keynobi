@@ -1,0 +1,40 @@
+src-tauri/src/services/build_runner.rs
+  s_1e114e823b9048::t_2857c68a134b07 632-644,679-682,767-775,2205-2274
+  s_1e114e823b9048::t_4e8805219fc356 2275-2276
+  s_1e114e823b9048::t_2556d54e1d9c61 2277
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_1b0c18dd9dcb5c 99-100,279-282
+src-tauri/src/utils/path.rs
+  s_1e114e823b9048::t_2857c68a134b07 58-59,61-72,77,86-97,217-264,267-370
+  s_1e114e823b9048::t_924a5f941d4046 60
+  s_1e114e823b9048::t_c8ea45723b00a2 265-266,371
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_1b0c18dd9dcb5c 132,209-210,234,319-320
+  s_1e114e823b9048::t_713e61bbd499f7 299
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_2857c68a134b07 2784,2789,3273-3275,3315-3320,3323-3356,3645-3647,3652-3653,3745-3796,4394-4418
+  s_1e114e823b9048::t_9b50a22deef8dc 4419-4421
+  s_1e114e823b9048::t_6e7fca2c92cd12 3797-3798
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_2857c68a134b07 1294-1418
+references/CODE_PATTERN.md
+  s_1e114e823b9048::t_1b0c18dd9dcb5c 106-109
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_1b0c18dd9dcb5c 109,415
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "44d8a1c299d088d6011b69a2fd0713cc5888865c",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
