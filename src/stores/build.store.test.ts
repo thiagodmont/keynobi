@@ -126,6 +126,7 @@ describe("build.store", () => {
         projectRoot: "/home/user/my-app",
         origin: null,
         cancelledBy: null,
+        launch: null,
       },
     ]);
     expect(buildState.history).toHaveLength(1);
@@ -147,6 +148,7 @@ describe("build.store", () => {
         projectRoot: "/home/user/my-app",
         origin: null,
         cancelledBy: null,
+        launch: null,
       },
     ]);
     startBuild("assembleDebug");
@@ -167,6 +169,7 @@ describe("build.store", () => {
         projectRoot: "/home/user/my-app",
         origin: null,
         cancelledBy: null,
+        launch: null,
       },
     ]);
     startBuild("assembleDebug");

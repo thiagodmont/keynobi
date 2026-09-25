@@ -309,6 +309,7 @@ describe("the mock backend matches the real payloads", () => {
     // Commands that look something up need something to find.
     const args = {
       get_build_log_entries: { id: addMockPastBuild({ task: "assembleDebug", state: "success" }) },
+      launch_app_on_device: { serial: "emulator-5554", package: "com.example.mockapp" },
     };
     for (const [command, type] of invokedTypes()) {
       if (!isNamedType(type)) continue;

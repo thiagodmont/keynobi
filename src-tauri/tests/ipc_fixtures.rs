@@ -199,6 +199,31 @@ fn build_errors() -> Vec<BuildError> {
     ]
 }
 
+/// A launch on an emulator with every value reported, and one on a device
+/// that reported only the total time.
+fn launch_timings() -> Vec<LaunchTiming> {
+    vec![
+        LaunchTiming {
+            total_ms: 812,
+            wait_ms: Some(815),
+            launch_state: Some(LaunchState::Cold),
+            measured_at: TIME.into(),
+            serial: "emulator-5554".into(),
+            avd_name: Some("Pixel_7_API_34".into()),
+            model: Some("sdk_gphone64_arm64".into()),
+        },
+        LaunchTiming {
+            total_ms: 640,
+            wait_ms: None,
+            launch_state: None,
+            measured_at: TIME.into(),
+            serial: "28151FDH2000Q4".into(),
+            avd_name: None,
+            model: None,
+        },
+    ]
+}
+
 fn build_result(success: bool) -> BuildResult {
     BuildResult {
         success,
@@ -487,9 +512,44 @@ fn fixtures() -> Fixtures {
             project_root: actor.as_ref().map(|_| "/p".to_string()),
             origin: actor.clone(),
             cancelled_by: actor,
+            launch: None,
         })
+        .chain(launch_timings().into_iter().map(|launch| BuildRecord {
+            id: 20,
+            task: "assembleDebug".into(),
+            status: BuildStatus::Success(build_result(true)),
+            errors: vec![],
+            started_at: TIME.into(),
+            project_root: Some("/p".into()),
+            origin: Some(BuildActor::App),
+            cancelled_by: None,
+            launch: Some(launch),
+        }))
         .collect();
     f.add("BuildRecord", &records);
+    f.add(
+        "LaunchState",
+        &[
+            LaunchState::Cold,
+            LaunchState::Warm,
+            LaunchState::Hot,
+            LaunchState::Relaunch,
+        ],
+    );
+    f.add("LaunchTiming", &launch_timings());
+    f.add(
+        "LaunchResult",
+        &[
+            LaunchResult {
+                output: "am start OK: Status: ok".into(),
+                timing: launch_timings().into_iter().next(),
+            },
+            LaunchResult {
+                output: "monkey OK: Events injected: 1".into(),
+                timing: None,
+            },
+        ],
+    );
     f.add(
         "VariantList",
         &[
@@ -530,6 +590,7 @@ fn fixtures() -> Fixtures {
         .enumerate()
         .map(|(i, actor)| BuildCompleteEvent {
             run_id: 9001 + i as u32,
+            record_id: 7 + i as u32,
             success: actor.is_none(),
             cancelled: actor.is_some(),
             duration_ms: 4200,

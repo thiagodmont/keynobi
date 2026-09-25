@@ -34,6 +34,9 @@ export type { AgentActor } from "./AgentActor";
 export type { BuildStartedEvent } from "./BuildStartedEvent";
 export type { BuildLinesEvent } from "./BuildLinesEvent";
 export type { BuildCompleteEvent } from "./BuildCompleteEvent";
+export type { LaunchState } from "./LaunchState";
+export type { LaunchTiming } from "./LaunchTiming";
+export type { LaunchResult } from "./LaunchResult";
 
 // Devices & variants
 export type { Device } from "./Device";

@@ -1,4 +1,4 @@
-import type { BuildError, BuildLine, BuildRecord, BuildStatus } from "@/bindings";
+import type { BuildError, BuildLine, BuildRecord, BuildStatus, LaunchTiming } from "@/bindings";
 
 export function makeBuildLine(overrides: Partial<BuildLine> = {}): BuildLine {
   return {
@@ -38,6 +38,20 @@ export function makeBuildRecord(overrides: Partial<BuildRecord> = {}): BuildReco
     projectRoot: "/mock/android-project",
     origin: null,
     cancelledBy: null,
+    launch: null,
+    ...overrides,
+  };
+}
+
+export function makeLaunchTiming(overrides: Partial<LaunchTiming> = {}): LaunchTiming {
+  return {
+    totalMs: 812,
+    waitMs: 815,
+    launchState: "cold",
+    measuredAt: new Date().toISOString(),
+    serial: "emulator-5554",
+    avdName: "Pixel_7_API_34",
+    model: "sdk_gphone64_arm64",
     ...overrides,
   };
 }

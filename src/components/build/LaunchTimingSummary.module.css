@@ -1,0 +1,11 @@
+.summary {
+  font-variant-numeric: tabular-nums;
+}
+
+.slower {
+  color: var(--warning);
+}
+
+.faster {
+  color: var(--success);
+}

@@ -6,6 +6,7 @@ import { LogViewer } from "@/components/common/LogViewer";
 import { relativeTime } from "@/components/build/BuildHistoryPanel";
 import { buildRunningLabel } from "@/lib/build-actor";
 import type { HistoricalLogState } from "./build-history-log";
+import { LaunchTimingSummary } from "./LaunchTimingSummary";
 import styles from "./BuildHistoryView.module.css";
 
 export function formatBuildTime(iso: string): string {
@@ -26,6 +27,9 @@ export function HistoryViewBanner(props: { view: BuildView; onBack: () => void }
       : `Viewing build #${id}`;
   };
 
+  const launchedRecord = () =>
+    buildState.history.find((r) => r.id === props.view.id && r.launch !== null);
+
   return (
     <div class={styles.banner} data-testid="build-history-banner">
       <div class={styles.text}>
@@ -34,6 +38,13 @@ export function HistoryViewBanner(props: { view: BuildView; onBack: () => void }
           <span class={styles.meta}>
             {props.view.task} · {relativeTime(props.view.startedAt ?? "")}
           </span>
+        </Show>
+        <Show when={launchedRecord()}>
+          {(r) => (
+            <span class={styles.meta}>
+              <LaunchTimingSummary record={r()} history={buildState.history} />
+            </span>
+          )}
         </Show>
         <Show when={isBuilding()}>
           <span class={styles.running} role="status">

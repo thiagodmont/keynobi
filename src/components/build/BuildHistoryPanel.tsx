@@ -3,6 +3,7 @@ import type { BuildRecord, BuildResult, BuildStatus } from "@/bindings";
 import { buildState } from "@/stores/build.store";
 import { Icon, Listbox } from "@/components/ui";
 import { buildActorLabels, isAgent, startedByLabel } from "@/lib/build-actor";
+import { LaunchTimingSummary } from "@/components/build/LaunchTimingSummary";
 
 export interface BuildHistoryPanelProps {
   /** ID of the currently selected history entry. null = current build. */
@@ -253,6 +254,11 @@ function HistoryRow(props: { record: BuildRecord; selected: boolean }): JSX.Elem
       <Show when={errs() > 0}>
         <div style={{ "font-size": "9px", color: "var(--error)" }}>
           {errs()} error{errs() !== 1 ? "s" : ""}
+        </div>
+      </Show>
+      <Show when={props.record.launch}>
+        <div style={{ "font-size": "9px", color: "var(--text-muted)" }}>
+          <LaunchTimingSummary record={props.record} history={buildState.history} />
         </div>
       </Show>
       <For each={buildActorLabels(props.record.origin, props.record.cancelledBy)}>

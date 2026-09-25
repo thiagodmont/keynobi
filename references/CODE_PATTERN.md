@@ -247,7 +247,7 @@ Render errors with `formatError(err)`, which understands `AppError` (`{ kind, me
 |-------|-------------------|
 | `build:started` | A build started, from the app or an agent: run ID, task, `origin`. |
 | `build:lines` | Batched output of one run (every 50 ms, up to 500 lines). |
-| `build:complete` | Build finished, failed, or was cancelled, with `origin` and `cancelledBy`. |
+| `build:complete` | Build finished, failed, or was cancelled, with its history `recordId`, `origin`, and `cancelledBy`. |
 | `device:list_changed` | Connected devices changed; payload is `DeviceListChangedEvent`. |
 | `logcat:entries` | Batched processed log entries (every 100 ms, up to 500). |
 | `logcat:cleared`, `logcat:reconnecting`, `logcat:stopped` | Logcat stream lifecycle. |

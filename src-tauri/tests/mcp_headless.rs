@@ -333,6 +333,49 @@ echo 'Error: Activity not started, unable to resolve Intent { act=android.intent
 }
 
 #[test]
+fn launch_app_reports_the_launch_time_the_device_measured() {
+    let sandbox = Sandbox::new();
+    sandbox.write_adb(
+        r#"case "$*" in
+  *"am start -W -n"*)
+    echo 'Starting: Intent { cmp=com.example.app/.MainActivity }'
+    echo 'Status: ok'
+    echo 'LaunchState: WARM'
+    echo 'Activity: com.example.app/.MainActivity'
+    echo 'TotalTime: 240'
+    echo 'WaitTime: 244'
+    echo 'Complete'
+    ;;
+esac"#,
+    );
+    let mut client = sandbox.start();
+
+    let out = client.call_tool(
+        "launch_app",
+        json!({
+            "device_serial": "emulator-5554",
+            "package": "com.example.app",
+            "activity": ".MainActivity"
+        }),
+    );
+
+    assert!(!out.is_error, "{}", out.text);
+    assert!(
+        out.text.contains("Launch time: 240 ms (warm), wait 244 ms"),
+        "{}",
+        out.text
+    );
+    assert!(
+        sandbox
+            .adb_calls()
+            .iter()
+            .any(|c| c.contains("am start -W -n")),
+        "{:?}",
+        sandbox.adb_calls()
+    );
+}
+
+#[test]
 fn stop_avd_reports_a_stop_the_emulator_refused() {
     let sandbox = Sandbox::new();
     sandbox.write_adb(

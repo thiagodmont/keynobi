@@ -1,3 +1,4 @@
+import { test as base } from "@playwright/test";
 import { test, expect } from "../fixtures/app";
 
 async function selectMockProject(page: import("@playwright/test").Page): Promise<void> {
@@ -23,6 +24,41 @@ test("running a build shows build lines then success indicator", async ({ page }
   await buildOnlyButton.click();
 
   await expect(page.getByText(/BUILD SUCCESSFUL in 4s/i)).toBeVisible({ timeout: 10_000 });
+});
+
+// Run App installs and launches only when Auto Install on Build is on.
+const deployTest = base.extend({
+  page: async ({ page }, use) => {
+    await page.addInitScript(() => {
+      (
+        window as Window & { __keynobi_e2e_settings_overrides?: Record<string, unknown> }
+      ).__keynobi_e2e_settings_overrides = {
+        build: {
+          autoInstallOnBuild: true,
+          autoScrollBuildLog: true,
+          buildLogRetentionDays: 7,
+          buildLogMaxFolderMb: 100,
+        },
+      };
+    });
+    await page.goto("/");
+    await page.waitForFunction(() => typeof window.__e2e__ !== "undefined", { timeout: 10_000 });
+    await use(page);
+  },
+});
+
+deployTest("Run App records the launch time on the build it installed", async ({ page }) => {
+  await selectMockProject(page);
+  await page.getByRole("tab", { name: "Build" }).click();
+
+  // The mock project's emulator is online and selected, so no device prompt.
+  await page
+    .getByTitle(/^Run App/)
+    .first()
+    .click();
+
+  await expect(page.getByText("▶ Launch time: 812 ms (cold)")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("launch-timing").first()).toHaveText("Launch 812 ms (cold)");
 });
 
 test("an agent's build shows who started it and can be cancelled from the app", async ({

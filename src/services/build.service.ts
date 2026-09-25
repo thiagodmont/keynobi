@@ -35,6 +35,7 @@ import { projectState, currentProjectGeneration } from "@/stores/project.store";
 import { settingsState } from "@/stores/settings.store";
 import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { buildRunningLabel } from "@/lib/build-actor";
+import { formatLaunchTime } from "@/lib/launch-timing";
 import type { BuildError } from "@/bindings";
 
 let buildUnlisteners: Array<() => void> | null = null;
@@ -42,7 +43,7 @@ let buildUnlisteners: Array<() => void> | null = null;
 // `if (unlisten) return` guard is checked before the await, so two interleaved
 // calls both register and the second orphans the first's unlisten.
 let buildListenerInit: Promise<void> | null = null;
-let currentBuildPromise: Promise<void> | null = null;
+let currentBuildPromise: Promise<BuildCompletion | null> | null = null;
 let deployInFlight = false;
 
 interface RunBuildOptions {
@@ -106,6 +107,8 @@ async function registerBuildListeners(): Promise<void> {
 interface BuildCompletion {
   success: boolean;
   durationMs: number;
+  /** History record the run was saved as; null when it was cancelled from here. */
+  recordId: number | null;
 }
 
 interface ActiveRun {
@@ -265,7 +268,7 @@ function completeActiveRun(e: BuildCompleteEvent): void {
   } else {
     setBuildResult({ success: e.success, durationMs: e.durationMs });
   }
-  run.resolve({ success: e.success, durationMs: e.durationMs });
+  run.resolve({ success: e.success, durationMs: e.durationMs, recordId: e.recordId });
 }
 
 function clearBuildCompleteTimer(): void {
@@ -292,7 +295,7 @@ function buildRunningMessage(fallback: string): string {
  *                          clears — used by runAndDeploy to surface context.
  */
 export async function runBuild(task?: string, opts?: RunBuildOptions): Promise<void> {
-  return runBuildGuarded(task, opts, false);
+  await runBuildGuarded(task, opts, false);
 }
 
 /** Button title for build actions disabled in Safe Mode. */
@@ -311,7 +314,7 @@ async function runBuildGuarded(
   task: string | undefined,
   opts: RunBuildOptions | undefined,
   allowDuringDeploy: boolean
-): Promise<void> {
+): Promise<BuildCompletion | null> {
   assertProjectTrusted();
   if (deployInFlight && !allowDuringDeploy) {
     throw new Error("A build or deploy is already running.");
@@ -323,7 +326,7 @@ async function runBuildGuarded(
   const promise = runBuildInternal(task, opts);
   currentBuildPromise = promise;
   try {
-    await promise;
+    return await promise;
   } finally {
     if (currentBuildPromise === promise) {
       currentBuildPromise = null;
@@ -332,7 +335,10 @@ async function runBuildGuarded(
   }
 }
 
-async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<void> {
+async function runBuildInternal(
+  task?: string,
+  opts?: RunBuildOptions
+): Promise<BuildCompletion | null> {
   const variant = variantState.activeVariant;
   const effectiveTask = task ?? (variant ? `assemble${capitalize(variant)}` : "assembleDebug");
 
@@ -397,8 +403,9 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   }
 
   // runGradleTask resolves right after spawn; wait for the actual completion event.
+  let completion: BuildCompletion;
   try {
-    await buildComplete;
+    completion = await buildComplete;
   } catch (e) {
     clearBuildCompleteTimer();
     // The only rejection path is the completion timeout: Gradle is still
@@ -422,13 +429,14 @@ async function runBuildInternal(task?: string, opts?: RunBuildOptions): Promise<
   }
 
   // Rust already recorded the build result before emitting build:complete.
-  if (buildState.phase === "cancelled") return;
+  if (buildState.phase === "cancelled") return null;
 
   getBuildHistory()
     .then(setBuildHistory)
     .catch((err) => {
       console.error("[build] Failed to reload build history:", err);
     });
+  return completion;
 }
 
 /**
@@ -482,7 +490,7 @@ export async function runAndDeploy(): Promise<void> {
     // 1. Build. startBuild() inside runBuild() clears the log, so we add a
     //    context header as the very first callback line from the Gradle channel.
     setDeployPhase("building");
-    await runBuildGuarded(
+    const completion = await runBuildGuarded(
       `assemble${capitalize(variant)}`,
       {
         headerLines: [serial ? `── Deploy: ${variant} → ${serial} ──` : `── Build: ${variant} ──`],
@@ -539,10 +547,25 @@ export async function runAndDeploy(): Promise<void> {
     }
 
     if (packageName) {
-      logStep(`adb shell am start (package: ${packageName})`);
-      const launchOutput = await launchAppOnDevice(serial, packageName);
-      logStep(`Launch: ${launchOutput.trim()}`);
+      logStep(`adb shell am start -W (package: ${packageName})`);
+      // The launch time is recorded on the build this deploy ran, named by
+      // its own build:complete, never on whichever build finished last.
+      const buildId = completion?.success ? completion.recordId : null;
+      const launch = await launchAppOnDevice(serial, packageName, { buildId });
+      logStep(`Launch: ${launch.output.trim()}`);
       setLastLaunchedAt(Date.now(), packageName);
+      logStep(
+        launch.timing
+          ? `Launch time: ${formatLaunchTime(launch.timing)}`
+          : "Launch time: not reported by this launch method"
+      );
+      if (launch.timing && buildId !== null) {
+        getBuildHistory()
+          .then(setBuildHistory)
+          .catch((err) => {
+            console.error("[build] Failed to reload build history:", err);
+          });
+      }
     } else {
       logStep(
         "APK installed. Could not determine package name — cannot auto-launch. " +
@@ -586,7 +609,7 @@ export async function cancelBuild(): Promise<void> {
   } finally {
     // Unblock runBuild even when the cancel request fails; the timer that
     // would otherwise release it is already cleared.
-    run?.resolve({ success: false, durationMs: 0 });
+    run?.resolve({ success: false, durationMs: 0, recordId: null });
   }
 }
 

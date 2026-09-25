@@ -928,7 +928,7 @@ impl AndroidMcpServer {
 
     /// Restart an Android app: stop it (optionally clearing data), then relaunch and wait for display.
     #[tool(
-        description = "Restart an Android app: force-stop, then relaunch and wait for the activity to display. Returns launch time. App data is preserved unless clear_data is true (runs pm clear; requires device_serial). Only the open project's app (applicationId or a variant) unless allow_foreign_package is true.",
+        description = "Restart an Android app: force-stop, then relaunch and wait for the activity to display. Returns launch time (total_time_ms, wait_time_ms, launch_state from am start -W, and display_time_ms). App data is preserved unless clear_data is true (runs pm clear; requires device_serial). Only the open project's app (applicationId or a variant) unless allow_foreign_package is true.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -2823,7 +2823,7 @@ impl AndroidMcpServer {
 
     /// Launch an app on a connected device.
     #[tool(
-        description = "Launch an Android app on a device. Uses am start to launch the main activity or a specified activity.",
+        description = "Launch an Android app on a device. Uses am start -W to launch the main activity or a specified activity and reports the launch time and launch state (cold, warm, hot) when the device measures them.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -2850,7 +2850,9 @@ impl AndroidMcpServer {
                 .map_err(|e| McpError::internal_error(format!("Launch failed: {e}"), None))?;
 
         Ok(CallToolResult::success(vec![ContentBlock::text(format!(
-            "App launched: {result}"
+            "App launched: {}\n{}",
+            result.description,
+            adb_manager::describe_launch_timing(result.timing.as_ref())
         ))]))
     }
 

@@ -65,10 +65,21 @@ build:started from another origin (an agent)
 
 runAndDeploy()
   -> resolve target device (prompt with the device picker if none is online)
-  -> runBuild()
-  -> install -> launch
+  -> runBuild()            (its build:complete names the history record: recordId)
+  -> install -> launch     (launch_app_on_device with buildId = that recordId)
   -> finally: clear deployPhase
 ```
+
+### Launch Time
+
+Run App records how long the app took to launch on the build whose APK it installed (`BuildRecord.launch`, a `LaunchTiming`).
+
+- **Measured by Android.** `adb_manager::launch_app` starts a known component with `am start -W` and `parse_am_start_timing` reads `TotalTime`, `WaitTime`, and `LaunchState` (`COLD`, `WARM`, `HOT`, `RELAUNCH`; Android 10+). Missing fields are `None`, never 0: no `TotalTime` (the intent went to the activity already on top) or `Status: timeout` means no timing, and an absent or `UNKNOWN` launch state is `None`. The monkey and MAIN-intent fallbacks report no timing.
+- **The right record.** `build:complete` carries `recordId`, the history ID the run was saved as. `runAndDeploy` passes its own run's `recordId` to `launch_app_on_device` as `buildId`, never "the latest build", so a build another client finished meanwhile does not take the time. A failed or cancelled build never reaches launch, so nothing is attached.
+- **Persistence.** `build_runner::attach_launch_timing` sets the field under the data lock on the re-read history file (then merges it into memory), like every history write; only a successful build takes a launch time. A record this process holds only in memory (its save failed) is updated there. Failing to record does not fail the launch.
+- **Device identity.** The timing keeps the serial and, from the polled device list, the AVD name and model.
+- **Comparison.** `compareLaunch` (`lib/launch-timing.ts`) compares with the most recent earlier record of the same project and task, the same launch state, and the same device: the same AVD name when either launch has one, else the same serial. Otherwise there is no comparison. The Builds list and the past-build bar show it as text with a sign (`+54 ms vs #41`), not colour alone.
+- **MCP.** `launch_app` and `restart_app` report the timing and state in their result and never write build history.
 
 ### Viewing a Past Build
 
@@ -151,6 +162,7 @@ Emulator operations report what happened:
 ### Device Commands
 
 - `am start` usually exits 0 even when nothing started ("Error: Activity not started, unable to resolve Intent"). Every `am start` path (launch, restart, deep links, app settings) checks the output with `adb_manager::am_start_failure` and reports a failure.
+- Launch and restart start a component with `am start -W`, which returns only once the activity has drawn, so they use the launch deadline (30 s), not the query deadline. See [Launch Time](#launch-time).
 - Resolving an installed variant from a base `applicationId` matches the id exactly or at a `.`/`:` boundary: `com.example.app` covers `com.example.app.debug`, never `com.example.apple`.
 - A wireless-ADB device (`adb_manager::is_wireless_adb_serial`: `host:port` or an `._adb-tls-connect._tcp` / `._adb._tcp` mDNS name) is reached over its own network. Never turn its Wi-Fi off or airplane mode on; nothing could restore the connection.
 - Network toggles read the previous state first and return it. Airplane mode falls back to `settings put global airplane_mode_on` plus the `AIRPLANE_MODE` broadcast only when `cmd connectivity airplane-mode` fails.
@@ -420,7 +432,8 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 
 - **Cross-process builds.** The app and a standalone MCP server can still build different projects at the same time (the build lock is per project). Standalone builds are not streamed to the app and appear in its history only after its next build or restart. The build lock is best effort: when its file cannot be created or read, the build runs without it.
 - **Persisted history size.** `MAX_PERSISTED_HISTORY` (20) is effectively unused because load trims to `MAX_HISTORY` (10).
-- **Past builds lack variant and device.** `BuildRecord` does not store the variant or the target device, so a past build is described by its task (which names the variant) and not by the device it was installed on, and a past cancelled build shows no duration. The live build's install and launch steps are not recorded either.
+- **Past builds lack variant and device.** `BuildRecord` does not store the variant, and stores the target device only inside a launch time, so a past build is described by its task (which names the variant), and a past cancelled build shows no duration. The live build's install step, and a launch that reported no time, are not recorded.
+- **Launch time scope.** Only `am start -W`'s `TotalTime` is recorded: the time to the first frame. The logcat `Displayed` line (`restart_app` reads it, Run App does not) and `reportFullyDrawn` (time until the app says it is usable) are not recorded on builds. A standalone MCP server never records launch times, and a launch time recorded after another process rewrote the history file is kept only if the record is still among the last `MAX_HISTORY` builds.
 - **Build error counts after truncation.** Once `MAX_BUILD_ERRORS` is reached, `errorCount`/`warningCount` count only the retained diagnostics, and the truncation notice itself counts as a warning. True totals would need new `BuildResult`/`BuildCompleteEvent` fields.
 - **Duplicate lint diagnostics.** With `abortOnError`, lint prints its first failure from both the report task and the failing task, so that issue is listed twice. The parser is stateless per line, and diagnostics are not de-duplicated.
 - **Unicode typing.** `ui_type_text_unicode` sets the clipboard with a Clipper broadcast, falling back to `content insert`. `am broadcast` exits 0 even when Clipper is not installed, so the fallback may not run and the paste can insert stale clipboard text. Needs verification on a device.

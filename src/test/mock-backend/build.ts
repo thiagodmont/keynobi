@@ -5,6 +5,7 @@ import type {
   BuildLine,
   BuildRecord,
   BuildStatus,
+  LaunchTiming,
 } from "@/bindings";
 import { triggerEvent } from "./events";
 
@@ -68,7 +69,7 @@ function recordStatus(
 }
 
 function recordBuild(
-  build: Omit<BuildRecord, "id" | "status" | "projectRoot"> & {
+  build: Omit<BuildRecord, "id" | "status" | "projectRoot" | "launch"> & {
     state: "success" | "failed" | "cancelled";
   },
   lines: BuildLine[] | null
@@ -81,10 +82,18 @@ function recordBuild(
       id,
       status: recordStatus(state, build.errors),
       projectRoot: MOCK_PROJECT_ROOT,
+      launch: null,
     },
     lines,
   });
   return id;
+}
+
+/** Like the backend: a launch time is recorded only on a successful build. */
+export function attachMockLaunch(id: number, timing: LaunchTiming): void {
+  const entry = history.find((e) => e.record.id === id);
+  // A new object, as a fresh IPC response would be: the frontend store may hold the old one.
+  if (entry?.record.status.state === "success") entry.record = { ...entry.record, launch: timing };
 }
 
 /** A build recorded before the test ran, as the backend would load it from disk. */
@@ -97,10 +106,12 @@ export interface MockPastBuild {
   origin?: BuildActor | null;
   cancelledBy?: BuildActor | null;
   minutesAgo?: number;
+  /** The launch time Run App recorded on it (successful builds only). */
+  launch?: LaunchTiming;
 }
 
 export function addMockPastBuild(build: MockPastBuild): number {
-  return recordBuild(
+  const id = recordBuild(
     {
       task: build.task,
       state: build.state,
@@ -111,6 +122,8 @@ export function addMockPastBuild(build: MockPastBuild): number {
     },
     build.lines === undefined ? [...mockBuildLines] : build.lines
   );
+  if (build.launch) attachMockLaunch(id, build.launch);
+  return id;
 }
 
 /**
@@ -155,7 +168,7 @@ function finish(
   run.timers.forEach(clearTimeout);
   if (activeRun === run) activeRun = null;
   // Like the backend, the history is recorded before build:complete.
-  recordBuild(
+  const recordId = recordBuild(
     {
       task: run.task,
       state: outcome.cancelled ? "cancelled" : outcome.success ? "success" : "failed",
@@ -168,6 +181,7 @@ function finish(
   );
   triggerEvent("build:complete", {
     runId: run.id,
+    recordId,
     durationMs: 4000,
     errorCount: 0,
     warningCount: 0,

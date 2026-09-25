@@ -14,6 +14,9 @@ import type {
   Device,
   DeviceDefinition,
   DeviceListChangedEvent,
+  LaunchResult,
+  LaunchState,
+  LaunchTiming,
   LogStats,
   McpActivityEntry,
   McpAttachedSession,
@@ -346,6 +349,7 @@ export const typeFixtures = {
       },
       "errors": [],
       "id": 7,
+      "launch": null,
       "origin": {
         "kind": "app"
       },
@@ -362,6 +366,7 @@ export const typeFixtures = {
       },
       "errors": [],
       "id": 8,
+      "launch": null,
       "origin": {
         "kind": "appQuit"
       },
@@ -381,6 +386,7 @@ export const typeFixtures = {
       },
       "errors": [],
       "id": 9,
+      "launch": null,
       "origin": {
         "clientName": "Claude Code",
         "kind": "agent",
@@ -403,6 +409,7 @@ export const typeFixtures = {
       },
       "errors": [],
       "id": 10,
+      "launch": null,
       "origin": {
         "clientName": null,
         "kind": "agent",
@@ -435,6 +442,7 @@ export const typeFixtures = {
         }
       ],
       "id": 11,
+      "launch": null,
       "origin": null,
       "projectRoot": null,
       "startedAt": "2026-04-23T10:00:00Z",
@@ -446,8 +454,106 @@ export const typeFixtures = {
         "warningCount": 2
       },
       "task": "assembleDebug"
+    },
+    {
+      "cancelledBy": null,
+      "errors": [],
+      "id": 20,
+      "launch": {
+        "avdName": "Pixel_7_API_34",
+        "launchState": "cold",
+        "measuredAt": "2026-04-23T10:00:00Z",
+        "model": "sdk_gphone64_arm64",
+        "serial": "emulator-5554",
+        "totalMs": 812,
+        "waitMs": 815
+      },
+      "origin": {
+        "kind": "app"
+      },
+      "projectRoot": "/p",
+      "startedAt": "2026-04-23T10:00:00Z",
+      "status": {
+        "durationMs": 4200,
+        "errorCount": 0,
+        "state": "success",
+        "success": true,
+        "warningCount": 2
+      },
+      "task": "assembleDebug"
+    },
+    {
+      "cancelledBy": null,
+      "errors": [],
+      "id": 20,
+      "launch": {
+        "avdName": null,
+        "launchState": null,
+        "measuredAt": "2026-04-23T10:00:00Z",
+        "model": null,
+        "serial": "28151FDH2000Q4",
+        "totalMs": 640,
+        "waitMs": null
+      },
+      "origin": {
+        "kind": "app"
+      },
+      "projectRoot": "/p",
+      "startedAt": "2026-04-23T10:00:00Z",
+      "status": {
+        "durationMs": 4200,
+        "errorCount": 0,
+        "state": "success",
+        "success": true,
+        "warningCount": 2
+      },
+      "task": "assembleDebug"
     }
   ] satisfies Wire<BuildRecord>[],
+  LaunchState: [
+    "cold",
+    "warm",
+    "hot",
+    "relaunch"
+  ] satisfies Wire<LaunchState>[],
+  LaunchTiming: [
+    {
+      "avdName": "Pixel_7_API_34",
+      "launchState": "cold",
+      "measuredAt": "2026-04-23T10:00:00Z",
+      "model": "sdk_gphone64_arm64",
+      "serial": "emulator-5554",
+      "totalMs": 812,
+      "waitMs": 815
+    },
+    {
+      "avdName": null,
+      "launchState": null,
+      "measuredAt": "2026-04-23T10:00:00Z",
+      "model": null,
+      "serial": "28151FDH2000Q4",
+      "totalMs": 640,
+      "waitMs": null
+    }
+  ] satisfies Wire<LaunchTiming>[],
+  LaunchResult: [
+    {
+      "output": "am start OK: Status: ok",
+      "timing": {
+        "avdName": "Pixel_7_API_34",
+        "launchState": "cold",
+        "measuredAt": "2026-04-23T10:00:00Z",
+        "model": "sdk_gphone64_arm64",
+        "serial": "emulator-5554",
+        "totalMs": 812,
+        "waitMs": 815
+      }
+    },
+    {
+      "output": "monkey OK: Events injected: 1",
+      "timing": null
+    }
+  ] satisfies Wire<LaunchResult>[],
   VariantList: [
     {
       "active": "freeDebug",
@@ -546,6 +652,7 @@ export const typeFixtures = {
       "origin": {
         "kind": "app"
       },
+      "recordId": 7,
       "runId": 9001,
       "success": false,
       "task": "assembleDebug",
@@ -561,6 +668,7 @@ export const typeFixtures = {
       "origin": {
         "kind": "appQuit"
       },
+      "recordId": 8,
       "runId": 9002,
       "success": false,
       "task": "assembleDebug",
@@ -582,6 +690,7 @@ export const typeFixtures = {
         "sessionId": 2,
         "standalone": false
       },
+      "recordId": 9,
       "runId": 9003,
       "success": false,
       "task": "assembleDebug",
@@ -603,6 +712,7 @@ export const typeFixtures = {
         "sessionId": null,
         "standalone": true
       },
+      "recordId": 10,
       "runId": 9004,
       "success": false,
       "task": "assembleDebug",
@@ -614,6 +724,7 @@ export const typeFixtures = {
       "durationMs": 4200,
       "errorCount": 0,
       "origin": null,
+      "recordId": 11,
       "runId": 9005,
       "success": true,
       "task": "assembleDebug",
@@ -1104,6 +1215,7 @@ export const eventFixtures = {
         "origin": {
           "kind": "app"
         },
+        "recordId": 7,
         "runId": 9001,
         "success": false,
         "task": "assembleDebug",
@@ -1119,6 +1231,7 @@ export const eventFixtures = {
         "origin": {
           "kind": "appQuit"
         },
+        "recordId": 8,
         "runId": 9002,
         "success": false,
         "task": "assembleDebug",
@@ -1140,6 +1253,7 @@ export const eventFixtures = {
           "sessionId": 2,
           "standalone": false
         },
+        "recordId": 9,
         "runId": 9003,
         "success": false,
         "task": "assembleDebug",
@@ -1161,6 +1275,7 @@ export const eventFixtures = {
           "sessionId": null,
           "standalone": true
         },
+        "recordId": 10,
         "runId": 9004,
         "success": false,
         "task": "assembleDebug",
@@ -1172,6 +1287,7 @@ export const eventFixtures = {
         "durationMs": 4200,
         "errorCount": 0,
         "origin": null,
+        "recordId": 11,
         "runId": 9005,
         "success": true,
         "task": "assembleDebug",

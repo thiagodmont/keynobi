@@ -129,7 +129,7 @@ Common actions:
 
 Builds need a trusted project; in Safe Mode every build action is disabled (see [Project trust and Safe Mode](#project-trust-and-safe-mode)).
 
-- `Cmd+R` or **Run App**: build, install, and launch the app on the selected device. The APK comes from the project's application module, whatever its name; in a project with several application modules (for example a phone and a watch app), Run App stops with the list of modules.
+- `Cmd+R` or **Run App**: build, install, and launch the app on the selected device. The APK comes from the project's application module, whatever its name; in a project with several application modules (for example a phone and a watch app), Run App stops with the list of modules. The build log ends with the launch time Android measured (`am start -W`), for example **Launch time: 812 ms (cold)**. When Keynobi had to fall back to another way of starting the app, the log says no launch time was reported.
 - `Cmd+Shift+R`: build only.
 - `Cmd+Shift+V`, or click the variant pill in the status bar: choose the active build variant.
 - **Clean Project** from the Command Palette: run the Gradle `clean` task.
@@ -142,7 +142,7 @@ Build output has two views:
 - **Log**: Gradle output, colored by level. Filter by level (**ALL**, **ERR**, **WARN**, **INFO**, **DBG**), by source, or by text; show or hide timestamps; copy the visible lines; or clear the view.
 - **Problems (N)**: parsed errors and warnings.
 
-The **Builds** side panel lists recent builds, with who started a build when it was an AI client, and who cancelled it (you, an AI client, or Keynobi quitting). Use **Clear build history** to empty it. Keynobi keeps the last 10 builds; log files are removed after 7 days or when the log folder passes 100 MB (both configurable under **Settings → Advanced → Build**).
+The **Builds** side panel lists recent builds, with who started a build when it was an AI client, and who cancelled it (you, an AI client, or Keynobi quitting). A build that **Run App** installed and launched also shows its launch time and how Android started the app (**cold**: a new process, **warm**: the process was running, **hot**: the app was brought back to the front), for example **Launch 812 ms (cold) · +54 ms vs #41**. The change compares it with the most recent earlier build of the same task that launched in the same way on the same device (an emulator counts as the same device when it runs the same AVD); a **+** means slower and a **−** faster. With no such build there is no comparison. Launch times are measured by Android from the start request until the app draws its first frame; they are not recorded for launches by AI clients. Use **Clear build history** to empty it. Keynobi keeps the last 10 builds; log files are removed after 7 days or when the log folder passes 100 MB (both configurable under **Settings → Advanced → Build**).
 
 Select a past build (click it, or Tab to the list, move with Up/Down, and press Enter) to see it instead of the current build. The whole Build tab then describes that build: its log, **Problems**, result and duration, and who started or cancelled it. A bar above the log says **Viewing build #N from** its start time, with **Back to current build**.
 

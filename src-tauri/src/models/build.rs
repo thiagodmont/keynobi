@@ -149,6 +149,56 @@ pub struct BuildRecord {
     /// Who cancelled the build, when it was cancelled.
     #[serde(default)]
     pub cancelled_by: Option<BuildActor>,
+    /// How long the app took to launch when Run App installed this build's APK.
+    #[serde(default)]
+    pub launch: Option<LaunchTiming>,
+}
+
+/// How Android started an activity, as `am start -W` reports it (Android 10+).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub enum LaunchState {
+    /// A new process was started.
+    Cold,
+    /// The process was running; the activity was created.
+    Warm,
+    /// The activity was brought back to the front.
+    Hot,
+    /// The activity was recreated (for example after a configuration change).
+    Relaunch,
+}
+
+/// How long an activity launch took, measured with `am start -W`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct LaunchTiming {
+    /// `TotalTime`: from the start request until the activity drew its first frame.
+    pub total_ms: u32,
+    /// `WaitTime`: how long `am start` waited, including its own overhead.
+    pub wait_ms: Option<u32>,
+    /// `None` when the device did not report it (before Android 10, or `UNKNOWN`).
+    pub launch_state: Option<LaunchState>,
+    /// When the launch finished (RFC 3339).
+    pub measured_at: String,
+    /// ADB serial of the device the app launched on.
+    pub serial: String,
+    /// For an emulator, its AVD name, which identifies it across serials.
+    pub avd_name: Option<String>,
+    /// Device model, for display.
+    pub model: Option<String>,
+}
+
+/// Result of `launch_app_on_device`.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct LaunchResult {
+    /// What `am start` (or its fallback) printed.
+    pub output: String,
+    /// `None` when the launch method reports no timing (the monkey and intent fallbacks).
+    pub timing: Option<LaunchTiming>,
 }
 
 /// Payload of `build:started`, emitted for every build the app's process runs.
@@ -180,6 +230,8 @@ pub struct BuildLinesEvent {
 pub struct BuildCompleteEvent {
     /// The run this event belongs to (the Gradle process ID the build started with).
     pub run_id: u32,
+    /// ID of the history record the run was saved as.
+    pub record_id: u32,
     pub success: bool,
     pub cancelled: bool,
     #[ts(type = "number")]
@@ -218,6 +270,7 @@ mod tests {
         assert_eq!(record.id, 3);
         assert_eq!(record.origin, None);
         assert_eq!(record.cancelled_by, None);
+        assert_eq!(record.launch, None);
     }
 
     #[test]
