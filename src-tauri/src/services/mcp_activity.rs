@@ -2,21 +2,21 @@
 ///
 /// Writes a JSONL log of every tool call, resource read, prompt request, and
 /// lifecycle event to `~/.keynobi/mcp-activity.jsonl` so the companion GUI
-/// can display a live activity feed regardless of whether the server is running
-/// in GUI or headless mode.
+/// can display a live activity feed for sessions attached to the app and for
+/// standalone servers alike.
 ///
-/// Also manages a PID file (`~/.keynobi/mcp-server.pid`) so the GUI can
-/// check whether a headless MCP process is still alive.
+/// The app and every standalone server append to the same file, so appends,
+/// rotation, and clearing all run under `settings_manager::with_data_lock`.
 use crate::services::settings_manager;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-/// Rotate the log when it exceeds this many entries.
-const ROTATE_THRESHOLD: usize = 1_000;
+/// Rotate the log once it grows past this size.
+const ROTATE_THRESHOLD_BYTES: u64 = 256 * 1024;
 /// Keep this many entries after rotation.
 const ROTATE_KEEP: usize = 500;
 
@@ -41,47 +41,65 @@ pub struct McpActivityEntry {
     pub summary: Option<String>,
 }
 
-/// Live status of the headless MCP server process.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(export, export_to = "../../src/bindings/")]
-pub struct McpServerStatus {
-    /// Whether the MCP server process appears to be running.
-    pub alive: bool,
-    /// PID of the server process, if a PID file exists.
-    pub pid: Option<u32>,
-}
-
 // ── File paths ────────────────────────────────────────────────────────────────
 
 fn activity_log_path() -> PathBuf {
     settings_manager::data_dir().join("mcp-activity.jsonl")
 }
 
-fn pid_file_path() -> PathBuf {
-    settings_manager::data_dir().join("mcp-server.pid")
-}
-
 // ── Activity log ──────────────────────────────────────────────────────────────
 
-/// Append one activity entry to the JSONL log file.
+/// When the log is rotated and how much of it is kept.
+#[derive(Debug, Clone, Copy)]
+struct RotationLimits {
+    threshold_bytes: u64,
+    keep: usize,
+}
+
+const ROTATION: RotationLimits = RotationLimits {
+    threshold_bytes: ROTATE_THRESHOLD_BYTES,
+    keep: ROTATE_KEEP,
+};
+
+/// Append one activity entry to the JSONL log file, rotating it when it has
+/// grown past [`ROTATE_THRESHOLD_BYTES`].
 ///
-/// Opens the file in append mode so concurrent writes from multiple processes
-/// each complete as a single atomic line.  Non-fatal: silently returns on any
-/// I/O error so a broken log never disrupts the MCP server itself.
+/// Non-fatal: silently returns on any I/O error so a broken log never
+/// disrupts the MCP server itself. Must not be called while holding the data
+/// lock (it takes it).
 pub fn log_activity(entry: &McpActivityEntry) {
-    let path = activity_log_path();
+    let Ok(line) = serde_json::to_string(entry) else {
+        return;
+    };
+    append_at(&activity_log_path(), &line, ROTATION);
+}
+
+fn append_at(path: &Path, line: &str, limits: RotationLimits) {
+    let _ = settings_manager::with_data_lock(|| {
+        append_line(path, line);
+        rotate_if_needed_locked(path, limits);
+    });
+}
+
+fn rotate_if_needed_locked(path: &Path, limits: RotationLimits) {
+    let too_big = std::fs::metadata(path)
+        .map(|m| m.len() > limits.threshold_bytes)
+        .unwrap_or(false);
+    if too_big {
+        rotate_locked(path, limits.keep);
+    }
+}
+
+fn append_line(path: &Path, line: &str) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
     if let Ok(mut file) = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&path)
+        .open(path)
     {
-        if let Ok(line) = serde_json::to_string(entry) {
-            let _ = writeln!(file, "{}", line);
-        }
+        let _ = file.write_all(format!("{line}\n").as_bytes());
     }
 }
 
@@ -105,78 +123,36 @@ pub fn read_activity(limit: usize) -> Vec<McpActivityEntry> {
         .collect()
 }
 
-/// Trim the activity log to the last `ROTATE_KEEP` entries if it exceeds
-/// `ROTATE_THRESHOLD`.  Called once on server startup.
+/// Trim the activity log to the last [`ROTATE_KEEP`] entries if it has grown
+/// past [`ROTATE_THRESHOLD_BYTES`]. Called when a server starts; appends
+/// rotate on their own.
 pub fn rotate_activity_log() {
     let path = activity_log_path();
-    let content = match std::fs::read_to_string(&path) {
-        Ok(c) => c,
-        Err(_) => return,
-    };
+    let _ = settings_manager::with_data_lock(|| rotate_if_needed_locked(&path, ROTATION));
+}
 
-    let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
-
-    if lines.len() <= ROTATE_THRESHOLD {
+/// Keep the last `keep` entries by writing them to a temporary file and
+/// renaming it over the log. The caller holds the data lock, and every
+/// appender takes it too, so no append can land in the file being replaced.
+fn rotate_locked(path: &Path, keep: usize) {
+    let Ok(content) = std::fs::read_to_string(path) else {
         return;
+    };
+    let lines: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
+    let kept = &lines[lines.len().saturating_sub(keep)..];
+    let mut new_content = kept.join("\n");
+    new_content.push('\n');
+    let tmp = settings_manager::unique_tmp_path(path);
+    if std::fs::write(&tmp, new_content).is_err() || std::fs::rename(&tmp, path).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        tracing::warn!("Failed to rotate the MCP activity log");
     }
-
-    let keep = &lines[lines.len() - ROTATE_KEEP..];
-    let new_content = keep.join("\n") + "\n";
-    let _ = std::fs::write(&path, new_content);
 }
 
 /// Truncate the activity log (called from the UI "Clear Log" action).
 pub fn clear_activity_log() {
     let path = activity_log_path();
-    let _ = std::fs::write(&path, "");
-}
-
-// ── PID file ──────────────────────────────────────────────────────────────────
-
-/// Write the current process PID to the PID file.
-pub fn write_pid_file() {
-    let path = pid_file_path();
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let pid = std::process::id();
-    let _ = std::fs::write(&path, pid.to_string());
-}
-
-/// Remove the PID file on clean shutdown.
-pub fn remove_pid_file() {
-    let _ = std::fs::remove_file(pid_file_path());
-}
-
-/// Read the PID from the PID file, returning `None` if the file is absent or
-/// contains non-numeric data.
-pub fn read_pid_file() -> Option<u32> {
-    let content = std::fs::read_to_string(pid_file_path()).ok()?;
-    content.trim().parse::<u32>().ok()
-}
-
-/// Return `true` if the process recorded in the PID file is still alive.
-///
-/// Uses `kill(pid, 0)` on Unix — this sends no signal but checks whether the
-/// process exists and the caller has permission to signal it.
-pub fn is_mcp_server_alive() -> bool {
-    let Some(pid) = read_pid_file() else {
-        return false;
-    };
-
-    #[cfg(unix)]
-    {
-        // SAFETY: kill(pid, 0) never sends a signal; it just probes existence.
-        let ret = unsafe { libc::kill(pid as libc::pid_t, 0) };
-        ret == 0
-    }
-
-    #[cfg(not(unix))]
-    {
-        // Fallback for non-Unix: assume alive if PID file exists.
-        let _ = pid;
-        true
-    }
+    let _ = settings_manager::with_data_lock(|| std::fs::write(&path, ""));
 }
 
 // ── Convenience constructors ──────────────────────────────────────────────────
@@ -234,5 +210,73 @@ impl McpActivityEntry {
             status: status.into(),
             summary: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn line(n: usize) -> String {
+        serde_json::to_string(&McpActivityEntry::lifecycle(format!("entry {n}"))).unwrap()
+    }
+
+    #[test]
+    fn rotation_keeps_the_newest_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp-activity.jsonl");
+        let limits = RotationLimits {
+            threshold_bytes: 1,
+            keep: 3,
+        };
+        for n in 0..10 {
+            append_at(&path, &line(n), limits);
+        }
+        let content = std::fs::read_to_string(&path).unwrap();
+        let names: Vec<String> = content
+            .lines()
+            .map(|l| serde_json::from_str::<McpActivityEntry>(l).unwrap().name)
+            .collect();
+        assert_eq!(names, ["entry 7", "entry 8", "entry 9"]);
+    }
+
+    /// Rotation used to read the log and rewrite it in place while other
+    /// processes kept appending, so a line appended between the read and the
+    /// write was lost. With a keep limit larger than the log, rotation must
+    /// not drop anything, however it interleaves with appends.
+    #[test]
+    fn appends_are_not_lost_while_the_log_rotates() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mcp-activity.jsonl");
+        let limits = RotationLimits {
+            threshold_bytes: 1,
+            keep: usize::MAX,
+        };
+        const WRITERS: usize = 4;
+        const PER_WRITER: usize = 100;
+        std::thread::scope(|scope| {
+            for w in 0..WRITERS {
+                let path = &path;
+                scope.spawn(move || {
+                    for n in 0..PER_WRITER {
+                        append_at(path, &line(w * PER_WRITER + n), limits);
+                    }
+                });
+            }
+            let path = &path;
+            scope.spawn(move || {
+                for _ in 0..200 {
+                    let _ = settings_manager::with_data_lock(|| rotate_locked(path, usize::MAX));
+                }
+            });
+        });
+        let content = std::fs::read_to_string(&path).unwrap();
+        let mut names: Vec<String> = content
+            .lines()
+            .map(|l| serde_json::from_str::<McpActivityEntry>(l).unwrap().name)
+            .collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), WRITERS * PER_WRITER);
     }
 }

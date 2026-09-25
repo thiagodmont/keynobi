@@ -273,12 +273,12 @@ Open Settings with `Cmd+,` or the gear icon. Use the search box to find a settin
 | Tools | Android SDK | SDK Path (with Auto-detect) |
 | Tools | Java / JDK | JAVA_HOME (with Auto-detect) |
 | Tools | Logcat | Auto-start on Connect, Auto-scroll Logcat to end, Logcat Output Font Size, Ring buffer size, Max lines in Logcat |
-| Tools | MCP | Auto-start MCP Server, Build Timeout (seconds), Default Logcat Count, Default Build Log Lines, Allow unrestricted Gradle tasks (off by default: AI clients cannot run publish, upload, or uninstall tasks) |
+| Tools | MCP | Build Timeout (seconds), Default Logcat Count, Default Build Log Lines, Allow unrestricted Gradle tasks (off by default: AI clients cannot run publish, upload, or uninstall tasks) |
 | Advanced | Build | Auto Install on Build, Auto-scroll build log to end, Build log retention (days), Build log folder limit (MB) |
 | Advanced | Logging | Log retention, Max log folder size (MB) |
 | Advanced | Privacy | Anonymous crash reporting |
 
-Some settings have no effect yet: everything under **User → Search**, **Auto Install on Build**, and **Auto-start MCP Server**. Auto-start MCP Server does not connect AI clients; use the setup command in [AI Client MCP](#ai-client-mcp) instead.
+Some settings have no effect yet: everything under **User → Search** and **Auto Install on Build**.
 
 Open Health Center with `Cmd+Shift+H` or the Health status item. It checks:
 
@@ -333,16 +333,23 @@ Codex:
 codex mcp add keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp
 ```
 
-To bind MCP to a specific Android project, append `--project /path/to/MyAndroidProject` to either command.
+To bind MCP to a specific Android project, append `--project /path/to/MyAndroidProject` to either command. Existing registrations keep working after updating Keynobi; nothing needs to change.
 
 ### How MCP relates to the app
 
-Your AI client starts its own Keynobi MCP process in the background. It does not connect to the Keynobi window you have open.
+Your AI client starts a small Keynobi MCP process in the background. If Keynobi is open, that process **attaches** to the app: the AI client then works on the app's project, devices, logcat, and build slot. If it cannot attach, it runs **standalone** with its own state, and its builds and logcat are not visible in the app. It never opens Keynobi for you.
 
-- **Project**: the MCP server uses `--project` if given. Otherwise it uses the Android project that contains the AI client's working folder (a folder with `settings.gradle` or `settings.gradle.kts`, or a parent of it), or else the last project you had open in Keynobi. `get_project_info` reports which rule chose the project. If you switch projects in Keynobi, restart the MCP server in your AI client.
+- **Project**: the MCP process asks for the project given with `--project`, or else the Android project that contains the AI client's working folder (a folder with `settings.gradle` or `settings.gradle.kts`, or a parent of it).
+  - If Keynobi has that project open, the client attaches and stays on that project. If you later switch Keynobi to another project, the client's project tools (builds, variants, installing, stopping apps) return an error naming both projects until you switch back or restart the MCP server in your AI client. Device, UI, and logcat tools keep working.
+  - If the client did not ask for a project (no `--project`, and its folder is not inside an Android project), it attaches and follows whatever project Keynobi has open.
+  - If Keynobi has a different project open, or no project, or is not running, the MCP process runs standalone on its own project (falling back to the last project you had open in Keynobi). Keynobi never switches projects for an AI client.
+- **Which mode**: ask the client to call `get_project_info`. `mode` is `attached` or `standalone`, `standalone_reason` says why, and `selected_by` says how the project was chosen. Build results also say which mode ran them.
 - **Trust**: an AI client can build only a project you trusted in Keynobi. For any other project, `run_gradle_task` and `run_tests` fail with a message asking you to open the project in Keynobi and choose **Trust**; the MCP server never asks itself. Other tools keep working.
-- **Builds and logcat**: builds and logcat started by an AI client do not appear live in the Build and Logcat tabs. They can appear in build history the next time Keynobi starts.
-- **Activity**: the **MCP Activity** panel (`Cmd+Shift+M`) shows setup status, whether a server is running, and recent tool calls from AI clients.
+- **Builds and logcat**: an attached client shares one build at a time with the app: while either is building, the other is told a build is already running. Builds started by an attached client do not stream into the Build tab yet. Builds and logcat of a standalone server are not visible in the app; its builds can appear in build history the next time Keynobi starts.
+- **Quitting Keynobi** ends attached sessions; restart the MCP server in your AI client afterwards.
+- **Status**: the MCP item in the status bar shows how many AI clients are attached (for example **MCP: 2 agents**) and warns about standalone servers. The **MCP Activity** panel (`Cmd+Shift+M`) lists each session, the setup commands, and recent tool calls from AI clients.
+
+To require the app, add `--attach-only` after `--mcp`: the MCP server then exits with an error instead of running standalone.
 
 AI clients can change your device. `restart_app` keeps the app's data unless the client explicitly passes `clear_data: true` for a specific device. Stopping or restarting an app and granting or revoking its permissions work only on your project's app (its application ID and variants such as `.debug`) unless the client passes `allow_foreign_package: true`. Keynobi refuses to turn off Wi-Fi or turn on airplane mode on a device connected over wireless debugging, because that would disconnect it. Review what your AI client asks to run.
 
@@ -401,6 +408,7 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 | `~/.keynobi/logs/` | Keynobi's own app logs |
 | `~/.keynobi/build-history.json`, `~/.keynobi/build-logs/` | Build history and build logs |
 | `~/.keynobi/mcp-activity.jsonl` | Recent AI client activity |
+| `~/.keynobi/mcp.sock`, `~/.keynobi/mcp-sessions/` | The socket AI clients attach through while Keynobi is open, and a record per standalone MCP server |
 | `~/Library/WebKit/com.keynobi.app` | Saved logcat filters, last query, and dismissed updates |
 
 ### Reset or uninstall
@@ -453,10 +461,11 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 - Confirm the app path in the command exists. It must be in `/Applications`, not inside a mounted DMG.
 - In Claude Code, run `claude mcp list` from your project folder. If Keynobi is missing there, re-add it with `--scope user`.
 - If using `--project`, confirm the folder exists and contains the Android project.
+- With `--attach-only`, the MCP server exits unless Keynobi is open with the same project; the AI client's MCP log shows why.
 
 ### MCP works on the wrong project
 
-- The MCP server picks its project when your AI client starts it. Ask the client to call `get_project_info`: `selected_by` says whether the project came from `--project` (`argument`), the client's working folder (`working_directory`), or the last project open in Keynobi (`last_active_project`). Restart the MCP server from your AI client, or add `--project /path/to/project` to the setup command.
+- The MCP server picks its project when your AI client starts it. Ask the client to call `get_project_info`: `selected_by` says whether the project came from `--project` (`argument`), the client's working folder (`working_directory`), the project open in Keynobi (`app`), or the last project open in Keynobi (`last_active_project`), and `mode`/`standalone_reason` say whether it attached to the app. Open the right project in Keynobi and restart the MCP server from your AI client, or add `--project /path/to/project` to the setup command.
 
 ### MCP builds fail with "This project is not trusted"
 

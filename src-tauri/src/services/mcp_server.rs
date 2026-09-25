@@ -5,12 +5,13 @@
  * MCP-compatible client) via the Model Context Protocol (2025-11-25 spec).
  *
  * Two modes:
- *   - GUI mode: started via the `start_mcp_server` Tauri command, accesses
- *     existing Tauri managed state via AppHandle.
- *   - Headless mode: launched with `--mcp` CLI flag, initializes state
- *     directly, no GUI window is opened.
+ *   - Attached: the running app serves the session over its socket (see
+ *     `mcp_attach`) using its own managed state; `keynobi --mcp` only relays
+ *     the client's stdio.
+ *   - Standalone: `keynobi --mcp` could not attach, so it serves stdio itself
+ *     with fresh state that the app does not see.
  *
- * Transport: stdio (newline-delimited JSON-RPC 2.0).
+ * Transport: newline-delimited JSON-RPC 2.0.
  *
  * Setup: `claude mcp add --transport stdio keynobi -- "/path/to/keynobi" --mcp`
  */
@@ -24,6 +25,7 @@ use crate::services::health_inspector;
 use crate::services::jdk;
 use crate::services::logcat::{self, LogcatFilter, LogcatState};
 use crate::services::mcp_activity::{self, McpActivityEntry};
+use crate::services::mcp_sessions::McpSessionRegistry;
 use crate::services::process_manager::ProcessManager;
 use crate::services::project_trust;
 use crate::services::settings_manager;
@@ -45,20 +47,14 @@ use rmcp::{
 use serde::Deserialize;
 use serde_json::json;
 use std::path::PathBuf;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
-};
-use tauri::{AppHandle, Emitter, Manager};
-use tracing::{debug, error, info};
-
-// ── Guard against duplicate stdio server instances ────────────────────────────
-static MCP_STDIO_RUNNING: AtomicBool = AtomicBool::new(false);
+use std::sync::Arc;
+use tauri::{AppHandle, Manager};
+use tracing::info;
 
 // ── Server struct ─────────────────────────────────────────────────────────────
 
 /// How the server chose its project, reported by `get_project_info`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectSelection {
     /// The project open in the Keynobi app (the app's own server).
@@ -71,6 +67,97 @@ pub enum ProjectSelection {
     LastActiveProject,
 }
 
+/// Whether a session shares the app's state, reported by `get_project_info`,
+/// the build tools, and `initialize`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SessionMode {
+    /// Served by the running app over its socket, on the app's own state.
+    Attached {
+        /// The project the client asked for; `None` follows the app's project.
+        pinned_project: Option<PathBuf>,
+    },
+    /// A `keynobi --mcp` process with its own state, which the app does not see.
+    Standalone {
+        /// Why it could not attach.
+        reason: String,
+    },
+}
+
+impl SessionMode {
+    fn name(&self) -> &'static str {
+        match self {
+            SessionMode::Attached { .. } => "attached",
+            SessionMode::Standalone { .. } => "standalone",
+        }
+    }
+
+    fn standalone_reason(&self) -> Option<&str> {
+        match self {
+            SessionMode::Standalone { reason } => Some(reason),
+            SessionMode::Attached { .. } => None,
+        }
+    }
+
+    /// One line for build results and the activity log.
+    fn summary(&self) -> String {
+        match self {
+            SessionMode::Attached { .. } => {
+                "mode: attached — shared with the Keynobi app".to_string()
+            }
+            SessionMode::Standalone { reason } => {
+                format!("mode: standalone ({reason}) — not visible in the Keynobi app")
+            }
+        }
+    }
+}
+
+/// Tools that never read or act on the open project, so they keep working in
+/// a pinned session after the app switched projects. Every other tool is
+/// refused in that case.
+const PROJECT_INDEPENDENT_TOOLS: &[&str] = &[
+    "get_project_info",
+    "run_health_check",
+    "start_logcat",
+    "stop_logcat",
+    "clear_logcat",
+    "get_logcat_entries",
+    "get_logcat_stats",
+    "get_crash_logs",
+    "get_crash_stack_trace",
+    "list_devices",
+    "get_device_info",
+    "screenshot",
+    "dump_app_info",
+    "get_memory_info",
+    "get_app_runtime_state",
+    "launch_app",
+    "list_avds",
+    "launch_avd",
+    "stop_avd",
+    "get_ui_hierarchy",
+    "list_clickable_elements",
+    "find_ui_elements",
+    "find_ui_parent",
+    "compare_ui_state",
+    "wait_for_element",
+    "ui_wait_for_idle",
+    "ui_assert_element",
+    "ui_tap",
+    "ui_tap_element",
+    "ui_type_text",
+    "ui_fill_input",
+    "ui_type_text_unicode",
+    "clear_focused_input",
+    "hide_soft_keyboard",
+    "send_ui_key",
+    "ui_swipe",
+    "ui_scroll_until_element",
+    "open_deep_link",
+    "open_app_settings",
+    "set_device_orientation",
+    "set_network_state",
+];
+
 /// Holds references to all app state needed by MCP tools.
 ///
 /// All state structs are backed by `Arc<Mutex<>>` internally, so `Clone` here
@@ -82,16 +169,17 @@ pub struct AndroidMcpServer {
     logcat_state: LogcatState,
     fs_state: FsState,
     process_manager: ProcessManager,
-    /// Present in GUI mode; used for lifecycle event emission and logcat streaming.
+    /// Present when the app serves the session; used for GUI events and logcat streaming.
     app_handle: Option<AppHandle>,
     /// How the project was chosen; `None` when no project was found.
     project_selection: Option<ProjectSelection>,
+    mode: SessionMode,
     tool_router: ToolRouter<Self>,
     prompt_router: PromptRouter<Self>,
 }
 
 impl AndroidMcpServer {
-    /// Construct from Tauri managed state (GUI mode).
+    /// Construct from the app's managed state, for a session attached to the app.
     pub fn from_app_handle(app: &AppHandle) -> Self {
         let build_state = app.state::<BuildState>().inner().clone();
         let device_state = app.state::<DeviceState>().inner().clone();
@@ -106,22 +194,15 @@ impl AndroidMcpServer {
             process_manager,
             app_handle: Some(app.clone()),
             project_selection: Some(ProjectSelection::App),
+            mode: SessionMode::Attached {
+                pinned_project: None,
+            },
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
     }
 
-    /// Emit a Tauri event to the main window.
-    /// No-ops silently in headless mode (no app_handle).
-    fn emit_event<S: serde::Serialize + Clone>(&self, event: &str, payload: S) {
-        if let Some(handle) = &self.app_handle {
-            if let Some(win) = handle.get_webview_window("main") {
-                let _ = win.emit(event, payload);
-            }
-        }
-    }
-
-    /// Construct standalone, for headless `--mcp` mode.
+    /// Construct over state the caller owns (standalone `--mcp`, and tests).
     pub fn new_headless(
         build_state: BuildState,
         device_state: DeviceState,
@@ -138,9 +219,62 @@ impl AndroidMcpServer {
             process_manager,
             app_handle: None,
             project_selection,
+            mode: SessionMode::Standalone {
+                reason: "not attached to the Keynobi app".into(),
+            },
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
+    }
+
+    /// Serve this server's state to a client attached over the app's socket.
+    pub fn attached(
+        mut self,
+        pinned_project: Option<PathBuf>,
+        selection: ProjectSelection,
+    ) -> Self {
+        self.mode = SessionMode::Attached { pinned_project };
+        self.project_selection = Some(selection);
+        self
+    }
+
+    pub fn with_mode(mut self, mode: SessionMode) -> Self {
+        self.mode = mode;
+        self
+    }
+
+    /// For a session pinned to a project the app no longer has open, the
+    /// message to return instead of acting on the app's current project.
+    async fn project_mismatch(&self) -> Option<String> {
+        let SessionMode::Attached {
+            pinned_project: Some(pinned),
+        } = &self.mode
+        else {
+            return None;
+        };
+        let app = crate::services::mcp_attach::AppProject::of(&self.fs_state).await;
+        if app.is(pinned) {
+            return None;
+        }
+        let now = match app.display_path() {
+            Some(open) => format!("Keynobi now has {} open", open.display()),
+            None => "Keynobi now has no project open".to_string(),
+        };
+        Some(format!(
+            "{now}; this session is for {}. Open that project in Keynobi again, or restart \
+             the Keynobi MCP server in your AI client.",
+            pinned.display()
+        ))
+    }
+
+    /// Refuse `tool` in a pinned session whose project the app closed.
+    pub async fn check_session_project(&self, tool: &str) -> Option<CallToolResult> {
+        if PROJECT_INDEPENDENT_TOOLS.contains(&tool) {
+            return None;
+        }
+        self.project_mismatch()
+            .await
+            .map(|msg| CallToolResult::error(vec![ContentBlock::text(msg)]))
     }
 }
 
@@ -439,7 +573,8 @@ impl AndroidMcpServer {
             McpError::invalid_params("gradlew not found. Is this an Android project?", None)
         })?;
 
-        let result = build_runner::run_task(
+        let mode = self.mode.summary();
+        let result = match build_runner::run_task(
             &p.task,
             &[],
             &gradle_root,
@@ -454,11 +589,21 @@ impl AndroidMcpServer {
             self.app_handle.as_ref(),
         )
         .await
-        .map_err(|e| McpError::internal_error(e, None))?;
+        {
+            Ok(result) => result,
+            // The app and every attached session share one build slot.
+            Err(e) if e == build_runner::BUILD_ALREADY_RUNNING => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "{e}. Wait for it (get_build_status) or cancel it (cancel_build), \
+                     then try again.\n[{mode}]"
+                ))]));
+            }
+            Err(e) => return Err(McpError::internal_error(e, None)),
+        };
 
         if result.timed_out {
             return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                "Build timed out after {}s — task '{}'. Build has been cancelled.",
+                "Build timed out after {}s — task '{}'. Build has been cancelled.\n[{mode}]",
                 settings.mcp.build_timeout_sec, p.task
             ))]));
         }
@@ -468,12 +613,12 @@ impl AndroidMcpServer {
         if result.success {
             let msg = if result.errors.is_empty() {
                 format!(
-                    "BUILD SUCCESSFUL — task '{}' ({}ms)",
+                    "BUILD SUCCESSFUL — task '{}' ({}ms)\n[{mode}]",
                     p.task, result.duration_ms
                 )
             } else {
                 format!(
-                    "BUILD SUCCESSFUL (with {} warning(s)) — task '{}' ({}ms)\n{}",
+                    "BUILD SUCCESSFUL (with {} warning(s)) — task '{}' ({}ms)\n{}\n[{mode}]",
                     result.errors.len(),
                     p.task,
                     result.duration_ms,
@@ -483,7 +628,7 @@ impl AndroidMcpServer {
             Ok(CallToolResult::success(vec![ContentBlock::text(msg)]))
         } else {
             let msg = format!(
-                "BUILD FAILED — task '{}'\n{} issue(s):\n{}",
+                "BUILD FAILED — task '{}'\n{} issue(s):\n{}\n[{mode}]",
                 p.task,
                 result.errors.len(),
                 if result.errors.is_empty() {
@@ -545,9 +690,13 @@ impl AndroidMcpServer {
             ),
             crate::models::build::BuildStatus::Cancelled => "Build status: cancelled".to_owned(),
         };
-        Ok(CallToolResult::structured(
-            json!({ "status": state_str, "details": details, "summary": summary }),
-        ))
+        Ok(CallToolResult::structured(json!({
+            "status": state_str,
+            "details": details,
+            "summary": summary,
+            "mode": self.mode.name(),
+            "standalone_reason": self.mode.standalone_reason(),
+        })))
     }
 
     /// Get structured compiler errors and warnings from the last build.
@@ -963,9 +1112,9 @@ impl AndroidMcpServer {
 
     // ── Logcat tools ──────────────────────────────────────────────────────────
 
-    /// Start streaming logcat from a device (required in headless mode).
+    /// Start streaming logcat from a device.
     #[tool(
-        description = "Start streaming logcat from a device. Required in headless mode before get_logcat_entries. In GUI mode, use the app's Start Logcat button instead.",
+        description = "Start streaming logcat from a device. Required before get_logcat_entries unless the stream is already running (a session attached to the Keynobi app shares the app's logcat).",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -1020,7 +1169,7 @@ impl AndroidMcpServer {
 
     /// Get recent logcat entries with optional filtering.
     #[tool(
-        description = "Get recent Android logcat entries. Filter by level, tag, text, package, or show only crashes. Call start_logcat first in headless mode.",
+        description = "Get recent Android logcat entries. Filter by level, tag, text, package, or show only crashes. Call start_logcat first if the stream is not running.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -2902,7 +3051,7 @@ impl AndroidMcpServer {
 
     /// Get information about the open Android project.
     #[tool(
-        description = "Get the currently open Android project name, path, detected Gradle root, how the project was selected (selected_by), whether it is trusted to run its Gradle build (trusted), and the JDK Gradle builds use (path, major version, and where it was found).",
+        description = "Get the currently open Android project name, path, detected Gradle root, how the project was selected (selected_by), whether it is trusted to run its Gradle build (trusted), the JDK Gradle builds use (path, major version, and where it was found), and whether this session is attached to the Keynobi app or standalone (mode, standalone_reason, follows_app, pinned_project).",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -2914,6 +3063,23 @@ impl AndroidMcpServer {
             let fs = self.fs_state.0.lock().await;
             (fs.project_root.clone(), fs.gradle_root.clone())
         };
+        let pinned_project = match &self.mode {
+            SessionMode::Attached { pinned_project } => pinned_project.clone(),
+            SessionMode::Standalone { .. } => None,
+        };
+        let session = json!({
+            "mode": self.mode.name(),
+            "standalone_reason": self.mode.standalone_reason(),
+            "follows_app": matches!(self.mode, SessionMode::Attached { pinned_project: None }),
+            "pinned_project": pinned_project,
+        });
+        if let Some(mismatch) = self.project_mismatch().await {
+            let mut info = session;
+            info["open"] = json!(false);
+            info["app_project"] = json!(gradle_root.or(project_root));
+            info["hint"] = json!(mismatch);
+            return Ok(CallToolResult::structured(info));
+        }
         let (settings, _) = settings_manager::load_settings();
         let java = jdk::check_project_java(
             &settings,
@@ -2923,12 +3089,12 @@ impl AndroidMcpServer {
         )
         .await
         .to_json();
-        match project_root.as_ref() {
-            None => Ok(CallToolResult::structured(json!({
+        let mut info = match project_root.as_ref() {
+            None => json!({
                 "open": false,
                 "hint": "No project open. Open an Android project in the companion app, or launch with --project /path/to/project.",
                 "java": java,
-            }))),
+            }),
             Some(root) => {
                 let name = root
                     .file_name()
@@ -2942,7 +3108,7 @@ impl AndroidMcpServer {
                     "Safe Mode: run_gradle_task and run_tests are refused until the user opens \
                      this project in the Keynobi app and chooses Trust. Other tools still work.",
                 );
-                Ok(CallToolResult::structured(json!({
+                json!({
                     "open": true,
                     "name": name,
                     "path": root.to_string_lossy(),
@@ -2951,9 +3117,13 @@ impl AndroidMcpServer {
                     "trusted": trusted,
                     "trust_hint": trust_hint,
                     "java": java,
-                })))
+                })
             }
+        };
+        if let (Some(info), Some(session)) = (info.as_object_mut(), session.as_object()) {
+            info.extend(session.clone());
         }
+        Ok(CallToolResult::structured(info))
     }
 
     /// Run system health checks.
@@ -3151,16 +3321,25 @@ impl ServerHandler for AndroidMcpServer {
                 .enable_resources()
                 .build(),
         )
-        .with_server_info(Implementation::from_build_env())
-        .with_instructions(
-            "Keynobi MCP Server — AI-first companion for Android development. \
+        .with_server_info(
+            Implementation::new("keynobi", env!("CARGO_PKG_VERSION"))
+                .with_title(match &self.mode {
+                    SessionMode::Attached { .. } => "Keynobi (attached to the app)".to_string(),
+                    SessionMode::Standalone { .. } => "Keynobi (standalone)".to_string(),
+                })
+                .with_description(self.mode_instructions()),
+        )
+        .with_instructions(format!(
+            "{} \
+             Keynobi MCP Server — AI-first companion for Android development. \
              Tools: build (run_gradle_task, get_build_errors, get_build_log, get_build_config, find_apk_path, run_tests), \
              logcat (start_logcat, get_logcat_entries, get_crash_logs, get_crash_stack_trace), \
              devices (list_devices, get_ui_hierarchy, find_ui_elements, list_clickable_elements, find_ui_parent, ui_tap, ui_tap_element, ui_fill_input, ui_type_text, hide_soft_keyboard, ui_swipe, ui_scroll_until_element, ui_wait_for_idle, ui_assert_element, send_ui_key, open_deep_link, open_app_settings, set_device_orientation, set_network_state, grant_runtime_permission, revoke_runtime_permission, screenshot, get_device_info, install_apk, launch_app, restart_app, dump_app_info, get_memory_info, get_app_runtime_state), \
              project (get_project_info, run_health_check). \
              Prompts: diagnose-crash, full-deploy, build-and-fix. \
-             Start with get_project_info and run_health_check to verify the environment.".to_string()
-        )
+             Start with get_project_info and run_health_check to verify the environment.",
+            self.mode_instructions()
+        ))
     }
 
     async fn on_initialized(&self, context: rmcp::service::NotificationContext<RoleServer>) {
@@ -3174,14 +3353,6 @@ impl ServerHandler for AndroidMcpServer {
             client_name,
             self.tool_router.list_all().len(),
             self.prompt_router.list_all().len()
-        );
-        // Emit lifecycle event to Tauri GUI if running (no-op in headless mode).
-        self.emit_event(
-            "mcp:client_connected",
-            serde_json::json!({
-                "clientName": client_name,
-                "connectedAt": chrono::Utc::now().to_rfc3339(),
-            }),
         );
     }
 
@@ -3315,6 +3486,28 @@ impl ServerHandler for AndroidMcpServer {
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 impl AndroidMcpServer {
+    /// The first sentence of `instructions`: which mode this session runs in and why.
+    fn mode_instructions(&self) -> String {
+        match &self.mode {
+            SessionMode::Attached {
+                pinned_project: Some(project),
+            } => format!(
+                "Mode: attached to the running Keynobi app for {}. Builds, logcat, and \
+                 devices are shared with the app.",
+                project.display()
+            ),
+            SessionMode::Attached {
+                pinned_project: None,
+            } => "Mode: attached to the running Keynobi app; the project is whatever the app \
+                  has open. Builds, logcat, and devices are shared with the app."
+                .to_string(),
+            SessionMode::Standalone { reason } => format!(
+                "Mode: standalone, because {reason}. This server has its own state: its \
+                 builds and logcat are not visible in the Keynobi app."
+            ),
+        }
+    }
+
     async fn get_gradle_root(&self) -> Option<PathBuf> {
         let fs = self.fs_state.0.lock().await;
         fs.gradle_root.clone().or_else(|| fs.project_root.clone())
@@ -3440,15 +3633,35 @@ fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
 /// Wraps `AndroidMcpServer` to intercept all tool calls, resource reads, and
 /// prompt requests and write activity entries to the shared JSONL log.
 ///
-/// This is used in place of `AndroidMcpServer` directly in both GUI and headless
-/// modes so the companion app always has a log to display.
-struct LoggingMcpServer(AndroidMcpServer);
+/// This is used in place of `AndroidMcpServer` directly for attached and
+/// standalone sessions so the companion app always has a log to display. It
+/// also refuses project tools in a pinned session whose project the app closed.
+pub struct LoggingMcpServer {
+    server: AndroidMcpServer,
+    /// The app's registry entry for an attached session.
+    session: Option<(McpSessionRegistry, u32)>,
+}
+
+impl LoggingMcpServer {
+    pub fn new(server: AndroidMcpServer) -> Self {
+        Self {
+            server,
+            session: None,
+        }
+    }
+
+    /// Record the client's name on this attached session once it initializes.
+    pub fn with_session(mut self, registry: McpSessionRegistry, id: u32) -> Self {
+        self.session = Some((registry, id));
+        self
+    }
+}
 
 impl ServerHandler for LoggingMcpServer {
     // ── Delegation for methods that AndroidMcpServer overrides ────────────────
 
     fn get_info(&self) -> ServerConfig {
-        self.0.get_info()
+        self.server.get_info()
     }
 
     async fn on_initialized(&self, context: rmcp::service::NotificationContext<RoleServer>) {
@@ -3460,7 +3673,10 @@ impl ServerHandler for LoggingMcpServer {
         mcp_activity::log_activity(&McpActivityEntry::lifecycle(format!(
             "Client connected: {client_name}"
         )));
-        self.0.on_initialized(context).await;
+        if let Some((registry, id)) = &self.session {
+            registry.set_client_name(*id, &client_name);
+        }
+        self.server.on_initialized(context).await;
     }
 
     async fn list_resources(
@@ -3468,7 +3684,7 @@ impl ServerHandler for LoggingMcpServer {
         request: Option<PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListResourcesResult, McpError> {
-        self.0.list_resources(request, context).await
+        self.server.list_resources(request, context).await
     }
 
     // ── Instrumented: resource reads ──────────────────────────────────────────
@@ -3480,7 +3696,12 @@ impl ServerHandler for LoggingMcpServer {
     ) -> Result<ReadResourceResponse, McpError> {
         let start = std::time::Instant::now();
         let uri = request.uri.clone();
-        let result = self.0.read_resource(request, context).await;
+        let result = match self.server.project_mismatch().await {
+            Some(msg) if uri != "android://project-info" => {
+                Err(McpError::invalid_request(msg, None))
+            }
+            _ => self.server.read_resource(request, context).await,
+        };
         let ms = start.elapsed().as_millis() as u64;
         let (status, summary) = match &result {
             Ok(_) => ("ok", None),
@@ -3499,7 +3720,10 @@ impl ServerHandler for LoggingMcpServer {
     ) -> Result<CallToolResponse, McpError> {
         let start = std::time::Instant::now();
         let name = request.name.clone();
-        let result = self.0.call_tool(request, context).await;
+        let result = match self.server.check_session_project(&name).await {
+            Some(refused) => Ok(CallToolResponse::Complete(refused)),
+            None => self.server.call_tool(request, context).await,
+        };
         let ms = start.elapsed().as_millis() as u64;
         let (status, summary) = match &result {
             // rmcp 3 wraps tool results in the MRTR envelope. Every tool here is
@@ -3538,11 +3762,11 @@ impl ServerHandler for LoggingMcpServer {
         request: Option<PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListToolsResult, McpError> {
-        self.0.list_tools(request, context).await
+        self.server.list_tools(request, context).await
     }
 
     fn get_tool(&self, name: &str) -> Option<Tool> {
-        self.0.get_tool(name)
+        self.server.get_tool(name)
     }
 
     // ── Instrumented: prompts (generated by #[prompt_handler]) ───────────────
@@ -3554,7 +3778,7 @@ impl ServerHandler for LoggingMcpServer {
     ) -> Result<GetPromptResponse, McpError> {
         let start = std::time::Instant::now();
         let name = request.name.clone();
-        let result = self.0.get_prompt(request, context).await;
+        let result = self.server.get_prompt(request, context).await;
         let ms = start.elapsed().as_millis() as u64;
         let status = if result.is_ok() { "ok" } else { "error" };
         mcp_activity::log_activity(&McpActivityEntry::prompt(&name, ms, status));
@@ -3566,59 +3790,15 @@ impl ServerHandler for LoggingMcpServer {
         request: Option<PaginatedRequestParams>,
         context: RequestContext<RoleServer>,
     ) -> Result<ListPromptsResult, McpError> {
-        self.0.list_prompts(request, context).await
+        self.server.list_prompts(request, context).await
     }
 }
 
-// ── Tauri command ─────────────────────────────────────────────────────────────
+// ── `--mcp` entry point ───────────────────────────────────────────────────────
 
-/// Start the MCP server on stdio in GUI mode.
-///
-/// Guards against duplicate invocations with an AtomicBool so calling this
-/// twice doesn't start two tasks fighting over stdin/stdout.
-#[tauri::command]
-pub async fn start_mcp_server(app_handle: AppHandle) -> Result<(), String> {
-    if MCP_STDIO_RUNNING
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return Err(
-            "MCP server is already running. Only one stdio session is supported at a time.".into(),
-        );
-    }
-    debug!("Starting MCP server on stdio (GUI mode)");
-
-    let _ = app_handle.emit("mcp:started", serde_json::json!({ "transport": "stdio" }));
-
-    tokio::spawn(async move {
-        mcp_activity::rotate_activity_log();
-        mcp_activity::log_activity(&McpActivityEntry::lifecycle("Server started (GUI mode)"));
-
-        let server = LoggingMcpServer(AndroidMcpServer::from_app_handle(&app_handle));
-        let transport = rmcp::transport::stdio();
-        match server.serve(transport).await {
-            Ok(running) => {
-                info!("MCP server initialized, waiting for client to disconnect");
-                if let Err(e) = running.waiting().await {
-                    error!("MCP server error: {}", e);
-                }
-            }
-            Err(e) => {
-                error!("MCP server failed to start: {}", e);
-            }
-        }
-        mcp_activity::log_activity(&McpActivityEntry::lifecycle("Server stopped (GUI mode)"));
-        MCP_STDIO_RUNNING.store(false, Ordering::SeqCst);
-        let _ = app_handle.emit("mcp:stopped", serde_json::json!({}));
-    });
-    Ok(())
-}
-
-// ── Headless entry point ──────────────────────────────────────────────────────
-
-/// The headless server's project: `--project`, else the Gradle build that
-/// contains the working directory, else the app's last active project. An
-/// agent's working directory beats a project the app happened to leave open.
+/// The MCP server's project: `--project`, else the Gradle build that contains
+/// the working directory, else the app's last active project. An agent's
+/// working directory beats a project the app happened to leave open.
 fn select_headless_project(
     argument: Option<PathBuf>,
     working_dir: Option<PathBuf>,
@@ -3643,12 +3823,13 @@ fn select_headless_project(
         .map(|p| (p, ProjectSelection::LastActiveProject))
 }
 
-/// Run the MCP server in headless mode (no Tauri GUI).
+/// Entry point for `keynobi --mcp`: attach to the running app, or serve
+/// stdio standalone. Returns the process exit code.
 ///
-/// Called from `main.rs` when the binary is launched with `--mcp`.
-/// Initializes state directly from the project path and settings file.
-pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
-    use crate::services::fs_manager;
+/// Called from `main.rs`. Never launches the app. With `attach_only`, a
+/// failed attach exits non-zero instead of running standalone.
+pub async fn run_mcp(project_path: Option<PathBuf>, attach_only: bool) -> i32 {
+    use crate::services::mcp_attach;
 
     // Redirect all tracing to stderr — stdout is reserved for MCP JSON-RPC.
     tracing_subscriber::fmt()
@@ -3660,13 +3841,65 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
         .with_target(false)
         .init();
 
-    let selection = select_headless_project(project_path, std::env::current_dir().ok(), || {
-        settings_manager::load_settings().0.last_active_project
+    let working_dir = std::env::current_dir().ok();
+    // The app's last active project is a standalone-only fallback: an
+    // attached session without a project follows the app instead.
+    let requested = select_headless_project(project_path, working_dir, || None);
+    let request = mcp_attach::AttachRequest::new(
+        requested
+            .as_ref()
+            .map(|(root, _)| mcp_attach::attach_project_key(root)),
+        requested.as_ref().map(|(_, how)| *how),
+    );
+
+    let reason = match mcp_attach::try_attach(
+        &mcp_attach::socket_path(),
+        &request,
+        mcp_attach::ATTACH_TIMEOUT,
+    )
+    .await
+    {
+        Ok(attached) => {
+            info!(
+                "Attached to the Keynobi app (version {})",
+                attached.reply.version
+            );
+            let end = mcp_attach::forward(attached, tokio::io::stdin(), tokio::io::stdout()).await;
+            return match end {
+                mcp_attach::ForwardEnd::ClientClosed => 0,
+                mcp_attach::ForwardEnd::AppClosed => {
+                    eprintln!(
+                        "keynobi: the Keynobi app closed the MCP session (it may have quit). \
+                         Restart the MCP server in your AI client to reconnect."
+                    );
+                    1
+                }
+            };
+        }
+        Err(reason) => reason,
+    };
+
+    if attach_only {
+        eprintln!("keynobi: could not attach to the Keynobi app: {reason}");
+        return 2;
+    }
+
+    let selection = requested.or_else(|| {
+        select_headless_project(None, None, || {
+            settings_manager::load_settings().0.last_active_project
+        })
     });
+    run_standalone(selection, reason).await
+}
+
+/// Serve MCP on stdio with this process's own state.
+async fn run_standalone(selection: Option<(PathBuf, ProjectSelection)>, reason: String) -> i32 {
+    use crate::services::{fs_manager, mcp_sessions};
+
     let project_selection = selection.as_ref().map(|(_, how)| *how);
     let project_root = selection.map(|(root, how)| {
         info!(
-            "MCP headless: project {} (selected by {how:?})",
+            "MCP standalone: project {} (selected by {how:?})",
             root.display()
         );
         root
@@ -3687,44 +3920,49 @@ pub async fn run_headless_mcp(project_path: Option<PathBuf>) {
     ));
     let process_manager = ProcessManager::new();
 
-    info!("MCP headless server starting. Project: {:?}", project_root);
+    info!("MCP standalone server starting ({reason}). Project: {project_root:?}");
 
     mcp_activity::rotate_activity_log();
-    mcp_activity::write_pid_file();
+    mcp_sessions::remove_legacy_pid_file();
+    mcp_sessions::write_standalone_record(project_root.as_deref(), &reason);
     mcp_activity::log_activity(&McpActivityEntry::lifecycle(format!(
-        "Server started (headless) — project: {}",
+        "Server started (standalone: {reason}) — project: {}",
         project_root
             .as_ref()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|| "none".into())
     )));
 
-    let server = LoggingMcpServer(AndroidMcpServer::new_headless(
-        build_state,
-        device_state,
-        logcat_state,
-        fs_state,
-        process_manager,
-        project_selection,
-    ));
+    let server = LoggingMcpServer::new(
+        AndroidMcpServer::new_headless(
+            build_state,
+            device_state,
+            logcat_state,
+            fs_state,
+            process_manager,
+            project_selection,
+        )
+        .with_mode(SessionMode::Standalone { reason }),
+    );
     let transport = rmcp::transport::stdio();
-    match server.serve(transport).await {
+    let code = match server.serve(transport).await {
         Ok(running) => {
             if let Err(e) = running.waiting().await {
                 tracing::error!("MCP server error: {e}");
             }
+            0
         }
         Err(e) => {
             tracing::error!("MCP server failed to start: {e}");
             mcp_activity::log_activity(&McpActivityEntry::lifecycle(format!(
                 "Server failed to start: {e}"
             )));
-            mcp_activity::remove_pid_file();
-            std::process::exit(1);
+            1
         }
-    }
-    mcp_activity::log_activity(&McpActivityEntry::lifecycle("Server stopped (headless)"));
-    mcp_activity::remove_pid_file();
+    };
+    mcp_activity::log_activity(&McpActivityEntry::lifecycle("Server stopped (standalone)"));
+    mcp_sessions::remove_standalone_record();
+    code
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -3924,13 +4162,6 @@ mod tests {
             truncate_at_char_boundary(&mixed, 121),
             format!("{}{}", "a".repeat(118), '漢')
         );
-    }
-
-    #[test]
-    fn mcp_stdio_guard_is_initially_unset() {
-        // Guard should be false at startup (or after test isolation).
-        // We just check the type; actual state depends on test order.
-        let _ = MCP_STDIO_RUNNING.load(Ordering::SeqCst);
     }
 
     // ── State-mutating tools ─────────────────────────────────────────────────
@@ -4182,6 +4413,153 @@ mod tests {
         assert!(!format!("{:?}", result).is_empty());
         let bs = server.build_state.inner.lock().await;
         assert!(bs.current_build.is_none());
+    }
+
+    fn result_text(result: &CallToolResult) -> String {
+        result
+            .content
+            .iter()
+            .filter_map(|c| c.as_text().map(|t| t.text.clone()))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    async fn open_in_app(fs_state: &FsState, root: &std::path::Path) {
+        let mut fs = fs_state.0.lock().await;
+        fs.project_root = Some(root.to_path_buf());
+        fs.gradle_root = Some(root.to_path_buf());
+    }
+
+    #[tokio::test]
+    async fn a_pinned_session_refuses_project_tools_after_the_app_switches_projects() {
+        let tmp = tempfile::tempdir().unwrap();
+        let a = gradle_build(&tmp.path().join("a"));
+        let b = gradle_build(&tmp.path().join("b"));
+        let fs_state = FsState::new();
+        open_in_app(&fs_state, &a).await;
+        let server = AndroidMcpServer::new_headless(
+            BuildState::new(),
+            DeviceState::new(),
+            crate::commands::logcat::new_logcat_state(),
+            fs_state.clone(),
+            ProcessManager::new(),
+            None,
+        )
+        .attached(Some(a.clone()), ProjectSelection::WorkingDirectory);
+
+        assert!(server
+            .check_session_project("run_gradle_task")
+            .await
+            .is_none());
+
+        open_in_app(&fs_state, &b).await;
+        for tool in [
+            "run_gradle_task",
+            "get_build_status",
+            "stop_app",
+            "cancel_build",
+        ] {
+            let refused = server
+                .check_session_project(tool)
+                .await
+                .unwrap_or_else(|| panic!("{tool} must be refused"));
+            assert_eq!(refused.is_error, Some(true));
+            let text = result_text(&refused);
+            assert!(
+                text.contains(&format!("Keynobi now has {} open", b.display()))
+                    && text.contains(&format!("this session is for {}", a.display())),
+                "{text}"
+            );
+        }
+        for tool in ["list_devices", "get_logcat_entries", "get_project_info"] {
+            assert!(server.check_session_project(tool).await.is_none(), "{tool}");
+        }
+
+        let info = result_text(&server.get_project_info().await.unwrap());
+        let info: serde_json::Value = serde_json::from_str(&info).unwrap();
+        assert_eq!(info["open"], false);
+        assert_eq!(info["mode"], "attached");
+        assert_eq!(info["follows_app"], false);
+        assert_eq!(info["pinned_project"], json!(a));
+        assert_eq!(info["app_project"], json!(b));
+
+        let mut fs = fs_state.0.lock().await;
+        fs.project_root = None;
+        fs.gradle_root = None;
+        drop(fs);
+        let text = result_text(&server.check_session_project("run_tests").await.unwrap());
+        assert!(text.contains("Keynobi now has no project open"), "{text}");
+    }
+
+    #[tokio::test]
+    async fn a_session_that_follows_the_app_is_never_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let fs_state = FsState::new();
+        let server = AndroidMcpServer::new_headless(
+            BuildState::new(),
+            DeviceState::new(),
+            crate::commands::logcat::new_logcat_state(),
+            fs_state.clone(),
+            ProcessManager::new(),
+            None,
+        )
+        .attached(None, ProjectSelection::App);
+        open_in_app(&fs_state, &gradle_build(&tmp.path().join("b"))).await;
+
+        assert!(server
+            .check_session_project("run_gradle_task")
+            .await
+            .is_none());
+        let info = result_text(&server.get_project_info().await.unwrap());
+        let info: serde_json::Value = serde_json::from_str(&info).unwrap();
+        assert_eq!(info["open"], true);
+        assert_eq!(info["mode"], "attached");
+        assert_eq!(info["follows_app"], true);
+        assert_eq!(info["selected_by"], "app");
+        assert_eq!(info["standalone_reason"], json!(null));
+    }
+
+    #[tokio::test]
+    async fn standalone_sessions_say_so_and_why() {
+        let server = headless_server().with_mode(SessionMode::Standalone {
+            reason: "the Keynobi app is not running".into(),
+        });
+
+        let info = result_text(&server.get_project_info().await.unwrap());
+        let info: serde_json::Value = serde_json::from_str(&info).unwrap();
+        assert_eq!(info["mode"], "standalone");
+        assert_eq!(info["standalone_reason"], "the Keynobi app is not running");
+
+        let status = result_text(&server.get_build_status().await.unwrap());
+        let status: serde_json::Value = serde_json::from_str(&status).unwrap();
+        assert_eq!(status["mode"], "standalone");
+        assert_eq!(
+            status["standalone_reason"],
+            "the Keynobi app is not running"
+        );
+
+        let info = server.get_info();
+        let instructions = info.instructions.unwrap_or_default();
+        assert!(
+            instructions.starts_with("Mode: standalone, because the Keynobi app is not running."),
+            "{instructions}"
+        );
+        assert_eq!(info.server_info.name, "keynobi");
+        assert_eq!(
+            info.server_info.title.as_deref(),
+            Some("Keynobi (standalone)")
+        );
+    }
+
+    #[test]
+    fn every_project_independent_tool_exists() {
+        let tools = headless_server().tool_router.list_all();
+        for name in PROJECT_INDEPENDENT_TOOLS {
+            assert!(
+                tools.iter().any(|t| t.name == *name),
+                "{name} is not a tool"
+            );
+        }
     }
 
     #[tokio::test]

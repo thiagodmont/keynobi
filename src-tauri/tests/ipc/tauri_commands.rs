@@ -2,6 +2,7 @@ use keynobi_lib::models::build::BuildStatus;
 use keynobi_lib::models::error::AppError;
 use keynobi_lib::models::settings::{AppSettings, ProjectEntry};
 use keynobi_lib::models::variant::VariantList;
+use keynobi_lib::services::mcp_sessions::McpSessionRegistry;
 use keynobi_lib::services::{adb_manager::DeviceState, build_runner::BuildState};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};
@@ -44,15 +45,28 @@ async fn get_variants_from_gradle(
     keynobi_lib::commands::variant::get_variants_from_gradle(fs_state).await
 }
 
+#[tauri::command]
+async fn get_mcp_server_status(
+    registry: State<'_, McpSessionRegistry>,
+) -> Result<keynobi_lib::services::mcp_sessions::McpServerStatus, AppError> {
+    keynobi_lib::commands::mcp::get_mcp_server_status(registry).await
+}
+
 fn create_app() -> tauri::App<MockRuntime> {
+    create_app_with(McpSessionRegistry::new())
+}
+
+fn create_app_with(mcp_sessions: McpSessionRegistry) -> tauri::App<MockRuntime> {
     mock_builder()
         .manage(crate::common::isolated_build_state())
         .manage(DeviceState::new())
+        .manage(mcp_sessions)
         .invoke_handler(tauri::generate_handler![
             get_default_settings,
             get_build_status,
             select_device,
             get_selected_device,
+            get_mcp_server_status,
         ])
         .build(mock_context(noop_assets()))
         .expect("failed to build mock Tauri app")
@@ -95,6 +109,31 @@ fn tauri_ipc_get_default_settings_returns_camel_case_settings() {
 
     assert_eq!(value["onboardingCompleted"], false);
     assert_eq!(value["appearance"]["uiFontSize"], 12);
+}
+
+#[test]
+fn tauri_ipc_mcp_server_status_lists_attached_sessions() {
+    let registry = McpSessionRegistry::new();
+    registry.set_listening(Some("/tmp/kn-test/mcp.sock".into()));
+    let id = registry
+        .add(Some(4242), Some(std::path::Path::new("/p/app")))
+        .unwrap();
+    registry.set_client_name(id, "claude-code");
+    let app = create_app_with(registry);
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("failed to build mock webview");
+
+    let status: Value = deserialize(
+        get_ipc_response(&webview, request("get_mcp_server_status", json!({})))
+            .expect("get_mcp_server_status should succeed"),
+    );
+
+    assert_eq!(status["listening"], true);
+    assert_eq!(status["attached"][0]["pid"], 4242);
+    assert_eq!(status["attached"][0]["project"], "/p/app");
+    assert_eq!(status["attached"][0]["clientName"], "claude-code");
+    assert!(status["standalone"].is_array());
 }
 
 #[test]

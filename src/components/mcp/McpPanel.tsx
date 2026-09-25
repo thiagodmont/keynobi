@@ -1,12 +1,14 @@
 import { type JSX, Show, For, createSignal, onMount, onCleanup, createMemo } from "solid-js";
 import {
   mcpState,
+  mcpStatusSummary,
   loadMcpActivity,
   startMcpActivityPolling,
   stopMcpActivityPolling,
   type McpActivityEntry,
 } from "@/stores/mcp.store";
 import { getMcpSetupStatus, clearMcpActivity } from "@/lib/tauri-api";
+import { StatusDot, type DotStatus } from "@/components/ui";
 
 // ── Panel visibility signal ───────────────────────────────────────────────────
 
@@ -21,6 +23,23 @@ export function closeMcpPanel() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function sessionDotStatus(): DotStatus {
+  const tone = mcpStatusSummary().tone;
+  return tone === "attached" ? "ok" : tone === "standalone" ? "warning" : "idle";
+}
+
+/** One line per live session, e.g. "Claude Code — follows the app". */
+export function mcpSessionLines(): string[] {
+  const attached = mcpState.attached.map(
+    (s) => `${s.clientName ?? "AI client"} — ${s.project ?? "follows the app"}`
+  );
+  const standalone = mcpState.standalone.map(
+    (s) =>
+      `Standalone server (PID ${s.pid})${s.project ? ` — ${s.project}` : ""}: ${s.reason}. Its builds and logcat are not shown here.`
+  );
+  return [...attached, ...standalone];
+}
 
 function formatTime(iso: string): string {
   try {
@@ -268,41 +287,21 @@ export function McpPanel(): JSX.Element {
               MCP Server
             </span>
 
-            {/* Server alive badge */}
+            {/* Live sessions badge */}
             <div
               style={{
                 display: "flex",
                 "align-items": "center",
                 gap: "5px",
                 padding: "2px 8px",
-                background: mcpState.serverAlive
-                  ? "color-mix(in srgb, var(--success) 12%, transparent)"
-                  : "rgba(255,255,255,0.06)",
-                border: `1px solid ${mcpState.serverAlive ? "color-mix(in srgb, var(--success) 30%, transparent)" : "rgba(255,255,255,0.1)"}`,
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.1)",
                 "border-radius": "4px",
               }}
             >
-              <span
-                style={{
-                  width: "6px",
-                  height: "6px",
-                  "border-radius": "50%",
-                  background: mcpState.serverAlive ? "var(--success)" : "rgba(255,255,255,0.25)",
-                }}
-              />
-              <span
-                style={{
-                  "font-size": "11px",
-                  color: mcpState.serverAlive ? "var(--success)" : "rgba(255,255,255,0.5)",
-                }}
-              >
-                {mcpState.serverAlive
-                  ? mcpState.serverPid
-                    ? `Running (PID ${mcpState.serverPid})`
-                    : "Running"
-                  : mcpState.clientName
-                    ? `Connected: ${mcpState.clientName}`
-                    : "No server detected"}
+              <StatusDot size="sm" status={sessionDotStatus()} />
+              <span style={{ "font-size": "11px", color: "var(--text-secondary)" }}>
+                {mcpStatusSummary().description}
               </span>
             </div>
           </div>
@@ -377,9 +376,24 @@ export function McpPanel(): JSX.Element {
             </button>
           </div>
           <div style={{ "font-size": "10px", color: "rgba(255,255,255,0.3)", "margin-top": "4px" }}>
-            The MCP uses the project currently open in the companion app. Append{" "}
-            <code style={{ "font-family": "var(--font-mono)" }}>--project /path</code> to override.
+            While Keynobi is open, AI clients attach to it and use the project it has open. Append{" "}
+            <code style={{ "font-family": "var(--font-mono)" }}>--project /path</code> to limit a
+            client to one project.
           </div>
+          <Show when={mcpSessionLines().length > 0}>
+            <ul
+              aria-label="MCP sessions"
+              style={{
+                margin: "8px 0 0",
+                padding: "0",
+                "list-style": "none",
+                "font-size": "11px",
+                color: "var(--text-secondary)",
+              }}
+            >
+              <For each={mcpSessionLines()}>{(line) => <li>{line}</li>}</For>
+            </ul>
+          </Show>
         </div>
 
         {/* ── Activity log ────────────────────────────────────────────────── */}

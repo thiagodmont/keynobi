@@ -231,11 +231,6 @@ pub struct TelemetrySettings {
 #[serde(rename_all = "camelCase", default)]
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct McpSettings {
-    /// Automatically start the MCP stdio server when the app launches.
-    ///
-    /// When enabled, configured MCP clients can connect immediately after the app opens
-    /// without needing to trigger "Start MCP Server" from the command palette.
-    pub auto_start: bool,
     /// Maximum seconds to wait for a Gradle build via the `run_gradle_task`
     /// MCP tool before cancelling. Increase for very large projects.
     pub build_timeout_sec: u32,
@@ -325,7 +320,6 @@ impl Default for LogcatSettings {
 impl Default for McpSettings {
     fn default() -> Self {
         Self {
-            auto_start: false,
             build_timeout_sec: 600,
             logcat_default_count: 200,
             build_log_default_lines: 200,
@@ -386,6 +380,16 @@ mod tests {
         let older: McpSettings =
             serde_json::from_str(r#"{"autoStart": true, "buildTimeoutSec": 900}"#).unwrap();
         assert!(!older.allow_unrestricted_gradle);
+    }
+
+    #[test]
+    fn settings_saved_with_the_removed_mcp_auto_start_still_load() {
+        let parsed: AppSettings = serde_json::from_str(
+            r#"{"mcp": {"autoStart": true, "buildTimeoutSec": 900, "allowUnrestrictedGradle": true}}"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.mcp.build_timeout_sec, 900);
+        assert!(parsed.mcp.allow_unrestricted_gradle);
     }
 
     #[test]

@@ -27,12 +27,12 @@ Frontend:
 Backend:
 
 - `src-tauri/src/lib.rs` - app setup, managed state, command registration, shutdown.
-- `src-tauri/src/main.rs` - entry point; `--mcp` starts the headless MCP server.
+- `src-tauri/src/main.rs` - entry point; `--mcp` attaches to the running app or starts a standalone MCP server.
 - `src-tauri/src/commands/` - thin Tauri command handlers.
 - `src-tauri/src/services/` - Rust business logic.
 - `src-tauri/src/models/` - Rust IPC models exported with `ts-rs`, plus `AppError`.
 - `src-tauri/src/utils/` - shared helpers: `path.rs` (filesystem boundaries), `validation.rs` (identifiers), `line_reader.rs` (bounded process-output lines), `process.rs` (deadlines for one-shot commands), and `device_shell.rs` (`adb shell` quoting).
-- `src-tauri/tests/` - integration tests (`build_integration.rs`, `ipc/`, `fixtures/mock_gradlew`) and `mcp_headless.rs`, which drives the real `keynobi --mcp` binary through `headless/`.
+- `src-tauri/tests/` - integration tests (`build_integration.rs`, `ipc/`, `fixtures/mock_gradlew`) and `mcp_headless.rs`, which drives the real `keynobi --mcp` binary through `headless/`, standalone and attached to a test listener.
 - `src-tauri/benches/` - Criterion benchmarks.
 - `src-tauri/capabilities/` - Tauri permission grants.
 
@@ -53,7 +53,7 @@ Each domain owns its own state struct, wrapped as a newtype around `Arc<tokio::s
 
 Implement `Default` by delegating to `new()` when a state type has construction logic.
 
-Services that the headless MCP server reuses must work without an `AppHandle`: take `Option<AppHandle>` and skip GUI events when it is `None`.
+Services that the standalone MCP server reuses must work without an `AppHandle`: take `Option<AppHandle>` and skip GUI events when it is `None`.
 
 ### Mutex Discipline
 
@@ -144,7 +144,7 @@ npm run check:bindings      # regenerate and fail on any diff
 - Use `thiserror` for structured service errors (`AppError`, `FsError` in `models/error.rs`).
 - Do not use `unwrap()` in production Rust. `expect("why this cannot fail")` is acceptable for programmer-error invariants such as static regexes.
 - Use `tracing` macros for logs.
-- GUI log filtering uses `KEYNOBI_LOG`; headless MCP uses `RUST_LOG`.
+- GUI log filtering uses `KEYNOBI_LOG`; `keynobi --mcp` uses `RUST_LOG`.
 
 ### Formatting and Lints
 
@@ -225,7 +225,7 @@ Render errors with `formatError(err)`, which understands `AppError` (`{ kind, me
 | `device:list_changed` | Connected device serials changed. |
 | `logcat:entries` | Batched processed log entries (every 100 ms, up to 500). |
 | `logcat:cleared`, `logcat:reconnecting`, `logcat:stopped` | Logcat stream lifecycle. |
-| `mcp:started`, `mcp:client_connected`, `mcp:stopped`, `mcp:startup-failed` | In-process MCP server lifecycle. |
+| `mcp:sessions_changed` | MCP clients attached to the app changed; payload is the full `McpAttachedSession[]`. |
 | `settings:corrupted` | Settings file was unreadable and was reset. |
 | `monitor://stats` | App memory and log-folder size, every 5 s. |
 
@@ -267,7 +267,7 @@ Visual regression tests live under `e2e/visual/` and run through `playwright.vis
 - Unit tests live in `#[cfg(test)]` modules near the service code.
 - Use `tempfile::TempDir` for filesystem fixtures. Never read or write the real `~/.keynobi`: unit tests are isolated automatically, and integration tests in `tests/` must call `common::isolate_data_dir()` before touching persisted state.
 - Command tests should focus on validation and boundary behavior.
-- End-to-end MCP behavior goes in `tests/mcp_headless.rs`. `headless::Sandbox` gives each server process its own `HOME` (so its data dir is a temp dir), a fake SDK whose `adb` records its arguments, and a project whose `gradlew` runs the script you give it; `Sandbox::start()` launches `keynobi --mcp` and completes the MCP handshake.
+- End-to-end MCP behavior goes in `tests/mcp_headless.rs`. `headless::Sandbox` gives each server process its own `HOME` (so its data dir is a temp dir, created under `/tmp` to keep the socket path short), a fake SDK whose `adb` records its arguments, and a project whose `gradlew` runs the script you give it; `Sandbox::start()` launches `keynobi --mcp` and completes the MCP handshake. `headless::TestApp::listen` serves attach requests on the sandbox's socket from the test process, standing in for the app.
 - Security validators need negative tests: traversal, symlinks, option-shaped values, and shell metacharacters.
 
 ### Verification Gate

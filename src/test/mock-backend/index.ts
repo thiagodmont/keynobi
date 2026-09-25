@@ -15,7 +15,6 @@ const handlers: Map<string, Handler> = new Map(
     ...devicesHandlers(),
     ...buildHandlers(),
     ...logcatHandlers(),
-    start_mcp_server: () => undefined,
     get_mcp_setup_status: () => ({
       exePath: "/mock/keynobi",
       setupCommand: "/mock/keynobi --mcp",
@@ -33,7 +32,7 @@ const handlers: Map<string, Handler> = new Map(
       },
     }),
     get_mcp_activity: () => [],
-    get_mcp_server_status: () => ({ alive: false, pid: null }),
+    get_mcp_server_status: () => ({ listening: true, attached: [], standalone: [] }),
     clear_mcp_activity: () => undefined,
   })
 );

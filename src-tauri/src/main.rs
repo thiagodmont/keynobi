@@ -4,20 +4,24 @@
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    // Check for --mcp flag: run as a headless MCP stdio server without a GUI.
-    // Usage: keynobi --mcp [--project /path/to/project]
+    // `--mcp`: serve MCP on stdio, attached to the running app when possible.
+    // Usage: keynobi --mcp [--project /path/to/project] [--attach-only]
     if args.iter().any(|a| a == "--mcp") {
         let project_path = args
             .windows(2)
             .find(|w| w[0] == "--project")
             .map(|w| std::path::PathBuf::from(&w[1]));
+        let attach_only = args.iter().any(|a| a == "--attach-only");
 
         let rt =
             tokio::runtime::Runtime::new().expect("failed to create tokio runtime for MCP server");
-        rt.block_on(keynobi_lib::services::mcp_server::run_headless_mcp(
+        let code = rt.block_on(keynobi_lib::services::mcp_server::run_mcp(
             project_path,
+            attach_only,
         ));
-        return;
+        // Exit without waiting for the runtime: a relay may still be blocked
+        // reading stdin, which cannot be cancelled.
+        std::process::exit(code);
     }
 
     // Normal mode: launch the full Tauri GUI.

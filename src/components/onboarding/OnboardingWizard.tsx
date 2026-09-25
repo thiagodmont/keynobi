@@ -356,15 +356,6 @@ export function OnboardingWizard(): JSX.Element {
                   Optional defaults — you can change these later in Settings.
                 </p>
                 <SettingRow
-                  label="Start MCP server when the app opens"
-                  description="For AI client integration via Model Context Protocol. Uses a background process."
-                >
-                  <SettingToggle
-                    checked={settingsState.mcp.autoStart}
-                    onChange={(v) => updateSetting("mcp", "autoStart", v)}
-                  />
-                </SettingRow>
-                <SettingRow
                   label="Auto-start logcat when a device connects"
                   description="Streams device logs automatically when you plug in a device or start an emulator."
                 >

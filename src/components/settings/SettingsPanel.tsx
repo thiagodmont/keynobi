@@ -448,17 +448,6 @@ function ToolsSettings(props: { matchesSearch: (l: string, d?: string) => boolea
       </Show>
 
       <SectionHeader title="MCP" />
-      <Show when={props.matchesSearch("MCP Auto-start", "Start MCP server when the app launches")}>
-        <SettingRow
-          label="Auto-start MCP Server"
-          description="Automatically start the MCP stdio server when the app opens. Lets configured AI clients connect without a manual trigger."
-        >
-          <SettingToggle
-            checked={settingsState.mcp.autoStart}
-            onChange={(v) => updateSetting("mcp", "autoStart", v)}
-          />
-        </SettingRow>
-      </Show>
       <Show
         when={props.matchesSearch(
           "MCP Build Timeout",

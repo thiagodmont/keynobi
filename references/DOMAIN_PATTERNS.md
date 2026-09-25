@@ -10,10 +10,10 @@ Update this file when a domain workflow, boundary, or safety rule changes. When 
 
 Every domain below runs in two independent contexts (see `BEST_PRACTICES.md` § Process Model):
 
-- **GUI**: Tauri commands operating on the app's managed state.
-- **Headless MCP**: `keynobi --mcp` started by an MCP client, with its own `FsState`, `BuildState`, `DeviceState`, `LogcatState`, and `ProcessManager`.
+- **GUI**: Tauri commands operating on the app's managed state. MCP sessions **attached** to the app (see [MCP](#mcp)) run in this process on the same state.
+- **Standalone MCP**: `keynobi --mcp` that could not attach to the app, with its own `FsState`, `BuildState`, `DeviceState`, `LogcatState`, and `ProcessManager`.
 
-Invariants that say "one at a time" or "the GUI sees it" hold **within one process**. Across processes, only files in `~/.keynobi/` are shared. The GUI also contains an in-process MCP mode (`start_mcp_server`, gated by `settings.mcp.auto_start`), but it serves stdio of the GUI process, so standard MCP clients cannot reach it. Do not rely on it for shared state.
+Invariants that say "one at a time" or "the GUI sees it" hold **within one process**, so they cover the app and its attached sessions but not standalone servers. Across processes, only files in `~/.keynobi/` are shared.
 
 ---
 
@@ -283,14 +283,19 @@ Validate every external string before acting, using the shared validators:
 
 ### Modes
 
-- Headless mode (`AndroidMcpServer::new_headless`) is the supported mode. It picks the project once at startup (`select_headless_project`): `--project`, then the Gradle root containing the current directory (`find_gradle_root`), then `last_active_project` from settings if it is a directory; otherwise no project. `get_project_info` reports the rule as `selected_by` (`argument`, `working_directory`, `last_active_project`; `app` in GUI mode).
+- `keynobi --mcp` (`mcp_server::run_mcp`) first picks the requested project (`select_headless_project`): `--project`, else the Gradle root containing the current directory (`find_gradle_root`). It then tries to **attach** to the running app over `<data dir>/mcp.sock` (`services/mcp_attach.rs`): one JSON line each way, then the process only relays stdio to the socket. It never launches the app.
+- The app (`mcp_attach::start_app_listener`, started in `lib.rs` setup) serves each connection as its own session with `AndroidMcpServer::from_app_handle(..).attached(..)`, so attached sessions share the app's build slot, logcat, devices, and project. The accept/reject rules are `mcp_attach::decide_attach`: no project → accepted and follows the app; the app's open project → accepted and pinned to it; another project, or no project open → refused. The app never changes its open project for an agent.
+- A pinned session whose project the app has since closed refuses every tool not in `PROJECT_INDEPENDENT_TOOLS` with a tool error naming both projects (`check_session_project`, applied in `LoggingMcpServer`). New tools are project-scoped unless added to that list.
+- When attaching fails, the process runs **standalone** (`AndroidMcpServer::new_headless` + `SessionMode::Standalone { reason }`), with `last_active_project` as the last project fallback. `initialize`, `get_project_info`, the build tools, and the activity log say it is standalone and why. `--attach-only` exits non-zero instead.
+- `get_project_info` reports `selected_by` (`argument`, `working_directory`, `last_active_project`; `app` for a session that follows the app) and `mode`.
 - The MCP server never asks about trust. Build tools refuse an untrusted project with `invalid_params`; every other tool works.
-- GUI mode (`AndroidMcpServer::from_app_handle`) shares the GUI's managed state but is served on the GUI's stdio; see [Process Model](#process-model).
-- Headless MCP logs to stderr; stdout is reserved for MCP JSON-RPC.
+- `keynobi --mcp` logs to stderr; stdout is reserved for MCP JSON-RPC.
 
 ### Activity
 
-MCP lifecycle, tool, prompt, and resource activity is appended to `~/.keynobi/mcp-activity.jsonl` through `services/mcp_activity.rs`. The GUI polls it every 3 s. Each entry records kind, name, duration, status, and a short result summary; never log full arguments or secrets.
+MCP lifecycle, tool, prompt, and resource activity is appended to `~/.keynobi/mcp-activity.jsonl` through `services/mcp_activity.rs`, under the data lock, which also covers rotation. The GUI polls it every 3 s while the MCP panel is open. Each entry records kind, name, duration, status, and a short result summary; never log full arguments or secrets.
+
+Live sessions come from `services/mcp_sessions.rs`: the app's in-memory registry of attached sessions (`MAX_ATTACHED_SESSIONS`, pushed to the frontend as `mcp:sessions_changed`) and one `mcp-sessions/<pid>.json` record per standalone server (readers drop records whose process is gone or whose PID now runs another binary). `get_mcp_server_status` returns both.
 
 ---
 
@@ -303,7 +308,7 @@ MCP lifecycle, tool, prompt, and resource activity is appended to `~/.keynobi/mc
 
 ### JDK Resolution and Health
 
-`services/jdk.rs` is the only place that decides which JDK Gradle uses. `build_env_vars` (GUI builds, MCP builds, variant discovery), the `sdkmanager` calls, GUI Health (`run_health_checks`), and MCP `run_health_check`/`get_project_info` all call it (Health and project info through `check_project_java`, which ignores an untrusted project's `gradle.properties` so the project cannot choose the `java` binary that is probed), so the GUI and a headless MCP process pick the same JDK even when they inherit different environments. Resolution order:
+`services/jdk.rs` is the only place that decides which JDK Gradle uses. `build_env_vars` (GUI builds, MCP builds, variant discovery), the `sdkmanager` calls, GUI Health (`run_health_checks`), and MCP `run_health_check`/`get_project_info` all call it (Health and project info through `check_project_java`, which ignores an untrusted project's `gradle.properties` so the project cannot choose the `java` binary that is probed), so the GUI and a standalone MCP process pick the same JDK even when they inherit different environments. Resolution order:
 
 1. `org.gradle.java.home` in `$GRADLE_USER_HOME/gradle.properties` (default `~/.gradle`), then in the Gradle root's `gradle.properties`. This matches Gradle, where the user home file overrides the project file and the daemon runs on this JDK whatever `JAVA_HOME` says.
 2. The `java.home` setting (`~/` expanded).
@@ -341,7 +346,7 @@ On window close the app has a 3 s budget: cancel a running build, stop logcat, s
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
-- **Cross-process builds.** GUI and headless MCP can build at the same time. MCP builds appear in the GUI's history only after the GUI's next build or restart, not live.
+- **Cross-process builds.** The app and a standalone MCP server can build at the same time (attached sessions share the app's build slot). Standalone builds appear in the GUI's history only after the GUI's next build or restart, and builds an attached agent starts are not streamed into the Build panel.
 - **Persisted history size.** `MAX_PERSISTED_HISTORY` (20) is effectively unused because load trims to `MAX_HISTORY` (10).
 - **Build error counts after truncation.** Once `MAX_BUILD_ERRORS` is reached, `errorCount`/`warningCount` count only the retained diagnostics, and the truncation notice itself counts as a warning. True totals would need new `BuildResult`/`BuildCompleteEvent` fields.
 - **Duplicate lint diagnostics.** With `abortOnError`, lint prints its first failure from both the report task and the failing task, so that issue is listed twice. The parser is stateless per line, and diagnostics are not de-duplicated.
@@ -351,11 +356,11 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Logcat clear mid-tick.** The pipeline checks `clear_epoch` at the top of each 100 ms tick but not again when it stores the batch, so lines drained just before a clear can still be stored (and emitted) just after it. They get fresh IDs, so identity is safe; at most one tick of pre-clear lines survives.
 - **MCP error model.** Coordinate, permission, and deep-link validation failures return `CallToolResult::error` instead of `McpError::invalid_params`.
 - **Validator duplication.** MCP `validate_apk_path` duplicates `validate_apk_within_build_outputs` and hard-codes the `app` module.
-- **Activity log.** `mcp-activity.jsonl` is trimmed only at server start (over 1,000 lines → last 500), and summaries are not redacted.
+- **Activity log.** Summaries are not redacted.
 - **APK lookup module.** `find_output_apk` looks only under `app/build/outputs/apk`, so projects whose application module is not named `app` cannot deploy.
 - **Project App Info.** When the app module is not named `app`, the root build file is edited and success is reported even if nothing changed.
 - **Airplane-mode fallback.** On devices without `cmd connectivity airplane-mode`, the fallback broadcast is a protected broadcast that a non-root shell is normally refused; the setting is then restored and the step reported as failed. Needs verification on a device.
 - **Dead code.** `DevicePanel.tsx` (panel/popover modes) is not imported anywhere.
 - **Trust is lost with the registry entry.** Removing a project, or eviction past `MAX_RECENT_PROJECTS`, forgets its trust; reopening asks again. Downgrading to a version without trust drops the field, and upgrading again treats those entries as trusted.
-- **Revoking does not stop other processes.** Revoking trust cancels only the open project's build in the GUI; a build a headless MCP server already started runs to completion. New builds are refused everywhere.
+- **Revoking does not stop other processes.** Revoking trust cancels only the open project's build in the app (including one an attached agent started); a build a standalone MCP server already started runs to completion. New builds are refused everywhere.
 - **JDK resolution scope.** `-Dorg.gradle.java.home` in `GRADLE_OPTS` or `JAVA_OPTS` and Gradle toolchains are not considered. The Settings **Auto-detect** button (`detect_java_path`) still prefers the process `JAVA_HOME` and a login shell's `JAVA_HOME`, which may be older than 17.

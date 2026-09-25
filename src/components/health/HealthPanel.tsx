@@ -8,7 +8,7 @@ import {
   type CheckStatus,
   type HealthCheck,
 } from "@/stores/health.store";
-import { mcpState } from "@/stores/mcp.store";
+import { mcpState, mcpStatusSummary } from "@/stores/mcp.store";
 import {
   getMcpSetupStatus,
   getLogcatStats,
@@ -582,8 +582,8 @@ function McpSetupSection(): JSX.Element {
           AI Client Integration (MCP)
         </div>
 
-        {/* Live server connection badge */}
-        <Show when={mcpState.running}>
+        {/* AI clients attached to the app */}
+        <Show when={mcpState.attached.length > 0}>
           <div
             style={{
               display: "flex",
@@ -597,7 +597,7 @@ function McpSetupSection(): JSX.Element {
           >
             {runningDot("var(--success)")}
             <span style={{ "font-size": "11px", color: "var(--success)" }}>
-              {mcpState.clientName ? mcpState.clientName : "Connected"}
+              {mcpStatusSummary().label} connected
             </span>
           </div>
         </Show>
