@@ -610,6 +610,67 @@ fn fixtures() -> Fixtures {
     let device_list = [DeviceListChangedEvent { devices: devices() }];
     f.add("DeviceListChangedEvent", &device_list);
     f.add(
+        "AppExitReasons",
+        &[
+            AppExitReasons {
+                serial: "emulator-5554".into(),
+                package: "com.example.app.debug".into(),
+                api_level: Some(34),
+                supported: true,
+                message: None,
+                records: vec![
+                    AppExitRecord {
+                        timestamp: Some("2024-01-09 08:12:44.310".into()),
+                        timestamp_local: Some("2024-01-09T08:12:44.310".into()),
+                        pid: Some(31020),
+                        process_name: Some("com.example.app.debug".into()),
+                        reason: AppExitReason::Crash,
+                        reason_code: Some(4),
+                        reason_label: Some("APP CRASH(EXCEPTION)".into()),
+                        sub_reason_code: Some(0),
+                        sub_reason: Some("UNKNOWN".into()),
+                        status: Some(0),
+                        importance: Some(100),
+                        importance_name: Some("foreground".into()),
+                        pss_kb: Some(56_320),
+                        rss_kb: Some(130_048),
+                        description: Some("crash".into()),
+                    },
+                    AppExitRecord {
+                        timestamp: None,
+                        timestamp_local: None,
+                        pid: None,
+                        process_name: None,
+                        reason: AppExitReason::Unknown,
+                        reason_code: None,
+                        reason_label: None,
+                        sub_reason_code: None,
+                        sub_reason: None,
+                        status: None,
+                        importance: None,
+                        importance_name: None,
+                        pss_kb: None,
+                        rss_kb: None,
+                        description: None,
+                    },
+                ],
+                total_records: 2,
+            },
+            AppExitReasons {
+                serial: "emulator-5556".into(),
+                package: "com.example.app".into(),
+                api_level: None,
+                supported: false,
+                message: Some(
+                    "Process exit reasons need Android 11 (API 30) or later; emulator-5556 runs API 29."
+                        .into(),
+                ),
+                records: vec![],
+                total_records: 0,
+            },
+        ],
+    );
+    f.add(
         "AvdInfo",
         &[
             AvdInfo {

@@ -32,6 +32,22 @@ test.describe("device IPC commands", () => {
     expect(selected).toBe("emulator-5554");
   });
 
+  test("get_exit_reasons returns the history for the requested package", async ({ page }) => {
+    const result = (await page.evaluate(async () => {
+      return window.__e2e__.invoke("get_exit_reasons", {
+        serial: "emulator-5554",
+        package: "com.example.other",
+      });
+    })) as { serial: string; package: string; supported: boolean; records: unknown[] };
+
+    expect(result).toMatchObject({
+      serial: "emulator-5554",
+      package: "com.example.other",
+      supported: true,
+    });
+    expect(result.records.length).toBeGreaterThan(0);
+  });
+
   test("list_avd_devices returns avd with required fields", async ({ page }) => {
     const avds = await page.evaluate(async () => {
       const result = await window.__e2e__.invoke("list_avd_devices");

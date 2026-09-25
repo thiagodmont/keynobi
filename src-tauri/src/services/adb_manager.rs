@@ -410,15 +410,10 @@ async fn discover_effective_package(
     serial: &str,
     base_package: &str,
 ) -> Option<String> {
-    let out = output_with_timeout(
-        Command::new(adb).args(["-s", serial, "shell", "pm", "list", "packages"]),
-        ADB_QUERY_TIMEOUT,
-    )
-    .await
-    .map_err(|e| tracing::warn!("adb pm list packages on {serial}: {e}"))
-    .ok()?;
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    let matches = variant_packages(&stdout, base_package);
+    let matches = installed_variant_packages(adb, serial, base_package)
+        .await
+        .map_err(|e| tracing::warn!("{e}"))
+        .ok()?;
     // If there is exactly one candidate (or an exact match), use it.
     if let [only] = matches.as_slice() {
         return Some(only.clone());
@@ -428,6 +423,31 @@ async fn discover_effective_package(
         return Some(base_package.to_string());
     }
     None
+}
+
+/// The packages installed on `serial` that are `base_package` or extend it at
+/// a `.` or `:` boundary (`adb shell pm list packages`).
+pub async fn installed_variant_packages(
+    adb: &Path,
+    serial: &str,
+    base_package: &str,
+) -> Result<Vec<String>, String> {
+    let out = output_with_timeout(
+        Command::new(adb).args(["-s", serial, "shell", "pm", "list", "packages"]),
+        ADB_QUERY_TIMEOUT,
+    )
+    .await
+    .map_err(|e| describe_failure("adb pm list packages", &e, ADB_UNRESPONSIVE_HINT))?;
+    if !out.status.success() {
+        return Err(format!(
+            "adb pm list packages on {serial} failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(variant_packages(
+        &String::from_utf8_lossy(&out.stdout),
+        base_package,
+    ))
 }
 
 /// Packages in `pm list packages` output (`package:<name>` lines) that are

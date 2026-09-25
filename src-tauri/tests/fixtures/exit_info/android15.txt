@@ -1,0 +1,12 @@
+ACTIVITY MANAGER PROCESS EXIT INFO (dumpsys activity exit-info)
+Last Timestamp of Persistence Into Persistent Storage: 2025-03-20 12:00:00.000
+  package: com.example.app
+    Historical Process Exit for uid=10301
+        ApplicationExitInfo #0:
+          timestamp=2025-03-20 11:58:03.112 pid=4410 realUid=10301 packageUid=10301 definingUid=10301 user=0
+          process=com.example.app reason=16 (PACKAGE UPDATED) subreason=24 (PACKAGE UPDATE) status=0
+          importance=400 pss=22MB rss=80MB description=pkg updated state=empty trace=null
+        ApplicationExitInfo #1:
+          timestamp=2025-03-20 11:40:19.870 pid=3987 realUid=10301 packageUid=10301 definingUid=10301 user=0
+          process=com.example.app reason=4 (APP CRASH(EXCEPTION)) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=64MB rss=151MB description=crash state=empty trace=null

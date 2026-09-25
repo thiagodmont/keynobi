@@ -1,6 +1,7 @@
 // Generated from the Rust IPC types by `npm run generate:ipc-fixtures`. Do not edit.
 import type {
   AppError,
+  AppExitReasons,
   AppSettings,
   AvailableSystemImage,
   AvdInfo,
@@ -795,6 +796,61 @@ export const typeFixtures = {
       ]
     }
   ] satisfies Wire<DeviceListChangedEvent>[],
+  AppExitReasons: [
+    {
+      "apiLevel": 34,
+      "message": null,
+      "package": "com.example.app.debug",
+      "records": [
+        {
+          "description": "crash",
+          "importance": 100,
+          "importanceName": "foreground",
+          "pid": 31020,
+          "processName": "com.example.app.debug",
+          "pssKb": 56320,
+          "reason": "crash",
+          "reasonCode": 4,
+          "reasonLabel": "APP CRASH(EXCEPTION)",
+          "rssKb": 130048,
+          "status": 0,
+          "subReason": "UNKNOWN",
+          "subReasonCode": 0,
+          "timestamp": "2024-01-09 08:12:44.310",
+          "timestampLocal": "2024-01-09T08:12:44.310"
+        },
+        {
+          "description": null,
+          "importance": null,
+          "importanceName": null,
+          "pid": null,
+          "processName": null,
+          "pssKb": null,
+          "reason": "unknown",
+          "reasonCode": null,
+          "reasonLabel": null,
+          "rssKb": null,
+          "status": null,
+          "subReason": null,
+          "subReasonCode": null,
+          "timestamp": null,
+          "timestampLocal": null
+        }
+      ],
+      "serial": "emulator-5554",
+      "supported": true,
+      "totalRecords": 2
+    },
+    {
+      "apiLevel": null,
+      "message": "Process exit reasons need Android 11 (API 30) or later; emulator-5556 runs API 29.",
+      "package": "com.example.app",
+      "records": [],
+      "serial": "emulator-5556",
+      "supported": false,
+      "totalRecords": 0
+    }
+  ] satisfies Wire<AppExitReasons>[],
   AvdInfo: [
     {
       "abi": "arm64-v8a",

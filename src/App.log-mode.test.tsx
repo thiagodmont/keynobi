@@ -69,6 +69,11 @@ vi.mock("@/components/device/DevicePickerDialog", () => ({
   DevicePickerDialog: () => <div data-testid="device-picker-dialog" />,
 }));
 
+vi.mock("@/components/device/ExitReasonsDialog", () => ({
+  ExitReasonsDialog: () => <div data-testid="exit-reasons-dialog" />,
+  openExitReasonsDialog: vi.fn(),
+}));
+
 vi.mock("@/components/onboarding/OnboardingWizard", () => ({
   OnboardingWizard: () => <div data-testid="onboarding-wizard" />,
 }));

@@ -293,6 +293,7 @@ import type {
   UiHierarchySnapshot,
   DeviceListChangedEvent,
   LaunchResult,
+  AppExitReasons,
 } from "@/bindings";
 export type {
   Device,
@@ -303,6 +304,7 @@ export type {
   SdkDownloadProgress,
   UiHierarchySnapshot,
   LaunchResult,
+  AppExitReasons,
 };
 
 export async function listAdbDevices(): Promise<Device[]> {
@@ -351,6 +353,11 @@ export async function launchAppOnDevice(
 
 export async function stopAppOnDevice(serial: string, pkg: string): Promise<void> {
   return invoke<void>("stop_app_on_device", { serial, package: pkg });
+}
+
+/** Why the app's processes exited on `serial` (Android 11+). `pkg` defaults to the project's app. */
+export async function getExitReasons(serial: string, pkg?: string | null): Promise<AppExitReasons> {
+  return invoke<AppExitReasons>("get_exit_reasons", { serial, package: pkg ?? null });
 }
 
 export async function listAvdDevices(): Promise<AvdInfo[]> {

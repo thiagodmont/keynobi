@@ -161,6 +161,7 @@ Every long-lived collection, in memory or on disk, must have an explicit, named 
 | Saved logcat filters | `MAX_SAVED_FILTERS` (50) |
 | Recent projects | `MAX_RECENT_PROJECTS` (20) |
 | Devices with a UI Automator call running or waiting | `MAX_LOCKED_SERIALS` (64) |
+| Process exit records returned | `MAX_EXIT_RECORDS` (100; descriptions `MAX_EXIT_DESCRIPTION_CHARS`, 500) |
 
 Name new caps as constants next to the data they bound.
 

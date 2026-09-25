@@ -23,6 +23,7 @@ import { ProjectInfoEditor, openProjectInfoEditor } from "@/components/projects/
 import { ProjectSidebar } from "@/components/projects/ProjectSidebar";
 import { DeviceSidebar } from "@/components/device/DeviceSidebar";
 import { DevicePickerDialog } from "@/components/device/DevicePickerDialog";
+import { ExitReasonsDialog, openExitReasonsDialog } from "@/components/device/ExitReasonsDialog";
 import { registerKeybinding, initKeybindings } from "@/lib/keybindings";
 import { registerAction, type ActionCategory } from "@/lib/action-registry";
 import {
@@ -368,6 +369,12 @@ export function App(): JSX.Element {
       category: "Build" as ActionCategory,
       action: () => toggleDeviceSidebar(),
     });
+    registerAction({
+      id: "device.exitReasons",
+      label: "Show App Exit Reasons",
+      category: "Debug",
+      action: openExitReasonsDialog,
+    });
 
     // ── Project ───────────────────────────────────────────────────────────────
     registerAction({
@@ -591,6 +598,7 @@ export function App(): JSX.Element {
       <McpPanel />
       <ProjectInfoEditor />
       <DevicePickerDialog />
+      <ExitReasonsDialog />
       <DialogHost />
       <OnboardingWizard />
     </div>

@@ -1,0 +1,16 @@
+ACTIVITY MANAGER PROCESS EXIT INFO (dumpsys activity exit-info)
+Last Timestamp of Persistence Into Persistent Storage: 2022-06-01 11:00:00.000
+  package: com.example.app.debug
+    Historical Process Exit for uid=10231
+        ApplicationExitInfo #0:
+          timestamp=2022-06-01 10:48:20.117 pid=14320 realUid=10231 packageUid=10231 definingUid=10231 user=0
+          process=com.example.app.debug reason=10 (USER REQUESTED) subreason=0 (UNKNOWN) status=0
+          importance=100 pss=88MB rss=190MB description=remove task state=empty trace=null
+        ApplicationExitInfo #1:
+          timestamp=2022-06-01 10:30:05.642 pid=14002 realUid=10231 packageUid=10231 definingUid=10231 user=0
+          process=com.example.app.debug:sync reason=2 (SIGNALED) subreason=0 (UNKNOWN) status=9
+          importance=300 pss=12MB rss=41MB description=null state=empty trace=null
+        ApplicationExitInfo #2:
+          timestamp=2022-06-01 09:15:47.950 pid=13555 realUid=10231 packageUid=10231 definingUid=10231 user=0
+          process=com.example.app.debug reason=13 (OTHER KILLS BY SYSTEM) subreason=1 (TOO MANY CACHED) status=0
+          importance=400 pss=34MB rss=97MB description=cached #17 state=empty trace=null

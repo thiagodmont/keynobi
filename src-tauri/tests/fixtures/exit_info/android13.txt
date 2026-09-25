@@ -1,0 +1,16 @@
+ACTIVITY MANAGER PROCESS EXIT INFO (dumpsys activity exit-info)
+Last Timestamp of Persistence Into Persistent Storage: 2023-02-14 16:05:12.330
+  package: com.example.app
+    Historical Process Exit for uid=10187
+        ApplicationExitInfo #0:
+          timestamp=2023-02-14 15:59:58.021 pid=21877 realUid=10187 packageUid=10187 definingUid=10187 user=0
+          process=com.example.app reason=5 (APP CRASH(NATIVE)) subreason=0 (UNKNOWN) status=11
+          importance=100 pss=143MB rss=268MB description=crash state=empty trace=null
+        ApplicationExitInfo #1:
+          timestamp=2023-02-14 14:20:31.448 pid=21002 realUid=10187 packageUid=10187 definingUid=10187 user=0
+          process=com.example.app:player reason=12 (DEPENDENCY DIED) subreason=0 (UNKNOWN) status=0
+          importance=125 pss=40MB rss=112MB description=depends on provider com.example.app/.data.Provider in dying proc com.example.app (adj 0) state=empty trace=null
+        ApplicationExitInfo #2:
+          timestamp=2023-02-13 22:47:10.905 pid=19844 realUid=10187 packageUid=10187 definingUid=10187 user=0
+          process=com.example.app reason=9 (EXCESSIVE RESOURCE USAGE) subreason=6 (EXCESSIVE CPU) status=0
+          importance=400 pss=51MB rss=133MB description=excessive cpu 12450 during 300000 dur=1200000 limit=2 state=empty trace=null

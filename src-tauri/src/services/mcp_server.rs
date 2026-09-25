@@ -16,6 +16,7 @@
  * Setup: `claude mcp add --transport stdio keynobi -- "/path/to/keynobi" --mcp`
  */
 use crate::services::adb_manager::{self, DeviceState};
+use crate::services::app_exit_info;
 use crate::services::app_inspector;
 use crate::services::build_inspector;
 use crate::services::build_runner::{self, AgentActor, BuildActor, BuildState};
@@ -513,6 +514,23 @@ pub struct GetAppRuntimeStateParams {
     )]
     pub device_serial: Option<String>,
 }
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetExitReasonsParams {
+    #[schemars(
+        description = "ADB device serial (from list_devices). Uses first connected device if omitted."
+    )]
+    pub device_serial: Option<String>,
+    #[schemars(
+        description = "Android package name, e.g. com.example.app. Defaults to the open project's app (the one build of its applicationId installed on the device); required when the project has several application ids or several of its builds are installed."
+    )]
+    pub package: Option<String>,
+    #[schemars(description = "Most recent exits to list (default 20, max 100).")]
+    pub limit: Option<u32>,
+}
+
+/// Exits `get_exit_reasons` lists when the call gives no `limit`.
+const DEFAULT_EXIT_REASONS: usize = 20;
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetBuildConfigParams {
@@ -2793,6 +2811,56 @@ impl AndroidMcpServer {
         }
     }
 
+    /// Why the app's processes exited (Android 11+ exit history).
+    #[tool(
+        description = "Why an app's processes exited, newest first: crash, native crash, ANR, low memory, killed by the user or the system, and more, with time, importance, memory, and the system's description. Reads the device's exit history (Android 11+), so it includes crashes and ANRs that never reached logcat. package defaults to the open project's app.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn get_exit_reasons(
+        &self,
+        Parameters(p): Parameters<GetExitReasonsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref s) = p.device_serial {
+            validate_device_serial(s)?;
+        }
+        if let Some(ref pkg) = p.package {
+            validate_package_name(pkg)?;
+        }
+        let limit = p
+            .limit
+            .map_or(DEFAULT_EXIT_REASONS, |l| l as usize)
+            .clamp(1, app_exit_info::MAX_EXIT_RECORDS);
+
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let Some(serial) =
+            adb_manager::resolve_device_serial(&adb, p.device_serial.as_deref()).await
+        else {
+            return Ok(CallToolResult::error(vec![ContentBlock::text(
+                "No device connected. Connect a device or launch an emulator first.",
+            )]));
+        };
+        let root = self.get_gradle_root().await;
+
+        match app_exit_info::read_exit_reasons(&adb, &serial, root.as_deref(), p.package.as_deref())
+            .await
+        {
+            Ok(result) => Ok(CallToolResult::success(vec![ContentBlock::text(
+                app_exit_info::agent_summary(&result, limit),
+            )])),
+            Err(app_exit_info::ExitInfoError::InvalidInput(e)) => {
+                Err(McpError::invalid_params(e, None))
+            }
+            Err(app_exit_info::ExitInfoError::Failed(e)) => {
+                Ok(CallToolResult::error(vec![ContentBlock::text(e)]))
+            }
+        }
+    }
+
     /// Install an APK on a connected device.
     #[tool(
         description = "Install an APK file on a connected device or emulator. APK must be within the project's build output directory.",
@@ -3270,7 +3338,7 @@ impl ServerHandler for AndroidMcpServer {
              Keynobi MCP Server — AI-first companion for Android development. \
              Tools: build (run_gradle_task, get_build_errors, get_build_log, get_build_config, find_apk_path, run_tests), \
              logcat (start_logcat, get_logcat_entries, get_crash_logs, get_crash_stack_trace), \
-             devices (list_devices, get_ui_hierarchy, find_ui_elements, list_clickable_elements, find_ui_parent, ui_tap, ui_tap_element, ui_fill_input, ui_type_text, hide_soft_keyboard, ui_swipe, ui_scroll_until_element, ui_wait_for_idle, ui_assert_element, send_ui_key, open_deep_link, open_app_settings, set_device_orientation, set_network_state, grant_runtime_permission, revoke_runtime_permission, screenshot, get_device_info, install_apk, launch_app, restart_app, dump_app_info, get_memory_info, get_app_runtime_state), \
+             devices (list_devices, get_ui_hierarchy, find_ui_elements, list_clickable_elements, find_ui_parent, ui_tap, ui_tap_element, ui_fill_input, ui_type_text, hide_soft_keyboard, ui_swipe, ui_scroll_until_element, ui_wait_for_idle, ui_assert_element, send_ui_key, open_deep_link, open_app_settings, set_device_orientation, set_network_state, grant_runtime_permission, revoke_runtime_permission, screenshot, get_device_info, install_apk, launch_app, restart_app, dump_app_info, get_memory_info, get_app_runtime_state, get_exit_reasons), \
              project (get_project_info, run_health_check). \
              Prompts: diagnose-crash, full-deploy, build-and-fix. \
              Start with get_project_info and run_health_check to verify the environment.",

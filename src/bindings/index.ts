@@ -48,6 +48,9 @@ export type { DeviceDefinition } from "./DeviceDefinition";
 export type { AvailableSystemImage } from "./AvailableSystemImage";
 export type { SdkDownloadProgress } from "./SdkDownloadProgress";
 export type { DeviceListChangedEvent } from "./DeviceListChangedEvent";
+export type { AppExitReason } from "./AppExitReason";
+export type { AppExitRecord } from "./AppExitRecord";
+export type { AppExitReasons } from "./AppExitReasons";
 export type { BuildVariant } from "./BuildVariant";
 export type { VariantList } from "./VariantList";
 

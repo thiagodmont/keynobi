@@ -1,3 +1,4 @@
+use crate::models::app_exit::AppExitReasons;
 use crate::models::build::{LaunchResult, LaunchTiming};
 use crate::models::device::{
     AvailableSystemImage, AvdInfo, Device, DeviceConnectionState, DeviceDefinition, DeviceKind,
@@ -12,6 +13,7 @@ use crate::services::adb_manager::{
     validate_device_profile_id, validate_system_image_id, wipe_avd_data, AmStartTiming,
     DeviceState, DeviceStateInner,
 };
+use crate::services::app_exit_info;
 use crate::services::build_runner::{attach_launch_timing, BuildState};
 use crate::services::settings_manager;
 use crate::FsState;
@@ -202,6 +204,28 @@ pub async fn stop_app_on_device(serial: String, package: String) -> Result<(), A
     stop_app(&adb, &serial, &package)
         .await
         .map_err(AppError::ProcessFailed)
+}
+
+/// Why the app's processes exited on `serial` (Android 11+). `package`
+/// defaults to the open project's app.
+#[tauri::command]
+pub async fn get_exit_reasons(
+    serial: String,
+    package: Option<String>,
+    fs_state: State<'_, FsState>,
+) -> Result<AppExitReasons, AppError> {
+    let root = {
+        let fs = fs_state.0.lock().await;
+        fs.gradle_root
+            .as_ref()
+            .or(fs.project_root.as_ref())
+            .cloned()
+    };
+    let (settings, _) = settings_manager::load_settings();
+    let adb = get_adb_path(&settings);
+    app_exit_info::read_exit_reasons(&adb, &serial, root.as_deref(), package.as_deref())
+        .await
+        .map_err(AppError::from)
 }
 
 /// Return the list of installed AVDs.
