@@ -360,6 +360,14 @@ Opening a project must not run its code. Only Gradle runs project code, and only
 
 On window close the app has a 3 s budget: cancel a running build (recorded as cancelled because Keynobi quit) and wait for it to be recorded, answer attached MCP requests still in flight and close the sessions (`mcp_attach::quit_sessions`), stop logcat, stop device polling, and flush settings. New long-running work must register with this shutdown path.
 
+Then, on every app exit (`RunEvent::Exit`, including quit from the menu) and when a standalone `keynobi --mcp` exits (after it waited for its build), `ProcessManager::shutdown_all(SHUTDOWN_GRACE)` stops every process the process manager still runs and starts no new one: SIGTERM, SIGKILL for whatever still runs after the grace (2 s), then at most `FORCE_KILL_WAIT` (1 s) for the exits to be reported. It returns a `ShutdownReport` (stopped, killed, unresponsive) and logs what it had to kill.
+
+### Stopping Processes
+
+- `process_manager` stops a child only through the task that owns its `tokio::process::Child`: `cancel` and `shutdown_all` send it a request, and it signals the child while it has not reaped it (`Child::id()` is `None` afterwards). An exited but unreaped child keeps its PID, so no signal can reach a process that reused it. Never store a child's PID to signal it later.
+- `cancel` sends SIGTERM (Gradle needs it to stop the build in the daemon cleanly) and SIGKILL after `CANCEL_GRACE` (5 s). A process that had already exited when the cancel arrived keeps its own exit status; one that was still running is reported as `ProcessTermination::Cancelled`. A cancelled process stays tracked until its exit is reported, and `on_exit` runs exactly once.
+- Each child leads its own process group, and signals go to the group: they reach what a wrapper script started in it (as Ctrl-C in a terminal would), but not the Gradle daemon, which moves itself into a new session and is shared with other builds and the IDE.
+
 ---
 
 ## Known Gaps
@@ -383,4 +391,6 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Dead code.** `DevicePanel.tsx` (panel/popover modes) is not imported anywhere.
 - **Trust is lost with the registry entry.** Removing a project, or eviction past `MAX_RECENT_PROJECTS`, forgets its trust; reopening asks again. Downgrading to a version without trust drops the field, and upgrading again treats those entries as trusted.
 - **Revoking does not stop other processes.** Revoking trust cancels only the open project's build in the app (including one an attached agent started); a build a standalone MCP server already started runs to completion. New builds are refused everywhere.
+- **Processes outside the process manager.** Only Gradle builds run under `process_manager`, so only they are stopped by `shutdown_all`. Logcat's `adb logcat` is stopped by `logcat::request_stop` on window close, and a standalone `keynobi --mcp` exits without stopping its logcat stream (the `adb logcat` child ends when it next writes to the closed pipe).
+- **Daemon detachment is assumed.** Stop signals go to the build's process group. A Gradle daemon that did not move itself into its own session (for example with Gradle's native integration disabled) would be stopped with the build, as it would by Ctrl-C in a terminal.
 - **JDK resolution scope.** `-Dorg.gradle.java.home` in `GRADLE_OPTS` or `JAVA_OPTS` and Gradle toolchains are not considered. The Settings **Auto-detect** button (`detect_java_path`) still prefers the process `JAVA_HOME` and a login shell's `JAVA_HOME`, which may be older than 17.

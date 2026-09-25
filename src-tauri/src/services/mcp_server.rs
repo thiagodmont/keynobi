@@ -4160,6 +4160,9 @@ where
         }
     };
     finish_builds(&build_state, &process_manager).await;
+    process_manager
+        .shutdown_all(crate::services::process_manager::SHUTDOWN_GRACE)
+        .await;
     mcp_activity::log_activity(&McpActivityEntry::lifecycle("Server stopped (standalone)"));
     mcp_sessions::remove_standalone_record();
     code
