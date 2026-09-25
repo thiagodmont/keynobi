@@ -106,7 +106,7 @@ The Build panel describes one build at a time: the live build, or a past build p
 - Build history IDs must stay unique across restarts and clears so log filenames never collide. `persist_build_record_in` allocates them under the data lock, above every ID in the persisted history and in `build-logs/`.
 - A finished build is appended to the history as re-read from disk, so builds another process recorded are kept, and log rotation checks against that merged history.
 - `save_settings` (the settings UI's full snapshot) keeps `recentProjects` and `lastActiveProject` from disk; the backend owns them, including each project's trust.
-- **Deploy installs only the requested variant's APK.** `find_output_apk` reads AGP's `output-metadata.json` (else the directory path under `apk/`) and returns an error when no APK or more than one APK matches. It never falls back to another variant's APK.
+- **Deploy installs only the requested variant's APK.** `find_output_apk` reads AGP's `output-metadata.json` (else the directory path under `apk/`) and returns an error when no APK or more than one APK matches. It never falls back to another variant's APK. It ignores APKs that resolve outside `app/build/outputs` (a symlinked `app`, `build`, or `outputs` directory, or an `outputFile` that points elsewhere), and install uses the canonical path the validator returns.
 - **Launch uses the installed APK's package name** (aapt2, else `output-metadata.json`). If neither works, deploy installs but does not launch; it never guesses from the project's `applicationId`.
 
 ---
@@ -411,9 +411,8 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Logcat sustained floods.** After a batch that empties the channel the pipeline waits for the next 100 ms tick, so input sustained above about `RAW_LOG_LINE_CHANNEL_CAPACITY` lines per tick (roughly 100,000 lines/s) overflows the channel and is dropped (and counted).
 - **Logcat clear mid-tick.** The pipeline checks `clear_epoch` at the top of each batch but not again when it stores the batch, so lines drained just before a clear can still be stored (and emitted) just after it. They get fresh IDs, so identity is safe; at most one batch of pre-clear lines survives.
 - **MCP error model.** Coordinate, permission, and deep-link validation failures return `CallToolResult::error` instead of `McpError::invalid_params`.
-- **Validator duplication.** MCP `validate_apk_path` duplicates `validate_apk_within_build_outputs` and hard-codes the `app` module.
 - **Activity log.** Summaries are not redacted.
-- **APK lookup module.** `find_output_apk` looks only under `app/build/outputs/apk`, so projects whose application module is not named `app` cannot deploy.
+- **APK lookup module.** `find_output_apk` and `validate_apk_within_build_outputs` look only under `app/build/outputs`, so projects whose application module is not named `app` cannot deploy.
 - **Project App Info.** When the app module is not named `app`, the root build file is edited and success is reported even if nothing changed.
 - **Airplane-mode fallback.** On devices without `cmd connectivity airplane-mode`, the fallback broadcast is a protected broadcast that a non-root shell is normally refused; the setting is then restored and the step reported as failed. Needs verification on a device.
 - **Dead code.** `DevicePanel.tsx` (panel/popover modes) is not imported anywhere.

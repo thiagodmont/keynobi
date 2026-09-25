@@ -1291,3 +1291,128 @@ fn cancelling_a_build_request_cancels_its_build() {
     assert_eq!(status["status"], "cancelled", "{status}");
     assert_eq!(status["cancelled_by"]["kind"], "agent", "{status}");
 }
+
+// ── Project boundaries ────────────────────────────────────────────────────────
+
+fn write_file(path: &std::path::Path, contents: &[u8]) {
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, contents).unwrap();
+}
+
+#[test]
+fn install_apk_refuses_an_apk_whose_build_directory_leaves_the_project() {
+    let sandbox = Sandbox::new();
+    let outside = sandbox.project.parent().unwrap().join("outside-build");
+    write_file(&outside.join("outputs/apk/debug/app-debug.apk"), b"apk");
+    std::fs::create_dir_all(sandbox.project.join("app")).unwrap();
+    std::os::unix::fs::symlink(&outside, sandbox.project.join("app/build")).unwrap();
+    let mut client = sandbox.start();
+
+    let through_link = sandbox
+        .project
+        .join("app/build/outputs/apk/debug/app-debug.apk");
+    let message = client.call_tool_rejected(
+        "install_apk",
+        json!({ "device_serial": "emulator-5554", "apk_path": through_link }),
+    );
+    assert!(message.contains("outside the project"), "{message}");
+
+    let traversal = sandbox
+        .project
+        .join("app/../../outside-build/outputs/apk/debug/app-debug.apk");
+    client.call_tool_rejected(
+        "install_apk",
+        json!({ "device_serial": "emulator-5554", "apk_path": traversal }),
+    );
+
+    assert!(
+        sandbox.adb_calls().is_empty(),
+        "adb must not run: {:?}",
+        sandbox.adb_calls()
+    );
+}
+
+#[test]
+fn install_apk_installs_the_apk_the_path_resolves_to() {
+    let sandbox = Sandbox::new();
+    sandbox.write_adb("echo Success");
+    let debug = sandbox.project.join("app/build/outputs/apk/debug");
+    write_file(&debug.join("app-debug.apk"), b"apk");
+    std::os::unix::fs::symlink("app-debug.apk", debug.join("latest.apk")).unwrap();
+    let mut client = sandbox.start();
+
+    let out = client.call_tool(
+        "install_apk",
+        json!({ "device_serial": "emulator-5554", "apk_path": debug.join("latest.apk") }),
+    );
+
+    assert!(!out.is_error, "{}", out.text);
+    assert_eq!(
+        sandbox.adb_calls(),
+        vec![format!(
+            "-s emulator-5554 install -r -t {}",
+            debug.join("app-debug.apk").display()
+        )]
+    );
+}
+
+fn resource_uris(client: &mut headless::McpClient) -> Vec<String> {
+    client.request("resources/list", json!({}))["resources"]
+        .as_array()
+        .expect("resources/list returned no resources array")
+        .iter()
+        .filter_map(|r| r["uri"].as_str().map(str::to_string))
+        .collect()
+}
+
+#[test]
+fn resources_never_serve_a_project_file_linked_outside_the_project() {
+    let sandbox = Sandbox::new();
+    let secret = sandbox.project.parent().unwrap().join("secret.txt");
+    write_file(&secret, b"TOP SECRET");
+    std::os::unix::fs::symlink(&secret, sandbox.project.join("build.gradle.kts")).unwrap();
+    let mut client = sandbox.start();
+
+    let uris = resource_uris(&mut client);
+    assert!(
+        uris.iter().any(|u| u == "android://gradle-settings"),
+        "{uris:?}"
+    );
+    assert!(
+        !uris.iter().any(|u| u == "android://build-gradle"),
+        "{uris:?}"
+    );
+
+    let error = client
+        .request_result("resources/read", json!({ "uri": "android://build-gradle" }))
+        .expect_err("a file outside the project must not be read");
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("outside the project"),
+        "{error}"
+    );
+    assert!(!error.to_string().contains("TOP SECRET"), "{error}");
+}
+
+#[test]
+fn an_oversized_resource_is_truncated_and_says_so() {
+    let sandbox = Sandbox::new();
+    let body = "// padding\n".repeat(100_000);
+    std::fs::write(sandbox.project.join("settings.gradle.kts"), &body).unwrap();
+    let mut client = sandbox.start();
+
+    let result = client.request(
+        "resources/read",
+        json!({ "uri": "android://gradle-settings" }),
+    );
+
+    let text = result["contents"][0]["text"].as_str().unwrap_or_default();
+    assert!(text.len() < body.len(), "{} bytes", text.len());
+    assert!(
+        text.contains(&format!("[truncated: the file is {} bytes", body.len())),
+        "{}",
+        &text[text.len().saturating_sub(200)..]
+    );
+}

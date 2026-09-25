@@ -96,6 +96,8 @@ Every path from the frontend, MCP, or an external tool is untrusted. Validate pa
 
 The effective root is `gradle_root` when available, otherwise `project_root`. Use canonical paths so `..` and symlinks cannot escape the sandbox. Never use raw string prefix checks for security.
 
+Fixed paths the app builds from the root (`app/build/outputs`, `app/build.gradle.kts`, the manifest) are untrusted too: a repository can make any file or directory in it a symlink. Resolve them with `utils/path.rs`, which requires the canonical result inside the canonical root, and then use the canonical path it returns, not the path you checked.
+
 ### Project Trust
 
 Opening a project must never run its code. Anything that executes project-controlled code (Gradle) or an executable whose path the project chose runs only for a project the user trusted in the app, checked in the backend on every path (`services/project_trust.rs`). New projects open in Safe Mode until the user chooses **Trust**; the MCP server never prompts. See `DOMAIN_PATTERNS.md` § Projects → Project Trust.
@@ -274,5 +276,8 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 
 - **Cross-process state.** The app and standalone MCP servers do not share live state. Settings, build history, and the MCP activity log are merged under the data lock; builds of one project are exclusive through the build lock.
 - **Health check settings write.** `health_inspector` stores a detected SDK path by saving a full settings snapshot instead of `mutate_settings`, so it can revert a concurrent edit to another setting.
-- **Duplicated logic.** APK path validation exists twice (`utils/path.rs` and MCP `validate_apk_path`).
+- **Project files read for parsing.** Variant detection, `get_application_id`, Project App Info, the package scope, and MCP `list_build_variants` read build files by joined path: through symlinks that leave the project and without a size cap. They only extract values from what they read.
+- **Project App Info write.** `save_project_app_info` does not check that the build file resolves inside the project. With a symlinked `app` directory it writes its temp file and replaces `build.gradle(.kts)` outside the project.
+- **Check then use.** Validated paths are opened again by path (`adb install`, resource reads). A directory replaced by a symlink between the check and the use is not caught.
+- **APK discovery follows symlinks.** `find_output_apk` walks symlinked directories under `app/build/outputs/apk` (up to 6 levels). APKs that resolve outside the build outputs are discarded, but the walk itself reads outside the project.
 - **`unwrap()` policy.** Enforced by review only. About 15 production `unwrap()` calls remain, mostly `Regex::new` in `build_parser.rs`. Consider `clippy::unwrap_used`.

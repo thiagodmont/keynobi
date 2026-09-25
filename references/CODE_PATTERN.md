@@ -103,7 +103,10 @@ Any command or tool that accepts a path must validate it against the effective p
 The effective root is `gradle_root` when available, otherwise `project_root`. Canonicalize both root and target, then check the canonical target is within the canonical root. Use the shared validators:
 
 - `utils::path::validate_within_root(root, untrusted)` for project-relative paths. It rejects absolute paths and `..` before canonicalizing.
-- `utils::path::validate_apk_within_build_outputs(...)` for APK installs.
+- `utils::path::resolve_project_file(root, relative)` for fixed project files the app reads, such as `app/build.gradle.kts`.
+- `utils::path::validate_apk_within_build_outputs(...)` for APK installs. It also requires `app/build/outputs` itself to resolve inside the root.
+
+Each returns the canonical path; use that path afterwards, not the one you checked.
 
 Never use raw `path.starts_with(root)` for security.
 

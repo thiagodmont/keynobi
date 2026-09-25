@@ -2781,12 +2781,12 @@ impl AndroidMcpServer {
         Parameters(p): Parameters<InstallApkParams>,
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.device_serial)?;
-        self.validate_apk_path(&p.apk_path).await?;
+        let apk = self.validate_apk_path(&p.apk_path).await?;
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
 
-        let result = adb_manager::install_apk(&adb, &p.device_serial, &p.apk_path)
+        let result = adb_manager::install_apk(&adb, &p.device_serial, &apk.to_string_lossy())
             .await
             .map_err(|e| McpError::internal_error(format!("APK install failed: {e}"), None))?;
 
@@ -3270,35 +3270,9 @@ impl ServerHandler for AndroidMcpServer {
         ];
 
         if let Some(ref gradle_root) = fs.gradle_root.clone().or(fs.project_root.clone()) {
-            let candidates = [
-                (
-                    "android://manifest",
-                    gradle_root
-                        .join("app")
-                        .join("src")
-                        .join("main")
-                        .join("AndroidManifest.xml"),
-                    "AndroidManifest.xml",
-                ),
-                (
-                    "android://app-build-gradle",
-                    gradle_root.join("app").join("build.gradle.kts"),
-                    "app/build.gradle.kts",
-                ),
-                (
-                    "android://build-gradle",
-                    gradle_root.join("build.gradle.kts"),
-                    "build.gradle.kts",
-                ),
-                (
-                    "android://gradle-settings",
-                    gradle_root.join("settings.gradle.kts"),
-                    "settings.gradle.kts",
-                ),
-            ];
-            for (uri, path, name) in &candidates {
-                if path.is_file() {
-                    resources.push(Resource::new(*uri, *name));
+            for (uri, relative, name) in PROJECT_FILE_RESOURCES {
+                if crate::utils::path::resolve_project_file(gradle_root, relative).is_ok() {
+                    resources.push(Resource::new(uri, name));
                 }
             }
         }
@@ -3338,48 +3312,48 @@ impl ServerHandler for AndroidMcpServer {
                 Ok(ReadResourceResult::new(vec![ResourceContents::text(text, uri.clone())]).into())
             }
             other => {
-                let path = match (other, gradle_root.as_ref()) {
-                    ("android://manifest", Some(r)) => Some(
-                        r.join("app")
-                            .join("src")
-                            .join("main")
-                            .join("AndroidManifest.xml"),
-                    ),
-                    ("android://app-build-gradle", Some(r)) => {
-                        Some(r.join("app").join("build.gradle.kts"))
-                    }
-                    ("android://build-gradle", Some(r)) => Some(r.join("build.gradle.kts")),
-                    ("android://gradle-settings", Some(r)) => Some(r.join("settings.gradle.kts")),
-                    _ => None,
-                };
-                match path {
-                    Some(p) if p.is_file() => {
-                        let content = std::fs::read_to_string(&p).map_err(|e| {
-                            McpError::internal_error(
-                                format!("Failed to read {}: {e}", p.display()),
-                                None,
-                            )
-                        })?;
-                        let mime = if p.extension().and_then(|e| e.to_str()) == Some("xml") {
-                            "text/xml"
-                        } else {
-                            "text/plain"
-                        };
-                        Ok(
-                            ReadResourceResult::new(vec![ResourceContents::TextResourceContents {
-                                uri: uri.clone(),
-                                mime_type: Some(mime.into()),
-                                text: content,
-                                meta: None,
-                            }])
-                            .into(),
-                        )
-                    }
-                    _ => Err(McpError::resource_not_found(
+                let relative = PROJECT_FILE_RESOURCES
+                    .iter()
+                    .find(|(u, _, _)| *u == other)
+                    .map(|(_, relative, _)| *relative);
+                let (Some(relative), Some(root)) = (relative, gradle_root.as_ref()) else {
+                    return Err(McpError::resource_not_found(
                         format!("Resource not found or project not open: {uri}"),
                         Some(json!({ "uri": uri })),
-                    )),
-                }
+                    ));
+                };
+                let path = match crate::utils::path::resolve_project_file(root, relative) {
+                    Ok(path) => path,
+                    Err(crate::models::error::AppError::PermissionDenied(_)) => {
+                        return Err(McpError::invalid_request(
+                            format!("{relative} resolves outside the project and is not served"),
+                            Some(json!({ "uri": uri })),
+                        ))
+                    }
+                    Err(_) => {
+                        return Err(McpError::resource_not_found(
+                            format!("Resource not found or project not open: {uri}"),
+                            Some(json!({ "uri": uri })),
+                        ))
+                    }
+                };
+                let text = read_resource_text(&path, MAX_RESOURCE_BYTES).map_err(|e| {
+                    McpError::internal_error(format!("Failed to read {relative}: {e}"), None)
+                })?;
+                let mime = if relative.ends_with(".xml") {
+                    "text/xml"
+                } else {
+                    "text/plain"
+                };
+                Ok(
+                    ReadResourceResult::new(vec![ResourceContents::TextResourceContents {
+                        uri: uri.clone(),
+                        mime_type: Some(mime.into()),
+                        text,
+                        meta: None,
+                    }])
+                    .into(),
+                )
             }
         }
     }
@@ -3668,38 +3642,15 @@ impl AndroidMcpServer {
             .map_err(|e| McpError::invalid_params(e, None))
     }
 
-    async fn validate_apk_path(&self, apk_path: &str) -> Result<(), McpError> {
+    /// The canonical APK to install: `apk_path` must resolve to an `.apk`
+    /// under the project's build outputs.
+    async fn validate_apk_path(&self, apk_path: &str) -> Result<PathBuf, McpError> {
         let gradle_root = self
             .get_gradle_root()
             .await
             .ok_or_else(|| McpError::invalid_params("No project open", None))?;
-        let build_outputs = gradle_root.join("app").join("build").join("outputs");
-        let apk_path = PathBuf::from(apk_path);
-        let canonical_apk = apk_path.canonicalize().map_err(|_| {
-            McpError::invalid_params(
-                format!("APK path not found or inaccessible: {}", apk_path.display()),
-                None,
-            )
-        })?;
-        let canonical_outputs = build_outputs.canonicalize().map_err(|_| {
-            McpError::invalid_params(
-                "Build outputs directory not found. Run a build first.",
-                None,
-            )
-        })?;
-        if !canonical_apk.starts_with(&canonical_outputs) {
-            return Err(McpError::invalid_params(
-                "APK path must be within the project build outputs directory (app/build/outputs/)",
-                None,
-            ));
-        }
-        if canonical_apk.extension().and_then(|e| e.to_str()) != Some("apk") {
-            return Err(McpError::invalid_params(
-                "Path must point to a .apk file",
-                None,
-            ));
-        }
-        Ok(())
+        crate::utils::path::validate_apk_within_build_outputs(&gradle_root, apk_path)
+            .map_err(|e| McpError::invalid_params(e.to_string(), None))
     }
 }
 
@@ -3789,6 +3740,60 @@ fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
         cut -= 1;
     }
     &s[..cut]
+}
+
+/// Project files served as resources: URI, path relative to the Gradle root,
+/// and name.
+const PROJECT_FILE_RESOURCES: [(&str, &str, &str); 4] = [
+    (
+        "android://manifest",
+        "app/src/main/AndroidManifest.xml",
+        "AndroidManifest.xml",
+    ),
+    (
+        "android://app-build-gradle",
+        "app/build.gradle.kts",
+        "app/build.gradle.kts",
+    ),
+    (
+        "android://build-gradle",
+        "build.gradle.kts",
+        "build.gradle.kts",
+    ),
+    (
+        "android://gradle-settings",
+        "settings.gradle.kts",
+        "settings.gradle.kts",
+    ),
+];
+
+/// Most bytes of a project file one resource read returns.
+const MAX_RESOURCE_BYTES: usize = 512 * 1024;
+
+/// The first `max_bytes` of `path` as text (invalid UTF-8 replaced), ending
+/// with a note when the file is longer.
+fn read_resource_text(path: &std::path::Path, max_bytes: usize) -> std::io::Result<String> {
+    use std::io::Read;
+
+    let file = std::fs::File::open(path)?;
+    let size = file.metadata()?.len();
+    let mut bytes = Vec::new();
+    file.take(max_bytes as u64 + 1).read_to_end(&mut bytes)?;
+    if bytes.len() <= max_bytes {
+        return Ok(String::from_utf8_lossy(&bytes).into_owned());
+    }
+    bytes.truncate(max_bytes);
+    if let Err(e) = std::str::from_utf8(&bytes) {
+        // Drop a character the cut split in two.
+        if e.error_len().is_none() {
+            bytes.truncate(e.valid_up_to());
+        }
+    }
+    Ok(format!(
+        "{}\n\n[truncated: the file is {size} bytes; only the first {} are shown]",
+        String::from_utf8_lossy(&bytes),
+        bytes.len()
+    ))
 }
 
 // ── Logging wrapper ────────────────────────────────────────────────────────────
@@ -4383,6 +4388,34 @@ mod tests {
         assert_eq!(
             truncate_at_char_boundary(&mixed, 121),
             format!("{}{}", "a".repeat(118), '漢')
+        );
+    }
+
+    #[test]
+    fn resource_text_is_capped_and_says_so() {
+        let tmp = tempfile::tempdir().unwrap();
+        let small = tmp.path().join("small.kts");
+        std::fs::write(&small, "plugins {}\n").unwrap();
+        let large = tmp.path().join("large.kts");
+        // 10 bytes: the 3-byte '漢' straddles the 8-byte cut.
+        std::fs::write(&large, "abcdefg漢").unwrap();
+
+        assert_eq!(read_resource_text(&small, 11).unwrap(), "plugins {}\n");
+        let cut = read_resource_text(&large, 8).unwrap();
+        assert!(cut.starts_with("abcdefg\n\n[truncated"), "{cut}");
+        assert!(cut.contains("10 bytes"), "{cut}");
+        assert!(cut.contains("first 7 are shown"), "{cut}");
+    }
+
+    #[test]
+    fn resource_text_replaces_invalid_utf8() {
+        let tmp = tempfile::tempdir().unwrap();
+        let file = tmp.path().join("latin1.xml");
+        std::fs::write(&file, b"<a>caf\xe9</a>").unwrap();
+
+        assert_eq!(
+            read_resource_text(&file, MAX_RESOURCE_BYTES).unwrap(),
+            "<a>caf\u{FFFD}</a>"
         );
     }
 
