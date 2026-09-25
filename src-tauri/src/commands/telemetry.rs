@@ -4,8 +4,8 @@
 #[cfg(feature = "telemetry")]
 #[tauri::command]
 pub fn send_native_sentry_test_event() -> Result<(), String> {
-    use crate::services::settings_manager;
-    use sentry::{Hub, Level};
+    use crate::services::telemetry_sentry;
+    use sentry::Hub;
 
     if option_env!("SENTRY_DSN").is_none() {
         return Err(
@@ -14,8 +14,7 @@ pub fn send_native_sentry_test_event() -> Result<(), String> {
         );
     }
 
-    let (settings, _) = settings_manager::load_settings();
-    if !settings.telemetry.enabled {
+    if !telemetry_sentry::consent_given() {
         return Err(
             "Turn on Anonymous crash reporting in Settings first. If you just enabled it, restart the app so the native client initializes."
                 .into(),
@@ -29,7 +28,7 @@ pub fn send_native_sentry_test_event() -> Result<(), String> {
         );
     }
 
-    sentry::capture_message("Keynobi native Sentry test (command palette)", Level::Info);
+    sentry::capture_event(telemetry_sentry::test_event());
     Ok(())
 }
 

@@ -39,6 +39,18 @@ describe("flushPendingSettingsSave", () => {
     await flushPendingSettingsSave();
   });
 
+  it("persists a crash-reporting change without waiting for the debounce window", async () => {
+    const saveSpy = vi.spyOn(tauriApi, "saveSettings").mockResolvedValue(undefined);
+
+    updateSetting("telemetry", "enabled", false);
+    // Let the save chain's microtasks run without advancing the debounce timer.
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(saveSpy).toHaveBeenCalledTimes(1);
+    expect(saveSpy.mock.calls[0]?.[0].telemetry.enabled).toBe(false);
+    await flushPendingSettingsSave();
+  });
+
   it("saves immediately instead of waiting for the debounce window", async () => {
     const saveSpy = vi.spyOn(tauriApi, "saveSettings").mockResolvedValue(undefined);
 

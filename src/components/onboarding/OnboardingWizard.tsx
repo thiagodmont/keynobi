@@ -89,7 +89,7 @@ export function OnboardingWizard(): JSX.Element {
     setAppSetting("onboardingCompleted", true);
     closeOnboardingWizard();
     if (telemetryRestartHint()) {
-      showToast("Crash reporting will be active after you restart the app.", "info");
+      showToast("Crash reporting will be fully active after you restart the app.", "info");
     }
   }
 
@@ -283,9 +283,9 @@ export function OnboardingWizard(): JSX.Element {
                     "line-height": "1.5",
                   }}
                 >
-                  Optional anonymous crash reports help fix bugs. Only app-side diagnostics are sent
-                  — not your project paths, source, or logs. You can change this anytime in
-                  Settings.
+                  Optional anonymous crash reports help fix bugs. They contain only the error type,
+                  app and macOS versions, and code locations — never error messages, project paths,
+                  source, or logs. You can change this anytime in Settings.
                 </p>
                 <div style={{ display: "flex", "flex-direction": "column", gap: "8px" }}>
                   <button

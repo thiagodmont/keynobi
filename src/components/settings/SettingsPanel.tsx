@@ -663,7 +663,7 @@ function AdvancedSettings(props: {
       >
         <SettingRow
           label="Anonymous crash reporting"
-          description="Send minimal app crash diagnostics (no project paths, source, or Gradle/log output). Restart required to apply."
+          description="Send the error type, versions, and code locations of app crashes (never messages, project paths, source, or Gradle/log output). Off applies immediately; on fully applies after a restart."
         >
           <div
             role="radiogroup"

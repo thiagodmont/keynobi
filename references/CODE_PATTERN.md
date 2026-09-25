@@ -18,7 +18,7 @@ Frontend:
 - `src/services/` - frontend orchestration across stores, IPC, and UI flows.
 - `src/lib/tauri-api.ts` - typed wrappers for every Tauri `invoke` call.
 - `src/lib/` - pure frontend utilities (query parsing, matching, formatting).
-- `src/lib/telemetry/` - browser-side crash reporting and scrubbing.
+- `src/lib/telemetry/` - browser-side crash reporting (consent gate and outgoing-event allowlist).
 - `src/utils/` - small browser helpers (clipboard, debounce).
 - `src/styles/` - `theme.css` tokens and `global.css`.
 - `src/bindings/` - generated TypeScript bindings; do not edit manually.

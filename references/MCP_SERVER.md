@@ -235,7 +235,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 | `process_manager.rs` | Direct | Spawns and cancels long-running child processes used by MCP Gradle builds. |
 | `project_trust.rs` | Indirect | Decides whether the user trusted a project to run its Gradle build; `get_project_info` reports it and builds require it. |
 | `settings_manager.rs` | Direct | Loads settings, MCP defaults, active variants, data directory paths, and Android tool paths. |
-| `telemetry_sentry.rs` | Not exposed | Optional crash/error reporting with privacy scrubbing; not part of the MCP tool surface. |
+| `telemetry_sentry.rs` | Not exposed | Optional crash reporting (allowlisted fields only); not part of the MCP tool surface. |
 | `ui_automation.rs` | Direct | Implements MCP UI queries and actions using UI Automator snapshots and `adb shell input`. |
 | `ui_hierarchy.rs` | Direct | Captures UI Automator XML, screenshot/context data, foreground activity, and parsed hierarchy snapshots. |
 | `ui_hierarchy_parse.rs` | Direct | Parses hierarchy XML into bounded node trees, interactive rows, tree paths, and screen hashes. |

@@ -391,7 +391,7 @@ Keynobi makes these network requests on its own:
 - **Update check**: on every launch, a request to `api.github.com` for the latest Keynobi release. No project or device data is sent.
 - **Crash reporting**: only if you turn it on.
 
-Anonymous crash reporting is off by default. Turn it on under **Settings → Advanced → Privacy**; the native part takes effect after a restart. Reports contain the app version, CPU architecture, macOS version, and error stack traces with home-folder paths removed. They do not contain source code, project files, Gradle output, logcat, MCP traffic, personal identifiers, or device identifiers.
+Anonymous crash reporting is off by default. Turn it on under **Settings → Advanced → Privacy**; the native part starts after a restart. Turning it off takes effect immediately, without a restart. Reports contain only the error type, the app version, CPU architecture, macOS version, the code locations of the error inside Keynobi (function, source file within the app, line), and, for failed app commands, the error category (for example `io` or `notFound`). They never contain error messages, file paths on your Mac, source code, project files, Gradle output, logcat, MCP traffic, package names, personal identifiers, or device identifiers. As with any network request, the crash-reporting server can see your IP address; Keynobi does not put it in reports.
 
 ### Where Keynobi stores data
 

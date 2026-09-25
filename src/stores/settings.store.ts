@@ -143,6 +143,8 @@ export function updateSetting<S extends keyof AppSettings, K extends keyof AppSe
 ): void {
   setSettingsState(section, key as never, value as never);
   scheduleSave();
+  // Crash-reporting consent reaches the backend right away so an opt-out applies immediately.
+  if (section === "telemetry") void flushPendingSettingsSave();
 }
 
 /** Update a top-level `AppSettings` field (e.g. `onboardingCompleted`). */
