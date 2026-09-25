@@ -1,3 +1,4 @@
+use crate::services::adb_manager::am_start_failure;
 use crate::utils::device_shell::quote_device_shell_arg;
 use crate::utils::process::{
     describe_failure, output_with_timeout, ADB_QUERY_TIMEOUT, ADB_UNRESPONSIVE_HINT,
@@ -102,12 +103,15 @@ pub async fn restart_app(
     let activity = resolve_launcher_activity(adb, device_serial, package).await?;
 
     let start = std::time::Instant::now();
-    adb_cmd(
+    let output = adb_cmd(
         adb,
         Some(device_serial),
         &["shell", "am", "start", "-n", &activity],
     )
     .await?;
+    if let Some(failure) = am_start_failure(&output) {
+        return Err(format!("am start {activity} failed: {failure}"));
+    }
 
     let display_time_ms = wait_for_displayed(adb, device_serial, package, start).await;
 
@@ -350,6 +354,28 @@ mod tests {
     }
 
     use super::*;
+
+    #[tokio::test]
+    async fn restart_reports_an_activity_that_did_not_start() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let adb = dir.path().join("adb");
+        std::fs::write(
+            &adb,
+            "#!/bin/sh\ncase \"$*\" in\n\
+             *resolve-activity*) echo 0; echo com.example.app/.Main ;;\n\
+             *'am start'*) echo 'Error: Activity class {com.example.app/.Main} does not exist.' ;;\n\
+             esac\n",
+        )
+        .unwrap();
+        std::fs::set_permissions(&adb, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let err = restart_app(&adb, "emulator-5554", "com.example.app", false)
+            .await
+            .unwrap_err();
+
+        assert!(err.contains("does not exist"), "{err}");
+    }
 
     #[test]
     fn parse_ps_finds_main_process() {

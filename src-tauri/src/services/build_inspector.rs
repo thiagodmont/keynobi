@@ -1,3 +1,4 @@
+use crate::utils::validation::ProjectPackageScope;
 use std::path::{Path, PathBuf};
 
 const KNOWN_BUILD_TYPES: &[&str] = &["debug", "release", "staging", "benchmark", "profile"];
@@ -20,12 +21,15 @@ pub struct BuildType {
     pub name: String,
     pub minify_enabled: Option<bool>,
     pub debuggable: Option<bool>,
+    pub application_id_suffix: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct ProductFlavor {
     pub name: String,
     pub dimension: Option<String>,
+    pub application_id: Option<String>,
+    pub application_id_suffix: Option<String>,
 }
 
 pub fn parse_build_config(gradle_root: &Path, module: &str) -> Result<BuildConfig, String> {
@@ -75,6 +79,37 @@ pub fn parse_build_config(gradle_root: &Path, module: &str) -> Result<BuildConfi
         build_types,
         product_flavors,
     })
+}
+
+/// The package names the project's app installs as: the `app` module's
+/// `applicationId` (AGP falls back to `namespace`), flavor overrides, the
+/// parsed `applicationIdSuffix` values, and the ids of variants already built.
+pub fn project_package_scope(gradle_root: &Path) -> ProjectPackageScope {
+    let mut scope = ProjectPackageScope {
+        built_ids: crate::services::build_runner::built_application_ids(gradle_root),
+        ..Default::default()
+    };
+    let Ok(config) =
+        parse_build_config(gradle_root, "app").or_else(|_| parse_build_config(gradle_root, "."))
+    else {
+        return scope;
+    };
+    scope
+        .application_ids
+        .extend(config.application_id.or(config.namespace));
+    for flavor in &config.product_flavors {
+        scope.application_ids.extend(flavor.application_id.clone());
+        scope.suffixes.extend(flavor.application_id_suffix.clone());
+    }
+    for build_type in &config.build_types {
+        scope
+            .suffixes
+            .extend(build_type.application_id_suffix.clone());
+    }
+    scope.application_ids.dedup();
+    scope.suffixes.sort();
+    scope.suffixes.dedup();
+    scope
 }
 
 /// Recursively visit every `.kt` file under `dir`, calling `f` with its text content.
@@ -162,6 +197,8 @@ fn flavors_from_apk_output(
         flavors.push(ProductFlavor {
             name,
             dimension: None,
+            application_id: None,
+            application_id_suffix: None,
         });
     }
 
@@ -289,6 +326,7 @@ fn parse_build_types(content: &str) -> Vec<BuildType> {
             name,
             minify_enabled: extract_bool_value(&inner, &["isMinifyEnabled", "minifyEnabled"]),
             debuggable: extract_bool_value(&inner, &["isDebuggable", "debuggable"]),
+            application_id_suffix: extract_string_value(&inner, "applicationIdSuffix"),
         })
         .collect()
 }
@@ -304,6 +342,8 @@ fn parse_product_flavors(content: &str) -> Vec<ProductFlavor> {
         .map(|(name, inner)| ProductFlavor {
             name,
             dimension: extract_string_value(&inner, "dimension"),
+            application_id: extract_string_value(&inner, "applicationId"),
+            application_id_suffix: extract_string_value(&inner, "applicationIdSuffix"),
         })
         .collect()
 }
@@ -762,5 +802,65 @@ android {
             cfg.product_flavors.is_empty(),
             "build-type dirs must not become flavors"
         );
+    }
+
+    #[test]
+    fn package_scope_collects_application_id_suffixes_and_flavor_overrides() {
+        let dir = make_project(
+            "app",
+            r#"
+android {
+    namespace = "com.example.ns"
+    defaultConfig {
+        applicationId = "com.example.app"
+    }
+    buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+        }
+        getByName("release") {
+            isMinifyEnabled = true
+        }
+    }
+    flavorDimensions += "tier"
+    productFlavors {
+        create("demo") {
+            dimension = "tier"
+            applicationIdSuffix = ".demo"
+        }
+        create("partner") {
+            dimension = "tier"
+            applicationId = "com.partner.app"
+        }
+    }
+}
+"#,
+        );
+
+        let scope = project_package_scope(dir.path());
+
+        assert_eq!(
+            scope.application_ids,
+            vec!["com.example.app", "com.partner.app"]
+        );
+        assert_eq!(scope.suffixes, vec![".debug", ".demo"]);
+        assert!(scope.contains("com.example.app.demo.debug"));
+        assert!(scope.contains("com.partner.app.debug"));
+        assert!(!scope.contains("com.example.apple"));
+    }
+
+    #[test]
+    fn package_scope_falls_back_to_the_namespace() {
+        let dir = make_project("app", "android {\n    namespace = \"com.example.ns\"\n}\n");
+        assert_eq!(
+            project_package_scope(dir.path()).application_ids,
+            vec!["com.example.ns"]
+        );
+    }
+
+    #[test]
+    fn package_scope_is_empty_without_a_build_file() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(project_package_scope(dir.path()).is_empty());
     }
 }

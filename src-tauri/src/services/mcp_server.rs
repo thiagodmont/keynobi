@@ -204,6 +204,18 @@ pub struct DevicePackageParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct StopAppParams {
+    #[schemars(description = "ADB device serial")]
+    pub device_serial: String,
+    #[schemars(description = "Android package name")]
+    pub package: String,
+    #[schemars(description = ALLOW_FOREIGN_PACKAGE_DESCRIPTION)]
+    pub allow_foreign_package: Option<bool>,
+}
+
+const ALLOW_FOREIGN_PACKAGE_DESCRIPTION: &str = "Set true to act on a package that is not the open project's app (its applicationId or a variant of it). Only when the user explicitly asked for that package. Default false.";
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DeviceSerialParams {
     #[schemars(description = "ADB device serial, e.g. emulator-5554 (from list_devices)")]
     pub device_serial: String,
@@ -259,6 +271,8 @@ pub struct RestartAppParams {
         description = "Also wipe the app's data and runtime permissions (pm clear) before relaunching. Default false. Destructive: requires device_serial."
     )]
     pub clear_data: Option<bool>,
+    #[schemars(description = ALLOW_FOREIGN_PACKAGE_DESCRIPTION)]
+    pub allow_foreign_package: Option<bool>,
     /// Removed parameter (it used to default to `true` and wipe app data).
     /// Accepted only so old callers get an explicit error instead of a
     /// silently different behavior. `Some` whenever the key is present,
@@ -812,7 +826,7 @@ impl AndroidMcpServer {
 
     /// Restart an Android app: stop it (optionally clearing data), then relaunch and wait for display.
     #[tool(
-        description = "Restart an Android app: force-stop, then relaunch and wait for the activity to display. Returns launch time. App data is preserved unless clear_data is true (runs pm clear; requires device_serial).",
+        description = "Restart an Android app: force-stop, then relaunch and wait for the activity to display. Returns launch time. App data is preserved unless clear_data is true (runs pm clear; requires device_serial). Only the open project's app (applicationId or a variant) unless allow_foreign_package is true.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -828,6 +842,8 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
         let clear_data = restart_clears_data(&p)?;
+        self.check_package_scope("restart_app", &p.package, p.allow_foreign_package)
+            .await?;
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
@@ -2078,7 +2094,7 @@ impl AndroidMcpServer {
 
     /// Grant a runtime permission (pm grant).
     #[tool(
-        description = "Grant an android.permission.* runtime permission to an installed package. Package must be a normal applicationId; permission must start with android.permission.",
+        description = "Grant an android.permission.* runtime permission to an installed package; permission must start with android.permission. Only the open project's app (applicationId or a variant) unless allow_foreign_package is true.",
         annotations(
             read_only_hint = false,
             destructive_hint = false,
@@ -2093,6 +2109,12 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
         validate_package_name(&p.package)?;
+        self.check_package_scope(
+            "grant_runtime_permission",
+            &p.package,
+            p.allow_foreign_package,
+        )
+        .await?;
         if let Err(e) = ui_automation::validate_runtime_permission(&p.permission) {
             return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
         }
@@ -2123,7 +2145,7 @@ impl AndroidMcpServer {
 
     /// Revoke a runtime permission (pm revoke).
     #[tool(
-        description = "Revoke an android.permission.* runtime permission from an installed package. Useful for testing permission request flows.",
+        description = "Revoke an android.permission.* runtime permission from an installed package. Useful for testing permission request flows. Only the open project's app (applicationId or a variant) unless allow_foreign_package is true.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -2138,6 +2160,12 @@ impl AndroidMcpServer {
             validate_device_serial(s)?;
         }
         validate_package_name(&p.package)?;
+        self.check_package_scope(
+            "revoke_runtime_permission",
+            &p.package,
+            p.allow_foreign_package,
+        )
+        .await?;
         if let Err(e) = ui_automation::validate_runtime_permission(&p.permission) {
             return Ok(CallToolResult::error(vec![ContentBlock::text(e)]));
         }
@@ -2523,7 +2551,7 @@ impl AndroidMcpServer {
 
     /// Best-effort network toggles.
     #[tool(
-        description = "Best-effort network controls for emulator/device: wifi, mobileData, and airplaneMode booleans. Returns each adb command and whether it succeeded.",
+        description = "Best-effort network controls for emulator/device: wifi, mobileData, and airplaneMode booleans. Returns each adb command, whether it succeeded, and `previous` (the prior state; pass it back to revert). Turning Wi-Fi off or airplane mode on is refused for wireless-ADB devices, since it would drop the connection.",
         annotations(
             read_only_hint = false,
             destructive_hint = true,
@@ -2551,14 +2579,15 @@ impl AndroidMcpServer {
             };
 
         match ui_automation::adb_set_network_state(&adb, &serial, &p).await {
-            Ok(steps) => {
-                let success = steps.iter().all(|s| s.success);
+            Ok(change) => {
+                let (steps, success) = (change.steps, change.success);
                 Ok(CallToolResult::structured(json!({
                     "success": success,
                     "bestEffort": true,
                     "wifi": p.wifi,
                     "mobileData": p.mobile_data,
                     "airplaneMode": p.airplane_mode,
+                    "previous": change.previous,
                     "steps": steps,
                     "hint": if success { serde_json::Value::Null } else { json!("Some Android versions restrict network toggles. Inspect failed step output and verify actual device state.") },
                 })))
@@ -2750,19 +2779,21 @@ impl AndroidMcpServer {
 
     /// Stop a running app on a device.
     #[tool(
-        description = "Force-stop an Android app on a device using am force-stop.",
+        description = "Force-stop an Android app on a device using am force-stop. Only the open project's app (applicationId or a variant) unless allow_foreign_package is true.",
         annotations(
             read_only_hint = false,
-            destructive_hint = false,
+            destructive_hint = true,
             open_world_hint = false
         )
     )]
     async fn stop_app(
         &self,
-        Parameters(p): Parameters<DevicePackageParams>,
+        Parameters(p): Parameters<StopAppParams>,
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.device_serial)?;
         validate_package_name(&p.package)?;
+        self.check_package_scope("stop_app", &p.package, p.allow_foreign_package)
+            .await?;
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
@@ -3270,6 +3301,25 @@ impl AndroidMcpServer {
         fs.gradle_root.clone().or_else(|| fs.project_root.clone())
     }
 
+    /// Refuse a destructive or permission-changing call on a package outside
+    /// the open project unless the client opted in with `allow_foreign_package`.
+    async fn check_package_scope(
+        &self,
+        tool: &str,
+        package: &str,
+        allow_foreign_package: Option<bool>,
+    ) -> Result<(), McpError> {
+        if allow_foreign_package == Some(true) {
+            return Ok(());
+        }
+        let scope = match self.get_gradle_root().await {
+            Some(root) => build_inspector::project_package_scope(&root),
+            None => Default::default(),
+        };
+        crate::utils::validation::check_agent_package_scope(tool, package, &scope)
+            .map_err(|e| McpError::invalid_params(e, None))
+    }
+
     async fn validate_apk_path(&self, apk_path: &str) -> Result<(), McpError> {
         let gradle_root = self
             .get_gradle_root()
@@ -3685,6 +3735,27 @@ mod tests {
         let schema = serde_json::to_string(&schemars::schema_for!(RestartAppParams)).unwrap();
         assert!(schema.contains("\"clear_data\""));
         assert!(!schema.contains("\"cold\""));
+    }
+
+    /// The refusal message names `allow_foreign_package`, so every scoped
+    /// tool must accept it under that exact name, including camelCase ones.
+    #[test]
+    fn scoped_tools_accept_allow_foreign_package_in_snake_case() {
+        for schema in [
+            schemars::schema_for!(RestartAppParams),
+            schemars::schema_for!(StopAppParams),
+            schemars::schema_for!(ui_automation::GrantRuntimePermissionParams),
+        ] {
+            let schema = serde_json::to_string(&schema).unwrap();
+            assert!(schema.contains("\"allow_foreign_package\""), "{schema}");
+        }
+        let p: ui_automation::GrantRuntimePermissionParams = serde_json::from_value(json!({
+            "package": "com.other.app",
+            "permission": "android.permission.CAMERA",
+            "allow_foreign_package": true,
+        }))
+        .unwrap();
+        assert_eq!(p.allow_foreign_package, Some(true));
     }
 
     #[test]

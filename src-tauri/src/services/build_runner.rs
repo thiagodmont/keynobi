@@ -446,6 +446,28 @@ pub fn application_id_from_output_metadata(apk: &Path) -> Option<String> {
     read_output_metadata(apk.parent()?)?.application_id
 }
 
+/// Max built variants read when collecting application IDs from the build outputs.
+const MAX_BUILT_APPLICATION_IDS: usize = 64;
+
+/// The application IDs AGP recorded for every variant built into the `app`
+/// module's APK outputs, including any `applicationIdSuffix`.
+pub fn built_application_ids(gradle_root: &Path) -> Vec<String> {
+    let mut dirs: Vec<PathBuf> = walk_dir_for_apk(&apk_outputs_dir(gradle_root), 6)
+        .into_iter()
+        .filter(|p| p.file_name().and_then(|n| n.to_str()) == Some("output-metadata.json"))
+        .filter_map(|p| p.parent().map(Path::to_path_buf))
+        .collect();
+    dirs.sort();
+    let mut ids: Vec<String> = dirs
+        .iter()
+        .take(MAX_BUILT_APPLICATION_IDS)
+        .filter_map(|dir| read_output_metadata(dir)?.application_id)
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
 fn collect_apk_candidates(base: &Path) -> Vec<ApkCandidate> {
     let is_installable = |p: &Path| {
         let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -1408,6 +1430,33 @@ mod tests {
             application_id_from_output_metadata(&apk).as_deref(),
             Some("com.example.app.debug"),
             "the suffixed application ID comes from the metadata"
+        );
+    }
+
+    #[test]
+    fn built_application_ids_lists_each_built_variant_once() {
+        let root = tempfile::tempdir().unwrap();
+        for (dir, id) in [
+            ("debug", "com.example.app.debug"),
+            ("paid/debug", "com.example.app.paid.debug"),
+            ("release", "com.example.app"),
+        ] {
+            let apk = apk_at(root.path(), &format!("{dir}/app.apk"));
+            std::fs::write(
+                apk.parent().unwrap().join("output-metadata.json"),
+                format!(r#"{{"applicationId":"{id}","variantName":"v","elements":[]}}"#),
+            )
+            .unwrap();
+        }
+        apk_at(root.path(), "free/app.apk");
+
+        assert_eq!(
+            built_application_ids(root.path()),
+            vec![
+                "com.example.app",
+                "com.example.app.debug",
+                "com.example.app.paid.debug"
+            ]
         );
     }
 

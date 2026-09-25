@@ -98,9 +98,9 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 | `screenshot` | R | 20 s timeout. |
 | `dump_app_info`, `get_memory_info`, `get_app_runtime_state` | R | |
 | `install_apk` | D | `device_serial`, `apk_path` (must be an `.apk` under the build outputs). |
-| `launch_app` | W | `device_serial`, `package`, `activity?` |
-| `stop_app` | W | |
-| `restart_app` | D | `package`, `device_serial?`, `clear_data?`. Force-stops and relaunches; app data is preserved. `clear_data: true` runs `pm clear` first (wipes data and runtime permissions) and requires `device_serial`. The removed `cold` parameter returns an error. |
+| `launch_app` | W | `device_serial`, `package`, `activity?`. Fails when `am start` reports an error, even with exit code 0. |
+| `stop_app` | D | `device_serial`, `package`, `allow_foreign_package?`. [Package-scoped](#package-scope). |
+| `restart_app` | D | `package`, `device_serial?`, `clear_data?`, `allow_foreign_package?`. [Package-scoped](#package-scope). Force-stops and relaunches; app data is preserved. `clear_data: true` runs `pm clear` first (wipes data and runtime permissions) and requires `device_serial`. The removed `cold` parameter returns an error. |
 | `list_avds` | R | |
 | `launch_avd` | W | `name` |
 | `stop_avd` | D | `serial` |
@@ -119,13 +119,23 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 | `ui_type_text_unicode`, `clear_focused_input`, `hide_soft_keyboard`, `send_ui_key` | W | |
 | `ui_swipe` | W | |
 | `ui_scroll_until_element` | W | Max 25 swipes. |
-| `open_deep_link`, `open_app_settings` | W | |
+| `open_deep_link`, `open_app_settings` | W | Return a tool error when `am start` reports one (for example "unable to resolve Intent"), even with exit code 0. |
 | `set_device_orientation` | W | |
-| `set_network_state` | D | Can cut the device off the network. |
-| `grant_runtime_permission` | W | |
-| `revoke_runtime_permission` | D | Can kill the app process. |
+| `set_network_state` | D | `wifi?`, `mobileData?`, `airplaneMode?`. Can cut the device off the network. Turning Wi-Fi off or airplane mode on is refused for wireless-ADB serials (`host:port`, `._adb-tls-connect._tcp`, `._adb._tcp`). Returns `previous` (the prior state read from global settings) so the change can be reverted. Airplane mode uses `cmd connectivity airplane-mode`; only if that fails does it write `airplane_mode_on` and send the `AIRPLANE_MODE` broadcast, restoring the setting when the broadcast is refused. |
+| `grant_runtime_permission` | W | `package`, `permission`, `allow_foreign_package?`. [Package-scoped](#package-scope). |
+| `revoke_runtime_permission` | D | `package`, `permission`, `allow_foreign_package?`. [Package-scoped](#package-scope). Can kill the app process. |
 
 Every `adb` input command has a 30 s timeout; UI Automator dumps have 25 s.
+
+#### Package Scope
+
+Tools that stop an app, wipe its data, or change its permissions (`stop_app`, `restart_app`, `grant_runtime_permission`, `revoke_runtime_permission`) act only on the open project's app unless the call passes `allow_foreign_package: true` (snake_case on every tool). The project's packages are:
+
+- the `app` module's `applicationId` (or `namespace` when it has none) and any product-flavor `applicationId`,
+- each of those followed by a combination of the parsed `applicationIdSuffix` values (flavor and build type, each used once), so `com.example.app.demo.debug` matches but `com.example.apple` does not,
+- the exact `applicationId` of every variant in the build outputs (`output-metadata.json`), which covers suffixes set outside the build file.
+
+A package outside the scope, or any package when no application id can be found, is rejected with `invalid_params` before any `adb` call. The message names the project's ids and tells the model to pass `allow_foreign_package: true` only when the user asked for that package. Read-only tools and `launch_app`, `open_deep_link`, and `open_app_settings` are not scoped. The check is `utils/validation.rs::check_agent_package_scope`; the scope comes from `build_inspector::project_package_scope`.
 
 ### Project and Health
 
@@ -171,7 +181,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 - **Prompt-injected agents.** Log lines, UI text, web pages, and project files the agent has read can steer it. Treat every tool argument as hostile.
 - **Device shell re-parsing.** `adb shell` joins its arguments and the device's `/system/bin/sh` parses them again.
 - **Gradle is code execution.** Any Gradle task runs the project's build scripts with the user's privileges.
-- **Destructive device actions.** Uninstalling, clearing data, cutting the network, or stopping emulators can destroy user work.
+- **Destructive device actions.** Uninstalling, clearing data, cutting the network, or stopping emulators can destroy user work. On a personal phone, an agent can also target other apps (for example `com.google.android.gms`) or drop its own wireless-ADB connection.
 
 ### Rules
 
@@ -181,6 +191,9 @@ Tool errors are for the model to read and recover from, so make the message acti
 4. Make destructive behavior explicit and opt-in, and declare it with tool annotations (`destructiveHint`, `readOnlyHint`, `openWorldHint`) so clients can ask the user for confirmation.
 5. Keep responses bounded (see the limits in the tool tables).
 6. Never write to stdout except MCP JSON-RPC.
+7. Tools that stop an app or change its data or permissions act only on the project's app unless the call passes `allow_foreign_package: true` (see [Package Scope](#package-scope)).
+8. Never run a device command that drops the connection adb uses (Wi-Fi off or airplane mode on over wireless ADB).
+9. Check `am start` output, not just its exit code (`adb_manager::am_start_failure`).
 
 ## Activity Log
 
@@ -252,4 +265,5 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **No progress or cancellation.** Tools ignore the request context. A long Gradle run blocks until it ends or times out.
 - **Multi-client PID file.** The PID file is single-slot. With two clients, the first to exit deletes it and the GUI reports MCP as stopped.
 - **Unbounded activity log.** The activity log grows without limit during a session, and summaries are not redacted.
+- **Package scope sources.** The scope reads only the `app` module (or the root build file). An `applicationIdSuffix` set in a convention plugin or through a variable is known only after that variant is built; until then its package needs `allow_foreign_package: true`.
 - **No end-to-end test.** No test drives JSON-RPC (initialize → `tools/list` → `tools/call`).

@@ -99,3 +99,141 @@ fn run_gradle_task_succeeds_when_the_wrapper_succeeds() {
 
     assert!(!build.is_error, "{}", build.text);
 }
+
+/// An app module whose applicationId is `com.example.app`, with a `.debug` suffix.
+fn write_app_module(sandbox: &Sandbox) {
+    let app = sandbox.project.join("app");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::write(
+        app.join("build.gradle.kts"),
+        r#"android {
+    defaultConfig {
+        applicationId = "com.example.app"
+    }
+    buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+        }
+    }
+}
+"#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn stop_app_refuses_a_foreign_package_without_touching_the_device() {
+    let sandbox = Sandbox::new();
+    write_app_module(&sandbox);
+    let mut client = sandbox.start();
+
+    for package in ["com.google.android.gms", "com.example.apple"] {
+        let message = client.call_tool_rejected(
+            "stop_app",
+            json!({ "device_serial": "emulator-5554", "package": package }),
+        );
+        assert!(message.contains("allow_foreign_package: true"), "{message}");
+    }
+
+    assert!(
+        sandbox.adb_calls().is_empty(),
+        "adb must not run: {:?}",
+        sandbox.adb_calls()
+    );
+}
+
+#[test]
+fn stop_app_acts_on_the_project_variant_and_on_opted_in_packages() {
+    let sandbox = Sandbox::new();
+    write_app_module(&sandbox);
+    let mut client = sandbox.start();
+
+    let own = client.call_tool(
+        "stop_app",
+        json!({ "device_serial": "emulator-5554", "package": "com.example.app.debug" }),
+    );
+    let foreign = client.call_tool(
+        "stop_app",
+        json!({
+            "device_serial": "emulator-5554",
+            "package": "com.other.app",
+            "allow_foreign_package": true,
+        }),
+    );
+
+    assert!(!own.is_error, "{}", own.text);
+    assert!(!foreign.is_error, "{}", foreign.text);
+    assert_eq!(
+        sandbox.adb_calls(),
+        vec![
+            "-s emulator-5554 shell am force-stop com.example.app.debug",
+            "-s emulator-5554 shell am force-stop com.other.app",
+        ]
+    );
+}
+
+#[test]
+fn destructive_package_tools_refuse_when_the_project_id_is_unknown() {
+    let sandbox = Sandbox::new();
+    let mut client = sandbox.start();
+
+    let restart = client.call_tool_rejected(
+        "restart_app",
+        json!({
+            "device_serial": "emulator-5554",
+            "package": "com.example.app",
+            "clear_data": true,
+        }),
+    );
+    let revoke = client.call_tool_rejected(
+        "revoke_runtime_permission",
+        json!({
+            "deviceSerial": "emulator-5554",
+            "package": "com.example.app",
+            "permission": "android.permission.CAMERA",
+        }),
+    );
+
+    for message in [restart, revoke] {
+        assert!(message.contains("could not be determined"), "{message}");
+        assert!(message.contains("allow_foreign_package: true"), "{message}");
+    }
+    assert!(sandbox.adb_calls().is_empty(), "{:?}", sandbox.adb_calls());
+}
+
+#[test]
+fn set_network_state_refuses_to_cut_off_a_wireless_adb_device() {
+    let sandbox = Sandbox::new();
+    let mut client = sandbox.start();
+
+    let out = client.call_tool(
+        "set_network_state",
+        json!({ "deviceSerial": "192.168.1.5:5555", "wifi": false }),
+    );
+
+    assert!(out.is_error, "{}", out.text);
+    assert!(out.text.contains("wireless ADB"), "{}", out.text);
+    assert!(sandbox.adb_calls().is_empty(), "{:?}", sandbox.adb_calls());
+}
+
+#[test]
+fn open_deep_link_reports_an_intent_nothing_handles() {
+    let sandbox = Sandbox::new();
+    sandbox.write_adb(
+        r#"echo 'Starting: Intent { act=android.intent.action.VIEW dat=myapp://missing }'
+echo 'Error: Activity not started, unable to resolve Intent { act=android.intent.action.VIEW dat=myapp://missing flg=0x10000000 }'"#,
+    );
+    let mut client = sandbox.start();
+
+    let out = client.call_tool(
+        "open_deep_link",
+        json!({ "deviceSerial": "emulator-5554", "uri": "myapp://missing" }),
+    );
+
+    assert!(out.is_error, "{}", out.text);
+    assert!(
+        out.text.contains("unable to resolve Intent"),
+        "{}",
+        out.text
+    );
+}
