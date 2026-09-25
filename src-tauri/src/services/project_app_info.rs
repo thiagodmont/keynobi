@@ -1,4 +1,5 @@
-//! Read and edit `versionName` / `versionCode` in the app's Gradle build file.
+//! Read and edit `versionName` / `versionCode` in the app's Gradle build file:
+//! the application module's (see `gradle_modules`), else the root project's.
 //!
 //! Assignments are found with a small lexer that knows Groovy and Kotlin DSL
 //! comments and string literals, so a commented-out `// versionCode 1` or a
@@ -23,22 +24,21 @@ const MAX_BUILD_FILE_BYTES: u64 = 1024 * 1024;
 /// Longest expression quoted back to the user.
 const MAX_QUOTED_EXPRESSION_CHARS: usize = 80;
 
-/// Build files checked in order; the first one that exists is used.
-const BUILD_FILE_CANDIDATES: [&str; 4] = [
-    "app/build.gradle.kts",
-    "app/build.gradle",
-    "build.gradle.kts",
-    "build.gradle",
-];
-
 const VERSION_NAME: &str = "versionName";
 const VERSION_CODE: &str = "versionCode";
 
-/// The build file App Info reads and edits, relative to `root`.
-pub fn find_build_file(root: &Path) -> Option<&'static str> {
-    BUILD_FILE_CANDIDATES
-        .into_iter()
-        .find(|rel| root.join(rel).is_file())
+/// The build file App Info reads and edits, relative to `root`: the first
+/// that exists of the application module's and the root project's.
+///
+/// # Errors
+/// When the project has several application modules.
+pub fn find_build_file(root: &Path) -> Result<Option<String>, AppError> {
+    Ok(
+        crate::services::gradle_modules::application_build_file_candidates(root)
+            .map_err(AppError::InvalidInput)?
+            .into_iter()
+            .find(|rel| root.join(rel).is_file()),
+    )
 }
 
 static RE_APPLICATION_ID: LazyLock<regex::Regex> = LazyLock::new(|| {
@@ -68,7 +68,7 @@ pub fn read_app_info(root: &Path) -> ProjectAppInfo {
         Ok(found) => found,
         Err(e) => return unavailable(error_message(e)),
     };
-    let file = BuildFile::new(rel, &content);
+    let file = BuildFile::new(&rel, &content);
     let (version_name, version_name_unavailable) = match file.version_name() {
         Ok((value, _)) => (Some(value), None),
         Err(reason) => (None, Some(reason)),
@@ -106,7 +106,7 @@ pub fn save_app_info(
     }
 
     let (rel, path, content) = read_build_file(root)?;
-    let file = BuildFile::new(rel, &content);
+    let file = BuildFile::new(&rel, &content);
 
     let mut edits: Vec<(Range<usize>, String)> = Vec::new();
     if let Some(name) = version_name {
@@ -132,7 +132,7 @@ pub fn save_app_info(
             "{rel} already has these values; nothing was changed"
         )));
     }
-    write_atomically(&path, updated.as_bytes()).map_err(|e| AppError::io(rel, e))
+    write_atomically(&path, updated.as_bytes()).map_err(|e| AppError::io(&rel, e))
 }
 
 pub fn validate_version_name(value: &str) -> Result<(), AppError> {
@@ -164,16 +164,16 @@ pub fn validate_version_code(value: i64) -> Result<(), AppError> {
 
 /// Find the build file and read it through its canonical path, which must be a
 /// regular file inside the canonical project root (a symlink may not lead out).
-fn read_build_file(root: &Path) -> Result<(&'static str, PathBuf, String), AppError> {
-    let rel = find_build_file(root).ok_or_else(|| AppError::NotFound(no_build_file_message()))?;
-    let path = crate::utils::path::validate_within_root(root, rel).map_err(|e| match e {
+fn read_build_file(root: &Path) -> Result<(String, PathBuf, String), AppError> {
+    let rel = find_build_file(root)?.ok_or_else(|| AppError::NotFound(no_build_file_message()))?;
+    let path = crate::utils::path::validate_within_root(root, &rel).map_err(|e| match e {
         AppError::PermissionDenied(_) => AppError::PermissionDenied(format!(
             "{rel} resolves outside the project; only build files inside it can be read or edited"
         )),
         other => other,
     })?;
-    let file = std::fs::File::open(&path).map_err(|e| AppError::io(rel, e))?;
-    let metadata = file.metadata().map_err(|e| AppError::io(rel, e))?;
+    let file = std::fs::File::open(&path).map_err(|e| AppError::io(&rel, e))?;
+    let metadata = file.metadata().map_err(|e| AppError::io(&rel, e))?;
     if !metadata.is_file() {
         return Err(AppError::InvalidInput(format!(
             "{rel} is not a regular file"
@@ -191,7 +191,7 @@ fn read_build_file(root: &Path) -> Result<(&'static str, PathBuf, String), AppEr
     let mut content = String::new();
     file.take(MAX_BUILD_FILE_BYTES + 1)
         .read_to_string(&mut content)
-        .map_err(|e| AppError::io(rel, e))?;
+        .map_err(|e| AppError::io(&rel, e))?;
     if content.len() as u64 > MAX_BUILD_FILE_BYTES {
         return Err(too_large());
     }
@@ -213,7 +213,8 @@ fn error_message(e: AppError) -> String {
 }
 
 fn no_build_file_message() -> String {
-    "No build.gradle.kts or build.gradle found in the app module or the project root".to_string()
+    "No build.gradle.kts or build.gradle found in the application module or the project root"
+        .to_string()
 }
 
 /// Replace `path` with `bytes` through a unique temporary file in the same
@@ -991,5 +992,73 @@ mod tests {
             Err(AppError::InvalidInput(_))
         ));
         assert_eq!(read(&dir, KTS), content);
+    }
+
+    // ── Application module ──────────────────────────────────────────────────
+
+    #[test]
+    fn app_info_reads_and_writes_the_application_module_not_named_app() {
+        let dir = project(
+            "mobile/build.gradle.kts",
+            "plugins {\n    id(\"com.android.application\")\n}\nandroid {\n    defaultConfig {\n        applicationId = \"com.example.phone\"\n        versionCode = 3\n        versionName = \"1.0\"\n    }\n}\n",
+        );
+        std::fs::write(
+            dir.path().join("settings.gradle.kts"),
+            "include(\":mobile\")\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("build.gradle.kts"), "plugins {}\n").unwrap();
+
+        let info = read_app_info(dir.path());
+        assert_eq!(info.application_id.as_deref(), Some("com.example.phone"));
+        assert_eq!(info.version_code, Some(3));
+
+        save_app_info(dir.path(), Some("1.1"), Some(4)).unwrap();
+        let saved = read(&dir, "mobile/build.gradle.kts");
+        assert!(saved.contains("versionCode = 4") && saved.contains("versionName = \"1.1\""));
+        assert_eq!(read(&dir, "build.gradle.kts"), "plugins {}\n");
+    }
+
+    #[test]
+    fn a_library_named_app_is_not_edited() {
+        let dir = project(
+            "app/build.gradle.kts",
+            "plugins {\n    id(\"com.android.library\")\n}\nversionCode = 7\n",
+        );
+        std::fs::create_dir_all(dir.path().join("androidApp")).unwrap();
+        std::fs::write(
+            dir.path().join("androidApp/build.gradle"),
+            "plugins {\n    id 'com.android.application'\n}\nversionCode 2\nversionName \"2.0\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("settings.gradle"),
+            "include ':app', ':androidApp'\n",
+        )
+        .unwrap();
+
+        assert_eq!(read_app_info(dir.path()).version_code, Some(2));
+        save_app_info(dir.path(), None, Some(3)).unwrap();
+        assert!(read(&dir, "androidApp/build.gradle").contains("versionCode 3"));
+        assert!(read(&dir, "app/build.gradle.kts").contains("versionCode = 7"));
+    }
+
+    #[test]
+    fn several_application_modules_are_reported_not_guessed() {
+        let app = "plugins {\n    id(\"com.android.application\")\n}\nversionCode = 1\n";
+        let dir = project("mobile/build.gradle.kts", app);
+        std::fs::create_dir_all(dir.path().join("wear")).unwrap();
+        std::fs::write(dir.path().join("wear/build.gradle.kts"), app).unwrap();
+        std::fs::write(
+            dir.path().join("settings.gradle.kts"),
+            "include(\":mobile\", \":wear\")\n",
+        )
+        .unwrap();
+
+        let reason = read_app_info(dir.path()).version_code_unavailable.unwrap();
+        assert!(reason.contains(":mobile, :wear"), "{reason}");
+        let err = save_app_info(dir.path(), None, Some(2)).unwrap_err();
+        assert!(message(err).contains(":mobile, :wear"));
+        assert_eq!(read(&dir, "mobile/build.gradle.kts"), app);
     }
 }

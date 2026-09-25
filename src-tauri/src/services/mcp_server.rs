@@ -21,6 +21,7 @@ use crate::services::build_inspector;
 use crate::services::build_runner::{self, AgentActor, BuildActor, BuildState};
 use crate::services::crash_inspector;
 use crate::services::device_inspector;
+use crate::services::gradle_modules;
 use crate::services::health_inspector;
 use crate::services::jdk;
 use crate::services::logcat::{self, LogcatFilter, LogcatState};
@@ -46,7 +47,7 @@ use rmcp::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 use tracing::info;
@@ -427,6 +428,10 @@ pub struct FindApkPathParams {
         description = "Build variant name, e.g. debug or release (optional, uses active variant)"
     )]
     pub variant: Option<String>,
+    #[schemars(
+        description = "Application module, e.g. :mobile, or the task that built it, e.g. :mobile:assembleDebug (optional; required when the project has several application modules)"
+    )]
+    pub module: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -735,11 +740,17 @@ impl AndroidMcpServer {
                 })))
             }
         };
-        let candidates = [
-            gradle_root.join("app").join("build.gradle.kts"),
-            gradle_root.join("app").join("build.gradle"),
-            gradle_root.join("build.gradle.kts"),
-        ];
+        let candidates = match gradle_modules::application_build_files(&gradle_root) {
+            Ok(files) => files,
+            Err(e) => {
+                return Ok(CallToolResult::structured(json!({
+                    "variants": [],
+                    "active": null,
+                    "defaultVariant": null,
+                    "error": e
+                })))
+            }
+        };
         for path in &candidates {
             if path.is_file() {
                 if let Ok(content) = std::fs::read_to_string(path) {
@@ -825,8 +836,11 @@ impl AndroidMcpServer {
             settings_manager::get_active_variant_for_project(&gradle_root.to_string_lossy());
         let variant = resolve_variant(p.variant.as_deref(), persisted_variant.as_deref());
         let variant = variant.as_str();
+        if let Some(module) = p.module.as_deref() {
+            validate_gradle_task(module)?;
+        }
 
-        match build_runner::find_output_apk(&gradle_root, variant) {
+        match build_runner::find_output_apk(&gradle_root, p.module.as_deref(), variant) {
             Ok(path) => {
                 let path_str = path.to_string_lossy().to_string();
                 Ok(CallToolResult::structured(json!({
@@ -997,9 +1011,21 @@ impl AndroidMcpServer {
             McpError::invalid_params("No project open. Open an Android project first.", None)
         })?;
 
-        let module = p.module.as_deref().unwrap_or("app");
+        let default_module;
+        let module = match p.module.as_deref() {
+            Some(module) => module,
+            None => match gradle_modules::resolve_application_module(&gradle_root, None) {
+                Ok(m) => {
+                    default_module = m.relative_dir(&gradle_root);
+                    default_module.as_str()
+                }
+                Err(e) => return Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
+            },
+        };
 
-        if module.contains('/') || module.contains('\\') || module.contains("..") {
+        if p.module.is_some()
+            && (module.contains('/') || module.contains('\\') || module.contains(".."))
+        {
             return Err(McpError::invalid_params(
                 "Module name must be a simple directory name, not a path.",
                 None,
@@ -3276,8 +3302,8 @@ impl ServerHandler for AndroidMcpServer {
         ];
 
         if let Some(ref gradle_root) = fs.gradle_root.clone().or(fs.project_root.clone()) {
-            for (uri, relative, name) in PROJECT_FILE_RESOURCES {
-                if crate::utils::path::resolve_project_file(gradle_root, relative).is_ok() {
+            for (uri, relative, name) in project_file_resources(gradle_root) {
+                if crate::utils::path::resolve_project_file(gradle_root, &relative).is_ok() {
                     resources.push(Resource::new(uri, name));
                 }
             }
@@ -3318,17 +3344,19 @@ impl ServerHandler for AndroidMcpServer {
                 Ok(ReadResourceResult::new(vec![ResourceContents::text(text, uri.clone())]).into())
             }
             other => {
-                let relative = PROJECT_FILE_RESOURCES
-                    .iter()
-                    .find(|(u, _, _)| *u == other)
-                    .map(|(_, relative, _)| *relative);
+                let relative = gradle_root.as_ref().and_then(|root| {
+                    project_file_resources(root)
+                        .into_iter()
+                        .find(|(u, _, _)| *u == other)
+                        .map(|(_, relative, _)| relative)
+                });
                 let (Some(relative), Some(root)) = (relative, gradle_root.as_ref()) else {
                     return Err(McpError::resource_not_found(
                         format!("Resource not found or project not open: {uri}"),
                         Some(json!({ "uri": uri })),
                     ));
                 };
-                let path = match crate::utils::path::resolve_project_file(root, relative) {
+                let path = match crate::utils::path::resolve_project_file(root, &relative) {
                     Ok(path) => path,
                     Err(crate::models::error::AppError::PermissionDenied(_)) => {
                         return Err(McpError::invalid_request(
@@ -3684,7 +3712,7 @@ fn validate_device_serial(serial: &str) -> Result<(), McpError> {
 /// is used; otherwise the literal `"debug"`. A value that is empty or only
 /// whitespace is treated as not set for both the explicit argument and the
 /// persisted value, so it never reaches `build_runner::find_output_apk`,
-/// which would otherwise match any APK under `app/build/outputs/apk`.
+/// which would otherwise match any APK in the application module's APK outputs.
 fn resolve_variant(explicit: Option<&str>, persisted: Option<&str>) -> String {
     if let Some(v) = explicit {
         let trimmed = v.trim();
@@ -3749,29 +3777,38 @@ fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
 }
 
 /// Project files served as resources: URI, path relative to the Gradle root,
-/// and name.
-const PROJECT_FILE_RESOURCES: [(&str, &str, &str); 4] = [
-    (
-        "android://manifest",
-        "app/src/main/AndroidManifest.xml",
-        "AndroidManifest.xml",
-    ),
-    (
-        "android://app-build-gradle",
-        "app/build.gradle.kts",
-        "app/build.gradle.kts",
-    ),
-    (
+/// and name. The manifest and module build file are the application module's,
+/// and only when the project has exactly one.
+fn project_file_resources(gradle_root: &Path) -> Vec<(&'static str, String, &'static str)> {
+    let mut resources = Vec::new();
+    if let Ok(module) = gradle_modules::resolve_application_module(gradle_root, None) {
+        let prefix = match module.relative_dir(gradle_root).as_str() {
+            "." => String::new(),
+            dir => format!("{dir}/"),
+        };
+        resources.push((
+            "android://manifest",
+            format!("{prefix}src/main/AndroidManifest.xml"),
+            "AndroidManifest.xml",
+        ));
+        resources.push((
+            "android://app-build-gradle",
+            format!("{prefix}build.gradle.kts"),
+            "build.gradle.kts (application module)",
+        ));
+    }
+    resources.push((
         "android://build-gradle",
+        "build.gradle.kts".to_string(),
         "build.gradle.kts",
-        "build.gradle.kts",
-    ),
-    (
+    ));
+    resources.push((
         "android://gradle-settings",
+        "settings.gradle.kts".to_string(),
         "settings.gradle.kts",
-        "settings.gradle.kts",
-    ),
-];
+    ));
+    resources
+}
 
 /// Most bytes of a project file one resource read returns.
 const MAX_RESOURCE_BYTES: usize = 512 * 1024;

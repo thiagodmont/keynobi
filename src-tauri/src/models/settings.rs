@@ -328,7 +328,8 @@ impl Default for McpSettings {
     }
 }
 
-/// App version information read from (and written back to) `app/build.gradle(.kts)`.
+/// App version information read from (and written back to) the application
+/// module's `build.gradle(.kts)`.
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/bindings/")]

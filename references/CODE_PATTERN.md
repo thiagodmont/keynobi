@@ -104,7 +104,7 @@ The effective root is `gradle_root` when available, otherwise `project_root`. Ca
 
 - `utils::path::validate_within_root(root, untrusted)` for project-relative paths. It rejects absolute paths and `..` before canonicalizing.
 - `utils::path::resolve_project_file(root, relative)` for fixed project files the app reads, such as `app/build.gradle.kts`.
-- `utils::path::validate_apk_within_build_outputs(...)` for APK installs. It also requires `app/build/outputs` itself to resolve inside the root.
+- `utils::path::validate_apk_within_build_outputs(...)` for APK installs: the APK must be under an application module's `build/outputs`, and that directory must itself resolve inside the root.
 
 Each returns the canonical path; use that path afterwards, not the one you checked.
 

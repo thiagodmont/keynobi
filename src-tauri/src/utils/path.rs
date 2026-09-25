@@ -68,8 +68,10 @@ pub fn resolve_project_file(root: &Path, relative: &str) -> Result<PathBuf, AppE
     Ok(file)
 }
 
-/// Validate that an APK path resolves inside `{root}/app/build/outputs`, and
-/// that the outputs directory itself resolves inside `root`.
+/// Validate that an APK path resolves inside `<module>/build/outputs` of one
+/// of the project's application modules (see
+/// `gradle_modules::application_modules`), and that the outputs directory
+/// itself resolves inside `root`.
 ///
 /// Unlike [`validate_within_root`], this accepts absolute paths because APK
 /// paths returned by build discovery are absolute. Canonicalization still
@@ -82,18 +84,40 @@ pub fn validate_apk_within_build_outputs(
     let canonical_root = root
         .canonicalize()
         .map_err(|e| AppError::io(root.display(), e))?;
-    let build_outputs = canonical_root.join("app").join("build").join("outputs");
-    let canonical_outputs = build_outputs.canonicalize().map_err(|_| {
-        AppError::NotFound(
-            "Build outputs directory (app/build/outputs) not found. Run a build first.".to_string(),
-        )
-    })?;
-    // A symlinked `app`, `app/build`, or `app/build/outputs` must not move the
-    // boundary outside the project.
-    if !canonical_outputs.starts_with(&canonical_root) {
-        return Err(AppError::PermissionDenied(
-            "app/build/outputs resolves outside the project".to_string(),
-        ));
+    let modules = crate::services::gradle_modules::application_modules(&canonical_root);
+    let labels: Vec<String> = modules
+        .iter()
+        .map(|m| build_outputs_label(&canonical_root, m))
+        .collect();
+    let mut canonical_outputs: Vec<PathBuf> = Vec::new();
+    let mut escaping: Vec<&str> = Vec::new();
+    for (module, label) in modules.iter().zip(&labels) {
+        let Ok(outputs) = module.dir.join("build").join("outputs").canonicalize() else {
+            continue;
+        };
+        // A symlinked module, `build`, or `build/outputs` directory must not
+        // move the boundary outside the project.
+        if outputs.starts_with(&canonical_root) {
+            canonical_outputs.push(outputs);
+        } else {
+            escaping.push(label);
+        }
+    }
+    if canonical_outputs.is_empty() {
+        if !escaping.is_empty() {
+            return Err(AppError::PermissionDenied(format!(
+                "{} resolves outside the project",
+                escaping.join(", ")
+            )));
+        }
+        return Err(AppError::NotFound(format!(
+            "Build outputs directory ({}) not found. Run a build first.",
+            if labels.is_empty() {
+                "no application module".to_string()
+            } else {
+                labels.join(", ")
+            }
+        )));
     }
 
     let untrusted = untrusted.as_ref();
@@ -101,10 +125,14 @@ pub fn validate_apk_within_build_outputs(
         .canonicalize()
         .map_err(|_| AppError::NotFound(format!("APK path not found: {}", untrusted.display())))?;
 
-    if !canonical_apk.starts_with(&canonical_outputs) {
-        return Err(AppError::PermissionDenied(
-            "APK path must be within app/build/outputs".to_string(),
-        ));
+    if !canonical_outputs
+        .iter()
+        .any(|outputs| canonical_apk.starts_with(outputs))
+    {
+        return Err(AppError::PermissionDenied(format!(
+            "APK path must be within an application module's build outputs ({})",
+            labels.join(", ")
+        )));
     }
 
     if canonical_apk.extension().and_then(|e| e.to_str()) != Some("apk") {
@@ -114,6 +142,18 @@ pub fn validate_apk_within_build_outputs(
     }
 
     Ok(canonical_apk)
+}
+
+/// `mobile/build/outputs` for a module in `mobile/`, `build/outputs` for the
+/// root project.
+fn build_outputs_label(
+    root: &Path,
+    module: &crate::services::gradle_modules::GradleModule,
+) -> String {
+    match module.relative_dir(root).as_str() {
+        "." => "build/outputs".to_string(),
+        dir => format!("{dir}/build/outputs"),
+    }
 }
 
 #[cfg(test)]
@@ -367,6 +407,70 @@ mod tests {
                 .join("gradle/app.gradle.kts")
                 .canonicalize()
                 .unwrap()
+        );
+    }
+
+    fn write(root: &Path, rel: &str, text: &str) -> PathBuf {
+        let path = root.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+
+    #[test]
+    fn apk_validation_accepts_the_outputs_of_an_application_module_not_named_app() {
+        let tmp = TempDir::new().unwrap();
+        write(tmp.path(), "settings.gradle.kts", "include(\":mobile\")\n");
+        write(
+            tmp.path(),
+            "mobile/build.gradle.kts",
+            "plugins { id(\"com.android.application\") }\n",
+        );
+        let apk = write(
+            tmp.path(),
+            "mobile/build/outputs/apk/debug/mobile-debug.apk",
+            "apk",
+        );
+
+        let result = validate_apk_within_build_outputs(tmp.path(), &apk).unwrap();
+
+        assert_eq!(result, apk.canonicalize().unwrap());
+    }
+
+    #[test]
+    fn apk_validation_rejects_the_outputs_of_a_library_named_app() {
+        let tmp = TempDir::new().unwrap();
+        write(
+            tmp.path(),
+            "settings.gradle.kts",
+            "include(\":app\", \":mobile\")\n",
+        );
+        write(
+            tmp.path(),
+            "app/build.gradle.kts",
+            "plugins { id(\"com.android.library\") }\n",
+        );
+        write(
+            tmp.path(),
+            "mobile/build.gradle.kts",
+            "plugins { id(\"com.android.application\") }\n",
+        );
+        write(
+            tmp.path(),
+            "mobile/build/outputs/apk/debug/mobile-debug.apk",
+            "apk",
+        );
+        let library_apk = write(
+            tmp.path(),
+            "app/build/outputs/apk/debug/app-debug.apk",
+            "apk",
+        );
+
+        let result = validate_apk_within_build_outputs(tmp.path(), &library_apk);
+
+        assert!(
+            matches!(&result, Err(AppError::PermissionDenied(m)) if m.contains("mobile/build/outputs")),
+            "{result:?}"
         );
     }
 }
