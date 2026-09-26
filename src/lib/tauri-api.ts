@@ -92,6 +92,41 @@ export async function renameProject(id: string, newName: string): Promise<void> 
   return invoke<void>("rename_project", { id, newName });
 }
 
+// ── Run configurations ────────────────────────────────────────────────────────
+
+import type { ProjectRunConfigurations, RunConfiguration } from "@/bindings";
+export type { ProjectRunConfigurations, RunConfiguration };
+
+/**
+ * The run configurations of a registered project (default: the open one).
+ * The first read creates them from the project's application modules.
+ */
+export async function listRunConfigurations(
+  projectRoot: string | null = null
+): Promise<ProjectRunConfigurations> {
+  return invoke<ProjectRunConfigurations>("list_run_configurations", { projectRoot });
+}
+
+/**
+ * Save a run configuration of the open project, replacing the one of the
+ * same name. Rejects with `invalidInput` naming the field that is not valid.
+ */
+export async function saveRunConfiguration(
+  config: RunConfiguration
+): Promise<ProjectRunConfigurations> {
+  return invoke<ProjectRunConfigurations>("save_run_configuration", { config });
+}
+
+/** Delete a run configuration of the open project. */
+export async function deleteRunConfiguration(name: string): Promise<ProjectRunConfigurations> {
+  return invoke<ProjectRunConfigurations>("delete_run_configuration", { name });
+}
+
+/** Make a run configuration of the open project the active one. */
+export async function setActiveRunConfiguration(name: string): Promise<ProjectRunConfigurations> {
+  return invoke<ProjectRunConfigurations>("set_active_run_configuration", { name });
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 import type { AppSettings } from "@/bindings";

@@ -30,6 +30,10 @@ use commands::mcp::{
     clear_mcp_activity, get_agent_skill_status, get_mcp_activity, get_mcp_server_status,
     get_mcp_setup_status, install_agent_skill,
 };
+use commands::run_configuration::{
+    delete_run_configuration, list_run_configurations, save_run_configuration,
+    set_active_run_configuration,
+};
 use commands::settings::*;
 use commands::studio::open_in_studio;
 use commands::telemetry::send_native_sentry_test_event;
@@ -357,6 +361,11 @@ pub fn run() {
             get_variants_preview,
             get_variants_from_gradle,
             set_active_variant,
+            // Run configurations
+            list_run_configurations,
+            save_run_configuration,
+            delete_run_configuration,
+            set_active_run_configuration,
             // Devices
             list_adb_devices,
             refresh_devices,

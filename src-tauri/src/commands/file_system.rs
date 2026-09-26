@@ -58,6 +58,7 @@ fn upsert_project(path: &std::path::Path, gradle_root: Option<&std::path::Path>)
                 last_build_variant: None,
                 last_device: None,
                 trusted: None,
+                ..Default::default()
             });
 
             // Evict oldest non-pinned entries when over the cap.
@@ -445,6 +446,7 @@ mod tests {
                 last_build_variant: Some("debug".to_string()),
                 last_device: None,
                 trusted: Some(true),
+                ..Default::default()
             });
         })
         .unwrap();

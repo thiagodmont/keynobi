@@ -227,6 +227,11 @@ fn load_settings_from_path(path: &std::path::Path) -> (AppSettings, bool) {
     }
 }
 
+/// Read settings from an explicit path, bypassing the cache.
+pub fn load_settings_at_path(path: &std::path::Path) -> AppSettings {
+    load_settings_from_path(path).0
+}
+
 /// Test-only: read settings from an explicit path, bypassing the cache.
 #[cfg(test)]
 pub fn load_settings_from_path_for_tests(path: &std::path::Path) -> AppSettings {
@@ -267,7 +272,7 @@ pub fn save_settings(settings: &AppSettings) -> Result<(), String> {
     result
 }
 
-fn save_settings_snapshot_at_path(
+pub(crate) fn save_settings_snapshot_at_path(
     path: &std::path::Path,
     settings: &AppSettings,
 ) -> Result<(), String> {
@@ -374,7 +379,8 @@ pub fn get_active_variant_for_project_path(
         .and_then(|e| e.last_build_variant.clone())
 }
 
-/// Persist `variant` as `last_build_variant` for the given project path.
+/// Persist `variant` as `last_build_variant` for the given project path, and
+/// as the variant of its active run configuration.
 /// No-op (no error) if the project is not found in recent_projects.
 pub fn set_active_variant_for_project_path(
     settings_path: &std::path::Path,
@@ -388,6 +394,7 @@ pub fn set_active_variant_for_project_path(
             .find(|e| e.path == project_path || e.gradle_root.as_deref() == Some(project_path))
         {
             entry.last_build_variant = Some(variant.to_string());
+            crate::services::run_configurations::follow_variant(entry, variant);
         }
     })
 }
@@ -921,6 +928,7 @@ mod variant_tests {
                     last_build_variant: Some("release".into()),
                     last_device: None,
                     trusted: None,
+                    ..Default::default()
                 });
         })
         .unwrap();
