@@ -17,6 +17,10 @@
  */
 use crate::models::debug_session::{DebugSessionAgentAction, DebugSessionToolKind};
 use crate::models::device::DeviceConnectionState;
+use crate::models::error::AppError;
+use crate::models::run_configuration::{
+    LocalRunState, ResolvedRun, RunConfiguration, TargetPreference,
+};
 use crate::services::adb_manager::{self, DeviceState};
 use crate::services::agent_skill;
 use crate::services::android_cli;
@@ -38,6 +42,7 @@ use crate::services::mcp_toolsets::Toolsets;
 use crate::services::process_manager::ProcessManager;
 use crate::services::project_trust;
 use crate::services::retrace;
+use crate::services::run_plan;
 use crate::services::settings_manager;
 use crate::services::ui_automation;
 use crate::services::ui_hierarchy;
@@ -467,6 +472,12 @@ pub struct RunTestsParams {
         description = "Test type: 'unit' (testDebug), 'connected' (connectedAndroidTest), or a specific Gradle test task"
     )]
     pub test_type: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct BuildRunConfigurationParams {
+    #[schemars(description = "Run configuration name, from list_run_configurations")]
+    pub name: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -998,6 +1009,157 @@ impl AndroidMcpServer {
             .await
     }
 
+    /// List the project's run configurations and what each would do.
+    #[tool(
+        description = "List the project's run configurations: what Run App builds and launches. For each: name, module, variant, the Gradle task it builds, launch, target device preference, logcat filter, whether it is shared with the project and active, and its plan on the connected devices or the reason it cannot run. Build one with build_run_configuration.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn list_run_configurations(&self) -> Result<CallToolResult, McpError> {
+        let roots = self.run_project_roots().await?;
+        let devices = self.fresh_devices().await;
+        let selected = self.device_state.0.lock().await.selected_serial.clone();
+        let listed = tokio::task::spawn_blocking(move || {
+            run_plan::resolve_each(
+                roots.project(),
+                run_plan::Devices {
+                    list: &devices,
+                    selected: selected.as_deref(),
+                },
+            )
+        })
+        .await
+        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let (listed, resolved) = match listed {
+            Ok(listed) => listed,
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(
+                    app_error_message(&e),
+                )]))
+            }
+        };
+        let configurations: Vec<serde_json::Value> = listed
+            .configurations
+            .iter()
+            .zip(&resolved)
+            .map(|(config, resolved)| {
+                let local = listed.local.get(&config.name).cloned().unwrap_or_default();
+                let active = listed.active.as_deref() == Some(config.name.as_str());
+                let shared = listed.shared.contains(&config.name);
+                run_configuration_json(config, &local, active, shared, resolved)
+            })
+            .collect();
+        Ok(CallToolResult::structured(json!({
+            "count": configurations.len(),
+            "active": listed.active,
+            "configurations": configurations,
+        })))
+    }
+
+    /// Build a run configuration's task, like run_gradle_task.
+    #[tool(
+        description = "Build a run configuration (from list_run_configurations): its module's and variant's Gradle task, run like run_gradle_task (trust, task policy, progress, cancellation). Returns the configuration, the task, the build id, the result, and the APK the build wrote for that module and variant (install it with install_apk).",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            open_world_hint = true
+        )
+    )]
+    async fn build_run_configuration(
+        &self,
+        Parameters(p): Parameters<BuildRunConfigurationParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        let roots = self.run_project_roots().await?;
+        let gradle_root = roots.gradle_root.clone();
+        let request = run_plan::RunRequest {
+            name: Some(p.name),
+            build_only: true,
+        };
+        let resolved = tokio::task::spawn_blocking(move || {
+            run_plan::resolve(
+                roots.project(),
+                &request,
+                run_plan::Devices {
+                    list: &[],
+                    selected: None,
+                },
+            )
+        })
+        .await
+        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let resolved = match resolved {
+            Ok(resolved) => resolved,
+            // Safe Mode and an unknown name are refused like run_gradle_task's arguments.
+            Err(e @ (AppError::PermissionDenied(_) | AppError::NotFound(_))) => {
+                return Err(McpError::invalid_params(app_error_message(&e), None))
+            }
+            Err(AppError::ApprovalRequired(m)) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
+                    "{m} Only the user can approve it, in Keynobi's run configuration editor."
+                ))]))
+            }
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![ContentBlock::text(
+                    app_error_message(&e),
+                )]))
+            }
+        };
+
+        let (result, outcome) = self
+            .run_build_outcome(resolved.task.clone(), self.agent(&ctx.peer), Some(&ctx))
+            .await?;
+        let text = result
+            .content
+            .first()
+            .and_then(|c| c.as_text())
+            .map(|t| t.text.clone())
+            .unwrap_or_default();
+        let mut body = json!({
+            "configuration": resolved.name,
+            "module": resolved.module,
+            "variant": resolved.variant,
+            "task": resolved.task,
+            "build_id": outcome.as_ref().and_then(|o| o.record_id),
+            "result": text,
+        });
+        if let Some(build_id) = outcome
+            .as_ref()
+            .filter(|o| o.success)
+            .and_then(|o| o.record_id)
+        {
+            let apk = self
+                .run_configuration_apk(gradle_root, build_id, &resolved.module, &resolved.variant)
+                .await;
+            body["apk_path"] = json!(apk.as_ref().ok().map(|a| &a.path));
+            body["apk_written_by_this_build"] =
+                json!(apk.as_ref().is_ok_and(|a| a.from_this_build));
+            match apk {
+                Ok(apk) if !apk.from_this_build => {
+                    body["apk_note"] = json!(format!(
+                        "This build wrote no APK for {} {} (Gradle found it up to date); \
+                         apk_path is the current one{}.",
+                        resolved.module,
+                        resolved.variant,
+                        apk.build_id
+                            .map(|id| format!(", written by build #{id}"))
+                            .unwrap_or_default()
+                    ));
+                }
+                Ok(_) => {}
+                Err(e) => body["apk_note"] = json!(e),
+            }
+        }
+        Ok(if result.is_error == Some(true) {
+            CallToolResult::structured_error(body)
+        } else {
+            CallToolResult::structured(body)
+        })
+    }
+
     /// Get a parsed crash stack trace from the in-memory logcat buffer.
     /// Requires logcat to be running (call start_logcat first).
     #[tool(
@@ -1402,19 +1564,7 @@ impl AndroidMcpServer {
         )
     )]
     async fn list_devices(&self) -> Result<CallToolResult, McpError> {
-        let (settings, _) = settings_manager::load_settings();
-        let adb = adb_manager::get_adb_path(&settings);
-
-        let mut devices = adb_manager::list_devices(&adb).await;
-        for d in &mut devices {
-            adb_manager::enrich_device_props(&adb, d).await;
-        }
-
-        // Update the cached state so other tools stay consistent.
-        {
-            let mut state = self.device_state.0.lock().await;
-            state.devices = devices.clone();
-        }
+        let devices = self.fresh_devices().await;
 
         if devices.is_empty() {
             return Ok(CallToolResult::structured(
@@ -3539,9 +3689,11 @@ fn full_deploy_text(args: &FullDeployArgs) -> String {
     let task = format!("assemble{}", capitalize_first(variant));
     format!(
         "Deploy the {variant} build to device '{device}'. \
-         Step 1: Call run_gradle_task with task={task} to build. \
-         Step 2: Call find_apk_path with variant={variant} to locate the APK. \
-         Step 3: Call install_apk with device_serial={device} and the path from step 2. \
+         Step 1: Call list_run_configurations. If one builds the {variant} variant of the app, \
+         call build_run_configuration with its name: it returns the apk_path. \
+         Otherwise call run_gradle_task with task={task} to build. \
+         Step 2: Unless you have the apk_path, call find_apk_path with variant={variant} to locate the APK. \
+         Step 3: Call install_apk with device_serial={device} and the APK path. \
          Step 4: {launch} \
          Report the result of each step.",
         task = task,
@@ -3598,6 +3750,7 @@ impl ServerHandler for AndroidMcpServer {
              Keynobi MCP Server — AI-first companion for Android development. \
              Keynobi covers stateful work (logs, crashes, and builds) and pairs with Android CLI (`android`) for stateless device and SDK tasks; the keynobi://skill resource says which to use when. \
              Tools: build (run_gradle_task, get_build_errors, get_build_log, get_build_config, find_apk_path, run_tests), \
+             run configurations, what Run App builds and launches (list_run_configurations, build_run_configuration: prefer them to build the module and variant the user runs), \
              logcat (start_logcat, get_logcat_entries, get_crash_logs, get_crash_stack_trace), \
              devices (list_devices, get_ui_hierarchy, find_ui_elements, list_clickable_elements, find_ui_parent, ui_tap, ui_tap_element, ui_fill_input, ui_type_text, hide_soft_keyboard, ui_swipe, ui_scroll_until_element, ui_wait_for_idle, ui_assert_element, send_ui_key, open_deep_link, open_app_settings, set_device_orientation, set_network_state, grant_runtime_permission, revoke_runtime_permission, screenshot, get_device_info, install_apk, launch_app, restart_app, dump_app_info, get_memory_info, get_app_runtime_state, get_exit_reasons), \
              project (get_project_info, run_health_check), \
@@ -3850,6 +4003,68 @@ impl AndroidMcpServer {
         }
     }
 
+    /// The open project's roots for its run configurations, as the Tauri
+    /// commands take them.
+    async fn run_project_roots(&self) -> Result<RunRoots, McpError> {
+        let fs = self.fs_state.0.lock().await;
+        let gradle_root = fs
+            .gradle_root
+            .clone()
+            .or_else(|| fs.project_root.clone())
+            .ok_or_else(|| {
+                McpError::invalid_params("No project open. Open an Android project first.", None)
+            })?;
+        let project_root = fs
+            .project_root
+            .clone()
+            .unwrap_or_else(|| gradle_root.clone());
+        Ok(RunRoots {
+            registry_root: project_root.to_string_lossy().into_owned(),
+            gradle_root,
+            trust_root: project_root,
+        })
+    }
+
+    /// The connected devices, asked of adb now; also cached for other tools.
+    async fn fresh_devices(&self) -> Vec<crate::models::device::Device> {
+        let (settings, _) = settings_manager::load_settings();
+        let adb = adb_manager::get_adb_path(&settings);
+        let mut devices = adb_manager::list_devices(&adb).await;
+        for d in &mut devices {
+            adb_manager::enrich_device_props(&adb, d).await;
+        }
+        self.device_state.0.lock().await.devices = devices.clone();
+        devices
+    }
+
+    /// The APK build `build_id` wrote for `module` and `variant`, else the
+    /// current one when Gradle found it up to date (as Run App installs).
+    async fn run_configuration_apk(
+        &self,
+        gradle_root: PathBuf,
+        build_id: u32,
+        module: &str,
+        variant: &str,
+    ) -> Result<crate::models::build::RunApk, String> {
+        let history: Vec<crate::models::build::BuildRecord> = {
+            let bs = self.build_state.inner.lock().await;
+            bs.history.iter().cloned().collect()
+        };
+        let (module, variant) = (module.to_string(), variant.to_string());
+        // Hashing an up-to-date APK reads it from disk.
+        tokio::task::spawn_blocking(move || {
+            installed_builds::run_apk(
+                &gradle_root,
+                &history,
+                Some(build_id),
+                Some(&module),
+                &variant,
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+
     async fn get_gradle_root(&self) -> Option<PathBuf> {
         let fs = self.fs_state.0.lock().await;
         fs.gradle_root.clone().or_else(|| fs.project_root.clone())
@@ -3870,6 +4085,19 @@ impl AndroidMcpServer {
         origin: BuildActor,
         request: Option<&RequestContext<RoleServer>>,
     ) -> Result<CallToolResult, McpError> {
+        self.run_build_outcome(task, origin, request)
+            .await
+            .map(|(result, _)| result)
+    }
+
+    /// [`Self::run_build`], also returning how the build ended when it ran
+    /// to completion.
+    async fn run_build_outcome(
+        &self,
+        task: String,
+        origin: BuildActor,
+        request: Option<&RequestContext<RoleServer>>,
+    ) -> Result<(CallToolResult, Option<build_runner::BuildOutcome>), McpError> {
         validate_gradle_task(&task)?;
         if !settings_manager::load_settings()
             .0
@@ -3931,15 +4159,21 @@ impl AndroidMcpServer {
         let mut handle = match started {
             Ok(handle) => handle,
             Err(build_runner::StartBuildError::Busy(e)) => {
-                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                    "{e}. Wait for it (get_build_status) or cancel it (cancel_build), \
-                     then try again.\n[{mode}]"
-                ))]));
+                return Ok((
+                    CallToolResult::error(vec![ContentBlock::text(format!(
+                        "{e}. Wait for it (get_build_status) or cancel it (cancel_build), \
+                         then try again.\n[{mode}]"
+                    ))]),
+                    None,
+                ));
             }
             Err(build_runner::StartBuildError::BusyElsewhere(e)) => {
-                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                    "{e}. Wait for it to finish, then try again.\n[{mode}]"
-                ))]));
+                return Ok((
+                    CallToolResult::error(vec![ContentBlock::text(format!(
+                        "{e}. Wait for it to finish, then try again.\n[{mode}]"
+                    ))]),
+                    None,
+                ));
             }
             Err(build_runner::StartBuildError::Spawn(e)) => {
                 return Err(McpError::internal_error(
@@ -4027,9 +4261,12 @@ impl AndroidMcpServer {
                 .await;
                 // Let the run record the timeout before answering.
                 let _ = tokio::time::timeout(TIMEOUT_RECORD_GRACE, handle.wait()).await;
-                return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                    "Build timed out after {timeout_sec}s — task '{task}'. Build has been cancelled.\n[{mode}]"
-                ))]));
+                return Ok((
+                    CallToolResult::error(vec![ContentBlock::text(format!(
+                        "Build timed out after {timeout_sec}s — task '{task}'. Build has been cancelled.\n[{mode}]"
+                    ))]),
+                    None,
+                ));
             }
         };
 
@@ -4039,9 +4276,12 @@ impl AndroidMcpServer {
                 .as_ref()
                 .map(|by| format!(" {}", build_runner::describe_canceller(by)))
                 .unwrap_or_default();
-            return Ok(CallToolResult::error(vec![ContentBlock::text(format!(
-                "BUILD CANCELLED — task '{task}' was cancelled{by}.\n[{mode}]"
-            ))]));
+            return Ok((
+                CallToolResult::error(vec![ContentBlock::text(format!(
+                    "BUILD CANCELLED — task '{task}' was cancelled{by}.\n[{mode}]"
+                ))]),
+                Some(result),
+            ));
         }
 
         let issue_lines = build_runner::format_build_issues(&result.errors);
@@ -4061,7 +4301,10 @@ impl AndroidMcpServer {
                     issue_lines.join("\n")
                 )
             };
-            Ok(CallToolResult::success(vec![ContentBlock::text(msg)]))
+            Ok((
+                CallToolResult::success(vec![ContentBlock::text(msg)]),
+                Some(result),
+            ))
         } else {
             let msg = format!(
                 "BUILD FAILED — task '{}'\n{} issue(s):\n{}\n[{mode}]",
@@ -4073,7 +4316,10 @@ impl AndroidMcpServer {
                     issue_lines.join("\n")
                 }
             );
-            Ok(CallToolResult::error(vec![ContentBlock::text(msg)]))
+            Ok((
+                CallToolResult::error(vec![ContentBlock::text(msg)]),
+                Some(result),
+            ))
         }
     }
 
@@ -4118,6 +4364,80 @@ impl AndroidMcpServer {
         crate::utils::path::validate_apk_within_build_outputs(&gradle_root, apk_path)
             .map_err(|e| McpError::invalid_params(e.to_string(), None))
     }
+}
+
+/// The roots a run configuration resolves against.
+struct RunRoots {
+    registry_root: String,
+    gradle_root: PathBuf,
+    trust_root: PathBuf,
+}
+
+impl RunRoots {
+    fn project(&self) -> run_plan::RunProject<'_> {
+        run_plan::RunProject {
+            registry_root: &self.registry_root,
+            gradle_root: &self.gradle_root,
+            trust_root: &self.trust_root,
+        }
+    }
+}
+
+/// An error's message without its kind prefix.
+fn app_error_message(e: &AppError) -> String {
+    match e {
+        AppError::NotFound(m)
+        | AppError::PermissionDenied(m)
+        | AppError::InvalidInput(m)
+        | AppError::ApprovalRequired(m)
+        | AppError::Other(m) => m.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// One `list_run_configurations` entry.
+fn run_configuration_json(
+    config: &RunConfiguration,
+    local: &LocalRunState,
+    active: bool,
+    shared: bool,
+    resolved: &Result<ResolvedRun, AppError>,
+) -> serde_json::Value {
+    let task = match resolved {
+        Ok(run) => run.task.clone(),
+        Err(_) => config
+            .task
+            .clone()
+            .unwrap_or_else(|| run_plan::assemble_task(&config.module, &config.variant)),
+    };
+    let mut entry = json!({
+        "name": config.name,
+        "module": config.module,
+        "variant": config.variant,
+        "task": task,
+        "launch": config.launch,
+        "target": local.target,
+        "last_device": local.last_device,
+        "logcat_filter": config.logcat_filter,
+        "shared": shared,
+        "active": active,
+    });
+    match resolved {
+        Ok(run) => {
+            entry["plan"] = json!(run.plan);
+            entry["device"] = json!(run.device);
+        }
+        Err(e) => {
+            entry["cannot_run"] = json!(app_error_message(e));
+            if let (TargetPreference::Avd { name }, AppError::NotFound(_)) = (&local.target, e) {
+                entry["hint"] = json!(format!(
+                    "Start the AVD with launch_avd (name: {name}), then list again. Keynobi \
+                     never starts an emulator on its own."
+                ));
+            }
+        }
+    }
+    entry
 }
 
 // ── Validation helpers ────────────────────────────────────────────────────────

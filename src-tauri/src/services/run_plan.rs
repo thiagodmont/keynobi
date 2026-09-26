@@ -143,6 +143,35 @@ fn check_approval(
     )))
 }
 
+/// Every configuration of `project` with its plan on `devices`, or why it
+/// cannot run, each resolved as [`resolve`] resolves it.
+pub fn resolve_each(
+    project: RunProject<'_>,
+    devices: Devices<'_>,
+) -> Result<(ProjectRunConfigurations, Vec<Result<ResolvedRun, AppError>>), AppError> {
+    resolve_each_at(&run_configurations::settings_path(), project, devices)
+}
+
+pub fn resolve_each_at(
+    settings_path: &Path,
+    project: RunProject<'_>,
+    devices: Devices<'_>,
+) -> Result<(ProjectRunConfigurations, Vec<Result<ResolvedRun, AppError>>), AppError> {
+    let configurations = run_configurations::list_at(settings_path, project.registry_root)?;
+    let resolved = configurations
+        .configurations
+        .iter()
+        .map(|config| {
+            let request = RunRequest {
+                name: Some(config.name.clone()),
+                build_only: false,
+            };
+            resolve_at(settings_path, project, &request, devices)
+        })
+        .collect();
+    Ok((configurations, resolved))
+}
+
 /// The configuration named `name`, else the active one.
 fn choose<'a>(
     configurations: &'a ProjectRunConfigurations,
@@ -656,6 +685,42 @@ mod tests {
         run_configurations::delete_at(&f.path, &f.root(), "Default").unwrap();
         let err = f.resolve(run(), on(&[pixel()], None)).unwrap_err();
         assert!(message(err).contains("no run configurations"));
+    }
+
+    #[test]
+    fn each_configuration_is_listed_with_its_plan_or_why_it_cannot_run() {
+        let f = Fixture::new(&[":app"], Some(true));
+        write(f.project.path(), "app/build.gradle.kts", WITH_STAGING);
+        f.save(RunConfiguration {
+            variant: "paidDebug".into(),
+            ..config("Paid", ":app")
+        });
+
+        let (listed, resolved) = resolve_each_at(
+            &f.path,
+            RunProject {
+                registry_root: &f.root(),
+                gradle_root: f.project.path(),
+                trust_root: f.project.path(),
+            },
+            on(&[pixel()], None),
+        )
+        .unwrap();
+
+        let names: Vec<&str> = listed
+            .configurations
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(names, ["Default", "Paid"]);
+        assert_eq!(
+            resolved[0].as_ref().unwrap().plan,
+            "Run 'Default': build :app:assembleDebug → install this build's APK → launch the \
+             app on Pixel_7 → filter package:mine"
+        );
+        let err = resolved[1].as_ref().unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert!(err.to_string().contains(":app has no variant 'paidDebug'"));
     }
 
     // ── The configuration against the project ────────────────────────────────

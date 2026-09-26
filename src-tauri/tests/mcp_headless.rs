@@ -2792,3 +2792,349 @@ fn an_attached_session_serves_only_the_clients_toolsets() {
     app.wait_for_sessions(2);
     assert!(other.tool_names().iter().any(|t| t == "stop_app"));
 }
+
+// ── Run configurations ───────────────────────────────────────────────────────
+
+/// A project whose application module `:app` declares debug and release, in
+/// a registry entry (trusted or not) holding `configurations` with their
+/// local state `local`; `Default` is active.
+fn write_run_configurations(
+    sandbox: &Sandbox,
+    trusted: serde_json::Value,
+    configurations: serde_json::Value,
+    local: serde_json::Value,
+) {
+    std::fs::write(
+        sandbox.project.join("settings.gradle.kts"),
+        "rootProject.name = \"sandbox\"\ninclude(\":app\")\n",
+    )
+    .unwrap();
+    let app = sandbox.project.join("app");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::write(
+        app.join("build.gradle.kts"),
+        r#"plugins { id("com.android.application") }
+android {
+    defaultConfig { applicationId = "com.example.sandbox" }
+    buildTypes {
+        release {
+        }
+    }
+}
+"#,
+    )
+    .unwrap();
+    let mut entry = headless::project_entry(&sandbox.project, trusted);
+    entry["runConfigurations"] = configurations;
+    entry["runLocal"] = local;
+    entry["activeRunConfiguration"] = json!("Default");
+    sandbox.write_projects(json!([entry]), None);
+}
+
+/// `Default` (debug on emulator-5554), `Staging` (a variant `:app` does not
+/// declare), and `Tablet` (on an AVD that is not running).
+fn write_three_run_configurations(sandbox: &Sandbox, trusted: serde_json::Value) {
+    write_run_configurations(
+        sandbox,
+        trusted,
+        json!([
+            { "name": "Default", "module": ":app", "variant": "debug" },
+            { "name": "Staging", "module": ":app", "variant": "staging" },
+            {
+                "name": "Tablet",
+                "module": ":app",
+                "variant": "release",
+                "launch": { "kind": "activity", "name": ".TabletActivity" },
+                "logcatFilter": "level:warn"
+            }
+        ]),
+        json!({
+            "Default": { "target": { "kind": "serial", "serial": "emulator-5554" } },
+            "Tablet": { "target": { "kind": "avd", "name": "Pixel_Tablet" } }
+        }),
+    );
+}
+
+/// An `adb` that sees one emulator running the AVD Pixel_7.
+fn one_emulator_adb(sandbox: &Sandbox) {
+    sandbox.write_adb(
+        r#"case "$*" in
+  "devices -l")
+    echo 'List of devices attached'
+    echo 'emulator-5554          device product:sdk_gphone64 model:sdk_gphone64_arm64 device:emu64a transport_id:1'
+    ;;
+  *"emu avd name"*) printf 'Pixel_7\nOK\n' ;;
+  *"ro.build.version.sdk"*) echo 35 ;;
+  *"ro.build.version.release"*) echo 15 ;;
+esac"#,
+    );
+}
+
+/// A `gradlew` that writes `:app`'s debug APK, records its arguments in the
+/// returned file, and succeeds.
+fn gradlew_writing_the_debug_apk(sandbox: &Sandbox) -> std::path::PathBuf {
+    let args = sandbox.home.join("gradlew-args");
+    let debug = sandbox.project.join("app/build/outputs/apk/debug");
+    sandbox.write_gradlew(&format!(
+        "echo \"$*\" > '{args}'\n\
+         mkdir -p '{debug}'\n\
+         printf 'debug apk' > '{debug}/app-debug.apk'\n\
+         printf '%s' '{{\"applicationId\":\"com.example.sandbox\",\"variantName\":\"debug\",\
+         \"elements\":[{{\"versionCode\":1,\"outputFile\":\"app-debug.apk\"}}]}}' \
+         > '{debug}/output-metadata.json'\n\
+         echo 'BUILD SUCCESSFUL in 1s'",
+        args = args.display(),
+        debug = debug.display(),
+    ));
+    args
+}
+
+#[test]
+fn list_run_configurations_gives_each_plan_or_why_it_cannot_run() {
+    let sandbox = Sandbox::new();
+    write_three_run_configurations(&sandbox, json!(true));
+    one_emulator_adb(&sandbox);
+    let mut client = sandbox.start();
+
+    let listed = client.call_tool_json("list_run_configurations", json!({}));
+
+    assert_eq!(listed["count"], 3, "{listed}");
+    assert_eq!(listed["active"], "Default", "{listed}");
+    let [default, staging, tablet] = [0, 1, 2].map(|i| listed["configurations"][i].clone());
+    assert_eq!(default["name"], "Default");
+    assert_eq!(default["task"], ":app:assembleDebug");
+    assert_eq!(default["active"], true);
+    assert_eq!(default["shared"], false);
+    assert_eq!(default["launch"], json!({ "kind": "default" }));
+    assert_eq!(
+        default["target"],
+        json!({ "kind": "serial", "serial": "emulator-5554" })
+    );
+    assert_eq!(
+        default["plan"],
+        "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on \
+         Pixel_7 → filter package:mine",
+        "{default}"
+    );
+    assert_eq!(default["device"]["serial"], "emulator-5554");
+    assert!(default.get("cannot_run").is_none(), "{default}");
+
+    assert_eq!(staging["task"], ":app:assembleStaging");
+    assert_eq!(staging["active"], false);
+    assert!(staging.get("plan").is_none(), "{staging}");
+    assert!(
+        staging["cannot_run"]
+            .as_str()
+            .unwrap()
+            .contains(":app has no variant 'staging'. Its variants: debug, release."),
+        "{staging}"
+    );
+
+    assert_eq!(tablet["logcat_filter"], "level:warn");
+    assert_eq!(
+        tablet["launch"],
+        json!({ "kind": "activity", "name": ".TabletActivity" })
+    );
+    assert!(
+        tablet["cannot_run"]
+            .as_str()
+            .unwrap()
+            .contains("runs on the AVD Pixel_Tablet, which is not running"),
+        "{tablet}"
+    );
+    assert!(
+        tablet["hint"]
+            .as_str()
+            .unwrap()
+            .contains("launch_avd (name: Pixel_Tablet)"),
+        "{tablet}"
+    );
+    // Nothing was started or installed: only reads.
+    assert!(
+        sandbox
+            .adb_calls()
+            .iter()
+            .all(|c| c == "devices -l" || c.contains("emu avd name") || c.contains("getprop")),
+        "{:?}",
+        sandbox.adb_calls()
+    );
+}
+
+#[test]
+fn build_run_configuration_builds_its_task_and_names_the_apk_it_wrote() {
+    let sandbox = Sandbox::new();
+    write_three_run_configurations(&sandbox, json!(true));
+    let args = gradlew_writing_the_debug_apk(&sandbox);
+    let mut client = sandbox.start();
+
+    let built = client.call_tool_json("build_run_configuration", json!({ "name": "Default" }));
+
+    assert!(
+        std::fs::read_to_string(&args)
+            .unwrap()
+            .contains(":app:assembleDebug"),
+        "gradlew did not run the configuration's task"
+    );
+    let history: Vec<serde_json::Value> = serde_json::from_str(
+        &std::fs::read_to_string(sandbox.home.join(".keynobi/build-history.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(history.len(), 1, "{history:?}");
+    assert_eq!(history[0]["task"], ":app:assembleDebug");
+    assert_eq!(history[0]["origin"]["kind"], "agent", "{:?}", history[0]);
+    assert_eq!(built["configuration"], "Default", "{built}");
+    assert_eq!(built["task"], ":app:assembleDebug", "{built}");
+    assert_eq!(built["build_id"], history[0]["id"], "{built}");
+    assert!(
+        built["result"]
+            .as_str()
+            .unwrap()
+            .starts_with("BUILD SUCCESSFUL — task ':app:assembleDebug'"),
+        "{built}"
+    );
+    let apk = sandbox
+        .project
+        .join("app/build/outputs/apk/debug/app-debug.apk");
+    assert_eq!(built["apk_path"], json!(apk.to_string_lossy()), "{built}");
+    assert_eq!(built["apk_written_by_this_build"], true, "{built}");
+
+    // An unknown name is refused before anything runs.
+    let message = client.call_tool_rejected("build_run_configuration", json!({ "name": "Nope" }));
+    assert!(
+        message.contains("no run configuration named 'Nope'"),
+        "{message}"
+    );
+}
+
+#[test]
+fn build_run_configuration_is_refused_in_safe_mode_and_listing_still_works() {
+    let sandbox = Sandbox::new();
+    write_three_run_configurations(&sandbox, json!(false));
+    let marker = gradlew_leaving_a_marker(&sandbox);
+    let mut client = sandbox.start();
+
+    let message =
+        client.call_tool_rejected("build_run_configuration", json!({ "name": "Default" }));
+
+    assert!(message.contains("not trusted"), "{message}");
+    assert!(message.contains("Keynobi app"), "{message}");
+    assert!(!marker.exists(), "gradlew ran in Safe Mode");
+    let listed = client.call_tool_json("list_run_configurations", json!({}));
+    assert_eq!(listed["count"], 3, "{listed}");
+    assert!(
+        listed["configurations"][0]["cannot_run"]
+            .as_str()
+            .unwrap()
+            .contains("not trusted"),
+        "{listed}"
+    );
+}
+
+#[test]
+fn build_run_configuration_applies_the_agent_task_policy_to_a_custom_task() {
+    let sandbox = Sandbox::new();
+    write_run_configurations(
+        &sandbox,
+        json!(true),
+        json!([
+            { "name": "Default", "module": ":app", "variant": "debug" },
+            { "name": "Publish", "module": ":app", "variant": "release", "task": ":app:publishRelease" }
+        ]),
+        json!({}),
+    );
+    let marker = gradlew_leaving_a_marker(&sandbox);
+    let mut client = sandbox.start();
+
+    let message =
+        client.call_tool_rejected("build_run_configuration", json!({ "name": "Publish" }));
+
+    assert!(
+        message.contains("Gradle task ':app:publishRelease' is blocked for MCP clients"),
+        "{message}"
+    );
+    assert!(!marker.exists(), "gradlew ran a denied task");
+
+    // The user's setting lifts the policy, as for run_gradle_task.
+    let settings_path = sandbox.home.join(".keynobi/settings.json");
+    let mut settings: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&settings_path).unwrap()).unwrap();
+    settings["mcp"] = json!({ "allowUnrestrictedGradle": true });
+    std::fs::write(&settings_path, settings.to_string()).unwrap();
+    let built = client.call_tool_json("build_run_configuration", json!({ "name": "Publish" }));
+    assert_eq!(built["task"], ":app:publishRelease", "{built}");
+    assert!(marker.exists(), "gradlew did not run");
+}
+
+#[test]
+fn a_shared_run_configuration_needs_the_users_approval_before_an_agent_builds_it() {
+    let sandbox = Sandbox::new();
+    write_run_configurations(
+        &sandbox,
+        json!(true),
+        json!([{ "name": "Default", "module": ":app", "variant": "debug" }]),
+        json!({}),
+    );
+    let shared = sandbox.project.join(".keynobi");
+    std::fs::create_dir_all(&shared).unwrap();
+    std::fs::write(
+        shared.join("run-configurations.json"),
+        json!({
+            "schemaVersion": 1,
+            "configurations": [
+                { "name": "Bundle", "module": ":app", "variant": "debug", "task": ":app:bundleDebug" }
+            ]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let marker = gradlew_leaving_a_marker(&sandbox);
+    let mut client = sandbox.start();
+
+    let listed = client.call_tool_json("list_run_configurations", json!({}));
+    let bundle = listed["configurations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == "Bundle")
+        .cloned()
+        .unwrap_or_else(|| panic!("{listed}"));
+    assert_eq!(bundle["shared"], true, "{bundle}");
+    assert_eq!(listed["configurations"][0]["shared"], false, "{listed}");
+    assert!(
+        bundle["cannot_run"]
+            .as_str()
+            .unwrap()
+            .contains("You have not approved it yet."),
+        "{bundle}"
+    );
+
+    let out = client.call_tool("build_run_configuration", json!({ "name": "Bundle" }));
+    assert!(out.is_error, "{}", out.text);
+    assert!(
+        out.text.contains("Only the user can approve it"),
+        "{}",
+        out.text
+    );
+    assert!(!marker.exists(), "gradlew ran an unapproved shared task");
+}
+
+#[test]
+fn run_configuration_tools_belong_to_the_core_toolset() {
+    let sandbox = Sandbox::new();
+    write_three_run_configurations(&sandbox, json!(true));
+    let marker = gradlew_leaving_a_marker(&sandbox);
+
+    let core = sandbox.start_args(&["--toolsets", "core"]).tool_names();
+    for tool in ["list_run_configurations", "build_run_configuration"] {
+        assert!(core.iter().any(|t| t == tool), "{tool} missing: {core:?}");
+    }
+    let mut ui = sandbox.start_args(&["--toolsets", "ui"]);
+    let names = ui.tool_names();
+    assert!(
+        !names.iter().any(|t| t.contains("run_configuration")),
+        "{names:?}"
+    );
+    assert_hidden(&mut ui, "list_run_configurations", "core");
+    assert_hidden(&mut ui, "build_run_configuration", "core");
+    assert!(!marker.exists(), "a hidden tool ran gradlew");
+}
