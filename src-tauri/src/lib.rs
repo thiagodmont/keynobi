@@ -26,7 +26,8 @@ use commands::logcat::{
     start_logcat, stop_logcat,
 };
 use commands::mcp::{
-    clear_mcp_activity, get_mcp_activity, get_mcp_server_status, get_mcp_setup_status,
+    clear_mcp_activity, get_agent_skill_status, get_mcp_activity, get_mcp_server_status,
+    get_mcp_setup_status, install_agent_skill,
 };
 use commands::settings::*;
 use commands::studio::open_in_studio;
@@ -394,6 +395,8 @@ pub fn run() {
             get_mcp_activity,
             get_mcp_server_status,
             clear_mcp_activity,
+            get_agent_skill_status,
+            install_agent_skill,
             // Android Studio integration
             open_in_studio,
         ])

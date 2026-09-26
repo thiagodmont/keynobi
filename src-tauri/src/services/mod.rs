@@ -1,4 +1,6 @@
 pub mod adb_manager;
+pub mod agent_skill;
+pub mod android_cli;
 pub mod app_exit_info;
 pub mod app_inspector;
 pub mod app_location;

@@ -1,5 +1,6 @@
 use crate::models::health::SystemHealthReport;
 use crate::models::settings::AppSettings;
+use crate::services::android_cli;
 use crate::services::jdk::{self, JdkSearchRoots};
 use crate::services::settings_manager;
 use crate::utils::process::{output_with_timeout, TOOL_PROBE_TIMEOUT};
@@ -28,13 +29,19 @@ pub async fn run_health_checks(
         (fs.project_root.clone(), fs.gradle_root.clone())
     };
 
-    Ok(system_report(
-        &settings,
-        project_root.as_deref(),
-        gradle_root.as_deref(),
-        &JdkSearchRoots::system(),
-    )
-    .await)
+    let jdk_roots = JdkSearchRoots::system();
+    let (mut report, android_cli) = tokio::join!(
+        system_report(
+            &settings,
+            project_root.as_deref(),
+            gradle_root.as_deref(),
+            &jdk_roots,
+        ),
+        android_cli::detect(),
+    );
+    report.android_cli_path = android_cli.path.map(|p| p.to_string_lossy().into_owned());
+    report.android_cli_version = android_cli.version;
+    Ok(report)
 }
 
 async fn system_report(
@@ -147,6 +154,9 @@ async fn system_report(
         studio_command_found,
         app_location_problem: crate::services::app_location::current_exe_temporary_reason(),
         retrace_version: crate::services::retrace::health_version(settings),
+        // Filled in by `run_health_checks`, which looks for it alongside.
+        android_cli_path: None,
+        android_cli_version: None,
     }
 }
 

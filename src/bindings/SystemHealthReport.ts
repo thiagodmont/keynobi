@@ -70,4 +70,13 @@ appLocationProblem: string | null,
  * The Android SDK Command-line Tools version (`22.0`, or `unknown`)
  * whose `retrace` deobfuscates crash stacks; `None` when it is missing.
  */
-retraceVersion: string | null, };
+retraceVersion: string | null, 
+/**
+ * The canonical path of Google's Android CLI (`android`), or `None` when
+ * it is not installed. Informational: it never fails a health check.
+ */
+androidCliPath: string | null, 
+/**
+ * The first line `android --version` printed, when it answered in time.
+ */
+androidCliVersion: string | null, };

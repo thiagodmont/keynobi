@@ -326,6 +326,7 @@ Open Health Center with `Cmd+Shift+H` or the Health status item. It checks:
 - Android Emulator
 - Android Studio CLI (`studio`)
 - R8 retrace (the Android SDK Command-line Tools, used to [deobfuscate crashes](#deobfuscating-crashes); a warning when missing)
+- Android CLI (`android`; for information only, never a warning: its version and path, or that it is not installed, with a link to its docs; see [Android CLI and the Keynobi skill](#android-cli-and-the-keynobi-skill))
 - Java / JDK
 - App Data Directory
 - App Location (a warning while Keynobi runs from a disk image or a temporary App Translocation copy; move it to **Applications**)
@@ -378,6 +379,13 @@ codex mcp add keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mc
 Codex has no scopes: `codex mcp add` always writes your own Codex configuration, so it works in every folder.
 
 To bind MCP to a specific Android project, append `--project /path/to/MyAndroidProject` to either command. Existing registrations keep working after updating Keynobi; nothing needs to change.
+
+### Android CLI and the Keynobi skill
+
+Google's [Android CLI](https://developer.android.com/tools/agents/android-cli) (`android`) gives agents stateless commands: install SDK packages, create and start emulators, take a one-off screenshot, search Android docs, render Compose previews. Keynobi does not repeat those. It keeps state between calls: builds and their errors and history, the logcat buffer, crashes and their deobfuscation, why the app's processes exited, launch times, and the UI of the running app. Use both.
+
+- **Detection.** Health Center shows Android CLI's version and where it is installed (symlinks such as Homebrew's are resolved), or that it is not installed. Keynobi looks where your terminal would (your login shell's `PATH`) and in the documented install locations (`~/.local/bin`, `/usr/local/bin`, `/opt/homebrew/bin`). It runs `android --no-metrics --version` to read the version, with metrics off, and nothing else. AI clients see the same thing in `run_health_check`. Android CLI is optional: a missing one never counts against your health.
+- **The Keynobi skill** is a short `SKILL.md` that tells an agent which to use when. Any MCP client can read it as the resource `keynobi://skill`. To install it for Claude Code, open the **MCP Activity** panel (`Cmd+Shift+M`) and click **Install for Claude Code** under **Agent skill**: it writes `~/.claude/skills/keynobi/SKILL.md`, the path shown there, and nothing else. **Show SKILL.md** shows what will be written. If a different `SKILL.md` is already there (an older version, or your own), the button reads **Replace for Claude Code…** and asks before replacing it. For other clients, click **Copy SKILL.md** and put it where your client reads skills.
 
 ### How MCP relates to the app
 
@@ -487,12 +495,13 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 | `~/.keynobi/mcp-activity.jsonl` | Recent AI client activity |
 | `~/.keynobi/mcp.sock`, `~/.keynobi/mcp-sessions/` | The socket AI clients attach through while Keynobi is open, and a record per standalone MCP server |
 | `~/Library/WebKit/com.keynobi.app` | Saved logcat filters, last query, and dismissed updates |
+| `~/.claude/skills/keynobi/SKILL.md` | The Keynobi agent skill, only if you installed it for Claude Code |
 
 ### Reset or uninstall
 
 - Reset settings: **Settings → Reset to Defaults**.
 - Full reset: quit Keynobi and delete `~/.keynobi`.
-- Uninstall: quit Keynobi, delete it from **Applications**, then delete `~/.keynobi` and `~/Library/WebKit/com.keynobi.app`. Remove the MCP server from your AI clients (`claude mcp remove keynobi`, `codex mcp remove keynobi`).
+- Uninstall: quit Keynobi, delete it from **Applications**, then delete `~/.keynobi` and `~/Library/WebKit/com.keynobi.app`. Remove the MCP server from your AI clients (`claude mcp remove keynobi`, `codex mcp remove keynobi`), and delete `~/.claude/skills/keynobi` if you installed the Keynobi skill.
 
 ---
 

@@ -1734,6 +1734,35 @@ fn resources_never_serve_a_project_file_linked_outside_the_project() {
 }
 
 #[test]
+fn the_agent_skill_is_served_as_a_resource() {
+    let sandbox = Sandbox::new();
+    let mut client = sandbox.start();
+
+    let listed = client.request("resources/list", json!({}))["resources"]
+        .as_array()
+        .expect("resources/list returned no resources array")
+        .iter()
+        .find(|r| r["uri"] == "keynobi://skill")
+        .cloned()
+        .expect("keynobi://skill is listed");
+    assert_eq!(listed["mimeType"], "text/markdown", "{listed}");
+
+    let result = client.request("resources/read", json!({ "uri": "keynobi://skill" }));
+
+    let shipped = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../skills/keynobi/SKILL.md"),
+    )
+    .unwrap();
+    assert_eq!(result["contents"][0]["text"], shipped.as_str());
+    assert_eq!(result["contents"][0]["mimeType"], "text/markdown");
+    assert!(shipped.starts_with("---\nname: keynobi\n"));
+    assert!(
+        !sandbox.home.join(".claude").exists(),
+        "serving the skill must not install it"
+    );
+}
+
+#[test]
 fn an_oversized_resource_is_truncated_and_says_so() {
     let sandbox = Sandbox::new();
     let body = "// padding\n".repeat(100_000);

@@ -13,9 +13,11 @@
  *
  * Transport: newline-delimited JSON-RPC 2.0.
  *
- * Setup: `claude mcp add --transport stdio keynobi -- "/path/to/keynobi" --mcp`
+ * Setup: `claude mcp add --scope user --transport stdio keynobi -- "/path/to/keynobi" --mcp`
  */
 use crate::services::adb_manager::{self, DeviceState};
+use crate::services::agent_skill;
+use crate::services::android_cli;
 use crate::services::app_exit_info;
 use crate::services::app_inspector;
 use crate::services::build_inspector;
@@ -3191,45 +3193,22 @@ impl AndroidMcpServer {
             (fs.project_root.clone(), fs.gradle_root.clone())
         };
 
-        let report = health_inspector::run_health_check(
+        let jdk_roots = jdk::JdkSearchRoots::system();
+        let (report, android_cli) = tokio::join!(
+            health_inspector::run_health_check(
+                &settings,
+                project_root.as_deref(),
+                gradle_root.as_deref(),
+                &jdk_roots,
+            ),
+            android_cli::detect(),
+        );
+
+        Ok(CallToolResult::structured(health_check_json(
+            &report,
             &settings,
-            project_root.as_deref(),
-            gradle_root.as_deref(),
-            &jdk::JdkSearchRoots::system(),
-        )
-        .await;
-
-        let gradle_hint = if report.gradlew_ok {
-            serde_json::Value::Null
-        } else if !report.project_open {
-            json!("No Android project open — pass --project /path/to/project or open one in the companion app first")
-        } else {
-            json!(
-                "No gradlew found in the selected project — ensure it is an Android Gradle project"
-            )
-        };
-
-        Ok(CallToolResult::structured(json!({
-            "all_ok": report.all_ok,
-            "checks": {
-                "java": report.java.to_json(),
-                "android_sdk": {
-                    "ok": report.sdk_ok,
-                    "detected_path": report.detected_sdk,
-                    "hint": if report.sdk_ok { serde_json::Value::Null } else { json!("SDK not found — set android.sdkPath in Settings → Android, or ensure ANDROID_HOME is set") }
-                },
-                "adb": {
-                    "ok": report.adb_ok,
-                    "hint": if report.adb_ok { serde_json::Value::Null } else { json!("ADB not found — check Android SDK path") }
-                },
-                "gradle_wrapper": { "ok": report.gradlew_ok, "hint": gradle_hint },
-                "retrace": retrace::health_json(&settings),
-                "project": {
-                    "ok": report.project_open,
-                    "path": report.project_path.as_ref().map(|p| p.to_string_lossy().to_string())
-                },
-            }
-        })))
+            &android_cli,
+        )))
     }
 }
 
@@ -3382,6 +3361,7 @@ impl ServerHandler for AndroidMcpServer {
         .with_instructions(format!(
             "{} \
              Keynobi MCP Server — AI-first companion for Android development. \
+             Keynobi covers stateful work (logs, crashes, and builds) and pairs with Android CLI (`android`) for stateless device and SDK tasks; the keynobi://skill resource says which to use when. \
              Tools: build (run_gradle_task, get_build_errors, get_build_log, get_build_config, find_apk_path, run_tests), \
              logcat (start_logcat, get_logcat_entries, get_crash_logs, get_crash_stack_trace), \
              devices (list_devices, get_ui_hierarchy, find_ui_elements, list_clickable_elements, find_ui_parent, ui_tap, ui_tap_element, ui_fill_input, ui_type_text, hide_soft_keyboard, ui_swipe, ui_scroll_until_element, ui_wait_for_idle, ui_assert_element, send_ui_key, open_deep_link, open_app_settings, set_device_orientation, set_network_state, grant_runtime_permission, revoke_runtime_permission, screenshot, get_device_info, install_apk, launch_app, restart_app, dump_app_info, get_memory_info, get_app_runtime_state, get_exit_reasons), \
@@ -3415,6 +3395,11 @@ impl ServerHandler for AndroidMcpServer {
         let mut resources = vec![
             Resource::new("android://project-info", "Project Info"),
             Resource::new("android://health", "System Health"),
+            Resource::new(agent_skill::RESOURCE_URI, "Keynobi agent skill")
+                .with_description(
+                    "SKILL.md telling an agent when to use Keynobi and when to use Android CLI",
+                )
+                .with_mime_type("text/markdown"),
         ];
 
         if let Some(ref gradle_root) = fs.gradle_root.clone().or(fs.project_root.clone()) {
@@ -3449,6 +3434,12 @@ impl ServerHandler for AndroidMcpServer {
                     .unwrap_or_else(|| "No project open".into());
                 Ok(ReadResourceResult::new(vec![ResourceContents::text(text, uri.clone())]).into())
             }
+            agent_skill::RESOURCE_URI => Ok(ReadResourceResult::new(vec![ResourceContents::text(
+                agent_skill::SKILL_MARKDOWN,
+                uri.clone(),
+            )
+            .with_mime_type("text/markdown")])
+            .into()),
             "android://health" => {
                 let health = self.run_health_check().await?;
                 let text = health
@@ -3913,6 +3904,45 @@ fn truncate_at_char_boundary(s: &str, max_bytes: usize) -> &str {
     &s[..cut]
 }
 
+/// The `run_health_check` result. `all_ok` covers what Keynobi needs; the
+/// `retrace` and `android_cli` checks are informational and never change it.
+fn health_check_json(
+    report: &health_inspector::HealthReport,
+    settings: &crate::models::settings::AppSettings,
+    android_cli: &android_cli::AndroidCli,
+) -> serde_json::Value {
+    let gradle_hint = if report.gradlew_ok {
+        serde_json::Value::Null
+    } else if !report.project_open {
+        json!("No Android project open — pass --project /path/to/project or open one in the companion app first")
+    } else {
+        json!("No gradlew found in the selected project — ensure it is an Android Gradle project")
+    };
+
+    json!({
+        "all_ok": report.all_ok,
+        "checks": {
+            "java": report.java.to_json(),
+            "android_sdk": {
+                "ok": report.sdk_ok,
+                "detected_path": report.detected_sdk,
+                "hint": if report.sdk_ok { serde_json::Value::Null } else { json!("SDK not found — set android.sdkPath in Settings → Android, or ensure ANDROID_HOME is set") }
+            },
+            "adb": {
+                "ok": report.adb_ok,
+                "hint": if report.adb_ok { serde_json::Value::Null } else { json!("ADB not found — check Android SDK path") }
+            },
+            "gradle_wrapper": { "ok": report.gradlew_ok, "hint": gradle_hint },
+            "retrace": retrace::health_json(settings),
+            "android_cli": android_cli::health_json(android_cli),
+            "project": {
+                "ok": report.project_open,
+                "path": report.project_path.as_ref().map(|p| p.to_string_lossy().to_string())
+            },
+        }
+    })
+}
+
 /// Project files served as resources: URI, path relative to the Gradle root,
 /// and name. The manifest and module build file are the application module's,
 /// and only when the project has exactly one.
@@ -4045,7 +4075,7 @@ impl ServerHandler for LoggingMcpServer {
         let start = std::time::Instant::now();
         let uri = request.uri.clone();
         let result = match self.server.project_mismatch().await {
-            Some(msg) if uri != "android://project-info" => {
+            Some(msg) if uri != "android://project-info" && uri != agent_skill::RESOURCE_URI => {
                 Err(McpError::invalid_request(msg, None))
             }
             _ => self.server.read_resource(request, context).await,
@@ -4987,6 +5017,84 @@ mod tests {
                 "{name} is not a tool"
             );
         }
+    }
+
+    /// Every `snake_case` name the skill puts in backticks is a tool, so an
+    /// agent following it never calls one that does not exist. (Parameters
+    /// are written as `name: value`, which this does not match.)
+    #[test]
+    fn every_tool_the_skill_names_exists() {
+        let tools = headless_server().tool_router.list_all();
+        let named: Vec<&str> = agent_skill::SKILL_MARKDOWN
+            .split('`')
+            .skip(1)
+            .step_by(2)
+            .filter(|s| {
+                s.contains('_')
+                    && s.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+                    && !s.starts_with('_')
+            })
+            .collect();
+        assert!(
+            named.len() >= 30,
+            "only {} tools named: {named:?}",
+            named.len()
+        );
+        for name in named {
+            assert!(
+                tools.iter().any(|t| t.name == name),
+                "the skill names `{name}`, which is not a tool"
+            );
+        }
+    }
+
+    fn healthy_report() -> health_inspector::HealthReport {
+        health_inspector::HealthReport {
+            all_ok: true,
+            java: jdk::JavaCheck {
+                jdk: None,
+                bin: PathBuf::from("/jdk/bin/java"),
+                found: true,
+                version_line: Some("openjdk version \"21.0.8\"".into()),
+                major: Some(21),
+            },
+            sdk_ok: true,
+            adb_ok: true,
+            gradlew_ok: true,
+            project_open: true,
+            detected_sdk: Some("/sdk".into()),
+            project_path: Some(PathBuf::from("/project")),
+        }
+    }
+
+    #[test]
+    fn health_stays_ok_without_android_cli() {
+        let settings = crate::models::settings::AppSettings::default();
+
+        let missing = health_check_json(
+            &healthy_report(),
+            &settings,
+            &android_cli::AndroidCli::default(),
+        );
+
+        assert_eq!(missing["all_ok"], true, "{missing}");
+        assert_eq!(missing["checks"]["android_cli"]["installed"], false);
+        assert!(missing["checks"]["android_cli"]["hint"].is_string());
+
+        let installed = health_check_json(
+            &healthy_report(),
+            &settings,
+            &android_cli::AndroidCli {
+                path: Some(PathBuf::from("/opt/homebrew/bin/android")),
+                version: Some("1.0.16406183".into()),
+            },
+        );
+        assert_eq!(installed["all_ok"], true);
+        assert_eq!(installed["checks"]["android_cli"]["installed"], true);
+        assert_eq!(
+            installed["checks"]["android_cli"]["version"],
+            "1.0.16406183"
+        );
     }
 
     #[tokio::test]

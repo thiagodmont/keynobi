@@ -6,7 +6,11 @@ import {
   refreshHealthChecks,
   setSystemReport,
   setHealthChecking,
+  overallHealth,
+  healthSummary,
+  ANDROID_CLI_DOCS_URL,
 } from "@/stores/health.store";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { updateSetting } from "@/stores/settings.store";
 import type { SystemHealthReport } from "@/bindings";
 
@@ -29,6 +33,8 @@ function report(over: Partial<SystemHealthReport> = {}): SystemHealthReport {
     lspSystemDirOk: true,
     appLocationProblem: null,
     retraceVersion: "22.0",
+    androidCliPath: "/opt/homebrew/Cellar/android-cli/1.0/bin/android",
+    androidCliVersion: "1.0.16406183",
     ...over,
   };
 }
@@ -73,6 +79,28 @@ describe("health.store", () => {
   it("warns on missing ADB when an SDK path is configured", () => {
     setSystemReport(report({ adbFound: false }));
     expect(checkById("adb")?.status).toBe("warning");
+  });
+
+  it("reports Android CLI with its version and real path", () => {
+    setSystemReport(report());
+
+    const check = checkById("android-cli");
+    expect(check?.status).toBe("ok");
+    expect(check?.detail).toBe("1.0.16406183 — /opt/homebrew/Cellar/android-cli/1.0/bin/android");
+  });
+
+  it("keeps health ok when Android CLI is not installed, and links its docs", () => {
+    setSystemReport(report({ androidCliPath: null, androidCliVersion: null }));
+
+    const check = checkById("android-cli");
+    expect(check?.status).toBe("skip");
+    expect(check?.detail).toMatch(/^Not installed \(optional\)/);
+    expect(overallHealth()).toBe("ok");
+    const { ok, total } = healthSummary();
+    expect(ok).toBe(total);
+
+    check?.fix?.action();
+    expect(vi.mocked(openUrl)).toHaveBeenCalledWith(ANDROID_CLI_DOCS_URL);
   });
 
   it("reports retrace found with its Command-line Tools version", () => {

@@ -42,6 +42,11 @@ pub struct SystemHealthReport {
     /// The Android SDK Command-line Tools version (`22.0`, or `unknown`)
     /// whose `retrace` deobfuscates crash stacks; `None` when it is missing.
     pub retrace_version: Option<String>,
+    /// The canonical path of Google's Android CLI (`android`), or `None` when
+    /// it is not installed. Informational: it never fails a health check.
+    pub android_cli_path: Option<String>,
+    /// The first line `android --version` printed, when it answered in time.
+    pub android_cli_version: Option<String>,
 }
 
 /// Where the JDK used for Gradle builds was found.
@@ -83,6 +88,8 @@ mod tests {
             studio_command_found: false,
             app_location_problem: None,
             retrace_version: Some("22.0".into()),
+            android_cli_path: None,
+            android_cli_version: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         assert!(json.contains("javaExecutableFound"));

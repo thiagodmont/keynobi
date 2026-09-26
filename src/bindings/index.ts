@@ -76,6 +76,8 @@ export type { McpActivityEntry } from "./McpActivityEntry";
 export type { McpServerStatus } from "./McpServerStatus";
 export type { McpAttachedSession } from "./McpAttachedSession";
 export type { McpStandaloneServer } from "./McpStandaloneServer";
+export type { AgentSkillState } from "./AgentSkillState";
+export type { AgentSkillStatus } from "./AgentSkillStatus";
 
 // Logcat pipeline
 export type { ProcessedEntry } from "./ProcessedEntry";
