@@ -1,0 +1,60 @@
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_0eb43cb3d271ca 161-162,552
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_2291cea69133a4 154-169,486,496,521
+e2e/smoke/debug-sessions.spec.ts
+  s_1e114e823b9048::t_04b6a6394f5eb9 1-69
+src/components/sessions/BuildSessionLinks.test.tsx
+  s_1e114e823b9048::t_25c5254e7c41dc 29
+  s_1e114e823b9048::t_4b96a423b54ef7 1-28,30-83
+src/components/sessions/SessionEventDetail.tsx
+  s_1e114e823b9048::t_30e72e00d2045a 1-37,39-225
+  s_1e114e823b9048::t_82e81de7524933 38
+src/test/factories/sessions.ts
+  s_1e114e823b9048::t_ea4a567ae7ce22 1-107
+src/components/sessions/SessionTimeline.tsx
+  s_1e114e823b9048::t_cfac755da1eca4 1-121
+src/App.tsx
+  s_1e114e823b9048::t_9f4ff6b328b32b 27,379-384,609
+src/components/sessions/BuildSessionLinks.tsx
+  s_1e114e823b9048::t_cfac755da1eca4 1-55
+src/components/sessions/SessionDetail.tsx
+  s_1e114e823b9048::t_5d91d85e8179cf 153,156,162,164,170,172,180,182
+  s_1e114e823b9048::t_30e72e00d2045a 1-130,133,135-144,149-151,157-158,160,165-166,168,173-174,176,178-179,181,183-184,186-187,189-277,279,281-313,315-347,351,354-355,357-409
+  s_1e114e823b9048::t_82e81de7524933 152,154-155,159,161,163,167,169,171,175,177,188
+  s_1e114e823b9048::t_4b5f08f466f4b6 280
+  s_1e114e823b9048::t_0d8b9799009d76 131-132,134,145-148,185,278,314,348-350,352-353,356
+src/components/sessions/session-format.test.ts
+  s_1e114e823b9048::t_2ce60534948647 1-207
+src/components/sessions/SessionsDialog.tsx
+  s_1e114e823b9048::t_30e72e00d2045a 1-15,17-106,108-244
+  s_1e114e823b9048::t_82e81de7524933 16,107
+src/components/sessions/SessionsDialog.test.tsx
+  s_1e114e823b9048::t_0cad2fd5251b02 342-345,350,358
+  s_1e114e823b9048::t_a345fdf594932c 110-114
+  s_1e114e823b9048::t_0671b18dbdddf8 269,377,390,394
+  s_1e114e823b9048::t_3c8a1861860a53 1-109,115-268,270-292,296,298-341,346-348,351-356,359-376,378-381,386-389,391-393,395-505
+  s_1e114e823b9048::t_27586079f522e1 293-295,297,349,357,382-385
+src/components/build/BuildHistoryView.tsx
+  s_1e114e823b9048::t_8600e1f5d8723c 12,60
+src/components/sessions/SessionsDialog.module.css
+  s_1e114e823b9048::t_7aaee97088aff9 1-339
+src/components/sessions/session-format.ts
+  s_1e114e823b9048::t_1e5c01a4a3e89b 1-246
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "70b4949d468563153d2eb1b901ae27e20021d786",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
