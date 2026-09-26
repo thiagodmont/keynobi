@@ -3242,11 +3242,11 @@ pub struct BuildAndFixArgs {
 
 #[prompt_router]
 impl AndroidMcpServer {
-    /// Diagnose a crash for the given package: fetch logcat crashes, memory info,
-    /// and app details to provide context for root-cause analysis.
+    /// Diagnose a crash for the given package: fetch logcat crashes, the
+    /// device's exit history, memory info, and app details for root-cause analysis.
     #[prompt(
         name = "diagnose-crash",
-        description = "Diagnose a crash or ANR for an Android app: fetch crash logs, memory, and app state."
+        description = "Diagnose a crash or ANR for an Android app: fetch crash logs, exit reasons, memory, and app state."
     )]
     async fn diagnose_crash(
         &self,
@@ -3257,21 +3257,14 @@ impl AndroidMcpServer {
             .device_serial
             .as_deref()
             .unwrap_or("the connected device");
-        Ok(GetPromptResult::new(vec![
-                PromptMessage::new_text(
-                    Role::User,
-                    format!(
-                        "Diagnose the crash for app '{pkg}' on {device}. \
-                         Step 1: Call get_crash_logs to see recent FATAL EXCEPTION / ANR entries. \
-                         Step 2: Call get_logcat_entries with package={pkg} and min_level=error for context. \
-                         Step 3: Call get_memory_info with device_serial={device} and package={pkg} to check for OOM. \
-                         Step 4: Call dump_app_info with device_serial={device} and package={pkg} for version and install state. \
-                         Then provide a root-cause analysis and suggest fixes.",
-                        pkg = args.package,
-                        device = args.device_serial.as_deref().unwrap_or("{device_serial}"),
-                    ),
-                ),
-            ]).with_description(format!("Diagnose crash for {} on {}", args.package, device_hint)))
+        Ok(GetPromptResult::new(vec![PromptMessage::new_text(
+            Role::User,
+            diagnose_crash_text(&args),
+        )])
+        .with_description(format!(
+            "Diagnose crash for {} on {}",
+            args.package, device_hint
+        )))
     }
 
     /// Full deploy workflow: build → find APK → install → launch.
@@ -3285,28 +3278,11 @@ impl AndroidMcpServer {
         _ctx: RequestContext<RoleServer>,
     ) -> Result<GetPromptResult, McpError> {
         let variant = args.variant.as_deref().unwrap_or("debug");
-        let task = format!("assemble{}", capitalize_first(variant));
-        Ok(GetPromptResult::new(vec![
-                PromptMessage::new_text(
-                    Role::User,
-                    format!(
-                        "Deploy the {variant} build to device '{device}'. \
-                         Step 1: Call run_gradle_task with task={task} to build. \
-                         Step 2: Call find_apk_path with variant={variant} to locate the APK. \
-                         Step 3: Call install_apk with device_serial={device} and the path from step 2. \
-                         Step 4: {launch} \
-                         Report the result of each step.",
-                        task = task,
-                        variant = variant,
-                        device = args.device_serial,
-                        launch = if let Some(ref pkg) = args.package {
-                            format!("Call launch_app with device_serial={device} and package={pkg} to start the app.", device = args.device_serial, pkg = pkg)
-                        } else {
-                            "If you know the package name, call launch_app to start the app.".into()
-                        },
-                    ),
-                ),
-            ]).with_description(format!("Full deploy {} to {}", variant, args.device_serial)))
+        Ok(GetPromptResult::new(vec![PromptMessage::new_text(
+            Role::User,
+            full_deploy_text(&args),
+        )])
+        .with_description(format!("Full deploy {} to {}", variant, args.device_serial)))
     }
 
     /// Build and fix: run a build, get errors, and suggest fixes.
@@ -3320,21 +3296,64 @@ impl AndroidMcpServer {
         _ctx: RequestContext<RoleServer>,
     ) -> Result<GetPromptResult, McpError> {
         let task = args.task.as_deref().unwrap_or("assembleDebug");
-        Ok(GetPromptResult::new(vec![
-                PromptMessage::new_text(
-                    Role::User,
-                    format!(
-                        "Run the build and fix any errors. \
-                         Step 1: Call run_gradle_task with task={task}. \
-                         Step 2: Call get_build_errors for structured error list. \
-                         Step 3: For each error, explain the root cause and suggest the minimal fix. \
-                         Step 4: If there are many errors, prioritize them (compilation errors block warnings). \
-                         Be specific about file paths and line numbers.",
-                        task = task,
-                    ),
-                ),
-            ]).with_description(format!("Build {} and fix errors", task)))
+        Ok(GetPromptResult::new(vec![PromptMessage::new_text(
+            Role::User,
+            build_and_fix_text(&args),
+        )])
+        .with_description(format!("Build {} and fix errors", task)))
     }
+}
+
+fn diagnose_crash_text(args: &DiagnoseCrashArgs) -> String {
+    format!(
+        "Diagnose the crash for app '{pkg}' on {device}. \
+         Step 1: Call get_crash_logs to see recent FATAL EXCEPTION / ANR entries, then get_crash_stack_trace with package={pkg}. \
+         If its frames look obfuscated (names like a.b.c), call get_crash_stack_trace again with retrace: true. \
+         Step 2: Call get_exit_reasons with device_serial={device} and package={pkg}: the device's exit history also lists crashes, ANRs, and low-memory kills that never reached logcat. \
+         Step 3: Call get_logcat_entries with package={pkg} and min_level=error for context. \
+         Step 4: Call get_memory_info with device_serial={device} and package={pkg} to check for OOM. \
+         Step 5: Call dump_app_info with device_serial={device} and package={pkg} for version and install state. \
+         Then provide a root-cause analysis and suggest fixes.",
+        pkg = args.package,
+        device = args.device_serial.as_deref().unwrap_or("{device_serial}"),
+    )
+}
+
+fn full_deploy_text(args: &FullDeployArgs) -> String {
+    let variant = args.variant.as_deref().unwrap_or("debug");
+    let task = format!("assemble{}", capitalize_first(variant));
+    format!(
+        "Deploy the {variant} build to device '{device}'. \
+         Step 1: Call run_gradle_task with task={task} to build. \
+         Step 2: Call find_apk_path with variant={variant} to locate the APK. \
+         Step 3: Call install_apk with device_serial={device} and the path from step 2. \
+         Step 4: {launch} \
+         Report the result of each step.",
+        task = task,
+        variant = variant,
+        device = args.device_serial,
+        launch = if let Some(ref pkg) = args.package {
+            format!(
+                "Call launch_app with device_serial={device} and package={pkg} to start the app.",
+                device = args.device_serial,
+                pkg = pkg
+            )
+        } else {
+            "If you know the package name, call launch_app to start the app.".into()
+        },
+    )
+}
+
+fn build_and_fix_text(args: &BuildAndFixArgs) -> String {
+    format!(
+        "Run the build and fix any errors. \
+         Step 1: Call run_gradle_task with task={task}. \
+         Step 2: Call get_build_errors for structured error list. \
+         Step 3: For each error, explain the root cause and suggest the minimal fix. \
+         Step 4: If there are many errors, prioritize them (compilation errors block warnings). \
+         Be specific about file paths and line numbers.",
+        task = args.task.as_deref().unwrap_or("assembleDebug"),
+    )
 }
 
 // ── ServerHandler impl ────────────────────────────────────────────────────────
@@ -5094,6 +5113,74 @@ mod tests {
         assert_eq!(
             installed["checks"]["android_cli"]["version"],
             "1.0.16406183"
+        );
+    }
+
+    /// Every snake_case word a prompt tells the model to use must be a tool
+    /// or a tool parameter, so a renamed or removed tool cannot linger there.
+    #[test]
+    fn prompts_name_only_tools_and_parameters_that_exist() {
+        let tools = headless_server().tool_router.list_all();
+        let mut known: std::collections::HashSet<String> =
+            tools.iter().map(|t| t.name.to_string()).collect();
+        for tool in &tools {
+            if let Some(props) = tool
+                .input_schema
+                .get("properties")
+                .and_then(|p| p.as_object())
+            {
+                known.extend(props.keys().cloned());
+            }
+        }
+        let prompts = [
+            diagnose_crash_text(&DiagnoseCrashArgs {
+                package: "com.example.app".into(),
+                device_serial: Some("emulator-5554".into()),
+            }),
+            diagnose_crash_text(&DiagnoseCrashArgs {
+                package: "com.example.app".into(),
+                device_serial: None,
+            }),
+            full_deploy_text(&FullDeployArgs {
+                device_serial: "emulator-5554".into(),
+                variant: None,
+                package: Some("com.example.app".into()),
+            }),
+            full_deploy_text(&FullDeployArgs {
+                device_serial: "emulator-5554".into(),
+                variant: Some("release".into()),
+                package: None,
+            }),
+            build_and_fix_text(&BuildAndFixArgs { task: None }),
+        ];
+        for text in &prompts {
+            let words = text.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'));
+            for word in words.filter(|w| w.contains('_')) {
+                assert!(
+                    known.contains(word),
+                    "{word} is not a tool or parameter: {text}"
+                );
+            }
+        }
+
+        let diagnose = &prompts[0];
+        for tool in [
+            "get_exit_reasons",
+            "get_crash_stack_trace",
+            "get_crash_logs",
+        ] {
+            assert!(diagnose.contains(tool), "diagnose-crash must use {tool}");
+        }
+        assert!(diagnose.contains("retrace: true"), "{diagnose}");
+        let stack_trace = tools
+            .iter()
+            .find(|t| t.name == "get_crash_stack_trace")
+            .expect("get_crash_stack_trace is a tool");
+        assert!(
+            stack_trace.input_schema["properties"]
+                .get("retrace")
+                .is_some(),
+            "get_crash_stack_trace must accept retrace"
         );
     }
 

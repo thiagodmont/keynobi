@@ -204,11 +204,13 @@ Running Gradle executes the project's `gradlew` and build scripts, so builds nee
 
 Prompts:
 
-| Prompt | Arguments |
-|--------|-----------|
-| `diagnose-crash` | `package`, `device_serial?` |
-| `full-deploy` | `device_serial`, `variant?` (default `debug`), `package?` |
-| `build-and-fix` | `task?` (default `assembleDebug`) |
+| Prompt | Arguments | Steps |
+|--------|-----------|-------|
+| `diagnose-crash` | `package`, `device_serial?` | `get_crash_logs`, `get_crash_stack_trace` (again with `retrace: true` when the frames look obfuscated), `get_exit_reasons` (crashes and ANRs that never reached logcat), `get_logcat_entries`, `get_memory_info`, `dump_app_info` |
+| `full-deploy` | `device_serial`, `variant?` (default `debug`), `package?` | `run_gradle_task`, `find_apk_path`, `install_apk`, `launch_app` |
+| `build-and-fix` | `task?` (default `assembleDebug`) | `run_gradle_task`, `get_build_errors` |
+
+The test `prompts_name_only_tools_and_parameters_that_exist` fails when a prompt names a tool or parameter that does not exist.
 
 Resources (no templates or subscriptions; unknown URIs return `resource_not_found`):
 
