@@ -94,8 +94,8 @@ export async function renameProject(id: string, newName: string): Promise<void> 
 
 // ── Run configurations ────────────────────────────────────────────────────────
 
-import type { ProjectRunConfigurations, RunConfiguration } from "@/bindings";
-export type { ProjectRunConfigurations, RunConfiguration };
+import type { ProjectRunConfigurations, ResolvedRun, RunConfiguration } from "@/bindings";
+export type { ProjectRunConfigurations, ResolvedRun, RunConfiguration };
 
 /**
  * The run configurations of a registered project (default: the open one).
@@ -125,6 +125,42 @@ export async function deleteRunConfiguration(name: string): Promise<ProjectRunCo
 /** Make a run configuration of the open project the active one. */
 export async function setActiveRunConfiguration(name: string): Promise<ProjectRunConfigurations> {
   return invoke<ProjectRunConfigurations>("set_active_run_configuration", { name });
+}
+
+/**
+ * What Run App would do with a configuration (default: the active one): its
+ * task, device, launch, and the plan in one line. `buildOnly` plans the build
+ * without a device. `selectedSerial` is the device selected in the app for
+ * this run (default: the backend's selection), which a target of `ask`, or
+ * `lastUsed` without its last device, runs on. Rejects with `notFound` when
+ * the target finds no online device, `invalidInput` when no configuration is
+ * active or it no longer fits the project, and `permissionDenied` in Safe Mode.
+ */
+export async function resolveRunConfiguration(
+  opts: { name?: string | null; selectedSerial?: string | null; buildOnly?: boolean } = {}
+): Promise<ResolvedRun> {
+  return invoke<ResolvedRun>("resolve_run_configuration", {
+    name: opts.name ?? null,
+    selectedSerial: opts.selectedSerial ?? null,
+    buildOnly: opts.buildOnly ?? false,
+  });
+}
+
+/** Remember the device a run of the configuration installed on (its last device). */
+export async function recordRunDevice(
+  name: string,
+  serial: string
+): Promise<ProjectRunConfigurations> {
+  return invoke<ProjectRunConfigurations>("record_run_device", { name, serial });
+}
+
+/** Open a deep link in `pkg` on the device. Android reports no launch time for it. */
+export async function openDeepLinkOnDevice(
+  serial: string,
+  uri: string,
+  pkg: string
+): Promise<string> {
+  return invoke<string>("open_deep_link_on_device", { serial, uri, package: pkg });
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────

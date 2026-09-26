@@ -12,12 +12,13 @@
  *   - package:mine already in query → no-op
  *   - pkg:mine alias already in query → no-op
  *   - other filters preserved when package:mine is merged in
+ *   - a run configuration's logcat filter replaces the query
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { createRoot, createSignal, createEffect } from "solid-js";
 import { buildState, setLastLaunchedAt, resetBuildState } from "@/stores/build.store";
-import { setPackageInQuery } from "@/lib/logcat-query";
+import { queryAfterLaunch } from "@/lib/logcat-query";
 import { getMinePackage, setMinePackage } from "@/lib/logcat-mine-package";
 
 function resetState() {
@@ -47,10 +48,8 @@ function mountAutoFilterEffect(initialQuery: string): [() => string, () => void]
       if (buildState.lastLaunchedPackage) {
         setMinePackage(buildState.lastLaunchedPackage);
       }
-      const q = query();
-      if (q.includes("package:mine") || q.includes("pkg:mine")) return;
-      const next = setPackageInQuery(q, "mine");
-      updateQuery(next.trimEnd() ? next.trimEnd() + " " : "");
+      const next = queryAfterLaunch(query(), buildState.lastLaunchedFilter);
+      if (next !== null) updateQuery(next);
     });
   });
 
@@ -160,6 +159,32 @@ describe("auto-apply package:mine on deploy", () => {
     await Promise.resolve();
 
     expect(query()).toMatch(/ $/);
+    dispose();
+  });
+
+  it("applies the run configuration's logcat filter in place of the query", async () => {
+    const [query, dispose] = mountAutoFilterEffect("tag:Old ");
+    await Promise.resolve();
+
+    setLastLaunchedAt(1_000_000, "com.example.debug", "package:mine level:warn");
+    await Promise.resolve();
+
+    expect(query()).toBe("package:mine level:warn ");
+    expect(getMinePackage()).toBe("com.example.debug");
+    dispose();
+  });
+
+  it("merges package:mine again on a later launch without a filter", async () => {
+    const [query, dispose] = mountAutoFilterEffect("");
+    await Promise.resolve();
+
+    setLastLaunchedAt(1_000_000, null, "tag:Net");
+    await Promise.resolve();
+    expect(query()).toBe("tag:Net ");
+
+    setLastLaunchedAt(2_000_000, null, null);
+    await Promise.resolve();
+    expect(query()).toBe("tag:Net package:mine ");
     dispose();
   });
 });

@@ -36,6 +36,7 @@ import {
   buildEffectiveQueryWithDisabledPills,
   setAgeInQuery,
   setPackageInQuery,
+  queryAfterLaunch,
   getPackageFromQuery,
   appendLogEntryDetailFilterToken,
   type LogEntryDetailFilterMode,
@@ -489,10 +490,11 @@ export function LogcatPanel(): JSX.Element {
     }
   });
 
-  // ── Auto-apply package:mine after a successful deploy ─────────────────────────
+  // ── Auto-apply the run's filter after a successful deploy ─────────────────────
   // When the build service launches an app it sets buildState.lastLaunchedAt to
-  // Date.now(). Subscribing here lets us merge package:mine into the active query
-  // automatically so the user immediately sees logs for their app.
+  // Date.now(). Subscribing here applies the run configuration's logcat filter,
+  // or merges package:mine into the active query, so the user immediately sees
+  // logs for their app.
   let _prevLaunchedAt: number | null | undefined = undefined;
   createEffect(() => {
     const launchedAt = buildState.lastLaunchedAt;
@@ -502,13 +504,13 @@ export function LogcatPanel(): JSX.Element {
     if (buildState.lastLaunchedPackage) {
       setMinePackage(buildState.lastLaunchedPackage);
     }
-    const q = query();
-    if (q.includes("package:mine") || q.includes("pkg:mine")) {
+    // The run configuration's filter, else package:mine merged into the query.
+    const next = queryAfterLaunch(query(), buildState.lastLaunchedFilter);
+    if (next === null) {
       void syncBackendFilter(parseFilterGroups(effectiveDebouncedQuery()));
       return;
     }
-    const next = setPackageInQuery(q, "mine");
-    updateQuery(next.trimEnd() ? next.trimEnd() + " " : "");
+    updateQuery(next);
   });
 
   // When Settings changes the in-memory ring size, resync the list from Rust.

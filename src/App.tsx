@@ -40,7 +40,13 @@ import {
   refreshProjectsList,
   restoreLastProject,
 } from "@/services/project.service";
-import { initBuildService, runBuild, runAndDeploy, cancelBuild } from "@/services/build.service";
+import {
+  initBuildService,
+  runBuild,
+  runBuildOnly,
+  runAndDeploy,
+  cancelBuild,
+} from "@/services/build.service";
 import { initDevices } from "@/stores/device.store";
 import { openVariantPicker } from "@/components/build/VariantSelector";
 import { formatError, notifySettingsFlushed, sendNativeSentryTestEvent } from "@/lib/tauri-api";
@@ -325,7 +331,7 @@ export function App(): JSX.Element {
       category: "Build" as ActionCategory,
       action: async () => {
         try {
-          await runBuild();
+          await runBuildOnly();
         } catch (e) {
           showToast(formatError(e) || "Build failed", "error");
         }

@@ -31,8 +31,8 @@ use commands::mcp::{
     get_mcp_setup_status, install_agent_skill,
 };
 use commands::run_configuration::{
-    delete_run_configuration, list_run_configurations, save_run_configuration,
-    set_active_run_configuration,
+    delete_run_configuration, list_run_configurations, open_deep_link_on_device, record_run_device,
+    resolve_run_configuration, save_run_configuration, set_active_run_configuration,
 };
 use commands::sessions::{
     add_session_bookmark, end_debug_session, get_debug_session, get_session_capture,
@@ -374,6 +374,9 @@ pub fn run() {
             save_run_configuration,
             delete_run_configuration,
             set_active_run_configuration,
+            resolve_run_configuration,
+            record_run_device,
+            open_deep_link_on_device,
             // Devices
             list_adb_devices,
             refresh_devices,

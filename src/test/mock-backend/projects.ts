@@ -1,10 +1,14 @@
 import type {
   AppError,
+  Device,
   ProjectAppInfo,
   ProjectEntry,
   ProjectRunConfigurations,
+  ResolvedRun,
   RunConfiguration,
+  RunDevice,
 } from "@/bindings";
+import { mockDeviceSelection } from "./devices";
 
 export const mockProject: ProjectEntry = {
   id: "abc123",
@@ -63,6 +67,114 @@ function requireRunConfiguration(name: string): void {
   }
 }
 
+function mockRunDevice(device: Device): RunDevice {
+  return { serial: device.serial, label: device.avdName ?? device.model ?? device.serial };
+}
+
+/** Like the backend: the one online device the configuration's target names. */
+function mockRunTarget(config: RunConfiguration, selectedSerial: string | null): RunDevice {
+  const selection = mockDeviceSelection();
+  const online = (serial: string | null | undefined) =>
+    selection.devices.find((d) => d.serial === serial && d.connectionState === "online");
+  const target = mockProject.runLocal?.[config.name]?.target ?? { kind: "lastUsed" };
+  const selected = online(selectedSerial ?? selection.selected);
+  let device: Device | undefined;
+  switch (target.kind) {
+    case "serial":
+      device = online(target.serial);
+      if (!device) {
+        throw appError(
+          "notFound",
+          `Run configuration '${config.name}' runs on device ${target.serial}, which is not online. Connect it, or change the configuration's target.`
+        );
+      }
+      return mockRunDevice(device);
+    case "avd":
+      device = selection.devices.find(
+        (d) => d.avdName === target.name && d.connectionState === "online"
+      );
+      if (!device) {
+        throw appError(
+          "notFound",
+          `Run configuration '${config.name}' runs on the AVD ${target.name}, which is not running. Launch it, then run again.`
+        );
+      }
+      return mockRunDevice(device);
+    case "lastUsed":
+      device = online(mockProject.runLocal?.[config.name]?.lastDevice) ?? selected;
+      break;
+    case "ask":
+      device = selected;
+      break;
+  }
+  if (!device) {
+    throw appError(
+      "notFound",
+      `Run configuration '${config.name}' runs on the selected device, and no device is selected. Pick a device in the Devices sidebar, or launch an AVD, then run again.`
+    );
+  }
+  return mockRunDevice(device);
+}
+
+/** Like the backend's plan line. */
+function mockRunPlan(config: RunConfiguration, task: string, device: RunDevice | null): string {
+  const steps = [`build ${task}`];
+  if (device) {
+    const on = device.label;
+    const launch = config.launch;
+    if (launch.kind === "none") {
+      steps.push(`install this build's APK on ${on} (no launch)`);
+    } else {
+      steps.push("install this build's APK");
+      if (launch.kind === "default") steps.push(`launch the app on ${on}`);
+      if (launch.kind === "activity") steps.push(`launch ${launch.name} on ${on}`);
+      if (launch.kind === "deepLink") steps.push(`open ${launch.uri} on ${on}`);
+      steps.push(`filter ${config.logcatFilter ?? "package:mine"}`);
+    }
+  }
+  return `${device ? "Run" : "Build"} '${config.name}': ${steps.join(" → ")}`;
+}
+
+function mockResolveRun(args: unknown): ResolvedRun {
+  const { name, selectedSerial, buildOnly } = (args ?? {}) as {
+    name?: string | null;
+    selectedSerial?: string | null;
+    buildOnly?: boolean;
+  };
+  const project = mockRunConfigurations();
+  const chosen = name ?? project.active;
+  if (!chosen) {
+    const listed = project.configurations
+      .map((c) => `${c.name} (${c.module} ${c.variant})`)
+      .join(", ");
+    throw appError(
+      "invalidInput",
+      `No run configuration is active. Choose the one to run: ${listed}.`
+    );
+  }
+  const config = project.configurations.find((c) => c.name === chosen);
+  if (!config) throw appError("notFound", `There is no run configuration named '${chosen}'.`);
+  const variant = config.variant.charAt(0).toUpperCase() + config.variant.slice(1);
+  const task = config.task ?? `${config.module}:assemble${variant}`;
+  if (mockProject.trusted !== true) {
+    throw appError(
+      "permissionDenied",
+      "This project is not trusted, so Keynobi will not run its Gradle build scripts."
+    );
+  }
+  const device = buildOnly ? null : mockRunTarget(config, selectedSerial ?? null);
+  return {
+    name: config.name,
+    module: config.module,
+    variant: config.variant,
+    task,
+    launch: config.launch,
+    logcatFilter: config.logcatFilter,
+    device,
+    plan: mockRunPlan(config, task, device),
+  };
+}
+
 export function projectHandlers(): Record<string, (args: unknown) => unknown> {
   return {
     list_run_configurations: () => mockRunConfigurations(),
@@ -103,6 +215,18 @@ export function projectHandlers(): Record<string, (args: unknown) => unknown> {
       delete local[name];
       mockProject.runLocal = local;
       if (mockProject.activeRunConfiguration === name) delete mockProject.activeRunConfiguration;
+      return mockRunConfigurations();
+    },
+    resolve_run_configuration: (args) => mockResolveRun(args),
+    record_run_device: (args) => {
+      const { name, serial } = args as { name: string; serial: string };
+      requireRunConfiguration(name);
+      const local = mockProject.runLocal?.[name] ?? {
+        target: { kind: "lastUsed" },
+        lastDevice: null,
+        approvedProjectFileSha256: null,
+      };
+      mockProject.runLocal = { ...mockProject.runLocal, [name]: { ...local, lastDevice: serial } };
       return mockRunConfigurations();
     },
     set_active_run_configuration: (args) => {

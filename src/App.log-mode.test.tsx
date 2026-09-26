@@ -112,6 +112,7 @@ vi.mock("@/services/project.service", () => ({
 vi.mock("@/services/build.service", () => ({
   initBuildService: vi.fn().mockResolvedValue(undefined),
   runBuild: vi.fn().mockResolvedValue(undefined),
+  runBuildOnly: vi.fn().mockResolvedValue(undefined),
   runAndDeploy: vi.fn().mockResolvedValue(undefined),
   cancelBuild: vi.fn().mockResolvedValue(undefined),
 }));

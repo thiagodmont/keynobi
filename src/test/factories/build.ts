@@ -7,6 +7,7 @@ import type {
   InstalledBuild,
   LaunchTiming,
   MappingSnapshot,
+  ResolvedRun,
 } from "@/bindings";
 
 export function makeBuildLine(overrides: Partial<BuildLine> = {}): BuildLine {
@@ -104,6 +105,21 @@ export function makeLaunchTiming(overrides: Partial<LaunchTiming> = {}): LaunchT
     model: "sdk_gphone64_arm64",
     displayedMs: null,
     fullyDrawnMs: null,
+    ...overrides,
+  };
+}
+
+/** The Default configuration's plan on an emulator, as `resolve_run_configuration` returns it. */
+export function makeResolvedRun(overrides: Partial<ResolvedRun> = {}): ResolvedRun {
+  return {
+    name: "Default",
+    module: ":app",
+    variant: "debug",
+    task: ":app:assembleDebug",
+    launch: { kind: "default" },
+    logcatFilter: null,
+    device: { serial: "emulator-5554", label: "Pixel_7" },
+    plan: "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
     ...overrides,
   };
 }

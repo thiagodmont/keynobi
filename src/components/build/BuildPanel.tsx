@@ -12,7 +12,7 @@ import {
   viewLiveBuild,
 } from "@/stores/build.store";
 import {
-  runBuild,
+  runBuildOnly,
   runAndDeploy,
   cancelBuild,
   jumpToBuildError,
@@ -142,9 +142,9 @@ export function BuildPanel(): JSX.Element {
     setRunning(true);
     setViewMode("log");
     try {
-      await runBuild();
+      await runBuildOnly();
     } catch (_e) {
-      // Spawn-level errors (e.g. gradlew not found) are logged in runBuild().
+      // Resolution and spawn-level errors (e.g. gradlew not found) are logged in the build log.
     } finally {
       setRunning(false);
     }

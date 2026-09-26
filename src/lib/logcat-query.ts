@@ -527,6 +527,23 @@ export function setPackageInQuery(query: string, pkg: string | null): string {
   return withoutPkg ? `${withoutPkg} package:${pkg}` : `package:${pkg}`;
 }
 
+/**
+ * The query to show after Run App launched the app: the run configuration's
+ * logcat filter when it has one, else the current query with `package:mine`
+ * merged in. Tokens end with a space so they show as pills. Null when the
+ * current query already is that.
+ */
+export function queryAfterLaunch(current: string, runFilter: string | null): string | null {
+  const filter = runFilter?.trim();
+  if (filter) {
+    const next = `${filter} `;
+    return current === next ? null : next;
+  }
+  if (current.includes("package:mine") || current.includes("pkg:mine")) return null;
+  const next = setPackageInQuery(current, "mine").trimEnd();
+  return next ? `${next} ` : "";
+}
+
 export type LogEntryDetailFilterField =
   "tag" | "package" | "level" | "pid" | "tid" | "time" | "message";
 
