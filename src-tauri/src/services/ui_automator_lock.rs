@@ -8,16 +8,31 @@
 //!
 //! Both registries are process-wide, so GUI commands and MCP tools running in
 //! the same process share them. A separate `keynobi --mcp` process has its own.
+//! Across processes, a call also holds an advisory lock on
+//! `ui-automator-locks/<hash of the serial>.lock` in the data directory for
+//! its duration, so the app and standalone servers take turns on a device.
+//! The lock dies with its process, so a crashed holder never blocks a device.
 
+use crate::services::build_lock::{self, LockError};
+use crate::services::settings_manager;
 use std::collections::HashMap;
+use std::fs::File;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex as StdMutex, MutexGuard, Weak};
+use std::time::Duration;
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use tokio::time::Instant;
 
 /// Most devices that can have a UI Automator call running or waiting at once.
 /// Entries exist only while a call holds or waits for a device's lock.
 pub const MAX_LOCKED_SERIALS: usize = 64;
+
+/// Folder under the data directory holding one lock file per device serial.
+pub const UI_AUTOMATOR_LOCKS_DIR: &str = "ui-automator-locks";
+
+/// How often a call retries a device another process holds.
+const CROSS_PROCESS_POLL: Duration = Duration::from_millis(50);
 
 /// The device output that means another UiAutomation client is registered.
 const ALREADY_REGISTERED: &str = "already registered";
@@ -34,6 +49,9 @@ fn lock_ignoring_poison<T>(m: &StdMutex<T>) -> MutexGuard<'_, T> {
 
 /// Held for the whole UI Automator call; releases the device when dropped.
 pub struct DeviceUiLease {
+    // Declared first so the cross-process lock is released before the next
+    // caller in this process gets the device.
+    _file: Option<File>,
     _guard: OwnedMutexGuard<()>,
 }
 
@@ -53,13 +71,39 @@ fn device_lock(serial: &str) -> Result<Arc<AsyncMutex<()>>, String> {
     Ok(lock)
 }
 
+/// The cross-process lock file for `serial` under `data_dir`.
+///
+/// Keyed by serial, the name adb addresses the device by: two processes
+/// capturing through one serial reach the same device.
+pub fn device_lock_path(data_dir: &Path, serial: &str) -> PathBuf {
+    data_dir
+        .join(UI_AUTOMATOR_LOCKS_DIR)
+        .join(build_lock::lock_file_name(serial))
+}
+
 /// Wait for `serial`'s UI Automator lock until `deadline`.
 ///
 /// Fails at once while a Keynobi instrumentation run is using the device, and
 /// checks again after waiting in case a run started meanwhile. The returned
 /// lease is a tokio mutex guard, deliberately held across the awaits of the
-/// whole call: it is the async lock that serializes the device.
+/// whole call: it is the async lock that serializes the device. It also holds
+/// the device's lock file, which serializes it against other processes.
 pub async fn acquire(
+    serial: &str,
+    deadline: Instant,
+    deadline_label: &str,
+) -> Result<DeviceUiLease, String> {
+    acquire_in(
+        &settings_manager::data_dir(),
+        serial,
+        deadline,
+        deadline_label,
+    )
+    .await
+}
+
+async fn acquire_in(
+    data_dir: &Path,
     serial: &str,
     deadline: Instant,
     deadline_label: &str,
@@ -74,8 +118,52 @@ pub async fn acquire(
                  {deadline_label} total deadline"
             )
         })?;
+    let file = lock_device_file(
+        &device_lock_path(data_dir, serial),
+        serial,
+        deadline,
+        deadline_label,
+    )
+    .await?;
     INSTRUMENTATION.ensure_idle(serial)?;
-    Ok(DeviceUiLease { _guard: guard })
+    Ok(DeviceUiLease {
+        _file: file,
+        _guard: guard,
+    })
+}
+
+/// Take the device's lock file, retrying while another process holds it,
+/// until `deadline`. `Ok(None)` when the file cannot be used at all (for
+/// example an unwritable data directory): the call then runs without it.
+async fn lock_device_file(
+    path: &Path,
+    serial: &str,
+    deadline: Instant,
+    deadline_label: &str,
+) -> Result<Option<File>, String> {
+    loop {
+        match build_lock::try_lock_file(path) {
+            Ok(file) => return Ok(Some(file)),
+            Err(LockError::Io(e)) => {
+                tracing::warn!("UI Automator on {serial} runs without the cross-process lock: {e}");
+                return Ok(None);
+            }
+            Err(LockError::Held { pid }) => {
+                let now = Instant::now();
+                if now >= deadline {
+                    let holder = pid.map_or_else(
+                        || "another Keynobi process".to_string(),
+                        |pid| format!("another Keynobi process (pid {pid})"),
+                    );
+                    return Err(format!(
+                        "UI Automator on {serial} is busy with a request from {holder}; gave up \
+                         after the {deadline_label} total deadline"
+                    ));
+                }
+                tokio::time::sleep_until((now + CROSS_PROCESS_POLL).min(deadline)).await;
+            }
+        }
+    }
 }
 
 /// True when device output reports another UiAutomation client.
@@ -185,7 +273,6 @@ pub(crate) mod test_support {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     fn leaked_registry() -> &'static InstrumentationRegistry {
         Box::leak(Box::default())
@@ -285,5 +372,180 @@ mod tests {
             "{err}"
         );
         assert!(start.elapsed() < Duration::from_secs(2));
+    }
+
+    const CHILD_DIR: &str = "KEYNOBI_UI_LOCK_TEST_DIR";
+    const CHILD_SERIAL: &str = "KEYNOBI_UI_LOCK_TEST_SERIAL";
+    const WAIT_BOUND: Duration = Duration::from_secs(30);
+
+    /// Run in a child process by the tests below: holds a device's lock
+    /// until told to release it.
+    #[tokio::test]
+    #[ignore = "helper the cross-process tests run in a child process"]
+    async fn child_holds_a_device_lock() {
+        let (Ok(dir), Ok(serial)) = (std::env::var(CHILD_DIR), std::env::var(CHILD_SERIAL)) else {
+            return;
+        };
+        let dir = PathBuf::from(dir);
+        let _lease = acquire_in(&dir, &serial, Instant::now() + WAIT_BOUND, "30 s")
+            .await
+            .expect("the device is free");
+        std::fs::write(dir.join("held"), "").unwrap();
+        let deadline = std::time::Instant::now() + WAIT_BOUND;
+        while !dir.join("release").exists() && std::time::Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    /// Another test process holding `serial`'s lock in `dir`.
+    fn spawn_holder(dir: &Path, serial: &str) -> std::process::Child {
+        let child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "services::ui_automator_lock::tests::child_holds_a_device_lock",
+                "--ignored",
+                "--test-threads=1",
+            ])
+            .env(CHILD_DIR, dir)
+            .env(CHILD_SERIAL, serial)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn the holding process");
+        let deadline = std::time::Instant::now() + WAIT_BOUND;
+        while !dir.join("held").exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the other process never took the lock"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        child
+    }
+
+    #[tokio::test]
+    async fn a_device_another_process_holds_waits_for_it_and_then_is_free() {
+        let dir = tempfile::tempdir().unwrap();
+        let serial = "lock-test-cross-process";
+        let mut child = spawn_holder(dir.path(), serial);
+
+        let start = std::time::Instant::now();
+        let err = acquire_in(
+            dir.path(),
+            serial,
+            Instant::now() + Duration::from_millis(300),
+            "300 ms",
+        )
+        .await
+        .err()
+        .expect("the other process holds the device");
+        assert!(
+            err.contains(&format!("another Keynobi process (pid {})", child.id()))
+                && err.contains("gave up after the 300 ms total deadline"),
+            "{err}"
+        );
+        assert!(start.elapsed() >= Duration::from_millis(300));
+
+        let owned = dir.path().to_path_buf();
+        let waiting = tokio::spawn(async move {
+            acquire_in(&owned, serial, Instant::now() + WAIT_BOUND, "30 s")
+                .await
+                .map(drop)
+        });
+        std::fs::write(dir.path().join("release"), "").unwrap();
+        waiting
+            .await
+            .unwrap()
+            .expect("free once the other process releases it");
+        child.wait().unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_process_that_dies_holding_a_device_does_not_block_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let serial = "lock-test-crashed-holder";
+        let mut child = spawn_holder(dir.path(), serial);
+        child.kill().unwrap();
+        child.wait().unwrap();
+
+        acquire_in(
+            dir.path(),
+            serial,
+            Instant::now() + Duration::from_secs(2),
+            "2 s",
+        )
+        .await
+        .map(drop)
+        .expect("the lock died with its process");
+    }
+
+    #[tokio::test]
+    async fn the_device_lock_file_is_released_on_drop_and_on_panic() {
+        let dir = tempfile::tempdir().unwrap();
+        let serial = "lock-test-file-release";
+        let path = device_lock_path(dir.path(), serial);
+        let deadline = || Instant::now() + Duration::from_secs(2);
+
+        let lease = acquire_in(dir.path(), serial, deadline(), "2 s")
+            .await
+            .unwrap();
+        assert_eq!(
+            build_lock::try_lock_file(&path).err(),
+            Some(LockError::Held {
+                pid: Some(std::process::id())
+            })
+        );
+        drop(lease);
+        drop(build_lock::test_support::lock_once_free(&path).expect("released on drop"));
+
+        let owned = dir.path().to_path_buf();
+        let panicked = tokio::spawn(async move {
+            let _lease = acquire_in(&owned, serial, deadline(), "2 s").await.unwrap();
+            panic!("the capture failed");
+        })
+        .await;
+        assert!(panicked.unwrap_err().is_panic());
+        drop(build_lock::test_support::lock_once_free(&path).expect("released on panic"));
+    }
+
+    #[tokio::test]
+    async fn a_device_locked_elsewhere_is_busy_after_the_deadline_and_others_are_free() {
+        let dir = tempfile::tempdir().unwrap();
+        // Another open of the lock file conflicts like another process's.
+        let _elsewhere =
+            build_lock::try_lock_file(&device_lock_path(dir.path(), "lock-test-held-a")).unwrap();
+
+        let start = std::time::Instant::now();
+        let err = acquire_in(
+            dir.path(),
+            "lock-test-held-a",
+            Instant::now() + Duration::from_millis(200),
+            "200 ms",
+        )
+        .await
+        .err()
+        .expect("the device is held elsewhere");
+        let waited = start.elapsed();
+        assert!(
+            err.starts_with("UI Automator on lock-test-held-a is busy with a request from another Keynobi process")
+                && err.contains("gave up after the 200 ms total deadline"),
+            "{err}"
+        );
+        assert!(
+            waited >= Duration::from_millis(200) && waited < Duration::from_secs(2),
+            "{waited:?}"
+        );
+
+        let start = std::time::Instant::now();
+        acquire_in(
+            dir.path(),
+            "lock-test-held-b",
+            Instant::now() + Duration::from_secs(5),
+            "5 s",
+        )
+        .await
+        .map(drop)
+        .expect("another device is free");
+        assert!(start.elapsed() < Duration::from_secs(1));
     }
 }

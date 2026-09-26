@@ -565,6 +565,66 @@ fn two_standalone_servers_take_turns_building_one_project() {
     }
 }
 
+/// A device serves one UI Automator client at a time. Two standalone servers
+/// capturing one device take turns instead of one failing as busy.
+#[test]
+fn two_standalone_servers_take_turns_capturing_one_device() {
+    let sandbox = Sandbox::new();
+    let dir = sandbox.home.join("device");
+    std::fs::create_dir_all(&dir).unwrap();
+    let xml = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/services/fixtures/ui_hierarchy_sample.xml"
+    );
+    // Like a device: a second UiAutomation client is refused while one is
+    // registered. Each dump stays registered until a second dump arrives (at
+    // most 3 s), so two captures running at once always collide.
+    sandbox.write_adb(&format!(
+        "D='{}'\n\
+         case \"$*\" in\n\
+         *uiautomator*)\n\
+           touch \"$D/arrived-$$\"\n\
+           if ! mkdir \"$D/registered\" 2>/dev/null; then\n\
+             echo 'java.lang.IllegalStateException: UiAutomationService \
+               android.accessibilityservice.IAccessibilityServiceClient@1 already registered!' >&2\n\
+             exit 1\n\
+           fi\n\
+           i=0\n\
+           while [ $i -lt 30 ] && [ \"$(ls \"$D\" | grep -c '^arrived-')\" -lt 2 ]; do\n\
+             sleep 0.1; i=$((i+1))\n\
+           done\n\
+           cat '{xml}'; rmdir \"$D/registered\" ;;\n\
+         *) exit 0 ;;\n\
+         esac",
+        dir.display()
+    ));
+    let mut clients = [sandbox.start(), sandbox.start()];
+
+    let requests: Vec<u64> = clients
+        .iter_mut()
+        .map(|client| {
+            client.send_request(
+                "tools/call",
+                json!({ "name": "get_ui_hierarchy", "arguments": {
+                    "device_serial": "emulator-5554", "interactive_only": true
+                }}),
+            )
+        })
+        .collect();
+    for (client, id) in clients.iter_mut().zip(requests) {
+        let result = client.wait_response(id).expect("get_ui_hierarchy answered");
+        assert_ne!(result["isError"], true, "{result}");
+    }
+    let dumps = std::fs::read_dir(&dir)
+        .unwrap()
+        .filter(|e| {
+            e.as_ref()
+                .is_ok_and(|e| e.file_name().to_string_lossy().starts_with("arrived-"))
+        })
+        .count();
+    assert_eq!(dumps, 2, "each server dumped once, without retrying");
+}
+
 /// A fake `gradlew` that leaves a marker file when it runs.
 fn gradlew_leaving_a_marker(sandbox: &Sandbox) -> std::path::PathBuf {
     let marker = sandbox.home.join("gradlew-ran");

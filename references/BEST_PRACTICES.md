@@ -54,7 +54,7 @@ Keynobi runs as these kinds of process, which do **not** share memory:
 | `keynobi --mcp`, attached | An MCP client, while the app is running and has the requested project open (or none was requested) | No state of its own: it relays the client's stdio to the app, which serves the session. |
 | `keynobi --mcp`, standalone | An MCP client, when attaching fails | Its own fresh copies of the same state. One process per client. |
 
-Standalone servers coordinate with the app only through files in the data directory (below), including a per-project build lock, so two processes never build one project at once. The app does not see a standalone server's builds, logcat stream, or selected device. Attached sessions share the app's state, and every build the app runs, whoever started it, streams into the Build panel. Design features and write docs with this boundary in mind; do not promise shared live state that the code does not provide. See `MCP_SERVER.md` § Modes.
+Standalone servers coordinate with the app only through files in the data directory (below), including a per-project build lock, so two processes never build one project at once, and a per-device UI Automator lock, so they take turns reading a device's screen. The app does not see a standalone server's builds, logcat stream, or selected device. Attached sessions share the app's state, and every build the app runs, whoever started it, streams into the Build panel. Design features and write docs with this boundary in mind; do not promise shared live state that the code does not provide. See `MCP_SERVER.md` § Modes.
 
 ### Data Directory
 
@@ -73,6 +73,7 @@ All persistent app data lives under `~/.keynobi/`, resolved by `settings_manager
 | `mcp-sessions/<pid>.json` | One record per running standalone MCP server. |
 | `.lock` | Advisory lock that serializes settings, build-history, and installed-builds writes across processes. |
 | `build-locks/<hash>.lock` | One per project being built, held for the whole build and naming the building process's pid, so two processes never build one project at once. |
+| `ui-automator-locks/<hash>.lock` | One per device serial, held while a process runs UI Automator on that device and naming its pid, so two processes never capture one device at once. |
 
 Every read-modify-write of `settings.json`, `build-history.json`, or `installed-builds.json`, and every file published to or removed from `mappings/` (a copy is written to a private temporary file there first, without the lock), runs under `settings_manager::with_data_lock` (a process mutex plus a file lock on `.lock`) and re-reads the file inside it, because other processes write the same files. Write atomically to a `unique_tmp_path` and rename. The lock is not reentrant; never take it inside itself.
 
