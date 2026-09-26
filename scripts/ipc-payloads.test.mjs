@@ -318,9 +318,15 @@ describe("the mock backend matches the real payloads", () => {
       serial: "28151FDH2000Q4",
       apkPath: "/mock/other.apk",
     });
+    // A crash in the logcat buffer to deobfuscate.
+    const crash = { ...sampleEntries[2], id: 90, isCrash: true, crashGroupId: 90 };
+    await handleInvoke("__e2e_append_logcat_entries", {
+      entries: [crash, { ...crash, id: 91, message: "\tat a.a.b(SourceFile:12)" }],
+    });
     const args = {
       get_build_log_entries: { id: addMockPastBuild({ task: "assembleDebug", state: "success" }) },
       launch_app_on_device: { serial: "emulator-5554", package: "com.example.mockapp" },
+      retrace_crash: { crashGroupId: 90 },
     };
     for (const [command, type] of invokedTypes()) {
       if (!isNamedType(type)) continue;

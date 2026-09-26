@@ -65,4 +65,9 @@ studioCommandFound: boolean,
  * Why the app runs from a temporary location (a disk image or App
  * Translocation) that AI clients cannot rely on, or `None`.
  */
-appLocationProblem: string | null, };
+appLocationProblem: string | null, 
+/**
+ * The Android SDK Command-line Tools version (`22.0`, or `unknown`)
+ * whose `retrace` deobfuscates crash stacks; `None` when it is missing.
+ */
+retraceVersion: string | null, };

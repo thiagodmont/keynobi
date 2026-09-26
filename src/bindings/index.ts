@@ -84,6 +84,9 @@ export type { LogcatKind } from "./LogcatKind";
 export type { EntryCategory } from "./EntryCategory";
 export type { LogStats } from "./LogStats";
 export type { LogcatFilterSpec } from "./LogcatFilterSpec";
+export type { RetraceOutcome } from "./RetraceOutcome";
+export type { RetraceStatus } from "./RetraceStatus";
+export type { MappingMatch } from "./MappingMatch";
 
 // App monitor
 export type { MonitorStats } from "./MonitorStats";

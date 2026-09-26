@@ -30,7 +30,13 @@ pub const AVDMANAGER_TIMEOUT: Duration = Duration::from_secs(60);
 pub const SDKMANAGER_LIST_TIMEOUT: Duration = Duration::from_secs(120);
 /// Health-check probes: `java -version`, `adb version`, `which studio`.
 pub const TOOL_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+/// The SDK's R8 `retrace`: two JVM starts plus parsing the mapping, which
+/// for a large app is 50–150 MB.
+pub const RETRACE_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// What to try when `retrace` stops answering.
+pub const RETRACE_HINT: &str = "the mapping may be too large to read in time; try again, \
+     or check the Java path in Settings";
 /// What to try when an Android SDK command-line tool stops answering.
 pub const SDK_TOOL_HINT: &str = "check the Android SDK and Java paths in Settings and try again";
 /// What to try when adb stops answering.

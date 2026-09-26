@@ -227,6 +227,17 @@ An invalid regular expression is treated as plain text.
 - When a filter is active, right-click a row and choose **Expand 10 up** or **Expand 10 down** to reveal adjacent rows without clearing the filter. Rows added this way have a green left marker.
 - Scrolling away from the end or selecting a row enters read mode: the visible list is frozen so the row you are reading cannot be pushed out. New logs are still captured; **Jump to end** applies them.
 - In **Entry Detail**, click a tag, package, level, PID, TID, time, or message value to add it to the query as an **AND** or **OR** filter. Select part of the message first to filter by only that text. Use **Copy** to copy the entry.
+- For a crash line, **Deobfuscate** in **Entry Detail** turns the whole crash's stack back into your class, method, and file names with the R8 `retrace` tool from the Android SDK, and shows which build's mapping it used: **Deobfuscated with the R8 mapping of build #12 (:app release, map id 6b1c2f0), matched by Keynobi's install on Pixel_7 …**. **Copy stack** copies the result. See [Deobfuscating crashes](#deobfuscating-crashes).
+
+#### Deobfuscating crashes
+
+Keynobi deobfuscates a crash only with the mapping of the build it installed itself on the device the crash came from (with **Run App** or an AI client's `install_apk`). A wrong mapping would give a stack that looks right but names the wrong code, so when Keynobi cannot be sure which build is on the device it shows **Not deobfuscated** and why, and leaves the stack as it is:
+
+- The app was installed outside Keynobi (Android Studio, `adb install`): **Keynobi has no record of installing …**, or, when Keynobi installed an earlier build, **the app was reinstalled outside Keynobi after build #12**. Keynobi asks the device for the app's version code and last update time before each deobfuscation to catch this. Install the build with **Run App** and reproduce the crash.
+- The installed variant is not minified, or its mapping was not kept: **no R8 mapping was recorded for this install**.
+- The device cannot be asked (disconnected, or an emulator that no longer runs): **could not check …**.
+
+It needs the **Android SDK Command-line Tools** (for `retrace`) in the SDK set in Settings, and a JDK 17 or newer (the same JDK builds use). Without them it shows **Retrace not available** and what to install; Health Center's **R8 retrace** check says whether the tool is there. The first deobfuscation of a crash takes about a second, longer with a large mapping; asking again for the same crash is instant.
 
 Logcat keeps a bounded buffer in memory. Configure it under **Settings → Tools → Logcat**: **Ring buffer size**, **Max lines in Logcat**, **Logcat Output Font Size**, **Auto-start on Connect**, and **Auto-scroll Logcat to end**.
 
@@ -314,6 +325,7 @@ Open Health Center with `Cmd+Shift+H` or the Health status item. It checks:
 - ADB
 - Android Emulator
 - Android Studio CLI (`studio`)
+- R8 retrace (the Android SDK Command-line Tools, used to [deobfuscate crashes](#deobfuscating-crashes); a warning when missing)
 - Java / JDK
 - App Data Directory
 - App Location (a warning while Keynobi runs from a disk image or a temporary App Translocation copy; move it to **Applications**)
@@ -404,6 +416,8 @@ AI clients read the screen through UI Automator, the same accessibility tree the
 - **Deadlines.** A screen read gives up after 1 minute in total, counting the wait for the device and every retry, and each input command after 30 seconds. Tools that wait or scroll read the screen repeatedly, and each read has its own minute.
 - **Any app on screen.** These tools act on whatever is on screen; they are not limited to your project's app. Only the tools that stop or restart an app or change its permissions are (see above).
 
+AI clients can deobfuscate crashes too: `get_crash_stack_trace` and `get_crash_logs` take `retrace: true` and then return the deobfuscated stack with the same line naming the build and mapping, or the reason it was not deobfuscated, under the same rules as **Deobfuscate** in the app (see [Deobfuscating crashes](#deobfuscating-crashes)).
+
 Exact tools, prompts, and resources are discoverable from the MCP client.
 
 ---
@@ -469,6 +483,7 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 | `~/.keynobi/build-history.json`, `~/.keynobi/build-logs/` | Build history and build logs |
 | `~/.keynobi/mappings/` | Copies of the R8 mappings of builds in the history and of builds installed on devices |
 | `~/.keynobi/installed-builds.json` | Which build Keynobi last installed on each device, per app |
+| `~/.keynobi/retrace/` | The crash stack being deobfuscated, only while `retrace` reads it |
 | `~/.keynobi/mcp-activity.jsonl` | Recent AI client activity |
 | `~/.keynobi/mcp.sock`, `~/.keynobi/mcp-sessions/` | The socket AI clients attach through while Keynobi is open, and a record per standalone MCP server |
 | `~/Library/WebKit/com.keynobi.app` | Saved logcat filters, last query, and dismissed updates |
@@ -506,6 +521,11 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 ### Logcat stopped
 
 - Keynobi retries automatically when the device connection drops. If you see **Logcat stopped**, check the device connection (`adb devices`) and press **Start**.
+
+### A crash is not deobfuscated
+
+- **Retrace not available**: install **Android SDK Command-line Tools** in Android Studio's SDK Manager (SDK Tools tab) for the SDK set in Settings, and make sure the Java / JDK check in Health Center shows JDK 17 or newer.
+- **Not deobfuscated**: the message says why. Most often the app on the device was not installed by Keynobi, or was reinstalled since: build and install it with **Run App** (a minified variant, such as `release` with `isMinifyEnabled = true`) and reproduce the crash.
 
 ### Stack-trace lines do not open in Android Studio
 

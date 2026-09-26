@@ -179,6 +179,30 @@ export function healthChecks(): HealthCheck[] {
           : "Checking…",
   });
 
+  // ── 3c. R8 retrace ──────────────────────────────────────────────────────────
+  const retraceVersion = report ? report.retraceVersion : undefined;
+  checks.push({
+    id: "retrace",
+    category: "environment",
+    name: "R8 retrace",
+    status:
+      retraceVersion === undefined
+        ? "loading"
+        : retraceVersion !== null
+          ? "ok"
+          : !sdkPath
+            ? "skip"
+            : "warning",
+    detail:
+      retraceVersion === undefined
+        ? "Checking…"
+        : retraceVersion !== null
+          ? `Found (Command-line Tools ${retraceVersion}) — crash stacks can be deobfuscated`
+          : !sdkPath
+            ? "No SDK configured"
+            : 'Not found — install "Android SDK Command-line Tools" in the SDK Manager to deobfuscate crash stacks',
+  });
+
   // ── 4. Java / JDK ──────────────────────────────────────────────────────────
   const javaFound = report?.javaExecutableFound;
   const javaMajor = report?.javaMajorVersion ?? null;

@@ -6,7 +6,7 @@ use crate::services::log_pipeline::{
 use crate::services::log_store::LogStore;
 use crate::services::log_stream::StreamState;
 use crate::utils::line_reader::CappedLines;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -186,9 +186,63 @@ pub struct LogcatStateInner {
     /// Never reset, so IDs stay unique across reconnects, device switches,
     /// and clears.
     pub ids: Arc<IdAllocator>,
+    /// The device each stream read, from the first entry ID it could store,
+    /// oldest first; at most [`MAX_STREAM_STARTS`].
+    stream_starts: VecDeque<StreamStart>,
+}
+
+/// Most stream starts remembered for [`LogcatStateInner::device_of_entry`].
+pub const MAX_STREAM_STARTS: usize = 32;
+
+#[derive(Debug, Clone)]
+struct StreamStart {
+    first_entry_id: u64,
+    serial: Option<String>,
+}
+
+/// The device a stored entry was read from.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EntryDevice {
+    /// The stream named this serial.
+    Serial(String),
+    /// The stream named no serial, so adb read its only device.
+    Unnamed,
+    /// The entry is older than every stream start still remembered.
+    Unknown,
 }
 
 impl LogcatStateInner {
+    /// Remember that a stream of `serial` starts here: entries stored from
+    /// now on were read from it, until the next start.
+    pub fn record_stream_start(&mut self, serial: Option<String>) {
+        self.stream_starts.push_back(StreamStart {
+            first_entry_id: self.ids.peek_next_entry_id(),
+            serial,
+        });
+        while self.stream_starts.len() > MAX_STREAM_STARTS {
+            self.stream_starts.pop_front();
+        }
+    }
+
+    /// The device the entry with `id` was read from. Only the stream owning
+    /// the current generation stores entries, so an entry belongs to the last
+    /// start at or before its ID.
+    pub fn device_of_entry(&self, id: u64) -> EntryDevice {
+        match self
+            .stream_starts
+            .iter()
+            .rev()
+            .find(|start| start.first_entry_id <= id)
+        {
+            Some(StreamStart {
+                serial: Some(serial),
+                ..
+            }) => EntryDevice::Serial(serial.clone()),
+            Some(StreamStart { serial: None, .. }) => EntryDevice::Unnamed,
+            None => EntryDevice::Unknown,
+        }
+    }
+
     pub fn new() -> Self {
         LogcatStateInner {
             store: LogStore::new(),
@@ -200,6 +254,7 @@ impl LogcatStateInner {
             stream_generation: 0,
             dropped_lines: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             ids: Arc::new(IdAllocator::new()),
+            stream_starts: VecDeque::new(),
         }
     }
 
@@ -817,6 +872,7 @@ pub async fn request_start(
         state.stream_generation = state.stream_generation.wrapping_add(1);
         state.streaming = true;
         state.device_serial = device_serial.clone();
+        state.record_stream_start(device_serial.clone());
         state.stream_generation
     };
 

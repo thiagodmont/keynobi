@@ -1,7 +1,11 @@
 use crate::models::error::AppError;
 use crate::models::logcat::{LogStats, LogcatFilterSpec, ProcessedEntry};
+use crate::models::retrace::RetraceOutcome;
+use crate::services::adb_manager::DeviceState;
 use crate::services::logcat::{self, LogcatFilter, LogcatState, LogcatStateInner};
+use crate::services::retrace::{self, RetraceEnv};
 use crate::services::settings_manager;
+use crate::FsState;
 use std::sync::Arc;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
@@ -170,6 +174,31 @@ pub async fn export_logcat(app: AppHandle, contents: String) -> Result<Option<St
         .await
         .map_err(|e| AppError::io(path.display(), e))?;
     Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// Deobfuscate crash `crash_group_id` from the logcat buffer with the R8
+/// mapping of the build Keynobi installed on the device it came from.
+/// `NotFound` when the crash left the buffer; a missing tool, a refusal, or a
+/// failed run is reported in the outcome.
+#[tauri::command]
+pub async fn retrace_crash(
+    crash_group_id: u64,
+    logcat_state: State<'_, LogcatState>,
+    device_state: State<'_, DeviceState>,
+    fs_state: State<'_, FsState>,
+) -> Result<RetraceOutcome, AppError> {
+    let (project_root, gradle_root) = {
+        let fs = fs_state.0.lock().await;
+        (fs.project_root.clone(), fs.gradle_root.clone())
+    };
+    let (settings, _) = settings_manager::load_settings();
+    let env = RetraceEnv::new(
+        settings,
+        project_root,
+        gradle_root,
+        device_state.inner().clone(),
+    );
+    retrace::retrace_crash_group(&env, &logcat_state, crash_group_id).await
 }
 
 pub fn new_logcat_state() -> LogcatState {

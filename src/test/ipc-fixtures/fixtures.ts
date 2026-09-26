@@ -21,6 +21,7 @@ import type {
   LaunchState,
   LaunchTiming,
   LogStats,
+  MappingMatch,
   MappingSnapshot,
   McpActivityEntry,
   McpAttachedSession,
@@ -30,6 +31,8 @@ import type {
   ProcessedEntry,
   ProjectAppInfo,
   ProjectEntry,
+  RetraceOutcome,
+  RetraceStatus,
   SdkDownloadProgress,
   SystemHealthReport,
   SystemImageInfo,
@@ -268,6 +271,7 @@ export const typeFixtures = {
       "javaSource": "androidStudio",
       "javaVersion": "openjdk version \"17.0.9\"",
       "lspSystemDirOk": true,
+      "retraceVersion": "22.0",
       "studioCommandFound": false
     },
     {
@@ -284,6 +288,7 @@ export const typeFixtures = {
       "javaSource": null,
       "javaVersion": null,
       "lspSystemDirOk": true,
+      "retraceVersion": null,
       "studioCommandFound": false
     }
   ] satisfies Wire<SystemHealthReport>[],
@@ -915,6 +920,45 @@ export const typeFixtures = {
       "serial": "ZX1G22ABCD"
     }
   ] satisfies Wire<Device>[],
+  RetraceOutcome: [
+    {
+      "buildId": 20,
+      "device": "Pixel_7",
+      "mapping": {
+        "bytes": 48213771,
+        "module": ":app",
+        "pgMapId": "6b1c2f0",
+        "sha256": "6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a",
+        "variant": "release"
+      },
+      "matchedBy": "installRecord",
+      "package": "com.example.app",
+      "reason": null,
+      "status": "retraced",
+      "summary": "Deobfuscated with the R8 mapping of build #20 (:app release, map id 6b1c2f0), matched by Keynobi's install on Pixel_7 at 2026-04-23T10:00:00Z and confirmed by the device (versionCode 42, last updated 2026-04-23 10:00:00).",
+      "trace": "java.lang.RuntimeException: boom\n\tat com.example.app.MainActivity.onCreate(MainActivity.kt:24)\n"
+    },
+    {
+      "buildId": null,
+      "device": null,
+      "mapping": null,
+      "matchedBy": null,
+      "package": null,
+      "reason": "logcat did not attribute the crash to a package, so its build is unknown",
+      "status": "refused",
+      "summary": "Not deobfuscated: logcat did not attribute the crash to a package, so its build is unknown.",
+      "trace": "java.lang.RuntimeException: boom\n\tat a.a.onCreate(SourceFile:1)\n"
+    }
+  ] satisfies Wire<RetraceOutcome>[],
+  RetraceStatus: [
+    "retraced",
+    "unavailable",
+    "refused",
+    "failed"
+  ] satisfies Wire<RetraceStatus>[],
+  MappingMatch: [
+    "installRecord"
+  ] satisfies Wire<MappingMatch>[],
   DeviceListChangedEvent: [
     {
       "devices": [

@@ -146,6 +146,7 @@ async fn system_report(
         lsp_system_dir_ok,
         studio_command_found,
         app_location_problem: crate::services::app_location::current_exe_temporary_reason(),
+        retrace_version: crate::services::retrace::health_version(settings),
     }
 }
 
