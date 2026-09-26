@@ -1,0 +1,51 @@
+src-tauri/src/services/mcp_toolsets.rs
+  s_1e114e823b9048::t_b430cb7412d340 1-42,44-144,149,154-172,179-269,272,275,280-307
+  s_1e114e823b9048::t_46a55eea79821b 43
+  s_1e114e823b9048::t_c0969eec5aa538 145-148,150-153,173-178,270-271,273-274,276-279
+src-tauri/src/services/mod.rs
+  s_1e114e823b9048::t_0803e2d260f618 28
+src-tauri/src/main.rs
+  s_1e114e823b9048::t_8833fec50fbc3d 28
+  s_1e114e823b9048::t_6f6592b33d76e2 8,15-21
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_82a369083bb3d9 2060,2161-2182,2187-2223,2228-2262
+  s_1e114e823b9048::t_bc122804447fcb 2183-2186,2224-2227
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_c604e5c2601278 11-12,36,72,84-99,330-332
+src-tauri/src/services/mcp_attach.rs
+  s_1e114e823b9048::t_c0969eec5aa538 826,848
+  s_1e114e823b9048::t_2498cb1ce3fff8 14,72-74,85,88-93,108-112,116,122,132,347-355,374,398,585-589
+  s_1e114e823b9048::t_b03bb6174a444c 1000,1035
+  s_1e114e823b9048::t_a051d6cafbfeb4 590,795,802-825,827-847,849-897
+  s_1e114e823b9048::t_0e0d2ad8c89c2f 584
+  s_1e114e823b9048::t_823e0fdc5e52f2 399
+  s_1e114e823b9048::t_eb66fd27428e67 898
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_c604e5c2601278 415-416
+src-tauri/tests/headless/mod.rs
+  s_1e114e823b9048::t_cf80acd4f91156 158-166,169
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_177f8d52f1657a 5175
+  s_1e114e823b9048::t_7895342e08795b 5188-5189
+  s_1e114e823b9048::t_2df32b9a095cba 3357-3358
+  s_1e114e823b9048::t_b3789c28dcf488 34,186-187,212,239,267-276,3524,3541-3544,4122-4127,4235,4257-4258,4299,4319,4334,4388-4389
+  s_1e114e823b9048::t_5ef8eaaf414c64 5129-5174,5176-5183,5186-5187,5190-5191
+  s_1e114e823b9048::t_bc122804447fcb 5184-5185
+  s_1e114e823b9048::t_d0aa3a788adb53 4121
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7c374558002b99c9f7f199eaad89e8728835aea7",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "unknown"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
