@@ -22,12 +22,22 @@ import { updateSetting } from "@/stores/settings.store";
 import { beginProjectOpen, setApplicationId } from "@/stores/project.store";
 import { makeLaunchTiming, makeResolvedRun } from "@/test/factories/build";
 import type { TargetPreference } from "@/bindings";
+import type * as UiModule from "@/components/ui";
 
 const devicePickerMock = vi.hoisted(() => ({
   showDevicePicker: vi.fn<() => Promise<string | null>>(),
 }));
 
 vi.mock("@/components/device/DevicePickerDialog", () => devicePickerMock);
+
+const dialogMock = vi.hoisted(() => ({
+  showDialog: vi.fn<(dialog: { title: string; message: string }) => Promise<string>>(),
+}));
+
+vi.mock("@/components/ui", async (importOriginal) => ({
+  ...(await importOriginal<typeof UiModule>()),
+  showDialog: dialogMock.showDialog,
+}));
 
 // The global setup in src/test/setup.ts already mocks @tauri-apps/api/core.
 // We narrow it here so we can track which commands were called.
@@ -825,13 +835,30 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     expect(buildLog()).toContain("▶ No device selected — run cancelled.");
   });
 
-  it("stops with the reason, without the picker, when the preferred AVD is not running", async () => {
+  it("offers to launch the preferred AVD when it is not running, and stops on Cancel", async () => {
     const noDevice = noDeviceFor({ kind: "avd", name: "Pixel_7" });
+    dialogMock.showDialog.mockResolvedValue("cancel");
 
     await expect(runAndDeploy()).rejects.toBe(noDevice);
 
+    expect(dialogMock.showDialog).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "AVD not running", message: noDevice.message })
+    );
     expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
+    expect(callsTo("launch_avd")).toHaveLength(0);
     expect(callsTo("run_gradle_task")).toHaveLength(0);
+  });
+
+  it("launches the preferred AVD when asked, and runs nothing until it is online", async () => {
+    noDeviceFor({ kind: "avd", name: "Pixel_7" });
+    dialogMock.showDialog.mockResolvedValue("launch");
+
+    await runAndDeploy();
+
+    await vi.waitFor(() => expect(callsTo("launch_avd")).toHaveLength(1));
+    expect(callsTo("launch_avd")[0][1]).toEqual({ avdName: "Pixel_7" });
+    expect(callsTo("run_gradle_task")).toHaveLength(0);
+    expect(buildLog()).toContain("▶ Launching Pixel_7 — run again once it is online.");
   });
 
   it("stops before installing when the variant has no APK, with the backend's reason", async () => {
@@ -1123,6 +1150,24 @@ describe("Build Only builds the active run configuration", () => {
     flushPendingLines();
     expect(buildLogStore.entries[0]?.message).toBe("Build 'wear': build :wear:assembleFreeRelease");
     expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
+  });
+
+  it("builds a configuration by name", async () => {
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "resolve_run_configuration") {
+        return Promise.resolve(makeResolvedRun({ name: "Wear", task: ":wear:assembleDebug" }));
+      }
+      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      return Promise.resolve(undefined);
+    });
+
+    const build = runBuildOnly("Wear");
+    await vi.waitFor(() => expect(buildState.phase).toBe("running"));
+    await cancelBuild();
+    await build;
+
+    expect(callsTo("resolve_run_configuration")[0]?.[1]).toMatchObject({ name: "Wear" });
+    expect(callsTo("run_gradle_task")[0]?.[1]).toEqual({ task: ":wear:assembleDebug" });
   });
 
   it("builds nothing and says why when no configuration is active", async () => {

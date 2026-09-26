@@ -2,6 +2,7 @@ import { type JSX, Show, For, createSignal, onMount, onCleanup } from "solid-js"
 import { variantState, selectVariant, loadVariants } from "@/stores/variant.store";
 import { projectState } from "@/stores/project.store";
 import { isActiveProjectTrusted } from "@/stores/projects.store";
+import { activeRunConfiguration } from "@/stores/run-configurations.store";
 import { Icon, modalFocus } from "@/components/ui";
 import { showToast } from "@/components/ui";
 import { formatError } from "@/lib/tauri-api";
@@ -19,7 +20,11 @@ export function openVariantPicker() {
 export function VariantSelectorPill(): JSX.Element {
   const label = () => {
     if (variantState.loading) return "Detecting…";
-    return variantState.activeVariant ?? "No Variant";
+    const variant = variantState.activeVariant;
+    // The variant belongs to the active run configuration's module.
+    const config = activeRunConfiguration();
+    if (config) return `${config.module} · ${variant ?? config.variant}`;
+    return variant ?? "No Variant";
   };
   const hasVariants = () => variantState.variants.length > 0;
   const isSpinning = () => variantState.loading || variantState.gradleLoading;

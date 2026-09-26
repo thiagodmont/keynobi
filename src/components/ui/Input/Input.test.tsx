@@ -30,6 +30,16 @@ describe("Input", () => {
     expect(container.querySelector("input")!.getAttribute("aria-invalid")).toBe("true");
   });
 
+  it("takes an id so a FormField label names it", () => {
+    render(() => (
+      <>
+        <label for="field">Package</label>
+        <Input id="field" />
+      </>
+    ));
+    expect(screen.getByLabelText("Package").tagName).toBe("INPUT");
+  });
+
   it("passes ariaLabel to the input", () => {
     render(() => <Input ariaLabel="Log query" />);
     expect(screen.getByLabelText("Log query")).toBeInstanceOf(HTMLInputElement);

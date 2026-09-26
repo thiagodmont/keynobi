@@ -57,6 +57,10 @@ import {
 import { variantState } from "@/stores/variant.store";
 import { deviceState } from "@/stores/device.store";
 import { refreshHealthChecks } from "@/stores/health.store";
+import {
+  loadRunConfigurations,
+  refreshRunConfigurations,
+} from "@/services/run-configurations.service";
 import type { ProjectEntry } from "@/bindings";
 
 // Register callbacks so stores can notify this service without circular imports.
@@ -66,6 +70,8 @@ onVariantChange((_variant) => {
     console.error(e);
     showToast(`Failed to save project state: ${formatError(e)}`, "error");
   });
+  // The variant picker edits the active run configuration.
+  refreshRunConfigurations().catch(console.error);
 });
 onDeviceChange((_serial) => {
   saveActiveProjectMeta().catch((e) => {
@@ -234,6 +240,11 @@ async function reloadVariantsAndRestoreMeta(
   if (entry?.lastDevice && isCurrent()) {
     await pickDevice(entry.lastDevice).catch(console.error);
   }
+  if (!isCurrent()) return;
+  await loadRunConfigurations().catch((e) => {
+    console.error(e);
+    showToast(`Failed to load run configurations: ${formatError(e)}`, "error");
+  });
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────

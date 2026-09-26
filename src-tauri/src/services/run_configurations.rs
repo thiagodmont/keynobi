@@ -571,6 +571,47 @@ pub fn record_last_device_at(
     })
 }
 
+/// Set which device the configuration named `name` runs on. A serial and an
+/// AVD name are validated; the device need not be connected now.
+pub fn set_target(
+    project_root: &str,
+    name: &str,
+    target: TargetPreference,
+) -> Result<ProjectRunConfigurations, AppError> {
+    set_target_at(&settings_path(), project_root, name, target)
+}
+
+pub fn set_target_at(
+    path: &Path,
+    project_root: &str,
+    name: &str,
+    target: TargetPreference,
+) -> Result<ProjectRunConfigurations, AppError> {
+    match &target {
+        TargetPreference::Serial { serial } => {
+            crate::utils::validation::validate_device_serial(serial)
+                .map_err(AppError::InvalidInput)?
+        }
+        TargetPreference::Avd { name } => {
+            crate::services::adb_manager::validate_avd_name(name).map_err(AppError::InvalidInput)?
+        }
+        TargetPreference::Ask | TargetPreference::LastUsed => {}
+    }
+    let seed = seed_for(path, project_root)?;
+    edit_at(path, project_root, &seed, |entry, _| {
+        if !entry
+            .run_configurations
+            .iter()
+            .flatten()
+            .any(|c| c.name == name)
+        {
+            return Err(no_such_configuration(name));
+        }
+        entry.run_local.entry(name.to_string()).or_default().target = target;
+        Ok(configurations_of(entry))
+    })
+}
+
 fn no_such_configuration(name: &str) -> AppError {
     AppError::NotFound(format!("There is no run configuration named '{name}'."))
 }
@@ -1125,6 +1166,46 @@ mod tests {
                 .last_device
                 .as_deref(),
             Some("28151FDH2000Q4")
+        );
+    }
+
+    #[test]
+    fn the_target_is_set_per_configuration_and_validated() {
+        let project = project(&[":app"]);
+        let (_dir, path) = settings_with(vec![entry(project.path())]);
+        let root = root_of(&project);
+        let avd = TargetPreference::Avd {
+            name: "Pixel_7".into(),
+        };
+
+        let saved = set_target_at(&path, &root, DEFAULT_RUN_CONFIGURATION, avd.clone()).unwrap();
+
+        assert_eq!(saved.local[DEFAULT_RUN_CONFIGURATION].target, avd);
+        assert_eq!(
+            list_at(&path, &root).unwrap().local[DEFAULT_RUN_CONFIGURATION].target,
+            avd
+        );
+        for bad in [
+            TargetPreference::Serial {
+                serial: "x; reboot".into(),
+            },
+            TargetPreference::Avd {
+                name: "-wipe-data".into(),
+            },
+        ] {
+            assert!(matches!(
+                set_target_at(&path, &root, DEFAULT_RUN_CONFIGURATION, bad),
+                Err(AppError::InvalidInput(_))
+            ));
+        }
+        assert!(matches!(
+            set_target_at(&path, &root, "Missing", TargetPreference::Ask),
+            Err(AppError::NotFound(_))
+        ));
+        // A refused target leaves the saved one.
+        assert_eq!(
+            list_at(&path, &root).unwrap().local[DEFAULT_RUN_CONFIGURATION].target,
+            avd
         );
     }
 

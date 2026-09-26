@@ -528,6 +528,50 @@ export function setPackageInQuery(query: string, pkg: string | null): string {
 }
 
 /**
+ * Why `raw` is not a query the filter bar can apply as written, or null when
+ * it is: an unclosed quote, an unknown level, an age it cannot read, an `is:`
+ * value it does not know, a non-numeric pid or tid, or a regex that does not
+ * compile. Free text and unknown keys are valid (they search as text).
+ */
+export function validateLogcatQuery(raw: string): string | null {
+  let quotes = 0;
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === "\\" && raw[i + 1] === '"') i++;
+    else if (raw[i] === '"') quotes++;
+  }
+  if (quotes % 2 !== 0) return "A quote is not closed.";
+  for (const part of splitRawQueryParts(raw)) {
+    const token = part.startsWith("-") ? part.slice(1) : part;
+    const regex = token.match(/^(tag|message)~:(.+)$/);
+    if (regex) {
+      try {
+        new RegExp(regex[2]);
+      } catch {
+        return `'${part}' is not a valid regular expression.`;
+      }
+      continue;
+    }
+    const colon = token.indexOf(":");
+    if (colon <= 0 || colon === token.length - 1) continue;
+    const key = token.slice(0, colon).toLowerCase();
+    const value = token.slice(colon + 1);
+    if (key === "level" && !(LEVEL_NAMES as readonly string[]).includes(value.toLowerCase())) {
+      return `'${value}' is not a log level. Use one of: ${LEVEL_NAMES.join(", ")}.`;
+    }
+    if (key === "age" && parseAge(value) === null) {
+      return `'${value}' is not an age. Use a number and s, m, h, or d (for example 5m).`;
+    }
+    if (key === "is" && !IS_SUGGESTIONS.includes(value.toLowerCase())) {
+      return `'is:${value}' is not supported. Use one of: ${IS_SUGGESTIONS.map((v) => `is:${v}`).join(", ")}.`;
+    }
+    if ((key === "pid" || key === "tid") && !/^\d+$/.test(value)) {
+      return `'${part}' needs a number.`;
+    }
+  }
+  return null;
+}
+
+/**
  * The query to show after Run App launched the app: the run configuration's
  * logcat filter when it has one, else the current query with `package:mine`
  * merged in. Tokens end with a space so they show as pills. Null when the

@@ -31,8 +31,9 @@ use commands::mcp::{
     get_mcp_setup_status, install_agent_skill,
 };
 use commands::run_configuration::{
-    delete_run_configuration, list_run_configurations, open_deep_link_on_device, record_run_device,
-    resolve_run_configuration, save_run_configuration, set_active_run_configuration,
+    delete_run_configuration, list_application_modules, list_run_configurations,
+    open_deep_link_on_device, record_run_device, resolve_run_configuration, save_run_configuration,
+    set_active_run_configuration, set_run_configuration_target,
 };
 use commands::sessions::{
     add_session_bookmark, end_debug_session, get_debug_session, get_session_capture,
@@ -375,6 +376,8 @@ pub fn run() {
             delete_run_configuration,
             set_active_run_configuration,
             resolve_run_configuration,
+            set_run_configuration_target,
+            list_application_modules,
             record_run_device,
             open_deep_link_on_device,
             // Devices
