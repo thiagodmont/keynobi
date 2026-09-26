@@ -4,6 +4,7 @@ pub mod file_system;
 pub mod health;
 pub mod logcat;
 pub mod mcp;
+pub mod run_configuration;
 pub mod settings;
 pub mod studio;
 pub mod telemetry;

@@ -1,4 +1,6 @@
+use crate::models::run_configuration::{LocalRunState, RunConfiguration};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use ts_rs::TS;
 
 /// A known Android project entry in the project registry.
@@ -33,6 +35,20 @@ pub struct ProjectEntry {
     /// field existed is the only kind that reads as missing, and it is trusted.
     #[serde(default = "trusted_when_missing")]
     pub trusted: Option<bool>,
+    /// The project's run configurations. `None` until they are first read,
+    /// which creates them from the application modules and the fields above
+    /// (see `services::run_configurations`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub run_configurations: Option<Vec<RunConfiguration>>,
+    /// Machine-specific state of each run configuration, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[ts(as = "Option<BTreeMap<String, LocalRunState>>", optional)]
+    pub run_local: BTreeMap<String, LocalRunState>,
+    /// Name of the active run configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub active_run_configuration: Option<String>,
 }
 
 /// Projects opened before trust existed already ran their Gradle build on

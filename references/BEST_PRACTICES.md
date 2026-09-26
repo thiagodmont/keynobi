@@ -169,6 +169,7 @@ Every long-lived collection, in memory or on disk, must have an explicit, named 
 | UI hierarchy | `MAX_XML_BYTES`, `MAX_NODES`, `MAX_DEPTH`, `MAX_ATTR_LEN` |
 | Saved logcat filters | `MAX_SAVED_FILTERS` (50) |
 | Recent projects | `MAX_RECENT_PROJECTS` (20) |
+| Run configurations per project | `MAX_RUN_CONFIGURATIONS` (32; names `MAX_RUN_CONFIGURATION_NAME_CHARS`, 64; logcat filters `MAX_LOGCAT_FILTER_BYTES`, 1 KiB) |
 | Devices with a UI Automator call running or waiting | `MAX_LOCKED_SERIALS` (64) |
 | Process exit records returned | `MAX_EXIT_RECORDS` (100; descriptions `MAX_EXIT_DESCRIPTION_CHARS`, 500) |
 

@@ -70,6 +70,11 @@ export type { TelemetrySettings } from "./TelemetrySettings";
 // Projects
 export type { ProjectEntry } from "./ProjectEntry";
 export type { ProjectAppInfo } from "./ProjectAppInfo";
+export type { RunConfiguration } from "./RunConfiguration";
+export type { RunLaunch } from "./RunLaunch";
+export type { TargetPreference } from "./TargetPreference";
+export type { LocalRunState } from "./LocalRunState";
+export type { ProjectRunConfigurations } from "./ProjectRunConfigurations";
 
 // MCP
 export type { McpClientSetupStatus } from "./McpClientSetupStatus";

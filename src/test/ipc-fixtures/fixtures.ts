@@ -22,6 +22,7 @@ import type {
   LaunchState,
   LaunchTiming,
   LaunchTimingEvent,
+  LocalRunState,
   LogStats,
   MappingMatch,
   MappingSnapshot,
@@ -33,12 +34,16 @@ import type {
   ProcessedEntry,
   ProjectAppInfo,
   ProjectEntry,
+  ProjectRunConfigurations,
   RetraceOutcome,
   RetraceStatus,
   RunApk,
+  RunConfiguration,
+  RunLaunch,
   SdkDownloadProgress,
   SystemHealthReport,
   SystemImageInfo,
+  TargetPreference,
   UiHierarchySnapshot,
   VariantList,
 } from "@/bindings";
@@ -82,6 +87,7 @@ export const typeFixtures = {
   ] satisfies Wire<AppError>[],
   ProjectEntry: [
     {
+      "activeRunConfiguration": "Default",
       "gradleRoot": "/p",
       "id": "3f2a",
       "lastBuildVariant": "debug",
@@ -90,6 +96,110 @@ export const typeFixtures = {
       "name": "Sample",
       "path": "/p",
       "pinned": true,
+      "runConfigurations": [
+        {
+          "launch": {
+            "kind": "default"
+          },
+          "logcatFilter": null,
+          "module": ":app",
+          "name": "Default",
+          "task": null,
+          "variant": "debug"
+        },
+        {
+          "launch": {
+            "kind": "deepLink",
+            "uri": "myapp://home"
+          },
+          "logcatFilter": "package:mine level:warn",
+          "module": ":wear",
+          "name": "Wear deep link",
+          "task": ":wear:bundleFreeRelease",
+          "variant": "freeRelease"
+        },
+        {
+          "launch": {
+            "kind": "activity",
+            "name": ".SettingsActivity"
+          },
+          "logcatFilter": null,
+          "module": ":app",
+          "name": "Settings",
+          "task": null,
+          "variant": "debug"
+        },
+        {
+          "launch": {
+            "kind": "none"
+          },
+          "logcatFilter": null,
+          "module": ":app",
+          "name": "Install only",
+          "task": null,
+          "variant": "release"
+        }
+      ],
+      "runLocal": {
+        "Default": {
+          "approvedProjectFileSha256": null,
+          "lastDevice": null,
+          "target": {
+            "kind": "lastUsed"
+          }
+        },
+        "Wear deep link": {
+          "approvedProjectFileSha256": null,
+          "lastDevice": null,
+          "target": {
+            "kind": "lastUsed"
+          }
+        }
+      },
+      "trusted": true
+    },
+    {
+      "activeRunConfiguration": "Default",
+      "gradleRoot": "/r",
+      "id": "5e7b",
+      "lastBuildVariant": "release",
+      "lastDevice": null,
+      "lastOpened": "2026-04-23T10:00:00Z",
+      "name": "Migrated",
+      "path": "/r",
+      "pinned": false,
+      "runConfigurations": [
+        {
+          "launch": {
+            "kind": "default"
+          },
+          "logcatFilter": null,
+          "module": ":app",
+          "name": "Default",
+          "task": null,
+          "variant": "debug"
+        }
+      ],
+      "runLocal": {
+        "Default": {
+          "approvedProjectFileSha256": null,
+          "lastDevice": null,
+          "target": {
+            "kind": "lastUsed"
+          }
+        }
+      },
+      "trusted": true
+    },
+    {
+      "gradleRoot": "/s",
+      "id": "7a0c",
+      "lastBuildVariant": "debug",
+      "lastDevice": "emulator-5554",
+      "lastOpened": "2026-04-23T10:00:00Z",
+      "name": "Older",
+      "path": "/s",
+      "pinned": false,
       "trusted": true
     },
     {
@@ -104,6 +214,208 @@ export const typeFixtures = {
       "trusted": null
     }
   ] satisfies Wire<ProjectEntry>[],
+  RunConfiguration: [
+    {
+      "launch": {
+        "kind": "default"
+      },
+      "logcatFilter": null,
+      "module": ":app",
+      "name": "Default",
+      "task": null,
+      "variant": "debug"
+    },
+    {
+      "launch": {
+        "kind": "deepLink",
+        "uri": "myapp://home"
+      },
+      "logcatFilter": "package:mine level:warn",
+      "module": ":wear",
+      "name": "Wear deep link",
+      "task": ":wear:bundleFreeRelease",
+      "variant": "freeRelease"
+    },
+    {
+      "launch": {
+        "kind": "activity",
+        "name": ".SettingsActivity"
+      },
+      "logcatFilter": null,
+      "module": ":app",
+      "name": "Settings",
+      "task": null,
+      "variant": "debug"
+    },
+    {
+      "launch": {
+        "kind": "none"
+      },
+      "logcatFilter": null,
+      "module": ":app",
+      "name": "Install only",
+      "task": null,
+      "variant": "release"
+    }
+  ] satisfies Wire<RunConfiguration>[],
+  RunLaunch: [
+    {
+      "kind": "default"
+    },
+    {
+      "kind": "deepLink",
+      "uri": "myapp://home"
+    },
+    {
+      "kind": "activity",
+      "name": ".SettingsActivity"
+    },
+    {
+      "kind": "none"
+    }
+  ] satisfies Wire<RunLaunch>[],
+  TargetPreference: [
+    {
+      "kind": "ask"
+    },
+    {
+      "kind": "serial",
+      "serial": "28151FDH2000Q4"
+    },
+    {
+      "kind": "avd",
+      "name": "Pixel_7"
+    },
+    {
+      "kind": "lastUsed"
+    }
+  ] satisfies Wire<TargetPreference>[],
+  LocalRunState: [
+    {
+      "approvedProjectFileSha256": null,
+      "lastDevice": null,
+      "target": {
+        "kind": "lastUsed"
+      }
+    },
+    {
+      "approvedProjectFileSha256": null,
+      "lastDevice": null,
+      "target": {
+        "kind": "lastUsed"
+      }
+    },
+    {
+      "approvedProjectFileSha256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "lastDevice": null,
+      "target": {
+        "kind": "avd",
+        "name": "Wear_OS"
+      }
+    },
+    {
+      "approvedProjectFileSha256": null,
+      "lastDevice": "28151FDH2000Q4",
+      "target": {
+        "kind": "serial",
+        "serial": "28151FDH2000Q4"
+      }
+    }
+  ] satisfies Wire<LocalRunState>[],
+  ProjectRunConfigurations: [
+    {
+      "active": "Default",
+      "configurations": [
+        {
+          "launch": {
+            "kind": "default"
+          },
+          "logcatFilter": null,
+          "module": ":app",
+          "name": "Default",
+          "task": null,
+          "variant": "debug"
+        },
+        {
+          "launch": {
+            "kind": "deepLink",
+            "uri": "myapp://home"
+          },
+          "logcatFilter": "package:mine level:warn",
+          "module": ":wear",
+          "name": "Wear deep link",
+          "task": ":wear:bundleFreeRelease",
+          "variant": "freeRelease"
+        },
+        {
+          "launch": {
+            "kind": "activity",
+            "name": ".SettingsActivity"
+          },
+          "logcatFilter": null,
+          "module": ":app",
+          "name": "Settings",
+          "task": null,
+          "variant": "debug"
+        },
+        {
+          "launch": {
+            "kind": "none"
+          },
+          "logcatFilter": null,
+          "module": ":app",
+          "name": "Install only",
+          "task": null,
+          "variant": "release"
+        }
+      ],
+      "local": {
+        "Default": {
+          "approvedProjectFileSha256": null,
+          "lastDevice": null,
+          "target": {
+            "kind": "lastUsed"
+          }
+        },
+        "Wear deep link": {
+          "approvedProjectFileSha256": null,
+          "lastDevice": null,
+          "target": {
+            "kind": "lastUsed"
+          }
+        }
+      }
+    },
+    {
+      "active": "Default",
+      "configurations": [
+        {
+          "launch": {
+            "kind": "default"
+          },
+          "logcatFilter": null,
+          "module": ":app",
+          "name": "Default",
+          "task": null,
+          "variant": "debug"
+        }
+      ],
+      "local": {
+        "Default": {
+          "approvedProjectFileSha256": null,
+          "lastDevice": null,
+          "target": {
+            "kind": "lastUsed"
+          }
+        }
+      }
+    },
+    {
+      "active": null,
+      "configurations": [],
+      "local": {}
+    }
+  ] satisfies Wire<ProjectRunConfigurations>[],
   ProjectAppInfo: [
     {
       "applicationId": "com.example.app",
@@ -170,6 +482,7 @@ export const typeFixtures = {
       "onboardingCompleted": false,
       "recentProjects": [
         {
+          "activeRunConfiguration": "Default",
           "gradleRoot": "/p",
           "id": "3f2a",
           "lastBuildVariant": "debug",
@@ -178,6 +491,110 @@ export const typeFixtures = {
           "name": "Sample",
           "path": "/p",
           "pinned": true,
+          "runConfigurations": [
+            {
+              "launch": {
+                "kind": "default"
+              },
+              "logcatFilter": null,
+              "module": ":app",
+              "name": "Default",
+              "task": null,
+              "variant": "debug"
+            },
+            {
+              "launch": {
+                "kind": "deepLink",
+                "uri": "myapp://home"
+              },
+              "logcatFilter": "package:mine level:warn",
+              "module": ":wear",
+              "name": "Wear deep link",
+              "task": ":wear:bundleFreeRelease",
+              "variant": "freeRelease"
+            },
+            {
+              "launch": {
+                "kind": "activity",
+                "name": ".SettingsActivity"
+              },
+              "logcatFilter": null,
+              "module": ":app",
+              "name": "Settings",
+              "task": null,
+              "variant": "debug"
+            },
+            {
+              "launch": {
+                "kind": "none"
+              },
+              "logcatFilter": null,
+              "module": ":app",
+              "name": "Install only",
+              "task": null,
+              "variant": "release"
+            }
+          ],
+          "runLocal": {
+            "Default": {
+              "approvedProjectFileSha256": null,
+              "lastDevice": null,
+              "target": {
+                "kind": "lastUsed"
+              }
+            },
+            "Wear deep link": {
+              "approvedProjectFileSha256": null,
+              "lastDevice": null,
+              "target": {
+                "kind": "lastUsed"
+              }
+            }
+          },
+          "trusted": true
+        },
+        {
+          "activeRunConfiguration": "Default",
+          "gradleRoot": "/r",
+          "id": "5e7b",
+          "lastBuildVariant": "release",
+          "lastDevice": null,
+          "lastOpened": "2026-04-23T10:00:00Z",
+          "name": "Migrated",
+          "path": "/r",
+          "pinned": false,
+          "runConfigurations": [
+            {
+              "launch": {
+                "kind": "default"
+              },
+              "logcatFilter": null,
+              "module": ":app",
+              "name": "Default",
+              "task": null,
+              "variant": "debug"
+            }
+          ],
+          "runLocal": {
+            "Default": {
+              "approvedProjectFileSha256": null,
+              "lastDevice": null,
+              "target": {
+                "kind": "lastUsed"
+              }
+            }
+          },
+          "trusted": true
+        },
+        {
+          "gradleRoot": "/s",
+          "id": "7a0c",
+          "lastBuildVariant": "debug",
+          "lastDevice": "emulator-5554",
+          "lastOpened": "2026-04-23T10:00:00Z",
+          "name": "Older",
+          "path": "/s",
+          "pinned": false,
           "trusted": true
         },
         {

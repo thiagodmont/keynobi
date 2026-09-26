@@ -1,4 +1,10 @@
-import type { ProjectEntry, ProjectAppInfo } from "@/bindings";
+import type {
+  AppError,
+  ProjectAppInfo,
+  ProjectEntry,
+  ProjectRunConfigurations,
+  RunConfiguration,
+} from "@/bindings";
 
 export const mockProject: ProjectEntry = {
   id: "abc123",
@@ -12,8 +18,99 @@ export const mockProject: ProjectEntry = {
   trusted: true,
 };
 
+/** Most run configurations per project, as `MAX_RUN_CONFIGURATIONS` in the backend. */
+const MAX_MOCK_RUN_CONFIGURATIONS = 32;
+
+function appError(kind: AppError["kind"], message: string): AppError {
+  return { kind, message } as AppError;
+}
+
+/**
+ * Like the backend: the first read creates a Default configuration for the
+ * mock project's only application module, from its last variant and device.
+ */
+function mockRunConfigurations(): ProjectRunConfigurations {
+  if (mockProject.runConfigurations === undefined) {
+    mockProject.runConfigurations = [
+      {
+        name: "Default",
+        module: ":app",
+        variant: mockProject.lastBuildVariant ?? "debug",
+        task: null,
+        launch: { kind: "default" },
+        logcatFilter: null,
+      },
+    ];
+    mockProject.runLocal = {
+      Default: {
+        target: { kind: "lastUsed" },
+        lastDevice: mockProject.lastDevice,
+        approvedProjectFileSha256: null,
+      },
+    };
+    mockProject.activeRunConfiguration = "Default";
+  }
+  return {
+    configurations: [...mockProject.runConfigurations],
+    active: mockProject.activeRunConfiguration ?? null,
+    local: { ...mockProject.runLocal },
+  };
+}
+
+function requireRunConfiguration(name: string): void {
+  if (!mockRunConfigurations().configurations.some((c) => c.name === name)) {
+    throw appError("notFound", `There is no run configuration named '${name}'.`);
+  }
+}
+
 export function projectHandlers(): Record<string, (args: unknown) => unknown> {
   return {
+    list_run_configurations: () => mockRunConfigurations(),
+    save_run_configuration: (args) => {
+      const { config } = args as { config: RunConfiguration };
+      const configurations = mockRunConfigurations().configurations;
+      if (config.module !== ":app") {
+        throw appError(
+          "invalidInput",
+          `'${config.module}' is not an application module of this project. Application modules: :app.`
+        );
+      }
+      const index = configurations.findIndex((c) => c.name === config.name);
+      if (index < 0 && configurations.length >= MAX_MOCK_RUN_CONFIGURATIONS) {
+        throw appError(
+          "invalidInput",
+          `A project can have at most ${MAX_MOCK_RUN_CONFIGURATIONS} run configurations. Delete one first.`
+        );
+      }
+      if (index < 0) configurations.push(config);
+      else configurations[index] = config;
+      mockProject.runConfigurations = configurations;
+      mockProject.runLocal = {
+        [config.name]: {
+          target: { kind: "lastUsed" },
+          lastDevice: null,
+          approvedProjectFileSha256: null,
+        },
+        ...mockProject.runLocal,
+      };
+      return mockRunConfigurations();
+    },
+    delete_run_configuration: (args) => {
+      const { name } = args as { name: string };
+      requireRunConfiguration(name);
+      mockProject.runConfigurations = mockProject.runConfigurations?.filter((c) => c.name !== name);
+      const local = { ...mockProject.runLocal };
+      delete local[name];
+      mockProject.runLocal = local;
+      if (mockProject.activeRunConfiguration === name) delete mockProject.activeRunConfiguration;
+      return mockRunConfigurations();
+    },
+    set_active_run_configuration: (args) => {
+      const { name } = args as { name: string };
+      requireRunConfiguration(name);
+      mockProject.activeRunConfiguration = name;
+      return mockRunConfigurations();
+    },
     open_project: () => mockProject.name,
     get_project_root: () => mockProject.path,
     get_gradle_root: () => mockProject.gradleRoot,

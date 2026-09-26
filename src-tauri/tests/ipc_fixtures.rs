@@ -444,6 +444,35 @@ fn project_entries() -> Vec<ProjectEntry> {
             last_build_variant: Some("debug".into()),
             last_device: Some("emulator-5554".into()),
             trusted: Some(true),
+            run_configurations: Some(run_configurations()),
+            run_local: local_run_states(),
+            active_run_configuration: Some("Default".into()),
+        },
+        // What the first read of a single-module project's configurations saves.
+        ProjectEntry {
+            id: "5e7b".into(),
+            path: "/r".into(),
+            name: "Migrated".into(),
+            gradle_root: Some("/r".into()),
+            last_opened: TIME.into(),
+            pinned: false,
+            last_build_variant: Some("release".into()),
+            last_device: None,
+            trusted: Some(true),
+            ..migrated()
+        },
+        // Saved by an older version, or not read since.
+        ProjectEntry {
+            id: "7a0c".into(),
+            path: "/s".into(),
+            name: "Older".into(),
+            gradle_root: Some("/s".into()),
+            last_opened: TIME.into(),
+            pinned: false,
+            last_build_variant: Some("debug".into()),
+            last_device: Some("emulator-5554".into()),
+            trusted: Some(true),
+            ..Default::default()
         },
         ProjectEntry {
             id: "9c1d".into(),
@@ -455,8 +484,114 @@ fn project_entries() -> Vec<ProjectEntry> {
             last_build_variant: None,
             last_device: None,
             trusted: None,
+            run_configurations: None,
+            run_local: Default::default(),
+            active_run_configuration: None,
         },
     ]
+}
+
+/// A project entry with only the Default configuration the first read creates.
+fn migrated() -> ProjectEntry {
+    ProjectEntry {
+        run_configurations: Some(run_configurations().into_iter().take(1).collect()),
+        // From a project with no last device.
+        run_local: [("Default".to_string(), LocalRunState::default())]
+            .into_iter()
+            .collect(),
+        active_run_configuration: Some("Default".into()),
+        ..Default::default()
+    }
+}
+
+fn run_configurations() -> Vec<RunConfiguration> {
+    vec![
+        RunConfiguration {
+            name: "Default".into(),
+            module: ":app".into(),
+            variant: "debug".into(),
+            task: None,
+            launch: RunLaunch::Default,
+            logcat_filter: None,
+        },
+        RunConfiguration {
+            name: "Wear deep link".into(),
+            module: ":wear".into(),
+            variant: "freeRelease".into(),
+            task: Some(":wear:bundleFreeRelease".into()),
+            launch: RunLaunch::DeepLink {
+                uri: "myapp://home".into(),
+            },
+            logcat_filter: Some("package:mine level:warn".into()),
+        },
+        RunConfiguration {
+            name: "Settings".into(),
+            module: ":app".into(),
+            variant: "debug".into(),
+            task: None,
+            launch: RunLaunch::Activity {
+                name: ".SettingsActivity".into(),
+            },
+            logcat_filter: None,
+        },
+        RunConfiguration {
+            name: "Install only".into(),
+            module: ":app".into(),
+            variant: "release".into(),
+            task: None,
+            launch: RunLaunch::None,
+            logcat_filter: None,
+        },
+    ]
+}
+
+fn target_preferences() -> Vec<TargetPreference> {
+    vec![
+        TargetPreference::Ask,
+        TargetPreference::Serial {
+            serial: "28151FDH2000Q4".into(),
+        },
+        TargetPreference::Avd {
+            name: "Pixel_7".into(),
+        },
+        TargetPreference::LastUsed,
+    ]
+}
+
+fn local_run_states() -> std::collections::BTreeMap<String, LocalRunState> {
+    [
+        (
+            "Default".to_string(),
+            LocalRunState {
+                target: TargetPreference::LastUsed,
+                last_device: None,
+                approved_project_file_sha256: None,
+            },
+        ),
+        // What saving a new configuration creates.
+        ("Wear deep link".to_string(), LocalRunState::default()),
+    ]
+    .into_iter()
+    .collect()
+}
+
+fn local_run_state_samples() -> Vec<LocalRunState> {
+    let mut samples: Vec<LocalRunState> = local_run_states().into_values().collect();
+    samples.push(LocalRunState {
+        target: TargetPreference::Avd {
+            name: "Wear_OS".into(),
+        },
+        last_device: None,
+        approved_project_file_sha256: Some("c3".repeat(32)),
+    });
+    samples.push(LocalRunState {
+        target: TargetPreference::Serial {
+            serial: "28151FDH2000Q4".into(),
+        },
+        last_device: Some("28151FDH2000Q4".into()),
+        approved_project_file_sha256: None,
+    });
+    samples
 }
 
 fn attached_sessions() -> Vec<McpAttachedSession> {
@@ -537,6 +672,32 @@ fn fixtures() -> Fixtures {
 
     // Projects and settings.
     f.add("ProjectEntry", &project_entries());
+    f.add("RunConfiguration", &run_configurations());
+    f.add(
+        "RunLaunch",
+        &run_configurations()
+            .into_iter()
+            .map(|c| c.launch)
+            .collect::<Vec<_>>(),
+    );
+    f.add("TargetPreference", &target_preferences());
+    f.add("LocalRunState", &local_run_state_samples());
+    f.add(
+        "ProjectRunConfigurations",
+        &[
+            ProjectRunConfigurations {
+                configurations: run_configurations(),
+                active: Some("Default".into()),
+                local: local_run_states(),
+            },
+            ProjectRunConfigurations {
+                configurations: migrated().run_configurations.unwrap_or_default(),
+                active: migrated().active_run_configuration,
+                local: migrated().run_local,
+            },
+            ProjectRunConfigurations::default(),
+        ],
+    );
     f.add(
         "ProjectAppInfo",
         &[

@@ -328,6 +328,18 @@ describe("the mock backend matches the real payloads", () => {
       launch_app_on_device: { serial: "emulator-5554", package: "com.example.mockapp" },
       retrace_crash: { crashGroupId: 90 },
       find_apk_path: { variant: "release", module: ":app", buildId: releaseBuild },
+      save_run_configuration: {
+        config: {
+          name: "Wear deep link",
+          module: ":app",
+          variant: "release",
+          task: ":app:bundleRelease",
+          launch: { kind: "activity", name: ".SettingsActivity" },
+          logcatFilter: "package:mine",
+        },
+      },
+      delete_run_configuration: { name: "Wear deep link" },
+      set_active_run_configuration: { name: "Default" },
     };
     for (const [command, type] of invokedTypes()) {
       if (!isNamedType(type)) continue;
