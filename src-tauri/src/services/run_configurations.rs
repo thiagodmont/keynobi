@@ -80,7 +80,7 @@ pub fn migration_seed(gradle_root: &Path) -> MigrationSeed {
 
 /// Variants the module's build file (else the root project's) declares, and
 /// the default among them.
-fn declared_variants(
+pub(crate) fn declared_variants(
     gradle_root: &Path,
     module: &gradle_modules::GradleModule,
 ) -> (Vec<String>, Option<String>) {
@@ -289,7 +289,7 @@ fn validate_name(name: &str) -> Result<(), String> {
 }
 
 /// An AGP variant name: an ASCII letter, then ASCII letters and digits.
-fn validate_variant(variant: &str) -> Result<(), String> {
+pub(crate) fn validate_variant(variant: &str) -> Result<(), String> {
     let mut chars = variant.chars();
     let valid = chars.next().is_some_and(|c| c.is_ascii_alphabetic())
         && chars.all(|c| c.is_ascii_alphanumeric())
@@ -306,7 +306,7 @@ fn validate_variant(variant: &str) -> Result<(), String> {
 
 /// A valid Gradle task of `module`: `:mobile:bundleRelease`, or for the root
 /// project `bundleRelease` (or `:bundleRelease`).
-fn validate_task(task: &str, module: &str) -> Result<(), String> {
+pub(crate) fn validate_task(task: &str, module: &str) -> Result<(), String> {
     crate::utils::validation::validate_gradle_task(task)?;
     let name = if module == ":" {
         Some(task.strip_prefix(':').unwrap_or(task))
@@ -329,7 +329,7 @@ fn validate_task(task: &str, module: &str) -> Result<(), String> {
 
 // ── Storage ───────────────────────────────────────────────────────────────────
 
-fn settings_path() -> PathBuf {
+pub(crate) fn settings_path() -> PathBuf {
     settings_manager::data_dir().join("settings.json")
 }
 
@@ -531,6 +531,42 @@ pub fn set_active_at(
             return Err(no_such_configuration(name));
         }
         entry.active_run_configuration = Some(name.to_string());
+        Ok(configurations_of(entry))
+    })
+}
+
+/// Remember `serial` as the device the configuration named `name` last ran
+/// on (`LocalRunState.last_device`, which a `lastUsed` target prefers).
+pub fn record_last_device(
+    project_root: &str,
+    name: &str,
+    serial: &str,
+) -> Result<ProjectRunConfigurations, AppError> {
+    record_last_device_at(&settings_path(), project_root, name, serial)
+}
+
+pub fn record_last_device_at(
+    path: &Path,
+    project_root: &str,
+    name: &str,
+    serial: &str,
+) -> Result<ProjectRunConfigurations, AppError> {
+    crate::utils::validation::validate_device_serial(serial).map_err(AppError::InvalidInput)?;
+    let seed = seed_for(path, project_root)?;
+    edit_at(path, project_root, &seed, |entry, _| {
+        if !entry
+            .run_configurations
+            .iter()
+            .flatten()
+            .any(|c| c.name == name)
+        {
+            return Err(no_such_configuration(name));
+        }
+        entry
+            .run_local
+            .entry(name.to_string())
+            .or_default()
+            .last_device = Some(serial.to_string());
         Ok(configurations_of(entry))
     })
 }
@@ -1053,6 +1089,42 @@ mod tests {
         assert_eq!(
             stored(&path, &project).last_build_variant.as_deref(),
             Some("release")
+        );
+    }
+
+    #[test]
+    fn a_run_records_the_device_it_ran_on() {
+        let project = project(&[":app"]);
+        let mut old = entry(project.path());
+        old.last_device = Some("emulator-5554".into());
+        let (_dir, path) = settings_with(vec![old]);
+        let root = root_of(&project);
+
+        let recorded =
+            record_last_device_at(&path, &root, DEFAULT_RUN_CONFIGURATION, "28151FDH2000Q4")
+                .unwrap();
+
+        let local = &recorded.local[DEFAULT_RUN_CONFIGURATION];
+        assert_eq!(local.last_device.as_deref(), Some("28151FDH2000Q4"));
+        assert_eq!(local.target, TargetPreference::LastUsed);
+        // The project's own device selection is left alone.
+        assert_eq!(
+            stored(&path, &project).last_device.as_deref(),
+            Some("emulator-5554")
+        );
+        assert!(matches!(
+            record_last_device_at(&path, &root, "Missing", "emulator-5554"),
+            Err(AppError::NotFound(_))
+        ));
+        assert!(matches!(
+            record_last_device_at(&path, &root, DEFAULT_RUN_CONFIGURATION, "-s; reboot"),
+            Err(AppError::InvalidInput(_))
+        ));
+        assert_eq!(
+            list_at(&path, &root).unwrap().local[DEFAULT_RUN_CONFIGURATION]
+                .last_device
+                .as_deref(),
+            Some("28151FDH2000Q4")
         );
     }
 

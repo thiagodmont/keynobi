@@ -7,6 +7,7 @@ import {
   resetBuildServiceForTests,
   runAndDeploy,
   runBuild,
+  runBuildOnly,
 } from "@/services/build.service";
 import {
   buildLogStore,
@@ -16,10 +17,11 @@ import {
   startBuild,
 } from "@/stores/build.store";
 import { resetDeviceState } from "@/stores/device.store";
-import { resetVariantState, selectVariant } from "@/stores/variant.store";
+import { resetVariantState } from "@/stores/variant.store";
 import { updateSetting } from "@/stores/settings.store";
 import { beginProjectOpen, setApplicationId } from "@/stores/project.store";
-import { makeLaunchTiming } from "@/test/factories/build";
+import { makeLaunchTiming, makeResolvedRun } from "@/test/factories/build";
+import type { TargetPreference } from "@/bindings";
 
 const devicePickerMock = vi.hoisted(() => ({
   showDevicePicker: vi.fn<() => Promise<string | null>>(),
@@ -130,12 +132,22 @@ describe("cancelBuild guard — no ghost records on project switch", () => {
       })
     );
 
-    await selectVariant("debug");
+    // The Default configuration targets the last used device, and none is online.
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "resolve_run_configuration") {
+        return Promise.reject({ kind: "notFound", message: "no device is selected" });
+      }
+      if (cmd === "list_run_configurations") {
+        return Promise.resolve({ configurations: [], active: "Default", local: {} });
+      }
+      return Promise.resolve(undefined);
+    });
     const deploy = runAndDeploy();
     await vi.waitFor(() => expect(devicePickerMock.showDevicePicker).toHaveBeenCalled());
 
     expect(buildState.phase).toBe("idle");
     await expect(runBuild()).rejects.toThrow("A build or deploy is already running.");
+    await expect(runBuildOnly()).rejects.toThrow("A build or deploy is already running.");
 
     resolvePicker(null);
     await deploy;
@@ -431,6 +443,10 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     vi.useRealTimers();
   });
 
+  function callsTo(command: string) {
+    return mockInvoke.mock.calls.filter(([cmd]) => cmd === command);
+  }
+
   /**
    * Start a deploy and complete its build phase with a success event.
    * `overrides` replace individual IPC replies. Resolves to the error the
@@ -456,7 +472,8 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
       if (overrides[cmd]) return overrides[cmd]();
       if (cmd === "run_gradle_task") return Promise.resolve(1);
       if (cmd === "get_build_history") return Promise.resolve([]);
-      if (cmd === "get_application_module") return Promise.resolve(":app");
+      if (cmd === "resolve_run_configuration") return Promise.resolve(makeResolvedRun());
+      if (cmd === "record_run_device") return Promise.resolve(undefined);
       if (cmd === "find_apk_path") {
         return Promise.resolve({ path: "/tmp/app-debug.apk", buildId: 7, fromThisBuild: true });
       }
@@ -467,9 +484,6 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
       }
       return Promise.resolve(undefined);
     });
-
-    devicePickerMock.showDevicePicker.mockResolvedValue("emulator-5554");
-    await selectVariant("debug");
 
     const deploy = runAndDeploy();
     await vi.waitFor(() => expect(buildState.phase).toBe("running"));
@@ -495,9 +509,16 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
 
   it("skips device resolution, install, and launch when autoInstallOnBuild is off", async () => {
     updateSetting("build", "autoInstallOnBuild", false);
-    await deployThroughSuccessfulBuild();
+    await deployThroughSuccessfulBuild({
+      resolve_run_configuration: () =>
+        Promise.resolve(
+          makeResolvedRun({ device: null, plan: "Build 'Default': build :app:assembleDebug" })
+        ),
+    });
 
     expect(buildState.phase).toBe("success");
+    // The plan is asked for without a device.
+    expect(callsTo("resolve_run_configuration")[0]?.[1]).toMatchObject({ buildOnly: true });
     // Build-only run: the device picker must not even open.
     expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
     expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "find_apk_path")).toHaveLength(0);
@@ -588,24 +609,118 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     expect(buildLog()).toContain("▶ Launch time: not reported by this launch method");
   });
 
-  function callsTo(command: string) {
-    return mockInvoke.mock.calls.filter(([cmd]) => cmd === command);
-  }
-
-  it("builds the variant's assemble task in the application module", async () => {
+  it("builds the active configuration's task and heads the log with its plan", async () => {
     const error = await deployThroughSuccessfulBuild();
 
     expect(error).toBeNull();
+    expect(callsTo("resolve_run_configuration")[0]?.[1]).toMatchObject({ buildOnly: false });
     expect(callsTo("run_gradle_task")[0]?.[1]).toEqual({ task: ":app:assembleDebug" });
+    expect(buildLog()[0]).toBe(
+      "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine"
+    );
   });
 
-  it("builds the root project's assemble task without a module prefix", async () => {
+  it("builds a configuration's own task and installs on its resolved device", async () => {
     const error = await deployThroughSuccessfulBuild({
-      get_application_module: () => Promise.resolve(":"),
+      resolve_run_configuration: () =>
+        Promise.resolve(
+          makeResolvedRun({
+            name: "Staging",
+            variant: "staging",
+            task: ":app:bundleStaging",
+            device: { serial: "28151FDH2000Q4", label: "Pixel 7" },
+            plan: "Run 'Staging': build :app:bundleStaging → …",
+          })
+        ),
     });
 
     expect(error).toBeNull();
-    expect(callsTo("run_gradle_task")[0]?.[1]).toEqual({ task: "assembleDebug" });
+    expect(callsTo("run_gradle_task")[0]?.[1]).toEqual({ task: ":app:bundleStaging" });
+    expect(callsTo("find_apk_path")[0]?.[1]).toEqual({
+      variant: "staging",
+      module: ":app",
+      buildId: 7,
+    });
+    expect(callsTo("install_apk_on_device")[0]?.[1]).toMatchObject({ serial: "28151FDH2000Q4" });
+    // The picker is for Ask and Last used targets that found no device.
+    expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
+  });
+
+  it("records the device on the configuration after installing", async () => {
+    const error = await deployThroughSuccessfulBuild();
+
+    expect(error).toBeNull();
+    expect(callsTo("record_run_device")).toEqual([
+      ["record_run_device", { name: "Default", serial: "emulator-5554" }],
+    ]);
+  });
+
+  it("launches the configuration's activity", async () => {
+    const error = await deployThroughSuccessfulBuild({
+      resolve_run_configuration: () =>
+        Promise.resolve(makeResolvedRun({ launch: { kind: "activity", name: ".Settings" } })),
+    });
+
+    expect(error).toBeNull();
+    expect(launchCalls()[0]?.[1]).toMatchObject({
+      serial: "emulator-5554",
+      package: "com.example.app",
+      activity: ".Settings",
+      buildId: 7,
+    });
+  });
+
+  it("opens the configuration's deep link in the installed package", async () => {
+    const error = await deployThroughSuccessfulBuild({
+      resolve_run_configuration: () =>
+        Promise.resolve(makeResolvedRun({ launch: { kind: "deepLink", uri: "myapp://home" } })),
+      open_deep_link_on_device: () => Promise.resolve("Starting: Intent { … }"),
+    });
+
+    expect(error).toBeNull();
+    expect(launchCalls()).toHaveLength(0);
+    expect(callsTo("open_deep_link_on_device")).toEqual([
+      [
+        "open_deep_link_on_device",
+        { serial: "emulator-5554", uri: "myapp://home", package: "com.example.app" },
+      ],
+    ]);
+    expect(buildLog()).toContain("▶ Launch time: not reported for a deep link");
+    expect(buildState.lastLaunchedPackage).toBe("com.example.app");
+  });
+
+  it("installs but does not launch a configuration whose launch is None", async () => {
+    const error = await deployThroughSuccessfulBuild({
+      resolve_run_configuration: () =>
+        Promise.resolve(makeResolvedRun({ launch: { kind: "none" } })),
+    });
+
+    expect(error).toBeNull();
+    expect(callsTo("install_apk_on_device")).toHaveLength(1);
+    expect(callsTo("get_package_name_from_apk")).toHaveLength(0);
+    expect(launchCalls()).toHaveLength(0);
+    expect(buildState.lastLaunchedAt).toBeNull();
+    expect(buildLog()).toContain("▶ Run configuration 'Default' installs only — not launching.");
+  });
+
+  it("applies the configuration's logcat filter after the launch", async () => {
+    const error = await deployThroughSuccessfulBuild({
+      resolve_run_configuration: () =>
+        Promise.resolve(makeResolvedRun({ logcatFilter: "package:mine level:warn" })),
+    });
+
+    expect(error).toBeNull();
+    expect(buildState.lastLaunchedAt).not.toBeNull();
+    expect(buildState.lastLaunchedPackage).toBe("com.example.app");
+    expect(buildState.lastLaunchedFilter).toBe("package:mine level:warn");
+  });
+
+  it("merges package:mine after the launch when the configuration has no filter", async () => {
+    const error = await deployThroughSuccessfulBuild();
+
+    expect(error).toBeNull();
+    expect(buildState.lastLaunchedAt).not.toBeNull();
+    expect(buildState.lastLaunchedFilter).toBeNull();
   });
 
   it("installs the APK this build recorded for the module and variant", async () => {
@@ -633,22 +748,90 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     });
   });
 
-  it("stops before building when the project has several application modules", async () => {
+  it("stops before building when several modules have no active configuration", async () => {
     const reason = {
       kind: "invalidInput",
-      message: "This project has several application modules (:mobile, :wear), and none was named.",
+      message:
+        "No run configuration is active. Choose the one to run: mobile (:mobile debug), wear (:wear debug).",
     };
     mockInvoke.mockImplementation((cmd) => {
-      if (cmd === "get_application_module") return Promise.reject(reason);
+      if (cmd === "resolve_run_configuration") return Promise.reject(reason);
       return Promise.resolve(undefined);
     });
-    await selectVariant("debug");
 
     await expect(runAndDeploy()).rejects.toBe(reason);
 
-    expect(callsTo("get_application_module")[0]?.[1]).toEqual({ module: null });
+    expect(callsTo("resolve_run_configuration")[0]?.[1]).toEqual({
+      name: null,
+      selectedSerial: null,
+      buildOnly: false,
+    });
     expect(callsTo("run_gradle_task")).toHaveLength(0);
-    expect(buildLog().join("\n")).toContain(":mobile, :wear");
+    expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
+    expect(buildLog().join("\n")).toContain("mobile (:mobile debug), wear (:wear debug)");
+  });
+
+  /** Resolution fails for want of a device, for a configuration with `target`. */
+  function noDeviceFor(target: TargetPreference) {
+    const noDevice = { kind: "notFound", message: "no device is online for this run" };
+    let resolved = 0;
+    mockInvoke.mockImplementation((cmd, args) => {
+      if (cmd === "resolve_run_configuration") {
+        resolved++;
+        const picked = (args as { selectedSerial?: string | null }).selectedSerial;
+        return resolved === 1 || !picked
+          ? Promise.reject(noDevice)
+          : Promise.resolve(makeResolvedRun({ device: { serial: picked, label: picked } }));
+      }
+      if (cmd === "list_run_configurations") {
+        return Promise.resolve({
+          configurations: [],
+          active: "Default",
+          local: {
+            Default: { target, lastDevice: null, approvedProjectFileSha256: null },
+          },
+        });
+      }
+      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      return Promise.resolve(undefined);
+    });
+    return noDevice;
+  }
+
+  for (const kind of ["ask", "lastUsed"] as const) {
+    it(`asks for a device when a target of ${kind} finds none, and runs on it`, async () => {
+      noDeviceFor({ kind });
+      devicePickerMock.showDevicePicker.mockResolvedValue("28151FDH2000Q4");
+
+      const deploy = runAndDeploy();
+      await vi.waitFor(() => expect(buildState.phase).toBe("running"));
+      await cancelBuild();
+      await deploy;
+
+      expect(devicePickerMock.showDevicePicker).toHaveBeenCalledTimes(1);
+      expect(callsTo("resolve_run_configuration")[1]?.[1]).toMatchObject({
+        selectedSerial: "28151FDH2000Q4",
+      });
+    });
+  }
+
+  it("builds nothing when the device picker is cancelled", async () => {
+    noDeviceFor({ kind: "ask" });
+    devicePickerMock.showDevicePicker.mockResolvedValue(null);
+
+    await runAndDeploy();
+
+    expect(callsTo("run_gradle_task")).toHaveLength(0);
+    expect(buildLog()).toContain("▶ No device selected — run cancelled.");
+  });
+
+  it("stops with the reason, without the picker, when the preferred AVD is not running", async () => {
+    const noDevice = noDeviceFor({ kind: "avd", name: "Pixel_7" });
+
+    await expect(runAndDeploy()).rejects.toBe(noDevice);
+
+    expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
+    expect(callsTo("run_gradle_task")).toHaveLength(0);
   });
 
   it("stops before installing when the variant has no APK, with the backend's reason", async () => {
@@ -896,5 +1079,67 @@ describe("builds this window did not start", () => {
     complete(4);
 
     expect(buildState.phase).toBe("idle");
+  });
+});
+
+describe("Build Only builds the active run configuration", () => {
+  beforeEach(() => {
+    resetBuildState();
+    resetDeviceState();
+    resetVariantState();
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    resetBuildServiceForTests();
+  });
+
+  function callsTo(command: string) {
+    return mockInvoke.mock.calls.filter(([cmd]) => cmd === command);
+  }
+
+  it("builds the configuration's task with its plan, without a device", async () => {
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "resolve_run_configuration") {
+        return Promise.resolve(
+          makeResolvedRun({
+            task: ":wear:assembleFreeRelease",
+            device: null,
+            plan: "Build 'wear': build :wear:assembleFreeRelease",
+          })
+        );
+      }
+      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      return Promise.resolve(undefined);
+    });
+
+    const build = runBuildOnly();
+    await vi.waitFor(() => expect(buildState.phase).toBe("running"));
+    await cancelBuild();
+    await build;
+
+    expect(callsTo("resolve_run_configuration")[0]?.[1]).toMatchObject({ buildOnly: true });
+    expect(callsTo("run_gradle_task")[0]?.[1]).toEqual({ task: ":wear:assembleFreeRelease" });
+    flushPendingLines();
+    expect(buildLogStore.entries[0]?.message).toBe("Build 'wear': build :wear:assembleFreeRelease");
+    expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
+  });
+
+  it("builds nothing and says why when no configuration is active", async () => {
+    const reason = {
+      kind: "invalidInput",
+      message: "No run configuration is active. Choose the one to run: mobile (:mobile debug).",
+    };
+    mockInvoke.mockImplementation((cmd) =>
+      cmd === "resolve_run_configuration" ? Promise.reject(reason) : Promise.resolve(undefined)
+    );
+
+    await expect(runBuildOnly()).rejects.toBe(reason);
+
+    expect(callsTo("run_gradle_task")).toHaveLength(0);
+    flushPendingLines();
+    expect(buildLogStore.entries.map((e) => e.message).join("\n")).toContain(
+      "No run configuration is active"
+    );
   });
 });

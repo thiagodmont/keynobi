@@ -102,6 +102,8 @@ export type { RunLaunch } from "./RunLaunch";
 export type { TargetPreference } from "./TargetPreference";
 export type { LocalRunState } from "./LocalRunState";
 export type { ProjectRunConfigurations } from "./ProjectRunConfigurations";
+export type { ResolvedRun } from "./ResolvedRun";
+export type { RunDevice } from "./RunDevice";
 
 // MCP
 export type { McpClientSetupStatus } from "./McpClientSetupStatus";

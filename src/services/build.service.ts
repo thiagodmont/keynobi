@@ -2,10 +2,14 @@ import {
   runGradleTask,
   cancelBuild as cancelBuildApi,
   findApkPath,
-  getApplicationModule,
   getPackageNameFromApk,
   installApkOnDevice,
   launchAppOnDevice,
+  listRunConfigurations,
+  openDeepLinkOnDevice,
+  recordRunDevice,
+  resolveRunConfiguration,
+  isAppErrorKind,
   getBuildHistory,
   listenBuildStarted,
   listenBuildLines,
@@ -38,7 +42,7 @@ import { settingsState } from "@/stores/settings.store";
 import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { buildRunningLabel } from "@/lib/build-actor";
 import { describeDisplayTimes, formatLaunchTime } from "@/lib/launch-timing";
-import type { BuildError, RunApk } from "@/bindings";
+import type { BuildError, ResolvedRun, RunApk } from "@/bindings";
 
 let buildUnlisteners: Array<() => void> | null = null;
 // Held so concurrent callers await the SAME registration. A plain
@@ -452,11 +456,13 @@ async function runBuildInternal(
 }
 
 /**
- * Full build → install → launch cycle.
+ * Full build → install → launch cycle of the active run configuration.
  *
- * If no device is selected, resolves a device via the DevicePickerDialog —
- * skipped entirely when "Auto Install on Build" is off (build-only run).
- * After a successful build the APK is installed and the app launched.
+ * The configuration is resolved first (task, device, launch); its plan heads
+ * the build log. A target of Ask or Last used that finds no online device
+ * shows the device picker — skipped entirely when "Auto Install on Build" is
+ * off (build-only run). After a successful build the APK is installed and
+ * the app launched the way the configuration says.
  */
 export async function runAndDeploy(): Promise<void> {
   assertProjectTrusted();
@@ -471,7 +477,6 @@ export async function runAndDeploy(): Promise<void> {
   }
 
   deployInFlight = true;
-  const variant = variantState.activeVariant;
   // APK lookup reads the backend's current project, so a project switch
   // mid-deploy must stop it before it installs the other project's APK.
   const projectGeneration = currentProjectGeneration();
@@ -480,39 +485,21 @@ export async function runAndDeploy(): Promise<void> {
   const autoInstall = settingsState.build.autoInstallOnBuild !== false;
 
   try {
-    if (!variant) {
-      throw new Error("No build variant selected. Open Build → Select Variant.");
+    // Logged BEFORE startBuild clears the log; the plan then heads it.
+    logStep("Resolving the run configuration…");
+    const plan = await resolveRunPlan(!autoInstall);
+    if (!plan) {
+      logStep("No device selected — run cancelled.");
+      return;
     }
-    // Rejects listing the application modules when there are several.
-    const module = await getApplicationModule(variantState.module);
     assertSameProject(projectGeneration);
+    const serial = plan.device?.serial ?? null;
 
-    // Resolve a device before the build so we can bail early — but only when
-    // the result will actually be installed; a build-only run needs no device.
-    let serial: string | null = null;
-    if (autoInstall) {
-      // We log this BEFORE startBuild clears the log — that's intentional;
-      // users will see the context when the build panel opens.
-      logStep("Resolving target device…");
-      serial = await resolveDevice();
-      if (!serial) {
-        logStep("No device selected — run cancelled.");
-        return;
-      }
-      logStep(`Target device: ${serial}`);
-    }
-
-    // 1. Build. startBuild() inside runBuild() clears the log, so we add a
-    //    context header as the very first callback line from the Gradle channel.
+    // 1. Build. startBuild() inside runBuild() clears the log, so the plan is
+    //    added as the very first line.
     setDeployPhase("building");
-    const target = `${module} ${variant}`;
-    const completion = await runBuildGuarded(
-      assembleTask(module, variant),
-      {
-        headerLines: [serial ? `── Deploy: ${target} → ${serial} ──` : `── Build: ${target} ──`],
-      },
-      true
-    );
+    const target = `${plan.module} ${plan.variant}`;
+    const completion = await runBuildGuarded(plan.task, { headerLines: [plan.plan] }, true);
 
     const phase = buildState.phase;
     if (phase !== "success") {
@@ -537,7 +524,7 @@ export async function runAndDeploy(): Promise<void> {
     assertSameProject(projectGeneration);
     logStep(`Searching for the APK of ${target}…`);
     const buildId = completion?.success ? completion.recordId : null;
-    const apk = await findApkPath(variant, { module, buildId });
+    const apk = await findApkPath(plan.variant, { module: plan.module, buildId });
     assertSameProject(projectGeneration);
     logStep(describeRunApk(apk));
     const apkPath = apk.path;
@@ -550,6 +537,15 @@ export async function runAndDeploy(): Promise<void> {
     const installStart = Date.now();
     const installOutput = await installApkOnDevice(serial, apkPath);
     logStep(`Install: ${installOutput.trim()} (${formatDuration(Date.now() - installStart)})`);
+    // A Last used target prefers this device next time.
+    recordRunDevice(plan.name, serial).catch((err) => {
+      console.error("[build] Failed to record the run's device:", err);
+    });
+
+    if (plan.launch.kind === "none") {
+      logStep(`Run configuration '${plan.name}' installs only — not launching.`);
+      return;
+    }
 
     // 4. Launch — resolve the exact package name of this APK (aapt2, or the
     // variant's output metadata). The project's base applicationId is not a
@@ -564,24 +560,7 @@ export async function runAndDeploy(): Promise<void> {
     }
 
     if (packageName) {
-      logStep(`adb shell am start -W (package: ${packageName})`);
-      // The launch time is recorded on the build this deploy ran, named by
-      // its own build:complete, never on whichever build finished last.
-      const launch = await launchAppOnDevice(serial, packageName, { buildId });
-      logStep(`Launch: ${launch.output.trim()}`);
-      setLastLaunchedAt(Date.now(), packageName);
-      logStep(
-        launch.timing
-          ? `Launch time: ${[formatLaunchTime(launch.timing), ...describeDisplayTimes(launch.timing)].join(" · ")}`
-          : "Launch time: not reported by this launch method"
-      );
-      if (launch.timing && buildId !== null) {
-        getBuildHistory()
-          .then(setBuildHistory)
-          .catch((err) => {
-            console.error("[build] Failed to reload build history:", err);
-          });
-      }
+      await launchPlan(plan, serial, packageName, buildId);
     } else {
       logStep(
         "APK installed. Could not determine package name — cannot auto-launch. " +
@@ -596,6 +575,91 @@ export async function runAndDeploy(): Promise<void> {
     setDeployPhase(null);
     deployInFlight = false;
     showObservedRunWhenIdle();
+  }
+}
+
+/**
+ * Build Only: build the active run configuration's task, with no device,
+ * install, or launch.
+ */
+export async function runBuildOnly(): Promise<void> {
+  assertProjectTrusted();
+  if (deployInFlight) throw new Error("A build or deploy is already running.");
+  let plan: ResolvedRun;
+  try {
+    plan = await resolveRunConfiguration({ buildOnly: true });
+  } catch (e) {
+    logError(`Build failed: ${formatError(e)}`);
+    throw e;
+  }
+  await runBuild(plan.task, { headerLines: [plan.plan] });
+}
+
+/**
+ * Resolve the active run configuration. When its target is Ask or Last used
+ * and no device is online for it, ask for one with the device picker; null
+ * when the user cancels.
+ */
+async function resolveRunPlan(buildOnly: boolean): Promise<ResolvedRun | null> {
+  try {
+    // The app's selection may be one the device list chose, not yet the backend's.
+    return await resolveRunConfiguration({ buildOnly, selectedSerial: deviceState.selectedSerial });
+  } catch (e) {
+    if (buildOnly || !(await targetCanBePicked(e))) throw e;
+  }
+  // Import lazily to avoid circular deps.
+  const { showDevicePicker } = await import("@/components/device/DevicePickerDialog");
+  const serial = await showDevicePicker();
+  if (!serial) return null;
+  return resolveRunConfiguration({ selectedSerial: serial });
+}
+
+/** The run found no device, and its target lets the user pick one. */
+async function targetCanBePicked(error: unknown): Promise<boolean> {
+  if (!isAppErrorKind(error, "notFound")) return false;
+  const { active, local } = await listRunConfigurations();
+  if (!active) return false;
+  // A configuration without local state targets the last used device.
+  const kind = local[active]?.target.kind ?? "lastUsed";
+  return kind === "ask" || kind === "lastUsed";
+}
+
+/** Launch the installed app the way the run configuration says. */
+async function launchPlan(
+  plan: ResolvedRun,
+  serial: string,
+  packageName: string,
+  buildId: number | null
+): Promise<void> {
+  const launch = plan.launch;
+  if (launch.kind === "deepLink") {
+    logStep(`adb shell am start -a android.intent.action.VIEW -d ${launch.uri} -p ${packageName}`);
+    const output = await openDeepLinkOnDevice(serial, launch.uri, packageName);
+    logStep(`Launch: ${output.trim()}`);
+    setLastLaunchedAt(Date.now(), packageName, plan.logcatFilter);
+    logStep("Launch time: not reported for a deep link");
+    return;
+  }
+  const activity = launch.kind === "activity" ? launch.name : undefined;
+  logStep(
+    `adb shell am start -W (${activity ? `${packageName}/${activity}` : `package: ${packageName}`})`
+  );
+  // The launch time is recorded on the build this deploy ran, named by its
+  // own build:complete, never on whichever build finished last.
+  const result = await launchAppOnDevice(serial, packageName, { activity, buildId });
+  logStep(`Launch: ${result.output.trim()}`);
+  setLastLaunchedAt(Date.now(), packageName, plan.logcatFilter);
+  logStep(
+    result.timing
+      ? `Launch time: ${[formatLaunchTime(result.timing), ...describeDisplayTimes(result.timing)].join(" · ")}`
+      : "Launch time: not reported by this launch method"
+  );
+  if (result.timing && buildId !== null) {
+    getBuildHistory()
+      .then(setBuildHistory)
+      .catch((err) => {
+        console.error("[build] Failed to reload build history:", err);
+      });
   }
 }
 
@@ -627,23 +691,6 @@ export async function cancelBuild(): Promise<void> {
     // would otherwise release it is already cleared.
     run?.resolve({ success: false, durationMs: 0, recordId: null });
   }
-}
-
-/**
- * Show the device picker dialog if no online device is selected, then
- * return the serial of the chosen device. Returns null if the user cancels.
- */
-async function resolveDevice(): Promise<string | null> {
-  // Check if currently selected device is online.
-  const serial = deviceState.selectedSerial;
-  if (serial) {
-    const dev = deviceState.devices.find((d) => d.serial === serial);
-    if (dev?.connectionState === "online") return serial;
-  }
-
-  // Import lazily to avoid circular deps.
-  const { showDevicePicker } = await import("@/components/device/DevicePickerDialog");
-  return showDevicePicker();
 }
 
 /**
@@ -734,12 +781,6 @@ function assertSameProject(generation: number): void {
 /** Emit a visible error into the build log AND the Problems tab. */
 function logError(message: string): void {
   addBuildLine({ kind: "error", content: message, file: null, line: null, col: null });
-}
-
-/** `:mobile:assembleDebug`; the root project's task has no prefix. */
-function assembleTask(module: string, variant: string): string {
-  const task = `assemble${capitalize(variant)}`;
-  return module === ":" ? task : `${module}:${task}`;
 }
 
 /** Which build wrote the APK Run App installs. */

@@ -41,10 +41,12 @@ import type {
   ProjectAppInfo,
   ProjectEntry,
   ProjectRunConfigurations,
+  ResolvedRun,
   RetraceOutcome,
   RetraceStatus,
   RunApk,
   RunConfiguration,
+  RunDevice,
   RunLaunch,
   SdkDownloadProgress,
   SystemHealthReport,
@@ -417,11 +419,90 @@ export const typeFixtures = {
       }
     },
     {
+      "active": "Default",
+      "configurations": [
+        {
+          "launch": {
+            "kind": "default"
+          },
+          "logcatFilter": null,
+          "module": ":app",
+          "name": "Default",
+          "task": null,
+          "variant": "debug"
+        }
+      ],
+      "local": {
+        "Default": {
+          "approvedProjectFileSha256": null,
+          "lastDevice": "emulator-5554",
+          "target": {
+            "kind": "lastUsed"
+          }
+        }
+      }
+    },
+    {
       "active": null,
       "configurations": [],
       "local": {}
     }
   ] satisfies Wire<ProjectRunConfigurations>[],
+  ResolvedRun: [
+    {
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "launch": {
+        "kind": "default"
+      },
+      "logcatFilter": null,
+      "module": ":app",
+      "name": "Default",
+      "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+      "task": ":app:assembleDebug",
+      "variant": "debug"
+    },
+    {
+      "device": {
+        "label": "Pixel 7",
+        "serial": "28151FDH2000Q4"
+      },
+      "launch": {
+        "kind": "deepLink",
+        "uri": "myapp://home"
+      },
+      "logcatFilter": "package:mine level:warn",
+      "module": ":wear",
+      "name": "Wear deep link",
+      "plan": "Run 'Wear deep link': build :wear:bundleFreeRelease → install this build's APK → open myapp://home on Pixel 7 → filter package:mine level:warn",
+      "task": ":wear:bundleFreeRelease",
+      "variant": "freeRelease"
+    },
+    {
+      "device": null,
+      "launch": {
+        "kind": "default"
+      },
+      "logcatFilter": null,
+      "module": ":app",
+      "name": "Default",
+      "plan": "Build 'Default': build :app:assembleDebug",
+      "task": ":app:assembleDebug",
+      "variant": "debug"
+    }
+  ] satisfies Wire<ResolvedRun>[],
+  RunDevice: [
+    {
+      "label": "Pixel_7",
+      "serial": "emulator-5554"
+    },
+    {
+      "label": "Pixel 7",
+      "serial": "28151FDH2000Q4"
+    }
+  ] satisfies Wire<RunDevice>[],
   ProjectAppInfo: [
     {
       "applicationId": "com.example.app",

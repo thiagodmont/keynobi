@@ -27,6 +27,8 @@ export interface BuildStoreState {
   deployPhase: DeployPhase;
   lastLaunchedAt: number | null;
   lastLaunchedPackage: string | null;
+  /** The run configuration's logcat filter for that launch; null for `package:mine`. */
+  lastLaunchedFilter: string | null;
   /** Who started the build shown (the app, or an agent). */
   origin: BuildActor | null;
   /** Who cancelled it, once cancelled. */
@@ -85,6 +87,7 @@ const [buildState, setBuildState] = createStore<BuildStoreState>({
   deployPhase: null,
   lastLaunchedAt: null,
   lastLaunchedPackage: null,
+  lastLaunchedFilter: null,
   origin: null,
   cancelledBy: null,
   viewedHistoryId: null,
@@ -303,10 +306,15 @@ export function setDeployPhase(phase: DeployPhase): void {
   setBuildState("deployPhase", phase);
 }
 
-export function setLastLaunchedAt(ts: number, packageName: string | null = null): void {
+export function setLastLaunchedAt(
+  ts: number,
+  packageName: string | null = null,
+  logcatFilter: string | null = null
+): void {
   setBuildState({
     lastLaunchedAt: ts,
     lastLaunchedPackage: packageName,
+    lastLaunchedFilter: logcatFilter,
   });
 }
 
@@ -348,6 +356,7 @@ export function clearBuild(): void {
     deployPhase: null,
     lastLaunchedAt: null,
     lastLaunchedPackage: null,
+    lastLaunchedFilter: null,
     origin: null,
     cancelledBy: null,
     viewedHistoryId: null,

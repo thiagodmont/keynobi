@@ -81,3 +81,35 @@ pub struct ProjectRunConfigurations {
     /// Local state by configuration name.
     pub local: BTreeMap<String, LocalRunState>,
 }
+
+/// A run configuration checked against the project and the connected devices:
+/// what Run builds, where it installs, and what it launches
+/// (`resolve_run_configuration`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct ResolvedRun {
+    /// The configuration's name.
+    pub name: String,
+    pub module: String,
+    pub variant: String,
+    /// The Gradle task to build: the configuration's, else
+    /// `:<module>:assemble<Variant>`.
+    pub task: String,
+    pub launch: RunLaunch,
+    pub logcat_filter: Option<String>,
+    /// The online device to install on; `None` for a build-only plan.
+    pub device: Option<RunDevice>,
+    /// The plan in one line, for the build log.
+    pub plan: String,
+}
+
+/// The device a run installs on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct RunDevice {
+    pub serial: String,
+    /// The AVD name, else the model, else the serial.
+    pub label: String,
+}

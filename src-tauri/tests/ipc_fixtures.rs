@@ -769,6 +769,54 @@ fn run_configurations() -> Vec<RunConfiguration> {
     ]
 }
 
+fn resolved_runs() -> Vec<ResolvedRun> {
+    vec![
+        ResolvedRun {
+            name: "Default".into(),
+            module: ":app".into(),
+            variant: "debug".into(),
+            task: ":app:assembleDebug".into(),
+            launch: RunLaunch::Default,
+            logcat_filter: None,
+            device: Some(RunDevice {
+                serial: "emulator-5554".into(),
+                label: "Pixel_7".into(),
+            }),
+            plan: "Run 'Default': build :app:assembleDebug → install this build's APK → launch \
+                   the app on Pixel_7 → filter package:mine"
+                .into(),
+        },
+        ResolvedRun {
+            name: "Wear deep link".into(),
+            module: ":wear".into(),
+            variant: "freeRelease".into(),
+            task: ":wear:bundleFreeRelease".into(),
+            launch: RunLaunch::DeepLink {
+                uri: "myapp://home".into(),
+            },
+            logcat_filter: Some("package:mine level:warn".into()),
+            device: Some(RunDevice {
+                serial: "28151FDH2000Q4".into(),
+                label: "Pixel 7".into(),
+            }),
+            plan: "Run 'Wear deep link': build :wear:bundleFreeRelease → install this build's \
+                   APK → open myapp://home on Pixel 7 → filter package:mine level:warn"
+                .into(),
+        },
+        // Build Only.
+        ResolvedRun {
+            name: "Default".into(),
+            module: ":app".into(),
+            variant: "debug".into(),
+            task: ":app:assembleDebug".into(),
+            launch: RunLaunch::Default,
+            logcat_filter: None,
+            device: None,
+            plan: "Build 'Default': build :app:assembleDebug".into(),
+        },
+    ]
+}
+
 fn target_preferences() -> Vec<TargetPreference> {
     vec![
         TargetPreference::Ask,
@@ -919,8 +967,30 @@ fn fixtures() -> Fixtures {
                 active: migrated().active_run_configuration,
                 local: migrated().run_local,
             },
+            // After a run recorded the device it installed on.
+            ProjectRunConfigurations {
+                configurations: migrated().run_configurations.unwrap_or_default(),
+                active: migrated().active_run_configuration,
+                local: [(
+                    "Default".to_string(),
+                    LocalRunState {
+                        last_device: Some("emulator-5554".into()),
+                        ..LocalRunState::default()
+                    },
+                )]
+                .into_iter()
+                .collect(),
+            },
             ProjectRunConfigurations::default(),
         ],
+    );
+    f.add("ResolvedRun", &resolved_runs());
+    f.add(
+        "RunDevice",
+        &resolved_runs()
+            .into_iter()
+            .filter_map(|r| r.device)
+            .collect::<Vec<_>>(),
     );
     f.add(
         "ProjectAppInfo",

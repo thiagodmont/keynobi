@@ -129,9 +129,9 @@ Common actions:
 
 Builds need a trusted project; in Safe Mode every build action is disabled (see [Project trust and Safe Mode](#project-trust-and-safe-mode)).
 
-- `Cmd+R` or **Run App**: build, install, and launch the app on the selected device. Run App builds only the project's application module, whatever its name (`:mobile:assembleDebug`, or `assembleDebug` when the app is the root project); in a project with several application modules (for example a phone and a watch app), Run App stops with the list of modules. It installs the APK that build wrote for the selected variant, and the log names the build: **APK (build #12)**. When Gradle found the APK up to date and did not rewrite it, the log says **APK unchanged since build #9** (the build that wrote it); an APK of another variant or module is never installed. The build log ends with the launch time Android measured (`am start -W`), for example **Launch time: 812 ms (cold) · displayed 790 ms**; the display times appear when Logcat is streaming that device (see below). When Keynobi had to fall back to another way of starting the app, the log says no launch time was reported.
-- `Cmd+Shift+R`: build only.
-- `Cmd+Shift+V`, or click the variant pill in the status bar: choose the active build variant.
+- `Cmd+R` or **Run App**: build, install, and launch the app, as the project's active run configuration says. A project starts with a configuration named **Default** for its application module, whatever the module's name, with the variant you choose, the device you last ran on (else the selected one), and the app's launcher activity; a configuration can instead build another task of the module, run on a given device or AVD, launch an activity or open a deep link (or not launch at all), and apply its own Logcat filter. The first line of the build log is the plan, for example **Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine**. Run App builds only that module (`:mobile:assembleDebug`, or `assembleDebug` when the app is the root project). In a project with several application modules (for example a phone and a watch app), there is one configuration per module and none is active until you choose one; until then Run App stops with the list of configurations. When no device is online for the run, Keynobi asks you to pick one; when the configuration runs on an AVD that is not running, Run App stops and says so. It installs the APK that build wrote for the configuration's variant, and the log names the build: **APK (build #12)**. When Gradle found the APK up to date and did not rewrite it, the log says **APK unchanged since build #9** (the build that wrote it); an APK of another variant or module is never installed. The build log ends with the launch time Android measured (`am start -W`), for example **Launch time: 812 ms (cold) · displayed 790 ms**; the display times appear when Logcat is streaming that device (see below). When Keynobi had to fall back to another way of starting the app, or opened a deep link, the log says no launch time was reported. After the launch, the Logcat filter becomes the configuration's filter, or `package:mine` is added to it.
+- `Cmd+Shift+R` or **Build Only**: build the active run configuration's task, without installing.
+- `Cmd+Shift+V`, or click the variant pill in the status bar: choose the build variant of the active run configuration.
 - **Clean Project** from the Command Palette: run the Gradle `clean` task.
 - **Cancel Build** from the Command Palette or the title bar: stop the running Gradle task, including one an AI client started.
 
@@ -448,8 +448,8 @@ Exact tools, prompts, and resources are discoverable from the MCP client.
 | `Cmd+Shift+W` | Open Setup Wizard |
 | `Cmd+,` | Open Settings |
 | `Cmd+O` | Open Folder (add project) |
-| `Cmd+R` | Run App: build, install, launch |
-| `Cmd+Shift+R` | Build Only (no deploy) |
+| `Cmd+R` | Run App: build, install, and launch the active run configuration |
+| `Cmd+Shift+R` | Build Only: build the active run configuration (no deploy) |
 | `Cmd+Shift+V` | Select Build Variant |
 | `Cmd+1` | Build tab |
 | `Cmd+2` | Logcat tab |

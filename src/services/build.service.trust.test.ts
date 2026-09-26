@@ -1,6 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import { runAndDeploy, runBuild, resetBuildServiceForTests } from "@/services/build.service";
+import {
+  runAndDeploy,
+  runBuild,
+  runBuildOnly,
+  resetBuildServiceForTests,
+} from "@/services/build.service";
 import { buildState, resetBuildState } from "@/stores/build.store";
 import { setProject, setProjectState } from "@/stores/project.store";
 import { setProjects } from "@/stores/projects.store";
@@ -43,8 +48,10 @@ describe("builds in Safe Mode", () => {
       await expect(runBuild()).rejects.toThrow("Safe Mode — trust this project to build");
       await expect(runBuild("clean")).rejects.toThrow("Trust Project");
       await expect(runAndDeploy()).rejects.toThrow("Safe Mode");
+      await expect(runBuildOnly()).rejects.toThrow("Safe Mode");
 
       expect(mockInvoke.mock.calls.map(([cmd]) => cmd)).not.toContain("run_gradle_task");
+      expect(mockInvoke.mock.calls.map(([cmd]) => cmd)).not.toContain("resolve_run_configuration");
       expect(buildState.phase).toBe("idle");
     });
   }

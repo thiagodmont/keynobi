@@ -35,6 +35,7 @@ pub mod project_trust;
 pub mod retrace;
 pub mod retrace_match;
 pub mod run_configurations;
+pub mod run_plan;
 pub mod settings_manager;
 #[cfg(feature = "telemetry")]
 pub mod telemetry_sentry;

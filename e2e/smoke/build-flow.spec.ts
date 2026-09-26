@@ -67,24 +67,98 @@ deployTest("Run App records the launch time on the build it installed", async ({
   );
 });
 
-deployTest("Run App builds the application module and installs the APK that build wrote", async ({
-  page,
-}) => {
+deployTest(
+  "Run App builds the application module and installs the APK that build wrote",
+  async ({ page }) => {
+    await selectMockProject(page);
+    await page.getByRole("tab", { name: "Build" }).click();
+    await page
+      .getByTitle(/^Run App/)
+      .first()
+      .click();
+
+    await expect(
+      page.getByText(
+        "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_6_API_34 → filter package:mine"
+      )
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/^▶ APK \(build #\d+\): .*app-debug\.apk$/)).toBeVisible({
+      timeout: 10_000,
+    });
+    const history = (await page.evaluate(() => window.__e2e__.invoke("get_build_history"))) as {
+      task: string;
+    }[];
+    expect(history.map((record) => record.task)).toContain(":app:assembleDebug");
+  }
+);
+
+/** Save a configuration of the mock project and make it the active one. */
+async function activateConfiguration(
+  page: import("@playwright/test").Page,
+  config: Record<string, unknown>
+): Promise<void> {
+  await page.evaluate(async (config) => {
+    await window.__e2e__.invoke("save_run_configuration", { config });
+    await window.__e2e__.invoke("set_active_run_configuration", { name: config.name });
+  }, config);
+}
+
+const settingsConfiguration = {
+  name: "Settings",
+  module: ":app",
+  variant: "release",
+  task: null,
+  launch: { kind: "activity", name: ".SettingsActivity" },
+  logcatFilter: "package:mine level:warn",
+};
+
+deployTest("Run App runs the active run configuration and shows its plan", async ({ page }) => {
   await selectMockProject(page);
+  await activateConfiguration(page, settingsConfiguration);
   await page.getByRole("tab", { name: "Build" }).click();
+
   await page
     .getByTitle(/^Run App/)
     .first()
     .click();
 
-  await expect(page.getByText(/^── Deploy: :app debug → /)).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText(/^▶ APK \(build #\d+\): .*app-debug\.apk$/)).toBeVisible({
+  await expect(
+    page.getByText(
+      "Run 'Settings': build :app:assembleRelease → install this build's APK → launch .SettingsActivity on Pixel_6_API_34 → filter package:mine level:warn"
+    )
+  ).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/^▶ APK \(build #\d+\): .*app-release\.apk$/)).toBeVisible({
     timeout: 10_000,
   });
+  await expect(
+    page.getByText("▶ adb shell am start -W (com.example.mockapp.debug/.SettingsActivity)")
+  ).toBeVisible({ timeout: 10_000 });
   const history = (await page.evaluate(() => window.__e2e__.invoke("get_build_history"))) as {
     task: string;
   }[];
-  expect(history.map((record) => record.task)).toContain(":app:assembleDebug");
+  expect(history.map((record) => record.task)).toContain(":app:assembleRelease");
+  // The run remembers the device it installed on.
+  const configurations = (await page.evaluate(() =>
+    window.__e2e__.invoke("list_run_configurations")
+  )) as { local: Record<string, { lastDevice: string | null }> };
+  expect(configurations.local.Settings?.lastDevice).toBe("emulator-5554");
+});
+
+test("Build Only builds the active run configuration's task", async ({ page }) => {
+  await selectMockProject(page);
+  await activateConfiguration(page, settingsConfiguration);
+  await page.getByRole("tab", { name: "Build" }).click();
+
+  await page.getByTitle(/Build only/i).click();
+
+  await expect(page.getByText("Build 'Settings': build :app:assembleRelease")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByText(/BUILD SUCCESSFUL in 4s/i)).toBeVisible({ timeout: 10_000 });
+  const history = (await page.evaluate(() => window.__e2e__.invoke("get_build_history"))) as {
+    task: string;
+  }[];
+  expect(history.map((record) => record.task)).toEqual([":app:assembleRelease"]);
 });
 
 deployTest("a past build says which device Run App installed it on", async ({ page }) => {

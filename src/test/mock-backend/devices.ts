@@ -45,6 +45,11 @@ export const mockAvd: AvdInfo = {
 
 let selectedDevice: string | null = null;
 
+/** The connected devices and the backend's selection, for run resolution. */
+export function mockDeviceSelection(): { devices: Device[]; selected: string | null } {
+  return { devices: [...mockDevices], selected: selectedDevice };
+}
+
 function mockExitRecord(
   time: string,
   pid: number,
@@ -186,6 +191,10 @@ export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
       return { output: "Status: ok\nLaunchState: COLD\nTotalTime: 812\nWaitTime: 815", timing };
     },
     stop_app_on_device: () => undefined,
+    open_deep_link_on_device: (args: unknown) => {
+      const { uri, package: pkg } = args as { uri: string; package: string };
+      return `Starting: Intent { act=android.intent.action.VIEW dat=${uri} pkg=${pkg} }`;
+    },
     get_exit_reasons: (args: unknown) => {
       const { serial, package: pkg } = (args ?? {}) as { serial?: string; package?: string | null };
       return mockExitReasons(serial ?? mockEmulator.serial, pkg ?? null);
