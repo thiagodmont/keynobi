@@ -64,6 +64,8 @@ src/bindings/RunApk.ts
   s_1e114e823b9048::t_c8d62483b2963c 1-7,9-20
 src/lib/tauri-api.ts
   s_1e114e823b9048::t_2f5851693477d0 185,232-255,296-297,305-306
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_effc1d39533633 132
 ---
 {
   "schema_version": "authorship/3.0.0",
