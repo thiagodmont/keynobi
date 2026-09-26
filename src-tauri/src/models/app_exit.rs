@@ -82,7 +82,7 @@ impl AppExitReason {
 }
 
 /// One recorded process exit (`dumpsys activity exit-info`).
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct AppExitRecord {

@@ -2,7 +2,9 @@
 import type { BuildActor } from "./BuildActor";
 import type { DebugSessionBookmark } from "./DebugSessionBookmark";
 import type { DebugSessionBuild } from "./DebugSessionBuild";
+import type { DebugSessionCrash } from "./DebugSessionCrash";
 import type { DebugSessionDeviceChange } from "./DebugSessionDeviceChange";
+import type { DebugSessionExit } from "./DebugSessionExit";
 import type { DebugSessionInstall } from "./DebugSessionInstall";
 import type { DebugSessionLaunch } from "./DebugSessionLaunch";
 import type { DebugSessionLogcatChange } from "./DebugSessionLogcatChange";
@@ -23,4 +25,4 @@ at: string,
 /**
  * Who caused it, when known.
  */
-actor: BuildActor | null, } & ({ "kind": "build", "data": DebugSessionBuild } | { "kind": "install", "data": DebugSessionInstall } | { "kind": "launch", "data": DebugSessionLaunch } | { "kind": "launchTiming", "data": LaunchTiming } | { "kind": "logcatReconnect", "data": DebugSessionLogcatChange } | { "kind": "logcatStopped", "data": DebugSessionLogcatChange } | { "kind": "logcatCleared", "data": DebugSessionLogcatChange } | { "kind": "deviceOffline", "data": DebugSessionDeviceChange } | { "kind": "deviceOnline", "data": DebugSessionDeviceChange } | { "kind": "bookmark", "data": DebugSessionBookmark });
+actor: BuildActor | null, } & ({ "kind": "build", "data": DebugSessionBuild } | { "kind": "install", "data": DebugSessionInstall } | { "kind": "launch", "data": DebugSessionLaunch } | { "kind": "launchTiming", "data": LaunchTiming } | { "kind": "logcatReconnect", "data": DebugSessionLogcatChange } | { "kind": "logcatStopped", "data": DebugSessionLogcatChange } | { "kind": "logcatCleared", "data": DebugSessionLogcatChange } | { "kind": "deviceOffline", "data": DebugSessionDeviceChange } | { "kind": "deviceOnline", "data": DebugSessionDeviceChange } | { "kind": "bookmark", "data": DebugSessionBookmark } | { "kind": "crash", "data": DebugSessionCrash } | { "kind": "anr", "data": DebugSessionCrash } | { "kind": "exit", "data": DebugSessionExit });

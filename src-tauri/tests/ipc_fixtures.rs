@@ -347,6 +347,7 @@ fn debug_sessions() -> Vec<DebugSession> {
                 anrs: 0,
                 exits: 0,
                 bookmarks: 1,
+                captures: 1,
             },
             last_event_at: TIME.into(),
             event_count: 4,
@@ -386,6 +387,27 @@ fn debug_sessions() -> Vec<DebugSession> {
             bytes: 310,
         },
     ]
+}
+
+/// A process exit of `com.example.app` with every field.
+fn session_exit_record(reason: AppExitReason) -> AppExitRecord {
+    AppExitRecord {
+        timestamp: Some("2026-09-25 10:32:01.310".into()),
+        timestamp_local: Some("2026-09-25T10:32:01.310".into()),
+        pid: Some(31020),
+        process_name: Some("com.example.app".into()),
+        reason,
+        reason_code: Some(4),
+        reason_label: Some("APP CRASH(EXCEPTION)".into()),
+        sub_reason_code: Some(0),
+        sub_reason: Some("UNKNOWN".into()),
+        status: Some(0),
+        importance: Some(100),
+        importance_name: Some("foreground".into()),
+        pss_kb: Some(56_320),
+        rss_kb: Some(130_048),
+        description: Some("crash".into()),
+    }
 }
 
 /// One event of every kind, with and without optional values.
@@ -428,6 +450,65 @@ fn debug_session_events() -> Vec<DebugSessionEvent> {
         DebugSessionEventData::Bookmark(DebugSessionBookmark {
             note: "Slow start".into(),
             log_entry_id: None,
+        }),
+        DebugSessionEventData::Crash(DebugSessionCrash {
+            serial: "emulator-5554".into(),
+            pid: Some(31020),
+            summary: "java.lang.RuntimeException: boom".into(),
+            signature: "9f86d081884c7d65".into(),
+            received_at: TIME.into(),
+            device_time: "09-25 10:32:01.100".into(),
+            attribution: DebugSessionAttribution {
+                method: DebugSessionAttributionMethod::InstallRecord,
+                verified: true,
+                reason: Some(
+                    "confirmed by the device: versionCode 42, last updated 2026-09-25 10:32:00"
+                        .into(),
+                ),
+            },
+            capture: Some(DebugSessionCaptureRef {
+                entries: 504,
+                bytes: 131_072,
+                truncated: false,
+            }),
+            dropped_lines: 0,
+        }),
+        DebugSessionEventData::Anr(DebugSessionCrash {
+            serial: "emulator-5554".into(),
+            pid: None,
+            summary: "ANR in com.example.app (com.example.app/.MainActivity)".into(),
+            signature: "2c26b46b68ffc68f".into(),
+            received_at: TIME.into(),
+            device_time: "09-25 10:40:12.004".into(),
+            attribution: DebugSessionAttribution {
+                method: DebugSessionAttributionMethod::Unattributed,
+                verified: false,
+                reason: None,
+            },
+            capture: None,
+            dropped_lines: 1_200,
+        }),
+        DebugSessionEventData::Exit(DebugSessionExit {
+            serial: "emulator-5554".into(),
+            exited_at: TIME.into(),
+            matched_by: DebugSessionExitMatch::Pid,
+            record: session_exit_record(AppExitReason::Crash),
+        }),
+        DebugSessionEventData::Exit(DebugSessionExit {
+            serial: "emulator-5554".into(),
+            exited_at: TIME.into(),
+            matched_by: DebugSessionExitMatch::TimeWindow,
+            record: AppExitRecord {
+                pid: None,
+                process_name: None,
+                ..session_exit_record(AppExitReason::Anr)
+            },
+        }),
+        DebugSessionEventData::Exit(DebugSessionExit {
+            serial: "emulator-5554".into(),
+            exited_at: TIME.into(),
+            matched_by: DebugSessionExitMatch::ProcessName,
+            record: session_exit_record(AppExitReason::LowMemory),
         }),
     ];
     events
@@ -1002,11 +1083,53 @@ fn fixtures() -> Fixtures {
                 session: debug_sessions().remove(0),
                 events: debug_session_events(),
                 events_truncated: true,
+                crashes: debug_session_events()
+                    .into_iter()
+                    .filter(|e| {
+                        matches!(
+                            e.event,
+                            DebugSessionEventData::Crash(_) | DebugSessionEventData::Anr(_)
+                        )
+                    })
+                    .collect(),
             },
             DebugSessionDetail {
                 session: debug_sessions().remove(1),
                 events: vec![],
                 events_truncated: false,
+                crashes: vec![],
+            },
+        ],
+    );
+    f.add(
+        "DebugSessionCapture",
+        &[
+            DebugSessionCapture {
+                seq: 12,
+                entries: processed_entries(),
+                truncated: true,
+            },
+            DebugSessionCapture {
+                seq: 13,
+                entries: vec![],
+                truncated: false,
+            },
+        ],
+    );
+    f.add(
+        "DebugSessionExitRefresh",
+        &[
+            DebugSessionExitRefresh {
+                added: 2,
+                message: None,
+            },
+            DebugSessionExitRefresh {
+                added: 0,
+                message: Some(
+                    "Process exit reasons need Android 11 (API 30) or later; R5CT1234ABC runs \
+                     API 29."
+                        .into(),
+                ),
             },
         ],
     );

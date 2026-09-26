@@ -195,6 +195,28 @@ impl LogStore {
             .collect()
     }
 
+    /// Up to `limit` entries of crash group `crash_group_id`, in order, among
+    /// the `scan` entries that start at `anchor_id`.
+    pub fn crash_group_from(
+        &self,
+        anchor_id: u64,
+        crash_group_id: u64,
+        scan: usize,
+        limit: usize,
+    ) -> Vec<ProcessedEntry> {
+        let Some(anchor_index) = self.index_of(anchor_id) else {
+            return Vec::new();
+        };
+        self.entries
+            .iter()
+            .skip(anchor_index)
+            .take(scan)
+            .filter(|entry| entry.crash_group_id == Some(crash_group_id))
+            .take(limit)
+            .cloned()
+            .collect()
+    }
+
     /// Return up to `limit` entries immediately after `anchor_id`, in chronological order.
     pub fn context_after(&self, anchor_id: u64, limit: usize) -> Vec<ProcessedEntry> {
         let Some(anchor_index) = self.index_of(anchor_id) else {

@@ -501,7 +501,7 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 | `~/.keynobi/build-history.json`, `~/.keynobi/build-logs/` | Build history and build logs |
 | `~/.keynobi/mappings/` | Copies of the R8 mappings of builds in the history and of builds installed on devices |
 | `~/.keynobi/installed-builds.json` | Which build Keynobi last installed on each device, per app |
-| `~/.keynobi/sessions/` | Debug sessions: one per install on a device, with its launches, logcat and device connection changes, and bookmarks (not shown in the app yet). Removed after the debug session retention period or when the folder passes its size limit, oldest first, and at most 50 are kept |
+| `~/.keynobi/sessions/` | Debug sessions: one per install on a device, with its launches, crashes and ANRs (with up to 1,000 log lines around each of the first 10), the process exits Android recorded, logcat and device connection changes, and bookmarks (not shown in the app yet). A crash of an app Keynobi did not install, or reinstalled elsewhere, goes to a session without a build. Removed after the debug session retention period or when the folder passes its size limit, oldest first, and at most 50 are kept |
 | `~/.keynobi/retrace/` | The crash stack being deobfuscated, only while `retrace` reads it |
 | `~/.keynobi/mcp-activity.jsonl` | Recent AI client activity |
 | `~/.keynobi/mcp.sock`, `~/.keynobi/mcp-sessions/` | The socket AI clients attach through while Keynobi is open, and a record per standalone MCP server |

@@ -1,7 +1,9 @@
 //! Debug sessions: one install epoch of one build on one device, per package.
 //! See `services/debug_sessions.rs` for storage and retention.
 
+use crate::models::app_exit::AppExitRecord;
 use crate::models::build::{BuildActor, LaunchTiming};
+use crate::models::logcat::ProcessedEntry;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -99,6 +101,8 @@ pub struct DebugSessionCounts {
     pub anrs: u32,
     pub exits: u32,
     pub bookmarks: u32,
+    /// Crashes and ANRs whose log lines were kept.
+    pub captures: u32,
 }
 
 /// A session's manifest, `sessions/<id>/session.json`.
@@ -235,6 +239,93 @@ pub struct DebugSessionBookmark {
     pub log_entry_id: Option<u64>,
 }
 
+/// How a crash was matched to its session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub enum DebugSessionAttributionMethod {
+    /// The session of Keynobi's install of the package on the device.
+    InstallRecord,
+    /// No Keynobi install could be trusted: the crash went to a session
+    /// without a build.
+    Unattributed,
+}
+
+/// Why a crash belongs to its session's build, and whether the device
+/// confirmed it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DebugSessionAttribution {
+    pub method: DebugSessionAttributionMethod,
+    /// The device still ran Keynobi's install when the crash was recorded.
+    pub verified: bool,
+    /// What the device said, or why it was not asked or not believed.
+    pub reason: Option<String>,
+}
+
+/// The log lines kept with a crash: `captures/crash-<seq>.jsonl`, named by
+/// the crash event's `seq`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DebugSessionCaptureRef {
+    pub entries: u32,
+    #[ts(type = "number")]
+    pub bytes: u64,
+    /// Lines around the crash were left out by the capture caps.
+    pub truncated: bool,
+}
+
+/// A crash or ANR that logcat showed for the session's app.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DebugSessionCrash {
+    pub serial: String,
+    pub pid: Option<u32>,
+    /// The exception (`java.lang.RuntimeException: boom`) or the ANR line.
+    pub summary: String,
+    /// Hash of the crash's first log line, which with the device, package,
+    /// pid, and time identifies one crash seen by several processes.
+    pub signature: String,
+    /// When the first line reached Keynobi (host clock).
+    pub received_at: String,
+    /// The first line's time as logcat printed it (device local time, no year).
+    pub device_time: String,
+    pub attribution: DebugSessionAttribution,
+    /// `None` past `MAX_CAPTURES_PER_SESSION`, or when no line was left to keep.
+    pub capture: Option<DebugSessionCaptureRef>,
+    /// Logcat lines dropped by the stream so far (a flood), when it was captured.
+    #[ts(type = "number")]
+    pub dropped_lines: u64,
+}
+
+/// How an exit record was matched to the session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub enum DebugSessionExitMatch {
+    /// Its pid is one the session's crashes named.
+    Pid,
+    /// Its process is the package's main process.
+    ProcessName,
+    /// Only its time falls within the session.
+    TimeWindow,
+}
+
+/// A process exit Android recorded for the session's app (Android 11+).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DebugSessionExit {
+    pub serial: String,
+    /// The exit time on the host clock, from the device's local time and UTC offset.
+    pub exited_at: String,
+    pub matched_by: DebugSessionExitMatch,
+    pub record: AppExitRecord,
+}
+
 /// What happened, by kind.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", content = "data", rename_all = "camelCase")]
@@ -252,6 +343,9 @@ pub enum DebugSessionEventData {
     DeviceOffline(DebugSessionDeviceChange),
     DeviceOnline(DebugSessionDeviceChange),
     Bookmark(DebugSessionBookmark),
+    Crash(DebugSessionCrash),
+    Anr(DebugSessionCrash),
+    Exit(DebugSessionExit),
 }
 
 /// One line of `sessions/<id>/events.jsonl`.
@@ -279,4 +373,31 @@ pub struct DebugSessionDetail {
     pub events: Vec<DebugSessionEvent>,
     /// Whether older events were left out.
     pub events_truncated: bool,
+    /// The session's crash and ANR events, even those older than `events`,
+    /// oldest first; at most `MAX_CRASHES_RETURNED`, the newest.
+    pub crashes: Vec<DebugSessionEvent>,
+}
+
+/// The log lines kept with a crash (`get_session_capture`).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DebugSessionCapture {
+    /// The crash event's `seq`.
+    pub seq: u32,
+    /// Oldest first, ending with the crash's own lines.
+    pub entries: Vec<ProcessedEntry>,
+    /// Older lines of the capture were left out by the requested limit.
+    pub truncated: bool,
+}
+
+/// What reading a session's exit reasons found.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DebugSessionExitRefresh {
+    /// Exit events added to the session.
+    pub added: u32,
+    /// Why nothing could be read (Android 10 or older), when so.
+    pub message: Option<String>,
 }

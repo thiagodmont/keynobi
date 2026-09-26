@@ -1,5 +1,6 @@
 import type { LogcatFilterSpec, ProcessedEntry, LogStats, RetraceOutcome } from "@/bindings";
 import { triggerEvent } from "./events";
+import { recordMockCrashes } from "./sessions";
 
 let logcatRunning = false;
 let streamInterval: ReturnType<typeof setInterval> | null = null;
@@ -236,6 +237,7 @@ export function logcatHandlers(): Record<string, (args: unknown) => unknown> {
       const { entries } = args as { entries?: ProcessedEntry[] };
       const nextEntries = entries ?? [];
       storedEntries = [...storedEntries, ...nextEntries];
+      recordMockCrashes(nextEntries, storedEntries);
       triggerEvent("logcat:entries", filterEntries(nextEntries, activeFilter));
     },
     retrace_crash: (args: unknown) => retraceCrash(args),

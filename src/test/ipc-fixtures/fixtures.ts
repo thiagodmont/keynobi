@@ -15,8 +15,10 @@ import type {
   BuildStatus,
   BuiltApk,
   DebugSession,
+  DebugSessionCapture,
   DebugSessionDetail,
   DebugSessionEvent,
+  DebugSessionExitRefresh,
   DebugSessionSummary,
   Device,
   DeviceDefinition,
@@ -1149,6 +1151,7 @@ export const typeFixtures = {
       "counts": {
         "anrs": 0,
         "bookmarks": 1,
+        "captures": 1,
         "crashes": 0,
         "exits": 0,
         "launches": 1
@@ -1185,6 +1188,7 @@ export const typeFixtures = {
       "counts": {
         "anrs": 0,
         "bookmarks": 0,
+        "captures": 0,
         "crashes": 0,
         "exits": 0,
         "launches": 0
@@ -1227,6 +1231,7 @@ export const typeFixtures = {
       "counts": {
         "anrs": 0,
         "bookmarks": 1,
+        "captures": 1,
         "crashes": 0,
         "exits": 0,
         "launches": 1
@@ -1261,6 +1266,7 @@ export const typeFixtures = {
       "counts": {
         "anrs": 0,
         "bookmarks": 0,
+        "captures": 0,
         "crashes": 0,
         "exits": 0,
         "launches": 0
@@ -1454,10 +1460,196 @@ export const typeFixtures = {
       },
       "kind": "bookmark",
       "seq": 12
+    },
+    {
+      "actor": {
+        "kind": "app"
+      },
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "attribution": {
+          "method": "installRecord",
+          "reason": "confirmed by the device: versionCode 42, last updated 2026-09-25 10:32:00",
+          "verified": true
+        },
+        "capture": {
+          "bytes": 131072,
+          "entries": 504,
+          "truncated": false
+        },
+        "deviceTime": "09-25 10:32:01.100",
+        "droppedLines": 0,
+        "pid": 31020,
+        "receivedAt": "2026-04-23T10:00:00Z",
+        "serial": "emulator-5554",
+        "signature": "9f86d081884c7d65",
+        "summary": "java.lang.RuntimeException: boom"
+      },
+      "kind": "crash",
+      "seq": 13
+    },
+    {
+      "actor": null,
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "attribution": {
+          "method": "unattributed",
+          "reason": null,
+          "verified": false
+        },
+        "capture": null,
+        "deviceTime": "09-25 10:40:12.004",
+        "droppedLines": 1200,
+        "pid": null,
+        "receivedAt": "2026-04-23T10:00:00Z",
+        "serial": "emulator-5554",
+        "signature": "2c26b46b68ffc68f",
+        "summary": "ANR in com.example.app (com.example.app/.MainActivity)"
+      },
+      "kind": "anr",
+      "seq": 14
+    },
+    {
+      "actor": {
+        "kind": "app"
+      },
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "exitedAt": "2026-04-23T10:00:00Z",
+        "matchedBy": "pid",
+        "record": {
+          "description": "crash",
+          "importance": 100,
+          "importanceName": "foreground",
+          "pid": 31020,
+          "processName": "com.example.app",
+          "pssKb": 56320,
+          "reason": "crash",
+          "reasonCode": 4,
+          "reasonLabel": "APP CRASH(EXCEPTION)",
+          "rssKb": 130048,
+          "status": 0,
+          "subReason": "UNKNOWN",
+          "subReasonCode": 0,
+          "timestamp": "2026-09-25 10:32:01.310",
+          "timestampLocal": "2026-09-25T10:32:01.310"
+        },
+        "serial": "emulator-5554"
+      },
+      "kind": "exit",
+      "seq": 15
+    },
+    {
+      "actor": null,
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "exitedAt": "2026-04-23T10:00:00Z",
+        "matchedBy": "timeWindow",
+        "record": {
+          "description": "crash",
+          "importance": 100,
+          "importanceName": "foreground",
+          "pid": null,
+          "processName": null,
+          "pssKb": 56320,
+          "reason": "anr",
+          "reasonCode": 4,
+          "reasonLabel": "APP CRASH(EXCEPTION)",
+          "rssKb": 130048,
+          "status": 0,
+          "subReason": "UNKNOWN",
+          "subReasonCode": 0,
+          "timestamp": "2026-09-25 10:32:01.310",
+          "timestampLocal": "2026-09-25T10:32:01.310"
+        },
+        "serial": "emulator-5554"
+      },
+      "kind": "exit",
+      "seq": 16
+    },
+    {
+      "actor": {
+        "kind": "app"
+      },
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "exitedAt": "2026-04-23T10:00:00Z",
+        "matchedBy": "processName",
+        "record": {
+          "description": "crash",
+          "importance": 100,
+          "importanceName": "foreground",
+          "pid": 31020,
+          "processName": "com.example.app",
+          "pssKb": 56320,
+          "reason": "lowMemory",
+          "reasonCode": 4,
+          "reasonLabel": "APP CRASH(EXCEPTION)",
+          "rssKb": 130048,
+          "status": 0,
+          "subReason": "UNKNOWN",
+          "subReasonCode": 0,
+          "timestamp": "2026-09-25 10:32:01.310",
+          "timestampLocal": "2026-09-25T10:32:01.310"
+        },
+        "serial": "emulator-5554"
+      },
+      "kind": "exit",
+      "seq": 17
     }
   ] satisfies Wire<DebugSessionEvent>[],
   DebugSessionDetail: [
     {
+      "crashes": [
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "attribution": {
+              "method": "installRecord",
+              "reason": "confirmed by the device: versionCode 42, last updated 2026-09-25 10:32:00",
+              "verified": true
+            },
+            "capture": {
+              "bytes": 131072,
+              "entries": 504,
+              "truncated": false
+            },
+            "deviceTime": "09-25 10:32:01.100",
+            "droppedLines": 0,
+            "pid": 31020,
+            "receivedAt": "2026-04-23T10:00:00Z",
+            "serial": "emulator-5554",
+            "signature": "9f86d081884c7d65",
+            "summary": "java.lang.RuntimeException: boom"
+          },
+          "kind": "crash",
+          "seq": 13
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "attribution": {
+              "method": "unattributed",
+              "reason": null,
+              "verified": false
+            },
+            "capture": null,
+            "deviceTime": "09-25 10:40:12.004",
+            "droppedLines": 1200,
+            "pid": null,
+            "receivedAt": "2026-04-23T10:00:00Z",
+            "serial": "emulator-5554",
+            "signature": "2c26b46b68ffc68f",
+            "summary": "ANR in com.example.app (com.example.app/.MainActivity)"
+          },
+          "kind": "anr",
+          "seq": 14
+        }
+      ],
       "events": [
         {
           "actor": {
@@ -1627,6 +1819,142 @@ export const typeFixtures = {
           },
           "kind": "bookmark",
           "seq": 12
+        },
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "attribution": {
+              "method": "installRecord",
+              "reason": "confirmed by the device: versionCode 42, last updated 2026-09-25 10:32:00",
+              "verified": true
+            },
+            "capture": {
+              "bytes": 131072,
+              "entries": 504,
+              "truncated": false
+            },
+            "deviceTime": "09-25 10:32:01.100",
+            "droppedLines": 0,
+            "pid": 31020,
+            "receivedAt": "2026-04-23T10:00:00Z",
+            "serial": "emulator-5554",
+            "signature": "9f86d081884c7d65",
+            "summary": "java.lang.RuntimeException: boom"
+          },
+          "kind": "crash",
+          "seq": 13
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "attribution": {
+              "method": "unattributed",
+              "reason": null,
+              "verified": false
+            },
+            "capture": null,
+            "deviceTime": "09-25 10:40:12.004",
+            "droppedLines": 1200,
+            "pid": null,
+            "receivedAt": "2026-04-23T10:00:00Z",
+            "serial": "emulator-5554",
+            "signature": "2c26b46b68ffc68f",
+            "summary": "ANR in com.example.app (com.example.app/.MainActivity)"
+          },
+          "kind": "anr",
+          "seq": 14
+        },
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "exitedAt": "2026-04-23T10:00:00Z",
+            "matchedBy": "pid",
+            "record": {
+              "description": "crash",
+              "importance": 100,
+              "importanceName": "foreground",
+              "pid": 31020,
+              "processName": "com.example.app",
+              "pssKb": 56320,
+              "reason": "crash",
+              "reasonCode": 4,
+              "reasonLabel": "APP CRASH(EXCEPTION)",
+              "rssKb": 130048,
+              "status": 0,
+              "subReason": "UNKNOWN",
+              "subReasonCode": 0,
+              "timestamp": "2026-09-25 10:32:01.310",
+              "timestampLocal": "2026-09-25T10:32:01.310"
+            },
+            "serial": "emulator-5554"
+          },
+          "kind": "exit",
+          "seq": 15
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "exitedAt": "2026-04-23T10:00:00Z",
+            "matchedBy": "timeWindow",
+            "record": {
+              "description": "crash",
+              "importance": 100,
+              "importanceName": "foreground",
+              "pid": null,
+              "processName": null,
+              "pssKb": 56320,
+              "reason": "anr",
+              "reasonCode": 4,
+              "reasonLabel": "APP CRASH(EXCEPTION)",
+              "rssKb": 130048,
+              "status": 0,
+              "subReason": "UNKNOWN",
+              "subReasonCode": 0,
+              "timestamp": "2026-09-25 10:32:01.310",
+              "timestampLocal": "2026-09-25T10:32:01.310"
+            },
+            "serial": "emulator-5554"
+          },
+          "kind": "exit",
+          "seq": 16
+        },
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "exitedAt": "2026-04-23T10:00:00Z",
+            "matchedBy": "processName",
+            "record": {
+              "description": "crash",
+              "importance": 100,
+              "importanceName": "foreground",
+              "pid": 31020,
+              "processName": "com.example.app",
+              "pssKb": 56320,
+              "reason": "lowMemory",
+              "reasonCode": 4,
+              "reasonLabel": "APP CRASH(EXCEPTION)",
+              "rssKb": 130048,
+              "status": 0,
+              "subReason": "UNKNOWN",
+              "subReasonCode": 0,
+              "timestamp": "2026-09-25 10:32:01.310",
+              "timestampLocal": "2026-09-25T10:32:01.310"
+            },
+            "serial": "emulator-5554"
+          },
+          "kind": "exit",
+          "seq": 17
         }
       ],
       "eventsTruncated": true,
@@ -1657,6 +1985,7 @@ export const typeFixtures = {
         "counts": {
           "anrs": 0,
           "bookmarks": 1,
+          "captures": 1,
           "crashes": 0,
           "exits": 0,
           "launches": 1
@@ -1687,6 +2016,7 @@ export const typeFixtures = {
       }
     },
     {
+      "crashes": [],
       "events": [],
       "eventsTruncated": false,
       "session": {
@@ -1697,6 +2027,7 @@ export const typeFixtures = {
         "counts": {
           "anrs": 0,
           "bookmarks": 0,
+          "captures": 0,
           "crashes": 0,
           "exits": 0,
           "launches": 0
@@ -1730,6 +2061,61 @@ export const typeFixtures = {
       }
     }
   ] satisfies Wire<DebugSessionDetail>[],
+  DebugSessionCapture: [
+    {
+      "entries": [
+        {
+          "category": "general",
+          "crashGroupId": 41,
+          "flags": 5,
+          "id": 41,
+          "isCrash": true,
+          "jsonBody": "{\"ok\":false}",
+          "kind": "normal",
+          "level": "error",
+          "message": "FATAL EXCEPTION: main",
+          "package": "com.example.app",
+          "pid": 1234,
+          "tag": "AndroidRuntime",
+          "tid": 1236,
+          "timestamp": "2026-04-23T10:00:02.000Z"
+        },
+        {
+          "category": "lifecycle",
+          "crashGroupId": null,
+          "flags": 0,
+          "id": 42,
+          "isCrash": false,
+          "jsonBody": null,
+          "kind": "processDied",
+          "level": "info",
+          "message": "Process com.example.app has died",
+          "package": null,
+          "pid": 1300,
+          "tag": "ActivityManager",
+          "tid": 1300,
+          "timestamp": "2026-04-23T10:00:03.000Z"
+        }
+      ],
+      "seq": 12,
+      "truncated": true
+    },
+    {
+      "entries": [],
+      "seq": 13,
+      "truncated": false
+    }
+  ] satisfies Wire<DebugSessionCapture>[],
+  DebugSessionExitRefresh: [
+    {
+      "added": 2,
+      "message": null
+    },
+    {
+      "added": 0,
+      "message": "Process exit reasons need Android 11 (API 30) or later; R5CT1234ABC runs API 29."
+    }
+  ] satisfies Wire<DebugSessionExitRefresh>[],
   LaunchState: [
     "cold",
     "warm",
