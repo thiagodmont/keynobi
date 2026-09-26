@@ -63,11 +63,11 @@ pub const EXIT_READ_DELAY: Duration = Duration::from_secs(5);
 #[cfg(test)]
 pub const EXIT_READ_DELAY: Duration = Duration::from_millis(50);
 
-const CAPTURES_DIR: &str = "captures";
+pub(super) const CAPTURES_DIR: &str = "captures";
 /// Temporary captures are written as `sessions/capture.jsonl.<pid>.<n>.tmp`.
 pub(super) const CAPTURE_TMP: &str = "capture.jsonl";
 
-fn capture_file(seq: u32) -> String {
+pub(super) fn capture_file(seq: u32) -> String {
     format!("crash-{seq}.jsonl")
 }
 
@@ -802,6 +802,7 @@ fn unattributed_locked(
         event_count: 0,
         dropped_events: 0,
         bytes: 0,
+        imported: None,
     };
     save_manifest(data_dir, &session)?;
     index.push(DebugSessionSummary::from(&session));
@@ -992,12 +993,12 @@ pub async fn refresh_exit_reasons(
     refresh_exit_reasons_in(&data_dir(), id, adb).await
 }
 
-async fn refresh_exit_reasons_in(
+pub(super) async fn refresh_exit_reasons_in(
     data_dir: &Path,
     id: &str,
     adb: &Path,
 ) -> Result<DebugSessionExitRefresh, AppError> {
-    checked_id(id)?;
+    checked_recorded_id(id)?;
     let session = read_manifest(data_dir, id).map_err(|_| not_found(id))?;
     let serial = session.device.serial.clone();
     validate_device_serial(&serial).map_err(AppError::InvalidInput)?;

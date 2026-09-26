@@ -152,6 +152,8 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 
 A debug session is one install of the app on a device, by Keynobi or `install_apk`, and what happened to it until the next install (`DOMAIN_PATTERNS.md` § Debug Sessions). The tools read the session files in the data directory through the service functions the app's commands use (`debug_sessions::list_for_agent`, `session_for_agent`, `compare_sessions`), so attached and standalone servers see the same sessions.
 
+Sessions the user imported from a bundle in the app (`i-` ids, read-only) are listed after the recorded ones with the state `imported`, match no `state` filter, and are accepted wherever a session id is: `get_debug_session` returns them with `recorded_by: "imported"` and `imported` (the bundle's file name, export time, original id, Keynobi version, and what it left out), and `compare_debug_sessions` compares one with a recorded session. They are never picked for the default pair. There is no tool to import a bundle, so no agent names a path.
+
 | Tool | Kind | Notes |
 |------|------|-------|
 | `list_debug_sessions` | R | `limit?` (default 10, max 50), `package?`, `device_serial?` (a serial or an AVD name), `state?` (`open`, `closed`, `superseded`, `ended`, `idle`; anything else is `invalid_params`), `only_crashing?`. One line per session, newest first: id, state, package and device, build (`build #12 :app debug`, `no build record`, or `unattributed`), the APK's SHA-256 prefix, when it opened and closed (or its last event), crash, ANR, exit, and launch counts, and whether it is kept or was recorded by a standalone server; then how many matched. |

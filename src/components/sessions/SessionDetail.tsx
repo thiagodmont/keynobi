@@ -20,6 +20,7 @@ import type {
 } from "@/bindings";
 import {
   addSessionBookmark,
+  deleteImportedDebugSession,
   endDebugSession,
   formatError,
   getDebugSession,
@@ -33,6 +34,8 @@ import {
   crashOf,
   exportResultLabel,
   formatSessionTime,
+  importSummaryLabel,
+  isImported,
   isUnattributed,
   sessionBuildLabel,
   sessionCountsLabel,
@@ -54,9 +57,10 @@ type DetailState =
   | { kind: "loaded"; detail: DebugSessionDetail }
   | { kind: "error"; message: string };
 
-type Action = "keep" | "end" | "bookmark" | "exits";
+type Action = "keep" | "end" | "bookmark" | "exits" | "delete";
 
 const BUSY_LABELS: Record<Action, string> = {
+  delete: "Deleting the session…",
   keep: "Saving…",
   end: "Ending the session…",
   bookmark: "Adding the bookmark…",
@@ -103,6 +107,7 @@ export function SessionDetail(props: {
   const [actionNote, setActionNote] = createSignal<string | null>(null);
   const [note, setNote] = createSignal("");
   const [exporting, setExporting] = createSignal(false);
+  const [confirmingDelete, setConfirmingDelete] = createSignal(false);
   let request = 0;
 
   async function load(): Promise<void> {
@@ -139,6 +144,10 @@ export function SessionDetail(props: {
   const summary = () => props.summary();
   const open = () => summary()?.closedAt === null;
   const kept = () => summary()?.kept ?? false;
+  const imported = () => {
+    const s = summary();
+    return s !== null && isImported(s);
+  };
 
   const noteLength = () => [...note().trim()].length;
   const noteError = () =>
@@ -208,6 +217,24 @@ export function SessionDetail(props: {
     });
   }
 
+  // The button clicked goes away, so focus moves to what replaced it.
+  function confirmDelete(on: boolean): void {
+    setConfirmingDelete(on);
+    queueMicrotask(() => {
+      const buttons = actionsEl?.querySelectorAll<HTMLElement>("button");
+      buttons?.[on ? buttons.length - 1 : 0]?.focus();
+    });
+  }
+
+  function deleteImported(): Promise<void> {
+    const id = props.id;
+    setConfirmingDelete(false);
+    return run("delete", async () => {
+      await deleteImportedDebugSession(id);
+      return null;
+    });
+  }
+
   function activate(event: DebugSessionEvent): void {
     setSelectedSeq(event.seq);
     if (crashOf(event)?.capture) setCaptureSeq(event.seq);
@@ -220,9 +247,18 @@ export function SessionDetail(props: {
           <div class={styles.detailHeader}>
             <div class={styles.detailTitle}>
               <h3 class={styles.package}>{s().package}</h3>
-              <Badge size="xs" variant={stateVariant(sessionState(s()))}>
-                {STATE_LABELS[sessionState(s())]}
-              </Badge>
+              <Show
+                when={isImported(s())}
+                fallback={
+                  <Badge size="xs" variant={stateVariant(sessionState(s()))}>
+                    {STATE_LABELS[sessionState(s())]}
+                  </Badge>
+                }
+              >
+                <Badge size="xs" variant="info" title="Imported from a bundle; read-only">
+                  Imported
+                </Badge>
+              </Show>
               <Show when={s().kept}>
                 <Badge size="xs" variant="accent">
                   Kept
@@ -301,45 +337,78 @@ export function SessionDetail(props: {
         )}
       </Show>
 
+      <Show when={detail()?.session.imported}>
+        {(origin) => (
+          <Alert variant="info" title="Imported session, read-only">
+            {importSummaryLabel(origin())} Redaction is best effort.
+          </Alert>
+        )}
+      </Show>
+
       <div class={styles.actions} ref={actionsEl}>
-        <Button
-          variant={kept() ? "primary" : "outline"}
-          size="xs"
-          ariaPressed={kept()}
-          title="A kept session is not removed by age and keeps its R8 mapping (at most 5)"
-          onClick={() => void toggleKept()}
-        >
-          Keep
-        </Button>
-        <Button
-          variant="outline"
-          size="xs"
-          disabled={!open()}
-          title={open() ? "Close this session; the next install opens a new one" : "Closed"}
-          onClick={() => void endSession()}
-        >
-          End session
-        </Button>
-        <Button
-          variant="outline"
-          size="xs"
-          title="Read why the app's processes exited from the device (Android 11+)"
-          onClick={() => void refreshExits()}
-        >
-          Refresh exit reasons
-        </Button>
-        <Button
-          variant="outline"
-          size="xs"
-          title="Save this session as a .zip to share, with personal data redacted"
-          onClick={() => {
-            setActionError(null);
-            setActionNote(null);
-            setExporting(true);
-          }}
-        >
-          Export…
-        </Button>
+        <Show when={imported()}>
+          <Show
+            when={confirmingDelete()}
+            fallback={
+              <Button
+                variant="outline"
+                size="xs"
+                title="Remove this imported session from Keynobi"
+                onClick={() => confirmDelete(true)}
+              >
+                Delete
+              </Button>
+            }
+          >
+            <span class={styles.note}>Delete this imported session?</span>
+            <Button variant="danger" size="xs" onClick={() => void deleteImported()}>
+              Delete session
+            </Button>
+            <Button variant="secondary" size="xs" onClick={() => confirmDelete(false)}>
+              Cancel
+            </Button>
+          </Show>
+        </Show>
+        <Show when={!imported()}>
+          <Button
+            variant={kept() ? "primary" : "outline"}
+            size="xs"
+            ariaPressed={kept()}
+            title="A kept session is not removed by age and keeps its R8 mapping (at most 5)"
+            onClick={() => void toggleKept()}
+          >
+            Keep
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={!open()}
+            title={open() ? "Close this session; the next install opens a new one" : "Closed"}
+            onClick={() => void endSession()}
+          >
+            End session
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
+            title="Read why the app's processes exited from the device (Android 11+)"
+            onClick={() => void refreshExits()}
+          >
+            Refresh exit reasons
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
+            title="Save this session as a .zip to share, with personal data redacted"
+            onClick={() => {
+              setActionError(null);
+              setActionNote(null);
+              setExporting(true);
+            }}
+          >
+            Export…
+          </Button>
+        </Show>
       </div>
       <Show when={exporting()}>
         <SessionExportDialog
@@ -352,33 +421,35 @@ export function SessionDetail(props: {
         />
       </Show>
 
-      <div class={styles.bookmark}>
-        <Input
-          class={styles.bookmarkInput}
-          size="xs"
-          value={note()}
-          placeholder={open() ? "Note what you just did or saw" : "This session is closed"}
-          ariaLabel="Bookmark note"
-          inputRef={(el) => (noteInput = el)}
-          state={noteError() ? "error" : undefined}
-          disabled={!open()}
-          onInput={setNote}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void addBookmark();
-          }}
-        />
-        <span class={styles.noteCount} aria-hidden="true">
-          {noteLength()}/{MAX_BOOKMARK_NOTE_CHARS}
-        </span>
-        <Button
-          variant="outline"
-          size="xs"
-          disabled={!open() || noteLength() === 0 || noteError() !== null}
-          onClick={() => void addBookmark()}
-        >
-          Add bookmark
-        </Button>
-      </div>
+      <Show when={!imported()}>
+        <div class={styles.bookmark}>
+          <Input
+            class={styles.bookmarkInput}
+            size="xs"
+            value={note()}
+            placeholder={open() ? "Note what you just did or saw" : "This session is closed"}
+            ariaLabel="Bookmark note"
+            inputRef={(el) => (noteInput = el)}
+            state={noteError() ? "error" : undefined}
+            disabled={!open()}
+            onInput={setNote}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void addBookmark();
+            }}
+          />
+          <span class={styles.noteCount} aria-hidden="true">
+            {noteLength()}/{MAX_BOOKMARK_NOTE_CHARS}
+          </span>
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={!open() || noteLength() === 0 || noteError() !== null}
+            onClick={() => void addBookmark()}
+          >
+            Add bookmark
+          </Button>
+        </div>
+      </Show>
       <Show when={noteError()}>
         {(message) => (
           <div class={styles.fieldError} role="alert">

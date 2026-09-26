@@ -52,7 +52,7 @@ pub struct Bundle {
 
 /// `keynobi-session-<package>-<opened date>.zip`, for the save dialog.
 pub fn export_file_name(id: &str) -> Result<String, AppError> {
-    checked_id(id)?;
+    checked_recorded_id(id)?;
     let session = read_session_in(&data_dir(), id, Utc::now())?;
     let date: String = session
         .opened_at
@@ -139,7 +139,7 @@ fn collect_serials(value: &Value, out: &mut Vec<String>) {
 }
 
 /// A kept log line as logcat's `threadtime` format prints it.
-fn log_line(entry: &ProcessedEntry) -> String {
+pub(super) fn log_line(entry: &ProcessedEntry) -> String {
     format!(
         "{} {:>5} {:>5} {} {}: {}",
         entry.timestamp,
@@ -166,7 +166,7 @@ pub(super) fn build_bundle_in(
     home: Option<String>,
     now: DateTime<Utc>,
 ) -> Result<Bundle, AppError> {
-    checked_id(id)?;
+    checked_recorded_id(id)?;
     let session = read_session_in(data_dir, id, now)?;
     let events = read_events(data_dir, id)?;
     let event_values: Vec<Value> = events

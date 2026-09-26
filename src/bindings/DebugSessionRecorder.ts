@@ -3,4 +3,4 @@
 /**
  * Which kind of Keynobi process opened the session.
  */
-export type DebugSessionRecorder = "app" | "standalone";
+export type DebugSessionRecorder = "app" | "standalone" | "imported";

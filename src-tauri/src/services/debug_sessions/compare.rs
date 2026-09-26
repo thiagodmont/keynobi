@@ -221,6 +221,7 @@ fn compared(session: &DebugSession) -> ComparedSession {
         recorded_by: match session.recorded_by {
             DebugSessionRecorder::App => "app",
             DebugSessionRecorder::Standalone => "standalone",
+            DebugSessionRecorder::Imported => "imported",
         },
         launches: session.counts.launches,
         crashes: session.counts.crashes,
@@ -680,6 +681,7 @@ mod tests {
             event_count: 0,
             dropped_events: 0,
             bytes: 0,
+            imported: None,
         }
     }
 

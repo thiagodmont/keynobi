@@ -46,6 +46,7 @@ mod agent;
 mod compare;
 mod crashes;
 mod export;
+mod import;
 pub use agent::{
     agent_line, list_for_agent, session_for_agent, AgentSessionRequest, SessionFilter, StateFilter,
     DEFAULT_AGENT_EVENTS, DEFAULT_AGENT_LOG_LINES, DEFAULT_AGENT_SESSIONS, MAX_AGENT_CRASHES,
@@ -60,6 +61,10 @@ pub use crashes::{
 pub use export::{
     export_file_name, export_session_to, BUNDLE_VERSION, MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRIES,
     MAX_BUNDLE_ENTRY_BYTES, MAX_BUNDLE_UNCOMPRESSED_BYTES,
+};
+pub use import::{
+    delete_imported_session, import_session_from, imports_dir, is_imported_id,
+    list_imported_sessions, MAX_BUNDLE_COMPRESSION_RATIO, MAX_IMPORTED_SESSIONS, MAX_IMPORTS_BYTES,
 };
 
 // ── Caps ──────────────────────────────────────────────────────────────────────
@@ -103,9 +108,19 @@ pub fn sessions_dir(data_dir: &Path) -> PathBuf {
     data_dir.join(SESSIONS_DIR)
 }
 
-/// Callers validated `id` with `validate_debug_session_id`.
+/// Callers validated `id` with `validate_debug_session_id`. An imported
+/// session's folder is under `imports/`.
 fn session_dir(data_dir: &Path, id: &str) -> PathBuf {
-    sessions_dir(data_dir).join(id)
+    if is_imported_id(id) {
+        imports_dir(data_dir).join(id)
+    } else {
+        sessions_dir(data_dir).join(id)
+    }
+}
+
+/// Whether `name` is the id of a recorded (not imported) session.
+fn is_recorded_id(name: &str) -> bool {
+    !is_imported_id(name) && validate_debug_session_id(name).is_ok()
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -138,7 +153,7 @@ fn rebuild_index(data_dir: &Path) -> Vec<DebugSessionSummary> {
     let mut sessions: Vec<DebugSessionSummary> = entries
         .flatten()
         .filter_map(|entry| entry.file_name().to_str().map(str::to_owned))
-        .filter(|name| validate_debug_session_id(name).is_ok())
+        .filter(|name| is_recorded_id(name))
         .take(MAX_SESSIONS * 2)
         .filter_map(|id| read_manifest(data_dir, &id).ok())
         .map(|session| DebugSessionSummary::from(&session))
@@ -497,10 +512,7 @@ fn remove_orphans(data_dir: &Path, index: &[DebugSessionSummary]) {
         if !old {
             continue;
         }
-        if meta.is_dir()
-            && validate_debug_session_id(&name).is_ok()
-            && !index.iter().any(|s| s.id == name)
-        {
+        if meta.is_dir() && is_recorded_id(&name) && !index.iter().any(|s| s.id == name) {
             let _ = std::fs::remove_dir_all(entry.path());
         } else if meta.is_file()
             && (name.starts_with(INDEX_FILE) || name.starts_with(crashes::CAPTURE_TMP))
@@ -588,8 +600,13 @@ fn append_locked(
     session.event_count += 1;
     session.bytes += line.len() as u64;
     session.last_event_at = at;
-    let counts = &mut session.counts;
-    match &recorded.event {
+    count_event(&mut session.counts, &recorded.event);
+    Ok(Append::Recorded(Box::new(recorded)))
+}
+
+/// Add `event` to the counts of its kind.
+fn count_event(counts: &mut DebugSessionCounts, event: &DebugSessionEventData) {
+    match event {
         DebugSessionEventData::Launch(_) => counts.launches += 1,
         DebugSessionEventData::Bookmark(_) => counts.bookmarks += 1,
         DebugSessionEventData::Crash(crash) => {
@@ -604,7 +621,6 @@ fn append_locked(
         DebugSessionEventData::AgentAction(_) => counts.agent_actions += 1,
         _ => {}
     }
-    Ok(Append::Recorded(Box::new(recorded)))
 }
 
 /// Append `event` to the open sessions on `target` (of `package`, when
@@ -742,6 +758,7 @@ fn open_in(
             event_count: 0,
             dropped_events: 0,
             bytes: 0,
+            imported: None,
         };
         if let Some(build) = build {
             let actor = build.origin.clone();
@@ -1209,9 +1226,28 @@ fn checked_id(id: &str) -> Result<(), AppError> {
     validate_debug_session_id(id).map_err(AppError::InvalidInput)
 }
 
+/// [`checked_id`], refusing an imported session, which is read-only.
+fn checked_recorded_id(id: &str) -> Result<(), AppError> {
+    checked_id(id)?;
+    if is_imported_id(id) {
+        return Err(AppError::InvalidInput(format!(
+            "Debug session {id} was imported and is read-only"
+        )));
+    }
+    Ok(())
+}
+
 /// Every session, newest first, at most [`MAX_SESSIONS`].
 pub fn list_sessions() -> Vec<DebugSessionSummary> {
     list_sessions_in(&data_dir(), Utc::now())
+}
+
+/// The recorded sessions, newest first, then the imported ones, newest
+/// import first.
+pub fn list_all_sessions() -> Vec<DebugSessionSummary> {
+    let mut sessions = list_sessions();
+    sessions.extend(list_imported_sessions());
+    sessions
 }
 
 fn list_sessions_in(data_dir: &Path, now: DateTime<Utc>) -> Vec<DebugSessionSummary> {
@@ -1250,13 +1286,14 @@ fn get_session_in(
 }
 
 /// Session `id`'s manifest as a reader sees it: an idle session is closed.
+/// An imported session is shown as it was exported.
 fn read_session_in(
     data_dir: &Path,
     id: &str,
     now: DateTime<Utc>,
 ) -> Result<DebugSession, AppError> {
     let mut session = read_manifest(data_dir, id).map_err(|_| not_found(id))?;
-    if session.closed_at.is_none() {
+    if session.closed_at.is_none() && !is_imported_id(id) {
         if let Some(at) = idle_closed_at(&session.last_event_at, now) {
             session.closed_at = Some(stamp(at));
             session.close_reason = Some(DebugSessionCloseReason::Idle);
@@ -1288,7 +1325,7 @@ fn update_session_in(
     now: DateTime<Utc>,
     change: impl FnOnce(&mut Vec<DebugSessionSummary>, usize) -> Result<(), AppError>,
 ) -> Result<(), AppError> {
-    checked_id(id)?;
+    checked_recorded_id(id)?;
     with_data_lock_in(data_dir, || {
         let mut index = load_index_locked(data_dir, now);
         let i = index
@@ -1385,7 +1422,7 @@ fn add_bookmark_in(
         )));
     }
     if let Some(id) = session_id {
-        checked_id(id)?;
+        checked_recorded_id(id)?;
     }
     with_data_lock_in(data_dir, || {
         let mut index = load_index_locked(data_dir, now);

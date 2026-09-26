@@ -66,6 +66,7 @@ export type { DebugSessionEventData } from "./DebugSessionEventData";
 export type { DebugSessionExit } from "./DebugSessionExit";
 export type { DebugSessionExitMatch } from "./DebugSessionExitMatch";
 export type { DebugSessionExitRefresh } from "./DebugSessionExitRefresh";
+export type { DebugSessionImport } from "./DebugSessionImport";
 export type { SessionExportOptions } from "./SessionExportOptions";
 export type { SessionExportOmission } from "./SessionExportOmission";
 export type { SessionExportResult } from "./SessionExportResult";

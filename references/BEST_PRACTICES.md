@@ -68,6 +68,7 @@ All persistent app data lives under `~/.keynobi/`, resolved by `settings_manager
 | `mappings/<sha256>.txt` | Copies of the R8 mappings successful builds wrote, named by content and listed on their history records and on the installs that pin them. |
 | `installed-builds.json` | What Keynobi last installed on each device, per package, and the build that produced it. |
 | `sessions/index.json`, `sessions/<id>/session.json`, `sessions/<id>/events.jsonl`, `sessions/<id>/captures/crash-<seq>.jsonl` | Debug sessions: a summary of each, its manifest, its appended timeline, and the log lines kept with its crashes. |
+| `imports/<id>/session.json`, `events.jsonl`, `captures/crash-<seq>.jsonl` | Debug sessions imported from a bundle (`i-` ids): the same files, rewritten from what the bundle held, created new with mode `0600`, `session.json` last. Nothing else reads them for attribution, mapping pins, or retention. |
 | `retrace/` | The crash trace `retrace` reads: a private file per call, removed when the call returns (and, if a process died mid-call, after an hour). |
 | `mcp-activity.jsonl` | MCP activity log (appended and rotated under the data lock). |
 | `mcp.sock` | Socket the app serves attached MCP sessions on (`0600`; the data directory is `0700`). |
@@ -121,7 +122,7 @@ Tauri capabilities and IPC commands should expose only what the app needs. Prefe
 
 Current surface (`src-tauri/capabilities/default.json`, `src-tauri/tauri.conf.json`):
 
-- The webview has no filesystem permissions and no fs plugin. Its only dialog permission is `dialog:allow-open`, used for the Open Project folder picker, which returns a path string. Everything that reads or writes files runs in Rust behind typed commands, including logcat export (`export_logcat` shows the save dialog and writes the file) and debug session export (`export_debug_session`).
+- The webview has no filesystem permissions and no fs plugin. Its only dialog permission is `dialog:allow-open`, used for the Open Project folder picker, which returns a path string. Everything that reads or writes files runs in Rust behind typed commands, including logcat export (`export_logcat` shows the save dialog and writes the file) and debug session export and import (`export_debug_session` shows the save dialog, `import_debug_session` the open dialog, and each reads or writes the file in Rust).
 - No shell plugin: the frontend cannot spawn processes.
 - The CSP allows scripts from `'self'` only, and network connections only to the IPC endpoint, `api.github.com` (update check), and Sentry ingest (opt-in crash reports).
 - Any new capability or CSP origin needs a stated reason in the PR.
@@ -165,6 +166,7 @@ Every long-lived collection, in memory or on disk, must have an explicit, named 
 | Build log files | Age, orphan, and folder-size pruning (settings) |
 | R8 mapping snapshots | `MAX_MAPPING_BYTES` (256 MiB per file), `MAX_MAPPINGS_PER_BUILD` (8), `MAX_MAPPING_SNAPSHOTS` (32 files) unpinned; unreferenced snapshots are pruned with the history, and snapshots installed builds name are never pruned |
 | Exported debug session bundle | `MAX_BUNDLE_ENTRIES` (64 files), `MAX_BUNDLE_ENTRY_BYTES` (16 MiB per file), `MAX_BUNDLE_UNCOMPRESSED_BYTES` (100 MiB), `MAX_BUNDLE_BYTES` (50 MiB zip) |
+| Imported debug session bundle | The bundle caps above, counted while inflating, and `MAX_BUNDLE_COMPRESSION_RATIO` (200 times, past the first MiB of an entry); then the caps of a recorded session (`MAX_EVENTS_PER_SESSION`, `MAX_SESSION_BYTES`, `MAX_CAPTURES_PER_SESSION`, `MAX_CAPTURE_ENTRIES`, `MAX_CAPTURE_BYTES`), the rest listed as omitted; `MAX_IMPORTED_SESSIONS` (20) and `MAX_IMPORTS_BYTES` (200 MiB) in all, past which an import is refused |
 | Build provenance | `MAX_PROVENANCE_BUILD_FILES` (16 build files hashed per build), `MAX_HASHED_BUILD_FILE_BYTES` (4 MiB per file), `MAX_BRANCH_CHARS` (255); `git status` under `GIT_STATUS_TIMEOUT` (5 s) |
 | Installed builds | `MAX_INSTALLED_TARGETS` (16 device and package pairs, oldest dropped); `MAX_APKS_PER_BUILD` (8 hashed APKs per build record) |
 | Debug sessions | `MAX_SESSIONS` (50), settings `sessions.retentionDays` (14) and `sessions.maxFolderMb` (200); per session `MAX_EVENTS_PER_SESSION` (2,000), `MAX_BOOKMARKS_PER_SESSION` (100), `MAX_AGENT_EVENTS_PER_SESSION` (500), `MAX_SESSION_BYTES` (16 MiB), later events counted as dropped; `MAX_KEPT_SESSIONS` (5); `MAX_BOOKMARK_NOTE_CHARS` and `MAX_EVENT_TEXT_CHARS` (500); `MAX_EVENTS_RETURNED` (500 per read); `MAX_PENDING_SESSION_EVENTS` (256 queued for the writer, overflow counted as dropped); `MAX_KNOWN_EMULATORS` (64); MCP reads `MAX_AGENT_SESSIONS` (50 listed), `MAX_AGENT_EVENTS` (500 per page), `MAX_AGENT_CRASHES` (20), `MAX_COMPARED_SIGNATURES` (20 per comparison) |

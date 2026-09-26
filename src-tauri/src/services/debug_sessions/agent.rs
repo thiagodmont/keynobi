@@ -40,7 +40,11 @@ impl StateFilter {
         }
     }
 
+    /// An imported session is in no state: it was not recorded here.
     fn matches(self, s: &DebugSessionSummary) -> bool {
+        if s.recorded_by == DebugSessionRecorder::Imported {
+            return false;
+        }
         match self {
             Self::Open => s.closed_at.is_none(),
             Self::Closed => s.closed_at.is_some(),
@@ -71,10 +75,10 @@ impl SessionFilter {
     }
 }
 
-/// The sessions `filter` matches, newest first, at most `limit`, and how
-/// many matched.
+/// The sessions `filter` matches, newest first and imported ones last, at
+/// most `limit`, and how many matched.
 pub fn list_for_agent(filter: &SessionFilter, limit: usize) -> (Vec<DebugSessionSummary>, usize) {
-    filter_sessions(list_sessions(), filter, limit)
+    filter_sessions(list_all_sessions(), filter, limit)
 }
 
 pub(super) fn filter_sessions(
@@ -95,6 +99,9 @@ pub(super) fn filter_sessions(
 }
 
 fn state_of(s: &DebugSessionSummary) -> &'static str {
+    if s.recorded_by == DebugSessionRecorder::Imported {
+        return "imported";
+    }
     match (s.closed_at.is_some(), s.close_reason) {
         (false, _) => "open",
         (true, Some(DebugSessionCloseReason::Superseded)) => "superseded",
@@ -414,7 +421,15 @@ pub(super) fn session_for_agent_in(
             "recorded_by": match session.recorded_by {
                 DebugSessionRecorder::App => "app",
                 DebugSessionRecorder::Standalone => "standalone",
+                DebugSessionRecorder::Imported => "imported",
             },
+            "imported": session.imported.as_ref().map(|i| json!({
+                "file_name": i.file_name,
+                "exported_at": i.exported_at,
+                "original_id": i.original_id,
+                "keynobi_version": i.keynobi_version,
+                "omitted": i.omitted.iter().map(|o| format!("{}: {}", o.item, o.reason)).collect::<Vec<_>>(),
+            })),
             "kept": session.kept,
             "counts": {
                 "launches": c.launches,
