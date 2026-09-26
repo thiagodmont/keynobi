@@ -8,14 +8,16 @@
 //! for the APK's module and variant, so it outlives the build's history
 //! record. Mapping retention keeps the mappings saved installs name.
 
-use crate::models::build::{BuiltApk, InstalledBuild, MappingSnapshot};
+use crate::models::build::{BuildRecord, BuiltApk, InstalledBuild, MappingSnapshot, RunApk};
 use crate::models::error::AppError;
 use crate::services::adb_manager::{self, DeviceState};
 use crate::services::build_runner::{self, OutputMetadata};
 use crate::services::gradle_modules;
 use crate::services::mapping_snapshots::{self, MappingSource};
 use crate::services::settings_manager::{data_dir, unique_tmp_path, with_data_lock_in};
-use crate::utils::path::{resolve_project_file, validate_within_root};
+use crate::utils::path::{
+    resolve_project_file, validate_apk_within_build_outputs, validate_within_root,
+};
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -255,6 +257,94 @@ fn hash_file(path: &Path, since: Option<SystemTime>) -> Result<Option<(String, u
         .map(|b| format!("{b:02x}"))
         .collect();
     Ok(Some((sha256, bytes)))
+}
+
+// ── The APK Run App installs ──────────────────────────────────────────────────
+
+/// The APK to install after build `build_id` of `variant` in `module` (an
+/// application module; without it, the project's only one).
+///
+/// The APK that build's record lists for the module and variant. When it
+/// lists none, because Gradle found the APK up to date and did not rewrite
+/// it, the module's build outputs are searched for the variant
+/// ([`build_runner::find_output_apk`]) and the APK is matched by hash to the
+/// newest record in `history` (oldest first) that wrote it. Another variant's
+/// or module's APK is never returned.
+pub fn run_apk(
+    gradle_root: &Path,
+    history: &[BuildRecord],
+    build_id: Option<u32>,
+    module: Option<&str>,
+    variant: &str,
+) -> Result<RunApk, String> {
+    let module = gradle_modules::resolve_application_module(gradle_root, module)?;
+    let is_wanted =
+        |a: &BuiltApk| a.module == module.path && a.variant.eq_ignore_ascii_case(variant);
+
+    if let Some(record) = build_id.and_then(|id| history.iter().find(|r| r.id == id)) {
+        let built: Vec<&BuiltApk> = record.apks.iter().filter(|a| is_wanted(a)).collect();
+        let signed: Vec<&BuiltApk> = built
+            .iter()
+            .copied()
+            .filter(|a| {
+                !a.path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("")
+                    .contains("-unsigned")
+            })
+            .collect();
+        match (if signed.is_empty() { built } else { signed }).as_slice() {
+            [] => {}
+            [only] => {
+                let path = resolve_project_file(gradle_root, &only.path)
+                    .and_then(|p| validate_apk_within_build_outputs(gradle_root, p))
+                    .map_err(|e| {
+                        format!(
+                            "The APK build #{} wrote ({}) cannot be installed: {e}",
+                            record.id, only.path
+                        )
+                    })?;
+                return Ok(RunApk {
+                    path: path.to_string_lossy().into_owned(),
+                    build_id: Some(record.id),
+                    from_this_build: true,
+                });
+            }
+            many => {
+                return Err(format!(
+                    "Build #{} wrote more than one APK for {} variant '{variant}': {}. \
+                     Split or multi-output APKs are not supported yet; install one with \
+                     install_apk.",
+                    record.id,
+                    module.path,
+                    many.iter()
+                        .map(|a| a.path.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ))
+            }
+        }
+    }
+
+    let path = build_runner::find_output_apk(gradle_root, Some(&module.path), variant)?;
+    let written_by = match hash_file(&path, None) {
+        Ok(Some((sha256, _))) => history
+            .iter()
+            .rev()
+            .find(|r| r.apks.iter().any(|a| a.sha256 == sha256 && is_wanted(a)))
+            .map(|r| r.id),
+        Ok(None) => None,
+        Err(reason) => {
+            tracing::warn!("APK {} was not hashed: {reason}", path.display());
+            None
+        }
+    };
+    Ok(RunApk {
+        path: path.to_string_lossy().into_owned(),
+        build_id: written_by,
+        from_this_build: false,
+    })
 }
 
 // ── Installs ──────────────────────────────────────────────────────────────────
@@ -584,7 +674,7 @@ pub fn installed_build_in(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::build::{BuildRecord, BuildStatus};
+    use crate::models::build::BuildStatus;
     use std::time::Duration;
     use tempfile::TempDir;
 
@@ -766,6 +856,181 @@ mod tests {
         let apks = hash_build_apks(&source(project.path(), an_hour_ago()));
 
         assert_eq!(apks.len(), MAX_APKS_PER_BUILD);
+    }
+
+    // ── The APK Run App installs ─────────────────────────────────────────────
+
+    /// What `hash_build_apks` records for an APK written under `app/`.
+    fn built_at(root: &Path, apk: &Path, variant: &str) -> BuiltApk {
+        BuiltApk {
+            module: ":app".into(),
+            variant: variant.into(),
+            application_id: None,
+            version_code: None,
+            sha256: sha256_hex(&std::fs::read(apk).unwrap()),
+            bytes: 1,
+            path: apk
+                .strip_prefix(root.canonicalize().unwrap())
+                .or_else(|_| apk.strip_prefix(root))
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+        }
+    }
+
+    #[test]
+    fn run_apk_is_the_one_this_run_recorded() {
+        let project = project();
+        let apk = write_apk(project.path(), "debug", "app-debug.apk", "debug", b"new");
+        let history = vec![record(
+            5,
+            vec![built_at(project.path(), &apk, "debug")],
+            vec![],
+        )];
+
+        let found = run_apk(project.path(), &history, Some(5), Some(":app"), "debug").unwrap();
+
+        assert_eq!(
+            found,
+            RunApk {
+                path: apk.canonicalize().unwrap().to_string_lossy().into_owned(),
+                build_id: Some(5),
+                from_this_build: true,
+            }
+        );
+    }
+
+    #[test]
+    fn run_apk_unchanged_by_this_run_names_the_build_that_wrote_it() {
+        let project = project();
+        let apk = write_apk(project.path(), "debug", "app-debug.apk", "debug", b"same");
+        // Build #4 wrote the APK; build #6 found it up to date and wrote none.
+        let history = vec![
+            record(4, vec![built_at(project.path(), &apk, "debug")], vec![]),
+            record(6, vec![], vec![]),
+        ];
+
+        let found = run_apk(project.path(), &history, Some(6), None, "debug").unwrap();
+
+        assert_eq!(found.build_id, Some(4));
+        assert!(!found.from_this_build);
+        assert!(found
+            .path
+            .ends_with("app/build/outputs/apk/debug/app-debug.apk"));
+    }
+
+    #[test]
+    fn run_apk_no_kept_build_wrote_is_found_without_a_build() {
+        let project = project();
+        write_apk(
+            project.path(),
+            "debug",
+            "app-debug.apk",
+            "debug",
+            b"by hand",
+        );
+        let history = vec![record(6, vec![], vec![])];
+
+        let found = run_apk(project.path(), &history, Some(6), None, "debug").unwrap();
+
+        assert_eq!(found.build_id, None);
+        assert!(!found.from_this_build);
+    }
+
+    #[test]
+    fn run_apk_never_takes_another_variants_apk() {
+        let project = project();
+        let release = write_apk(
+            project.path(),
+            "release",
+            "app-release.apk",
+            "release",
+            b"release",
+        );
+        // This run's record lists only the release APK, and the outputs have
+        // no debug APK.
+        let history = vec![record(
+            7,
+            vec![built_at(project.path(), &release, "release")],
+            vec![],
+        )];
+
+        let err = run_apk(project.path(), &history, Some(7), None, "debug").unwrap_err();
+        assert!(err.contains("No APK for variant 'debug'"), "{err}");
+
+        // With a debug APK in the outputs, that one is used, not the release.
+        let debug = write_apk(project.path(), "debug", "app-debug.apk", "debug", b"debug");
+        let found = run_apk(project.path(), &history, Some(7), None, "debug").unwrap();
+        assert_eq!(
+            found.path,
+            debug.canonicalize().unwrap().to_string_lossy().into_owned()
+        );
+        assert!(!found.from_this_build);
+    }
+
+    #[test]
+    fn run_apk_never_takes_another_modules_apk() {
+        let project = project();
+        std::fs::write(
+            project.path().join("settings.gradle.kts"),
+            "include(\":app\", \":wear\")\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(project.path().join("wear")).unwrap();
+        std::fs::write(
+            project.path().join("wear/build.gradle.kts"),
+            "plugins { id(\"com.android.application\") }\n",
+        )
+        .unwrap();
+        let app = write_apk(project.path(), "debug", "app-debug.apk", "debug", b"app");
+        let mut wear = built_at(project.path(), &app, "debug");
+        wear.module = ":wear".into();
+        let history = vec![record(8, vec![wear], vec![])];
+
+        let found = run_apk(project.path(), &history, Some(8), Some(":app"), "debug").unwrap();
+        assert!(!found.from_this_build, "took the :wear module's APK");
+
+        let err = run_apk(project.path(), &history, Some(8), None, "debug").unwrap_err();
+        assert!(err.contains(":app, :wear"), "{err}");
+    }
+
+    #[test]
+    fn run_apk_prefers_the_signed_apk_this_run_recorded() {
+        let project = project();
+        let signed = write_apk(
+            project.path(),
+            "release",
+            "app-release.apk",
+            "release",
+            b"signed",
+        );
+        let unsigned = write_apk(
+            project.path(),
+            "release-unsigned",
+            "app-release-unsigned.apk",
+            "release",
+            b"unsigned",
+        );
+        let history = vec![record(
+            9,
+            vec![
+                built_at(project.path(), &unsigned, "release"),
+                built_at(project.path(), &signed, "release"),
+            ],
+            vec![],
+        )];
+
+        let found = run_apk(project.path(), &history, Some(9), None, "release").unwrap();
+
+        assert_eq!(
+            found.path,
+            signed
+                .canonicalize()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned()
+        );
+        assert!(found.from_this_build);
     }
 
     // ── Recording installs ───────────────────────────────────────────────────

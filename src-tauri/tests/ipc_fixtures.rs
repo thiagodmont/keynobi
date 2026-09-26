@@ -666,6 +666,21 @@ fn fixtures() -> Fixtures {
     f.add("BuildRecord", &records);
     f.add("MappingSnapshot", &mapping_snapshots());
     f.add("BuiltApk", &built_apks());
+    f.add(
+        "RunApk",
+        &[
+            RunApk {
+                path: "/work/app/build/outputs/apk/debug/app-debug.apk".into(),
+                build_id: Some(21),
+                from_this_build: true,
+            },
+            RunApk {
+                path: "/work/app/build/outputs/apk/debug/app-debug.apk".into(),
+                build_id: None,
+                from_this_build: false,
+            },
+        ],
+    );
     f.add("InstalledBuild", &installed_builds());
     f.add(
         "LaunchState",

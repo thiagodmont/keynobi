@@ -183,6 +183,21 @@ pub struct BuiltApk {
     pub path: String,
 }
 
+/// The APK Run App installs for one application module and variant.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct RunApk {
+    /// Absolute path inside the application module's build outputs.
+    pub path: String,
+    /// The build history record that lists this APK: the run's own, or, when
+    /// the run wrote none (Gradle found it up to date), the newest build that
+    /// wrote the same bytes. `None` when no kept build wrote it.
+    pub build_id: Option<u32>,
+    /// Whether the run's own build wrote it.
+    pub from_this_build: bool,
+}
+
 /// The APK Keynobi last installed on one device for one package, and the
 /// build that produced it. Saved in `installed-builds.json` in the data
 /// directory, so it outlives the build's history record.

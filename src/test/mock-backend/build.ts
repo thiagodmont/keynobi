@@ -10,6 +10,7 @@ import type {
   InstalledBuild,
   LaunchTiming,
   MappingSnapshot,
+  RunApk,
 } from "@/bindings";
 import { triggerEvent } from "./events";
 
@@ -27,6 +28,8 @@ interface MockRun {
 let activeRun: MockRun | null = null;
 
 const MOCK_PROJECT_ROOT = "/mock/android-project";
+/** The mock project's only application module. */
+const MOCK_APP_MODULE = ":app";
 
 /** A recorded build and its saved log; `lines: null` means log rotation removed it. */
 interface MockHistoryEntry {
@@ -114,12 +117,12 @@ function mockMappings(state: "success" | "failed" | "cancelled", task: string): 
 
 /** Like the backend, a successful assemble build records the APK it wrote. */
 function mockApks(state: "success" | "failed" | "cancelled", task: string, id: number): BuiltApk[] {
-  const variant = /^assemble(.+)$/.exec(task)?.[1];
+  const variant = /^(?::app:)?assemble(.+)$/.exec(task)?.[1];
   if (state !== "success" || !variant) return [];
   const name = variant.charAt(0).toLowerCase() + variant.slice(1);
   return [
     {
-      module: ":app",
+      module: MOCK_APP_MODULE,
       variant: name,
       applicationId: /debug/i.test(name) ? "com.example.mockapp.debug" : "com.example.mockapp",
       versionCode: 1,
@@ -128,6 +131,26 @@ function mockApks(state: "success" | "failed" | "cancelled", task: string, id: n
       path: `app/build/outputs/apk/${name}/app-${name}.apk`,
     },
   ];
+}
+
+/**
+ * Like the backend: the APK the build recorded for the module and variant,
+ * else (up to date) the variant's APK in the outputs, matched to the newest
+ * build that wrote it.
+ */
+function mockRunApk(variant: string, buildId: number | null): RunApk {
+  const matches = (apk: BuiltApk) =>
+    apk.module === MOCK_APP_MODULE && apk.variant.toLowerCase() === variant.toLowerCase();
+  const own = history.find((e) => e.record.id === buildId)?.record.apks.find(matches);
+  if (own) {
+    return { path: `${MOCK_PROJECT_ROOT}/${own.path}`, buildId, fromThisBuild: true };
+  }
+  const writer = [...history].reverse().find((e) => e.record.apks.some(matches));
+  return {
+    path: `${MOCK_PROJECT_ROOT}/app/build/outputs/apk/${variant}/app-${variant}.apk`,
+    buildId: writer?.record.id ?? null,
+    fromThisBuild: false,
+  };
 }
 
 /** Most installs kept, as `MAX_INSTALLED_TARGETS` in the backend. */
@@ -279,6 +302,21 @@ export function buildHandlers(): Record<string, (args: unknown) => unknown> {
       if (!run) return;
       buildStatus = { state: "cancelled" };
       finish(run, { success: false, cancelled: true, cancelledBy: { kind: "app" } });
+    },
+    get_application_module: (args: unknown) => {
+      const { module } = (args ?? {}) as { module?: string | null };
+      if (module && module !== MOCK_APP_MODULE) {
+        const error: AppError = {
+          kind: "invalidInput",
+          message: `'${module}' does not name an application module of this project. Application modules: ${MOCK_APP_MODULE}.`,
+        };
+        throw error;
+      }
+      return MOCK_APP_MODULE;
+    },
+    find_apk_path: (args: unknown) => {
+      const { variant, buildId } = args as { variant: string; buildId?: number | null };
+      return mockRunApk(variant, buildId ?? null);
     },
     get_build_status: () => ({ ...buildStatus }),
     get_build_errors: () => [],

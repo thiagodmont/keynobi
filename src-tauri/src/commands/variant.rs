@@ -1,5 +1,6 @@
+use crate::models::error::AppError;
 use crate::models::variant::VariantList;
-use crate::services::{build_runner, gradle_modules, settings_manager, variant_manager};
+use crate::services::{build_runner, settings_manager, variant_manager};
 use crate::FsState;
 use std::path::PathBuf;
 use tauri::State;
@@ -38,44 +39,29 @@ fn restore_active(list: VariantList) -> VariantList {
 /// Fast variant preview — parsed from the application module's
 /// `build.gradle(.kts)` without running Gradle.  Returns only variants that
 /// are **explicitly declared** in the build script; no hardcoded defaults are
-/// injected. Errors when the project has several application modules.
+/// injected. `module` names the application module; without it the project's
+/// only one is used, and several are an error listing them.
 ///
 /// This resolves instantly and is used to populate the UI while the
 /// authoritative Gradle query runs in the background.
 #[tauri::command]
-pub async fn get_variants_preview(fs_state: State<'_, FsState>) -> Result<VariantList, String> {
-    let gradle_root = resolve_gradle_root(&fs_state).await?;
-
-    let candidates = gradle_modules::application_build_files(&gradle_root)?;
-
-    for path in &candidates {
-        if !path.is_file() {
-            continue;
-        }
-        let content = match std::fs::read_to_string(path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-
-        if let Some(mut list) = variant_manager::parse_variants_from_gradle(path, &content) {
-            if !list.variants.is_empty() {
-                list.default_variant =
-                    variant_manager::infer_default_variant_name(&gradle_root, &list.variants);
-                return Ok(restore_active(list));
-            }
-        }
-    }
-
-    // No explicitly declared variants found — return an empty list.
-    // The caller should use get_variants_from_gradle for the full picture.
-    Ok(restore_active(VariantList::default()))
+pub async fn get_variants_preview(
+    module: Option<String>,
+    fs_state: State<'_, FsState>,
+) -> Result<VariantList, AppError> {
+    let gradle_root = resolve_gradle_root(&fs_state)
+        .await
+        .map_err(AppError::NotFound)?;
+    variant_manager::preview_variants(&gradle_root, module.as_deref())
+        .map(restore_active)
+        .map_err(AppError::InvalidInput)
 }
 
 /// Authoritative variant list — obtained by running
 /// `./gradlew <application module>:tasks --all --console=plain`.
 ///
-/// Scoped to the application module (where the build variants live), or the
-/// whole build's `tasks` when there is no single application module, and does
+/// Scoped to `module`, or without it to the project's only application module
+/// (falling back to the whole build's `tasks` when there is none), and does
 /// not use `--group` flags that vary by Gradle version.
 /// The output includes all `assemble*` and `install*` tasks for every variant
 /// the project defines, regardless of how complex its configuration is.
@@ -83,7 +69,10 @@ pub async fn get_variants_preview(fs_state: State<'_, FsState>) -> Result<Varian
 /// This is the source of truth; it discovers every variant the project
 /// actually has.
 #[tauri::command]
-pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<VariantList, String> {
+pub async fn get_variants_from_gradle(
+    module: Option<String>,
+    fs_state: State<'_, FsState>,
+) -> Result<VariantList, AppError> {
     // Both roots from one lock, so a project switch cannot pair two projects.
     let (gradle_root, trust_root) = {
         let fs = fs_state.0.lock().await;
@@ -92,7 +81,7 @@ pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<Va
             .as_ref()
             .or(fs.project_root.as_ref())
             .cloned()
-            .ok_or_else(|| "No project open".to_string())?;
+            .ok_or_else(|| AppError::NotFound("No project open".to_string()))?;
         let trust_root = fs
             .project_root
             .clone()
@@ -102,27 +91,31 @@ pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<Va
 
     let gradlew = gradle_root.join("gradlew");
     if !gradlew.is_file() {
-        return Err("gradlew not found — cannot detect variants".to_string());
+        return Err(AppError::NotFound(
+            "gradlew not found — cannot detect variants".to_string(),
+        ));
     }
+
+    let queries = variant_manager::variant_task_queries(&gradle_root, module.as_deref())
+        .map_err(AppError::InvalidInput)?;
+    let build_files =
+        variant_manager::variant_build_files(&gradle_root, module.as_deref()).unwrap_or_default();
 
     let (settings, _) = settings_manager::load_settings();
 
     // Same trust check, JAVA_HOME, and SDK variables as builds; also makes
     // gradlew executable.
-    let env = build_runner::trusted_gradle_env(&settings, &trust_root, &gradle_root)?;
+    let env = build_runner::trusted_gradle_env(&settings, &trust_root, &gradle_root)
+        .map_err(AppError::PermissionDenied)?;
 
-    // Try `<module>:tasks --all` first (module-scoped, lists every variant task).
+    // `<module>:tasks --all` first (module-scoped, lists every variant task).
     // `--all` is required because newer AGP versions mark individual variant tasks
     // (e.g. assembleDebug, assembleRelease) as "non-public" and they are hidden
     // from the plain `tasks` output without it.
     // Scoping to the application module keeps the output small and fast.
-    let module_tasks = gradle_modules::resolve_application_module(&gradle_root, None)
-        .ok()
-        .filter(|m| m.path != ":")
-        .map(|m| format!("{}:tasks", m.path));
-    for task_arg in module_tasks.iter().map(String::as_str).chain(["tasks"]) {
+    for task_arg in &queries {
         let mut cmd = tokio::process::Command::new(&gradlew);
-        cmd.args([task_arg, "--all", "--console=plain"])
+        cmd.args([task_arg.as_str(), "--all", "--console=plain"])
             .current_dir(&gradle_root)
             .envs(env.iter().map(|(k, v)| (k.as_str(), v.as_str())))
             // Kill the gradlew wrapper process when the timeout below drops
@@ -133,13 +126,17 @@ pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<Va
 
         let output = match tokio::time::timeout(GRADLE_QUERY_TIMEOUT, cmd.output()).await {
             Ok(Ok(o)) => o,
-            Ok(Err(e)) => return Err(format!("Failed to run gradlew: {e}")),
+            Ok(Err(e)) => {
+                return Err(AppError::ProcessFailed(format!(
+                    "Failed to run gradlew: {e}"
+                )))
+            }
             Err(_) => {
-                return Err(format!(
+                return Err(AppError::ProcessFailed(format!(
                     "gradlew '{task_arg}' did not finish within {} seconds — \
                      is a Gradle daemon stuck? Try again after freeing Gradle.",
                     GRADLE_QUERY_TIMEOUT.as_secs()
-                ));
+                )));
             }
         };
 
@@ -154,15 +151,20 @@ pub async fn get_variants_from_gradle(fs_state: State<'_, FsState>) -> Result<Va
 
         let mut list = variant_manager::parse_variants_from_tasks_output(&combined);
         if !list.variants.is_empty() {
-            list.default_variant =
-                variant_manager::infer_default_variant_name(&gradle_root, &list.variants);
+            list.default_variant = variant_manager::infer_default_variant_name_from(
+                &gradle_root,
+                &build_files,
+                &list.variants,
+            );
             return Ok(restore_active(list));
         }
     }
 
-    Err("No build variants found after running 'gradlew tasks'. \
+    Err(AppError::NotFound(
+        "No build variants found after running 'gradlew tasks'. \
         Make sure JAVA_HOME is configured in Settings and the project builds correctly."
-        .to_string())
+            .to_string(),
+    ))
 }
 
 /// Persist the active build variant as `last_build_variant` for the current

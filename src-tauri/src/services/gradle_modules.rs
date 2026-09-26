@@ -202,6 +202,21 @@ pub fn application_build_files(gradle_root: &Path) -> Result<Vec<PathBuf>, Strin
         .collect())
 }
 
+/// Build files that describe one application module's app: the module's,
+/// then the root project's.
+pub fn module_build_files(gradle_root: &Path, module: &GradleModule) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = if module.path == ":" {
+        Vec::new()
+    } else {
+        module.build_files().to_vec()
+    };
+    files.extend([
+        gradle_root.join("build.gradle.kts"),
+        gradle_root.join("build.gradle"),
+    ]);
+    files
+}
+
 // ── Settings ──────────────────────────────────────────────────────────────────
 
 static RE_PROJECT_DIR: LazyLock<Regex> = LazyLock::new(|| {
@@ -770,6 +785,36 @@ mod tests {
         assert_eq!(
             application_build_files(dir.path()).unwrap()[0],
             dir.path().join("mobile/build.gradle.kts")
+        );
+    }
+
+    #[test]
+    fn module_build_files_come_from_the_named_module() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            "settings.gradle.kts",
+            "include(\":mobile\", \":wear\")\n",
+        );
+        write(dir.path(), "mobile/build.gradle.kts", APP_KTS);
+        write(dir.path(), "wear/build.gradle.kts", APP_KTS);
+
+        let wear = resolve_application_module(dir.path(), Some(":wear")).unwrap();
+        let files = module_build_files(dir.path(), &wear);
+        assert_eq!(files[0], wear.dir.join("build.gradle.kts"));
+        assert_eq!(files[2], dir.path().join("build.gradle.kts"));
+        assert_eq!(files.len(), 4);
+
+        let root = GradleModule {
+            path: ":".into(),
+            dir: dir.path().to_path_buf(),
+        };
+        assert_eq!(
+            module_build_files(dir.path(), &root),
+            vec![
+                dir.path().join("build.gradle.kts"),
+                dir.path().join("build.gradle")
+            ]
         );
     }
 

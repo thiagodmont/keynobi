@@ -1,6 +1,7 @@
 use crate::models::variant::{BuildVariant, VariantList};
+use crate::services::gradle_modules;
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 // ── Compiled regexes ──────────────────────────────────────────────────────────
@@ -532,9 +533,8 @@ fn infer_default_from_gradle_content(content: &str, valid: &HashSet<String>) -> 
     None
 }
 
-fn read_first_app_gradle(gradle_root: &Path) -> Option<String> {
-    let candidates = crate::services::gradle_modules::application_build_files(gradle_root).ok()?;
-    for p in &candidates {
+fn read_first_app_gradle(candidates: &[PathBuf]) -> Option<String> {
+    for p in candidates {
         if p.is_file() {
             if let Ok(s) = std::fs::read_to_string(p) {
                 return Some(s);
@@ -589,11 +589,23 @@ fn fallback_default_variant_name(variants: &[BuildVariant]) -> Option<String> {
 
 /// Picks a variant name present in `variants` using Gradle `isDefault`, optional `.idea` hints, then heuristics.
 pub fn infer_default_variant_name(gradle_root: &Path, variants: &[BuildVariant]) -> Option<String> {
+    let build_files =
+        crate::services::gradle_modules::application_build_files(gradle_root).unwrap_or_default();
+    infer_default_variant_name_from(gradle_root, &build_files, variants)
+}
+
+/// [`infer_default_variant_name`] reading the first of `build_files` that
+/// exists (one application module's: `gradle_modules::module_build_files`).
+pub fn infer_default_variant_name_from(
+    gradle_root: &Path,
+    build_files: &[PathBuf],
+    variants: &[BuildVariant],
+) -> Option<String> {
     if variants.is_empty() {
         return None;
     }
     let valid: HashSet<String> = variants.iter().map(|v| v.name.clone()).collect();
-    if let Some(content) = read_first_app_gradle(gradle_root) {
+    if let Some(content) = read_first_app_gradle(build_files) {
         if let Some(found) = infer_default_from_gradle_content(&content, &valid) {
             return Some(found);
         }
@@ -602,6 +614,79 @@ pub fn infer_default_variant_name(gradle_root: &Path, variants: &[BuildVariant])
         return Some(found);
     }
     fallback_default_variant_name(variants)
+}
+
+/// The build files that describe `module`'s variants: that application
+/// module's, or without it the project's only one's (an error listing the
+/// modules when there are several).
+pub fn variant_build_files(
+    gradle_root: &Path,
+    module: Option<&str>,
+) -> Result<Vec<PathBuf>, String> {
+    match module {
+        Some(module) => {
+            let module = gradle_modules::resolve_application_module(gradle_root, Some(module))?;
+            Ok(gradle_modules::module_build_files(gradle_root, &module))
+        }
+        None => gradle_modules::application_build_files(gradle_root),
+    }
+}
+
+/// Variants declared in the build files of `module` (see
+/// [`variant_build_files`]), without running Gradle. Empty when none is
+/// declared explicitly.
+pub fn preview_variants(gradle_root: &Path, module: Option<&str>) -> Result<VariantList, String> {
+    let build_files = variant_build_files(gradle_root, module)?;
+    for path in &build_files {
+        if !path.is_file() {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        if let Some(mut list) = parse_variants_from_gradle(path, &content) {
+            if !list.variants.is_empty() {
+                list.default_variant =
+                    infer_default_variant_name_from(gradle_root, &build_files, &list.variants);
+                return Ok(list);
+            }
+        }
+    }
+    Ok(VariantList::default())
+}
+
+/// The `gradlew` task arguments that list `module`'s variant tasks, in the
+/// order to try. A named module is queried alone (`:mobile:tasks`; `tasks`
+/// for the root project), so another module's variants are never listed.
+/// Without one, the project's only application module, then the whole build.
+pub fn variant_task_queries(
+    gradle_root: &Path,
+    module: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let tasks_of = |m: &gradle_modules::GradleModule| {
+        if m.path == ":" {
+            "tasks".to_string()
+        } else {
+            format!("{}:tasks", m.path)
+        }
+    };
+    match module {
+        Some(module) => {
+            let module = gradle_modules::resolve_application_module(gradle_root, Some(module))?;
+            Ok(vec![tasks_of(&module)])
+        }
+        None => {
+            let mut queries: Vec<String> =
+                gradle_modules::resolve_application_module(gradle_root, None)
+                    .ok()
+                    .filter(|m| m.path != ":")
+                    .map(|m| tasks_of(&m))
+                    .into_iter()
+                    .collect();
+            queries.push("tasks".to_string());
+            Ok(queries)
+        }
+    }
 }
 
 /// Parse the output of `./gradlew :app:tasks --console=plain` and
@@ -1050,5 +1135,103 @@ assembleStaging\n\
         ];
         let got = infer_default_variant_name(dir.path(), &variants);
         assert_eq!(got.as_deref(), Some("betaDebug"));
+    }
+
+    /// A project with `:mobile` (a `staging` build type) and `:wear` (a
+    /// `beta` build type) application modules.
+    fn two_app_modules() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        let write = |rel: &str, text: &str| {
+            let path = dir.path().join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write("settings.gradle.kts", "include(\":mobile\", \":wear\")\n");
+        for (module, build_type) in [("mobile", "staging"), ("wear", "beta")] {
+            write(
+                &format!("{module}/build.gradle.kts"),
+                &format!(
+                    "plugins {{ id(\"com.android.application\") }}\nandroid {{\n    buildTypes {{\n        {build_type} {{\n        }}\n    }}\n}}\n"
+                ),
+            );
+        }
+        dir
+    }
+
+    fn names(list: &VariantList) -> Vec<&str> {
+        let mut names: Vec<&str> = list.variants.iter().map(|v| v.name.as_str()).collect();
+        names.sort_unstable();
+        names
+    }
+
+    #[test]
+    fn the_preview_reads_the_named_modules_build_file() {
+        let dir = two_app_modules();
+
+        let wear = preview_variants(dir.path(), Some(":wear")).unwrap();
+        assert_eq!(names(&wear), vec!["beta", "debug", "release"]);
+
+        let mobile = preview_variants(dir.path(), Some("mobile")).unwrap();
+        assert_eq!(names(&mobile), vec!["debug", "release", "staging"]);
+    }
+
+    #[test]
+    fn the_preview_without_a_module_lists_several_application_modules() {
+        let dir = two_app_modules();
+
+        let err = preview_variants(dir.path(), None).unwrap_err();
+        assert!(err.contains(":mobile, :wear"), "{err}");
+
+        let err = preview_variants(dir.path(), Some(":lib")).unwrap_err();
+        assert!(err.contains(":mobile, :wear"), "{err}");
+    }
+
+    #[test]
+    fn gradle_is_asked_for_the_named_modules_tasks_only() {
+        let dir = two_app_modules();
+
+        assert_eq!(
+            variant_task_queries(dir.path(), Some(":wear")).unwrap(),
+            vec![":wear:tasks"]
+        );
+        // Without a module, several application modules fall back to the
+        // whole build, as before a module could be named.
+        assert_eq!(
+            variant_task_queries(dir.path(), None).unwrap(),
+            vec!["tasks"]
+        );
+        assert!(variant_task_queries(dir.path(), Some(":nope")).is_err());
+    }
+
+    #[test]
+    fn gradle_is_asked_for_the_only_application_module_then_the_build() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("settings.gradle.kts"),
+            "include(\":mobile\")\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(dir.path().join("mobile")).unwrap();
+        std::fs::write(
+            dir.path().join("mobile/build.gradle.kts"),
+            "plugins { id(\"com.android.application\") }\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            variant_task_queries(dir.path(), None).unwrap(),
+            vec![":mobile:tasks", "tasks"]
+        );
+        // The root project of a single-project build has no prefix.
+        let single = tempfile::tempdir().unwrap();
+        std::fs::write(
+            single.path().join("build.gradle.kts"),
+            "plugins { id(\"com.android.application\") }\n",
+        )
+        .unwrap();
+        assert_eq!(
+            variant_task_queries(single.path(), Some(":")).unwrap(),
+            vec!["tasks"]
+        );
     }
 }

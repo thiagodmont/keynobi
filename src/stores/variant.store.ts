@@ -13,6 +13,11 @@ import { isProjectTrusted } from "@/stores/projects.store";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface VariantStoreState {
+  /**
+   * The application module the variants belong to (`:mobile`), as asked for;
+   * null for the project's only application module.
+   */
+  module: string | null;
   variants: BuildVariant[];
   activeVariant: string | null;
   /** True while the initial preview/parse is running. */
@@ -28,10 +33,11 @@ export interface VariantStoreState {
 }
 
 // ── Session cache ─────────────────────────────────────────────────────────────
-// Keyed by project root path. Survives project switches and is bounded: past
-// 8 distinct roots the oldest-inserted entry is evicted (FIFO), so switching
-// back to an evicted project reruns the expensive `./gradlew :app:tasks`
-// query. Fully cleared on app restart (module re-initialisation).
+// Keyed by project root path and application module (`variantCacheKey`).
+// Survives project switches and is bounded: past 8 distinct keys the
+// oldest-inserted entry is evicted (FIFO), so switching back to an evicted
+// project reruns the expensive `./gradlew :app:tasks` query. Fully cleared on
+// app restart (module re-initialisation).
 export interface CachedGradleVariants {
   variants: BuildVariant[];
   defaultVariant: string | null;
@@ -73,10 +79,18 @@ export function createVariantCache(options: { maxEntries: number }): VariantCach
 
 const variantCache = createVariantCache({ maxEntries: 8 });
 
-/** Clear the cache for a specific root (or all roots when called with no argument). */
-export function clearVariantCache(root?: string): void {
+/** One cache entry per project root and application module (null: the only one). */
+function variantCacheKey(root: string, module: string | null): string {
+  return `${root}\n${module ?? ""}`;
+}
+
+/**
+ * Clear the cache for one root and module (default: the project's only
+ * application module), or everything when called with no argument.
+ */
+export function clearVariantCache(root?: string, module: string | null = null): void {
   if (root !== undefined) {
-    variantCache.delete(root);
+    variantCache.delete(variantCacheKey(root, module));
   } else {
     variantCache.clear();
   }
@@ -85,6 +99,7 @@ export function clearVariantCache(root?: string): void {
 // ── State ─────────────────────────────────────────────────────────────────────
 
 const [variantState, setVariantState] = createStore<VariantStoreState>({
+  module: null,
   variants: [],
   activeVariant: null,
   loading: false,
@@ -146,20 +161,23 @@ const loadVariantsPending = new Map<string, Promise<void>>();
  * Phase 2 runs the project's own build scripts, so it is skipped for a project
  * that is not trusted (Safe Mode): only the static preview is shown.
  *
- * Pass `{ force: true }` to bypass the cache (e.g. the Refresh button).
+ * Pass `{ force: true }` to bypass the cache (e.g. the Refresh button), and
+ * `module` to load another application module's variants (default: the
+ * module loaded last; null for the project's only one).
  */
-export function loadVariants(opts?: { force?: boolean }): Promise<void> {
+export function loadVariants(opts?: { force?: boolean; module?: string | null }): Promise<void> {
   const root = projectState.projectRoot;
+  const module = opts?.module !== undefined ? opts.module : variantState.module;
   if (opts?.force) {
-    if (root !== null) variantCache.delete(root);
+    if (root !== null) variantCache.delete(variantCacheKey(root, module));
   }
   const runGradle = isProjectTrusted(root);
   // A load started in Safe Mode must not satisfy one requested after trusting.
-  const pendingKey = `${root ?? "__no_project__"}|${runGradle ? "gradle" : "preview"}`;
+  const pendingKey = `${root ?? "__no_project__"}|${module ?? ""}|${runGradle ? "gradle" : "preview"}`;
   const pending = loadVariantsPending.get(pendingKey);
   if (pending) return pending;
 
-  const next = runLoadVariants(root, runGradle).finally(() => {
+  const next = runLoadVariants(root, module, runGradle).finally(() => {
     loadVariantsPending.delete(pendingKey);
   });
   loadVariantsPending.set(pendingKey, next);
@@ -170,9 +188,14 @@ function isCurrentProject(root: string | null): boolean {
   return projectState.projectRoot === root;
 }
 
-async function runLoadVariants(rootAtStart: string | null, runGradle: boolean): Promise<void> {
+async function runLoadVariants(
+  rootAtStart: string | null,
+  module: string | null,
+  runGradle: boolean
+): Promise<void> {
   if (isCurrentProject(rootAtStart)) {
     setVariantState({
+      module,
       loading: true,
       gradleLoading: runGradle,
       error: null,
@@ -183,7 +206,7 @@ async function runLoadVariants(rootAtStart: string | null, runGradle: boolean): 
 
   // ── Phase 1: instant preview from static parse ─────────────────────────────
   try {
-    const preview = await getVariantsPreview();
+    const preview = await getVariantsPreview(module);
     if (!isCurrentProject(rootAtStart)) return;
     if (preview.variants.length > 0) {
       setVariantState({
@@ -204,7 +227,7 @@ async function runLoadVariants(rootAtStart: string | null, runGradle: boolean): 
   // ── Phase 2: authoritative list from Gradle (or session cache) ───────────────
   if (!runGradle) return;
 
-  const cacheKey = rootAtStart;
+  const cacheKey = rootAtStart !== null ? variantCacheKey(rootAtStart, module) : null;
   const cached = cacheKey !== null ? variantCache.get(cacheKey) : undefined;
 
   if (cached) {
@@ -228,7 +251,7 @@ async function runLoadVariants(rootAtStart: string | null, runGradle: boolean): 
   }
 
   try {
-    const full = await getVariantsFromGradle();
+    const full = await getVariantsFromGradle(module);
     if (!isCurrentProject(rootAtStart)) return;
     if (cacheKey !== null) {
       variantCache.set(cacheKey, {
@@ -298,6 +321,7 @@ export function clearVariants(): void {
 
 export function resetVariantState(): void {
   setVariantState({
+    module: null,
     variants: [],
     activeVariant: null,
     loading: false,

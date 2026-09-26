@@ -456,7 +456,10 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
       if (overrides[cmd]) return overrides[cmd]();
       if (cmd === "run_gradle_task") return Promise.resolve(1);
       if (cmd === "get_build_history") return Promise.resolve([]);
-      if (cmd === "find_apk_path") return Promise.resolve("/tmp/app-debug.apk");
+      if (cmd === "get_application_module") return Promise.resolve(":app");
+      if (cmd === "find_apk_path") {
+        return Promise.resolve({ path: "/tmp/app-debug.apk", buildId: 7, fromThisBuild: true });
+      }
       if (cmd === "get_package_name_from_apk") return Promise.resolve("com.example.app");
       if (cmd === "install_apk_on_device") return Promise.resolve("Success");
       if (cmd === "launch_app_on_device") {
@@ -585,6 +588,69 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     expect(buildLog()).toContain("▶ Launch time: not reported by this launch method");
   });
 
+  function callsTo(command: string) {
+    return mockInvoke.mock.calls.filter(([cmd]) => cmd === command);
+  }
+
+  it("builds the variant's assemble task in the application module", async () => {
+    const error = await deployThroughSuccessfulBuild();
+
+    expect(error).toBeNull();
+    expect(callsTo("run_gradle_task")[0]?.[1]).toEqual({ task: ":app:assembleDebug" });
+  });
+
+  it("builds the root project's assemble task without a module prefix", async () => {
+    const error = await deployThroughSuccessfulBuild({
+      get_application_module: () => Promise.resolve(":"),
+    });
+
+    expect(error).toBeNull();
+    expect(callsTo("run_gradle_task")[0]?.[1]).toEqual({ task: "assembleDebug" });
+  });
+
+  it("installs the APK this build recorded for the module and variant", async () => {
+    const error = await deployThroughSuccessfulBuild();
+
+    expect(error).toBeNull();
+    expect(callsTo("find_apk_path")[0]?.[1]).toEqual({
+      variant: "debug",
+      module: ":app",
+      buildId: 7,
+    });
+    expect(buildLog()).toContain("▶ APK (build #7): /tmp/app-debug.apk");
+  });
+
+  it("says which earlier build wrote an APK Gradle found up to date", async () => {
+    const error = await deployThroughSuccessfulBuild({
+      find_apk_path: () =>
+        Promise.resolve({ path: "/tmp/app-debug.apk", buildId: 3, fromThisBuild: false }),
+    });
+
+    expect(error).toBeNull();
+    expect(buildLog()).toContain("▶ APK unchanged since build #3: /tmp/app-debug.apk");
+    expect(callsTo("install_apk_on_device")[0]?.[1]).toMatchObject({
+      apkPath: "/tmp/app-debug.apk",
+    });
+  });
+
+  it("stops before building when the project has several application modules", async () => {
+    const reason = {
+      kind: "invalidInput",
+      message: "This project has several application modules (:mobile, :wear), and none was named.",
+    };
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "get_application_module") return Promise.reject(reason);
+      return Promise.resolve(undefined);
+    });
+    await selectVariant("debug");
+
+    await expect(runAndDeploy()).rejects.toBe(reason);
+
+    expect(callsTo("get_application_module")[0]?.[1]).toEqual({ module: null });
+    expect(callsTo("run_gradle_task")).toHaveLength(0);
+    expect(buildLog().join("\n")).toContain(":mobile, :wear");
+  });
+
   it("stops before installing when the variant has no APK, with the backend's reason", async () => {
     const reason =
       "No APK for variant 'debug'. Found outputs for: freerelease. Build that variant first.";
@@ -618,7 +684,11 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
       find_apk_path: () => {
         // The user opens another project; the backend now answers for it.
         beginProjectOpen();
-        return Promise.resolve("/other-project/app/build/outputs/apk/debug/app-debug.apk");
+        return Promise.resolve({
+          path: "/other-project/app/build/outputs/apk/debug/app-debug.apk",
+          buildId: 7,
+          fromThisBuild: true,
+        });
       },
     });
 

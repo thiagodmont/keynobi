@@ -205,6 +205,52 @@ describe("loadVariants cache", () => {
   });
 });
 
+describe("loadVariants per application module", () => {
+  beforeEach(() => {
+    setProject("/projects/two-apps", "two-apps");
+    resetVariantState();
+    clearVariantCache();
+    mockPreview.mockReset();
+    mockGradle.mockReset();
+    mockPreview.mockResolvedValue({ variants: [], active: null, defaultVariant: null });
+    mockGradle.mockImplementation((module: string | null) =>
+      Promise.resolve(listFor(module === ":wear" ? "wearDebug" : "mobileDebug"))
+    );
+  });
+
+  it("asks for the named module's variants and remembers the module", async () => {
+    await loadVariants({ module: ":wear" });
+
+    expect(mockPreview).toHaveBeenCalledWith(":wear");
+    expect(mockGradle).toHaveBeenCalledWith(":wear");
+    expect(variantState.module).toBe(":wear");
+    expect(variantState.activeVariant).toBe("wearDebug");
+  });
+
+  it("asks for the project's only module when none is named", async () => {
+    await loadVariants();
+
+    expect(mockGradle).toHaveBeenCalledWith(null);
+    expect(variantState.module).toBeNull();
+  });
+
+  it("caches each module's variants separately", async () => {
+    await loadVariants({ module: ":wear" });
+    await loadVariants({ module: ":mobile" });
+    expect(mockGradle).toHaveBeenCalledTimes(2);
+    expect(variantState.activeVariant).toBe("mobileDebug");
+
+    resetVariantState();
+    await loadVariants({ module: ":wear" });
+    expect(mockGradle).toHaveBeenCalledTimes(2);
+    expect(variantState.variants.map((v) => v.name)).toEqual(["wearDebug"]);
+
+    // Without a module, the last one loaded is reloaded.
+    await loadVariants({ force: true });
+    expect(mockGradle).toHaveBeenLastCalledWith(":wear");
+  });
+});
+
 describe("loadVariants defaultVariant", () => {
   beforeEach(() => {
     setProject("/projects/flavors", "flavors");

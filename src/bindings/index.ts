@@ -40,6 +40,7 @@ export type { LaunchTimingEvent } from "./LaunchTimingEvent";
 export type { LaunchResult } from "./LaunchResult";
 export type { MappingSnapshot } from "./MappingSnapshot";
 export type { BuiltApk } from "./BuiltApk";
+export type { RunApk } from "./RunApk";
 export type { InstalledBuild } from "./InstalledBuild";
 
 // Devices & variants
