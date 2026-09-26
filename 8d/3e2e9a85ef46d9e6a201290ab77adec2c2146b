@@ -1,0 +1,138 @@
+src/bindings/DebugSessionAttributionMethod.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 1-6
+src/bindings/DebugSessionEventData.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 4,6,14
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_499f16329ec419 486
+src-tauri/src/services/debug_sessions/crashes.rs
+  s_1e114e823b9048::t_3a4d6cf830330c 248-251,608,723,741-745,776-778,881-885,913-915,988-991,1214-1219,1415-1422,1430-1434,1540-1543,1576-1584,1632-1634,1864-1869,1906-1911,1913-1918,1920-1925,1970-1981,2001-2004,2020-2026,2033-2040,2047-2053
+  s_1e114e823b9048::t_a58ff03a1db289 1651-1659
+  s_1e114e823b9048::t_e0695ef3032a4a 856,858,866
+  s_1e114e823b9048::t_a28073d41ae688 1-247,252-607,609-722,724-738,746-747,749-775,779-855,857,859-865,867-880,886-912,916-987,992-1159
+  s_1e114e823b9048::t_7eeda3051497d4 1168
+  s_1e114e823b9048::t_99174880294395 739-740,748
+  s_1e114e823b9048::t_618d791afc84c0 1641-1650
+  s_1e114e823b9048::t_74411e68a5d84e 1160-1167,1169-1213,1220-1414,1423-1429,1435-1539,1544-1575,1585-1631,1635-1640,1660-1863,1870-1905,1912,1919,1926-1969,1982-2000,2005-2019,2027-2032,2041-2046,2054-2114
+src/bindings/DebugSessionCounts.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 6-10
+scripts/ipc-payloads.test.mjs
+  s_1e114e823b9048::t_38e40dd5117d45 328-329,335-336
+src/bindings/DebugSessionAttribution.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 1-16
+src/test/mock-backend/logcat.ts
+  s_1e114e823b9048::t_938e4607e9f36b 236
+  s_1e114e823b9048::t_7606af1efbf99a 3
+src-tauri/src/services/logcat.rs
+  s_1e114e823b9048::t_9c3c631f31b707 262
+  s_1e114e823b9048::t_84e25eff7ddee0 685-689
+  s_1e114e823b9048::t_87852eafa70a96 769,780-785,793-796
+  s_1e114e823b9048::t_a2d6b194c2ad47 193-195
+  s_1e114e823b9048::t_5c55577770271a 1261
+  s_1e114e823b9048::t_466a01fd2829f0 1275-1322
+  s_1e114e823b9048::t_5077fbdf4859b9 420-428
+  s_1e114e823b9048::t_b1b78c87c7f0fe 398-400,405
+src-tauri/src/commands/sessions.rs
+  s_1e114e823b9048::t_0e7340999c226f 3-6,8
+  s_1e114e823b9048::t_3a4d6cf830330c 11
+  s_1e114e823b9048::t_9fe176e57b21cc 74-93
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_84069ca0502f53 344,883-891,897
+  s_1e114e823b9048::t_ebda04b97100b4 386-406
+  s_1e114e823b9048::t_d5d279a0181d89 898-929
+  s_1e114e823b9048::t_0a8eead3c5a1f1 445-503
+src/bindings/DebugSessionCaptureRef.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 1-11
+src/test/mock-backend/sessions.ts
+  s_1e114e823b9048::t_322d18c66bdf1a 154
+  s_1e114e823b9048::t_6e53d4ecdfed35 245,248-257,262-267
+  s_1e114e823b9048::t_455724aed8a243 258-261
+  s_1e114e823b9048::t_c579c94b54e949 161
+  s_1e114e823b9048::t_8d15bd199bcc0f 186-235
+  s_1e114e823b9048::t_46e7c20db5d71d 77-83
+  s_1e114e823b9048::t_1ececdc88a0fe1 6,9,13,20-27,32-33
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_aab4b830b0bc51 117
+src/bindings/DebugSessionExitRefresh.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 1-14
+src-tauri/src/services/debug_sessions.rs
+  s_1e114e823b9048::t_fd10511e1b1ecd 569,571-572,580-581
+  s_1e114e823b9048::t_620dd4f29d8902 573-579
+  s_1e114e823b9048::t_da296ad03f969c 9-10,16
+  s_1e114e823b9048::t_7ad1962a600623 1179,1188
+  s_1e114e823b9048::t_0bccbaca57665e 489-492
+  s_1e114e823b9048::t_5f0a0e08ad02aa 45-51
+src-tauri/src/services/log_store.rs
+  s_1e114e823b9048::t_58851ee7b39edf 198-219
+src-tauri/src/lib.rs
+  s_1e114e823b9048::t_dbd8d0e4c5edcc 406-407
+  s_1e114e823b9048::t_4dba712f005962 32-33
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_02d4072df3801d 523,525
+  s_1e114e823b9048::t_ba42058f544b29 122
+  s_1e114e823b9048::t_3d282223f80e91 524
+  s_1e114e823b9048::t_82670647e0a296 141-142,144-147
+  s_1e114e823b9048::t_d0904996c48e76 150
+  s_1e114e823b9048::t_2ad406fa6ec523 545
+  s_1e114e823b9048::t_816770b3d3f439 148
+  s_1e114e823b9048::t_3db4b8a81acac0 153
+src/bindings/DebugSessionCapture.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 1-19
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 17,20,714,751,794,829,1006-1139,1144-1193,1346-1479,1510,1541,1552,1586-1640
+src/bindings/DebugSessionExitMatch.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 1-6
+src-tauri/src/models/app_exit.rs
+  s_1e114e823b9048::t_0f65e35d62ff66 85
+src-tauri/src/services/retrace.rs
+  s_1e114e823b9048::t_3d715f160d6870 22
+  s_1e114e823b9048::t_9a7eba20f46e70 584-586,646
+  s_1e114e823b9048::t_a6108abf43b3e2 587-594
+  s_1e114e823b9048::t_3e492a0b979b86 16
+  s_1e114e823b9048::t_3a4d6cf830330c 692
+src-tauri/src/models/debug_session.rs
+  s_1e114e823b9048::t_92d2d13482e638 4,6
+  s_1e114e823b9048::t_cc36423dfbd577 104-105
+  s_1e114e823b9048::t_9f0593194d756d 376-402
+  s_1e114e823b9048::t_d62737a5c7c378 245-331,346-348
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_c909aed25ac9d3 1786-1869
+src-tauri/src/services/installed_builds.rs
+  s_1e114e823b9048::t_89f3caae66fc8b 19,21-24,28,30
+  s_1e114e823b9048::t_0fb1524bd1db83 600-848
+  s_1e114e823b9048::t_e7bbf1287b8a31 1529-1719
+src-tauri/src/utils/process.rs
+  s_1e114e823b9048::t_d61971b29f0400 79-89
+src/bindings/DebugSessionCrash.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 1-33
+src/lib/tauri-api.ts
+  s_1e114e823b9048::t_b6bebd0b14937a 553-566,603-619
+  s_1e114e823b9048::t_5d513f1c76e6ff 620
+src/bindings/DebugSessionDetail.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 16-21
+src/bindings/DebugSessionEvent.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 5,7,27
+src/bindings/DebugSessionExit.ts
+  s_1e114e823b9048::t_a369ba34ab7e2d 1-12
+src/bindings/index.ts
+  s_1e114e823b9048::t_430ff826bb03d3 47-48,51-52,55,61-63
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_902b134f670984 168
+  s_1e114e823b9048::t_6a7b2bac90b614 78
+  s_1e114e823b9048::t_24c404fb3aa67f 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "8d3e2e9a85ef46d9e6a201290ab77adec2c2146b",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
