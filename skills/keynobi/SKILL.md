@@ -35,5 +35,6 @@ If `run_health_check` reports Android CLI as not installed, tell the user rather
 
 ## Keep the two in step
 
-- Build and install through Keynobi when you will need crash deobfuscation, launch times, or build errors later. A build or install done with `android run` or by hand is not in Keynobi's history, so its crashes cannot be deobfuscated.
+- Build and install through Keynobi when you will need crash deobfuscation, launch times, or build errors later. A build done with `android run` or outside Keynobi is not in Keynobi's history, so its crashes cannot be deobfuscated. An APK Keynobi built can be installed by any tool.
 - Both tools act on the same devices. After starting an emulator with Android CLI, call `list_devices` to get its serial for Keynobi.
+- A Keynobi server started with `--toolsets` serves only some tools. If a tool you need is refused, the error names the toolset to add; tell the user rather than working around it.
