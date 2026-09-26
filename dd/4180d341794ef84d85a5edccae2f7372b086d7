@@ -1,0 +1,104 @@
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_c1f37b6309c65a 153-154
+src/bindings/DebugSessionImport.ts
+  s_1e114e823b9048::t_7fc39ed9adbdc0 1-32
+src/bindings/DebugSessionRecorder.ts
+  s_1e114e823b9048::t_7fc39ed9adbdc0 6
+src/components/sessions/BuildSessionLinks.test.tsx
+  s_1e114e823b9048::t_36e1a467b9bccd 50-60
+src/components/sessions/BuildSessionLinks.tsx
+  s_1e114e823b9048::t_a0b88648dcd117 12,20-24
+src/lib/tauri-api.ts
+  s_1e114e823b9048::t_6803736efba927 700-712
+src/components/sessions/SessionsDialog.test.tsx
+  s_1e114e823b9048::t_5404c458872905 26,40-43,51,69,113-122,233-234,662-764,768-780
+  s_1e114e823b9048::t_eea409fe4a3665 765-767
+  s_1e114e823b9048::t_ab1496c446a1c5 781
+src-tauri/src/models/debug_session.rs
+  s_1e114e823b9048::t_91d27cc4d93307 165-168
+  s_1e114e823b9048::t_7b76318c0ebced 97-118
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_d93ea091e71368 174,176,568-569
+src-tauri/src/services/debug_sessions/compare.rs
+  s_1e114e823b9048::t_d78ceff9cf68a6 684
+  s_1e114e823b9048::t_84ec1f96841ae0 224
+src-tauri/src/utils/validation.rs
+  s_1e114e823b9048::t_caf6057d92690f 343,345-346
+  s_1e114e823b9048::t_2a35bf6ccc813f 117-118,121-124
+src/bindings/DebugSession.ts
+  s_1e114e823b9048::t_7fc39ed9adbdc0 6,33-37
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_cd9e258ce23fcc 169-170,174,493,529
+src-tauri/src/lib.rs
+  s_1e114e823b9048::t_77308e4c292293 38-40,422-423
+src/components/sessions/SessionDetail.tsx
+  s_1e114e823b9048::t_2d44d3cfebb42e 23,37-38,60,63,110,147-150,229-237,250-261,340-347,349-356,358-366,368-411,424-452
+  s_1e114e823b9048::t_a0b88648dcd117 220-228,357,367
+src-tauri/src/services/debug_sessions.rs
+  s_1e114e823b9048::t_0b9afea5064273 49,65-68,111-112,114-123,156,603-609,1229-1239,1245-1252,1289,1296,1328,1425
+  s_1e114e823b9048::t_b57b134287e51b 515
+  s_1e114e823b9048::t_d78ceff9cf68a6 761
+src/components/sessions/SessionsDialog.module.css
+  s_1e114e823b9048::t_4797c476f18733 130
+  s_1e114e823b9048::t_50fa089d4c26f5 29-34
+  s_1e114e823b9048::t_e176aa63c33a24 28
+src/components/sessions/session-format.ts
+  s_1e114e823b9048::t_3322903d631bc4 9,80-84,332-348,352
+  s_1e114e823b9048::t_2b75259ef900ff 349-351
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_249d075e013d12 71,125,169
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_d78ceff9cf68a6 393,426
+  s_1e114e823b9048::t_f45aac1993e109 428-465
+  s_1e114e823b9048::t_7d1405cbba80f9 427
+src/components/sessions/SessionsDialog.tsx
+  s_1e114e823b9048::t_50fa089d4c26f5 12,21,26,42,50-55,76-87,126-127,164-188,206-221,223-240,273
+src-tauri/src/services/debug_sessions/export.rs
+  s_1e114e823b9048::t_d6da900caedefe 142
+  s_1e114e823b9048::t_ed62f2edfa53ef 55,169
+src-tauri/src/services/debug_sessions/crashes.rs
+  s_1e114e823b9048::t_72ece7509d5370 66,70
+  s_1e114e823b9048::t_d78ceff9cf68a6 805
+  s_1e114e823b9048::t_8d6b12969d7975 996
+  s_1e114e823b9048::t_ed62f2edfa53ef 1001
+src-tauri/src/services/debug_sessions/agent.rs
+  s_1e114e823b9048::t_84ec1f96841ae0 43,45-47,78-79,81,102-104,424,426-432
+src/bindings/index.ts
+  s_1e114e823b9048::t_5f64b0bd25cf70 69
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_7fc39ed9adbdc0 1332-1382,1455-1486
+  s_1e114e823b9048::t_112b823dc2f474 1487-1488
+src-tauri/src/services/debug_sessions/import.rs
+  s_1e114e823b9048::t_db46150bc05e03 1568-1609
+  s_1e114e823b9048::t_8d6b12969d7975 797-1049,1054-1344,1350-1351,1353-1381,1386-1567,1610-1642
+  s_1e114e823b9048::t_daa0d770336145 1050-1053,1382-1385
+  s_1e114e823b9048::t_030a053c89f9c4 1345-1349,1352
+  s_1e114e823b9048::t_3ccc366a925b34 1-191,196-240,243-364,369-370,374-471,475-476,487-563,566-723,727-796
+  s_1e114e823b9048::t_b57b134287e51b 192-195,241-242,365-368,371-373,472-474,477-486,564-565,724-726
+src-tauri/src/commands/sessions.rs
+  s_1e114e823b9048::t_b0780131b337b4 23,26,130-160
+e2e/smoke/debug-sessions.spec.ts
+  s_1e114e823b9048::t_919a5338cbf0a5 84-114
+src/App.tsx
+  s_1e114e823b9048::t_6e12c109764eb8 27-31,389-393
+  s_1e114e823b9048::t_7d155763c849c9 394
+src/test/mock-backend/sessions.ts
+  s_1e114e823b9048::t_50bf046cc06b94 41-43,106,111-130,137-144,146-187,189-225,368-385,414,448,452,460,477
+  s_1e114e823b9048::t_fbed7c2d868aba 131-136,145,188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dd4180d341794ef84d85a5edccae2f7372b086d7",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
