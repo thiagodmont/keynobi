@@ -1,0 +1,98 @@
+src/services/build.service.init.test.ts
+  s_1e114e823b9048::t_14b44bc074f1bd 9-16
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_14b44bc074f1bd 918-935
+  s_1e114e823b9048::t_fbd570f4f0a580 20,849-917,936-968,1178-1179,1803-1806
+  s_1e114e823b9048::t_f5d9be49c5221b 1807
+src-tauri/src/lib.rs
+  s_1e114e823b9048::t_4419d449b0adc0 7-8,34-35,379
+  s_1e114e823b9048::t_22db2e539d44c2 12-15
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_14b44bc074f1bd 695-739
+  s_1e114e823b9048::t_3006ad6ccea62e 23-24,647-694,740-884,3590-3673
+  s_1e114e823b9048::t_cde351fa0efdd4 3674
+src-tauri/src/services/deploy.rs
+  s_1e114e823b9048::t_22db2e539d44c2 127,139-148,168,516-517
+  s_1e114e823b9048::t_336c604037ff57 1-126,128-138,149-167,169-515,518-701
+src/services/build.service.test.ts
+  s_1e114e823b9048::t_23a10f231b6d56 25,31-37,450-452,454,458,463-472,481-484,489-512,514-521,523-542,544-573,582-583,586-590,596-599,603-604,618-623,625-635,637-642,645-646,648,650-657,660-671,675-684,687-700,702-707,710-715,717-726,730-733,736-737,741-746,748-751,754-756,758-762,765-768,770-771,774-776,778-780,783-788,791-795,798-829,832-838,842-849,852,854-856,860-865,867-870,873-881,884-886,907,933-936,947,953-955,965,980,991,1353
+  s_1e114e823b9048::t_7a90dff46722be 605-617,857
+  s_1e114e823b9048::t_5e4b6c0ddac6da 23
+  s_1e114e823b9048::t_565b7f9848cff3 459
+src/bindings/DeployPhaseEvent.ts
+  s_1e114e823b9048::t_3006ad6ccea62e 1-28
+src/test/mock-backend/build.ts
+  s_1e114e823b9048::t_51bc8d2045a082 27-35,151,245-250,253,308-316,323
+src-tauri/src/services/mod.rs
+  s_1e114e823b9048::t_58f9499a5ee06c 13
+src-tauri/src/commands/device.rs
+  s_1e114e823b9048::t_b4de1c6c33cc50 2,16,67
+  s_1e114e823b9048::t_a0b7e706e495a3 9-10,13
+src/bindings/DeployOutcome.ts
+  s_1e114e823b9048::t_3006ad6ccea62e 1-6
+src/test/mock-backend/index.ts
+  s_1e114e823b9048::t_8ed951c81b6cbc 10,38,105-106
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_0f5e8a3cbd0883 54,58
+  s_1e114e823b9048::t_df377d6a108c45 43,50,72-78,90,92,117,151,186,202,209-217,244,598,600
+src/test/mock-backend/projects.ts
+  s_1e114e823b9048::t_51bc8d2045a082 260,317-325
+src-tauri/src/models/run_configuration.rs
+  s_1e114e823b9048::t_7e3943fec0d3c5 1
+  s_1e114e823b9048::t_913c7b394846b7 150-218
+src/bindings/DeployResult.ts
+  s_1e114e823b9048::t_3006ad6ccea62e 1-43
+e2e/fixtures/app.ts
+  s_1e114e823b9048::t_8ed951c81b6cbc 17-18
+src/test/mock-backend/deploy.ts
+  s_1e114e823b9048::t_49ba6bd08da2e4 1-139
+scripts/ipc-payloads.test.mjs
+  s_1e114e823b9048::t_238bedfc200675 313
+  s_1e114e823b9048::t_520cdfd6e0db02 18-19,316-317,357,367-370,389-393
+src/test/mock-backend/devices.ts
+  s_1e114e823b9048::t_51bc8d2045a082 10,48-83
+src-tauri/src/commands/run_configuration.rs
+  s_1e114e823b9048::t_7e46964b62c205 1,4-5,7-13,15-20,102-105,107-115,128,139-216
+  s_1e114e823b9048::t_a14f8dcf383fb7 217
+src/services/build.service.ts
+  s_1e114e823b9048::t_da3d377248cfd9 6,13,21-22,44,58-65,92,104,209-218,292,386,490-493,508-509,524-530,535,547-625
+  s_1e114e823b9048::t_7c759b7c3d2cd3 626
+src-tauri/src/services/installed_builds.rs
+  s_1e114e823b9048::t_23a33e22b1dc05 408-409,445,451,455,467,487,491,520,524
+src-tauri/src/commands/build.rs
+  s_1e114e823b9048::t_22db2e539d44c2 41-44
+  s_1e114e823b9048::t_feaf5612ecdbed 1,4,39-40
+src/lib/tauri-api.ts
+  s_1e114e823b9048::t_c93d8f7e54ce07 98-99,108-109,198-216,219-221
+src-tauri/tests/deploy.rs
+  s_1e114e823b9048::t_7f431d945f38f3 1-113,115-118,120-127,129-162,165-234,238-242,244-267,270-289,294-302,304-334,339-340,343-360,362-368,373-378,380-585,587-603,606,608-648
+  s_1e114e823b9048::t_1f4714d1515b54 235-237,243
+  s_1e114e823b9048::t_22db2e539d44c2 268-269,290-293,369-372
+  s_1e114e823b9048::t_4e16b1eac20d7d 114,119,128,163-164,303,335-338,341-342,361,379,586,604-605,607
+src/bindings/index.ts
+  s_1e114e823b9048::t_9c83cefddfc2ff 109-112
+src/test/factories/build.ts
+  s_1e114e823b9048::t_b4b66648230e09 7,131-145
+  s_1e114e823b9048::t_b44329e9403ade 146-149
+src/bindings/DeployPhase.ts
+  s_1e114e823b9048::t_3006ad6ccea62e 1-6
+e2e/smoke/build-flow.spec.ts
+  s_1e114e823b9048::t_702dc1656b6ad9 261,271,280
+  s_1e114e823b9048::t_097b696f21c6d1 251-260,262-270,272-279
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "dee27d3ad72ceb098f706a74b97f6ecb48d92480",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
