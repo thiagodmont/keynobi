@@ -1,0 +1,137 @@
+src/test/factories/sessions.ts
+  s_1e114e823b9048::t_8e2bc0e4afc92b 38-46
+src/bindings/DebugSessionEventData.ts
+  s_1e114e823b9048::t_bcd8288d8c0eb4 2,16
+src-tauri/src/models/debug_session.rs
+  s_1e114e823b9048::t_7cace3fbf37d08 331-357
+  s_1e114e823b9048::t_7fdd4f92fac578 378
+  s_1e114e823b9048::t_270e1df67e90f0 106-107
+src/components/sessions/BuildSessionLinks.test.tsx
+  s_1e114e823b9048::t_8e2bc0e4afc92b 15-23
+src/bindings/index.ts
+  s_1e114e823b9048::t_a955db1c8e65c3 73
+  s_1e114e823b9048::t_0c018cadfee81e 48
+src/components/sessions/SessionsDialog.test.tsx
+  s_1e114e823b9048::t_8e2bc0e4afc92b 127-135,139-147
+  s_1e114e823b9048::t_ed0aecaea9c39f 255-282
+src-tauri/src/services/mcp_toolsets.rs
+  s_1e114e823b9048::t_0472bfc936b7ed 43-45
+src/bindings/DebugSessionEvent.ts
+  s_1e114e823b9048::t_bcd8288d8c0eb4 3,29
+src-tauri/src/services/debug_sessions/compare.rs
+  s_1e114e823b9048::t_f738104a5bfbc0 474-686,692-757,762-779
+  s_1e114e823b9048::t_ed786e80bf71f0 174-179,201-205,214-223,276-279,433-436,687-691,758-761
+  s_1e114e823b9048::t_0a3b712cc9cfd4 1-173,180-200,206-213,224-241,247-248,252-275,280-432,437-473
+  s_1e114e823b9048::t_f5ee0358485c58 242-246,249-251
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_d14cffe4eaeb12 1903,1907
+  s_1e114e823b9048::t_4019447d663764 2185,2200
+  s_1e114e823b9048::t_ba195a98553950 1756-1777,1779-1784,1795-1799,1804,1815-1820,1828-1829,1831-1832,1835,1847-1872,1881,1887-1896,1902,1910-1918,1920-1927,1929-2019,2025,2054-2056,2058-2070,2072-2083,2085-2089,2101-2121
+  s_1e114e823b9048::t_e56af740a69826 2203-2209,2214-2217
+  s_1e114e823b9048::t_65724c5adfc175 1800,1803
+  s_1e114e823b9048::t_fa51d1e99a936a 1904-1905,1908-1909
+  s_1e114e823b9048::t_c9f5440d1f531d 1778
+  s_1e114e823b9048::t_e5c39ad1b615c5 1791-1794,2020-2024,2026-2053,2090-2100,2210-2213,2218-2224
+  s_1e114e823b9048::t_8a94b648e374de 1906,1919,1928
+  s_1e114e823b9048::t_2d06ad04c1c90c 2057,2071,2084
+  s_1e114e823b9048::t_49102828d3ed76 1897
+  s_1e114e823b9048::t_c450f30d40e392 1898-1901
+  s_1e114e823b9048::t_d58241262ff817 1801-1802
+src/components/sessions/session-format.ts
+  s_1e114e823b9048::t_91d6968b44ef36 235-248
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_50d9366c2d6984 90,109,149-158,160,351
+  s_1e114e823b9048::t_c40c6f84f47af8 159
+  s_1e114e823b9048::t_2dcfa01022ffbf 310
+  s_1e114e823b9048::t_924495b9efcddc 369-370
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_6fdefd954addff 2995-3103
+  s_1e114e823b9048::t_378afa8d4fd574 4405,4411-4415,4417-4418,4422,4428-4440
+  s_1e114e823b9048::t_c8aad06c643e05 3603-3604
+  s_1e114e823b9048::t_1416ed8892934b 4423-4427
+  s_1e114e823b9048::t_2f0ca1f6762f39 3790-3792
+  s_1e114e823b9048::t_8f4c8da102ddad 18-19
+  s_1e114e823b9048::t_5504388b91527c 565-570,574,578-584,588,592,596,600,604-608,612-623,627-628,635-637
+  s_1e114e823b9048::t_ed786e80bf71f0 571-573,575-577,585-587,589-591,593-595,597-599,601-603,609-611,624-626,629-634
+  s_1e114e823b9048::t_d57218322a3a12 3768-3770,3774-3789,3798-3804,3806-3831
+  s_1e114e823b9048::t_8a82390b8a0760 3771-3773
+  s_1e114e823b9048::t_e5c39ad1b615c5 3793-3797
+  s_1e114e823b9048::t_b2aab8f2ac5982 3805
+  s_1e114e823b9048::t_2bbf39eff9cd25 4416
+src/bindings/DebugSessionToolKind.ts
+  s_1e114e823b9048::t_bcd8288d8c0eb4 1-6
+src-tauri/src/services/debug_sessions.rs
+  s_1e114e823b9048::t_3a047d00a6e315 598
+  s_1e114e823b9048::t_be7950f88d5553 1231-1232
+  s_1e114e823b9048::t_a35a4ec0826b77 1987-1990
+  s_1e114e823b9048::t_5817733f698ba3 45-46,48,52-53
+  s_1e114e823b9048::t_023887d4ac72df 68-69
+  s_1e114e823b9048::t_bc752657589207 1237,1954-1986,1991-2006
+  s_1e114e823b9048::t_3d008fae5cf2e8 1089-1115,1243
+  s_1e114e823b9048::t_4885c5284044b5 555-560
+  s_1e114e823b9048::t_fbb3d9871a8fa2 1244,1246-1251,1259-1263,1272,1275
+  s_1e114e823b9048::t_ed786e80bf71f0 49-51
+  s_cc10fab120827c::t_fea1937ab5709f 1233-1236,1238-1242,1245
+src-tauri/src/services/debug_sessions/agent.rs
+  s_1e114e823b9048::t_e40574458d152e 26,34-36,47
+  s_1e114e823b9048::t_5bb0141a5953b2 240,343
+  s_1e114e823b9048::t_f532a2b6b81b2c 1-25,27-33,37-46,48-64,69-218,224-239,241-342,344-428
+  s_1e114e823b9048::t_b6bc433ae2159c 429-651
+  s_1e114e823b9048::t_ed786e80bf71f0 65-68,219-223
+src/test/mock-backend/sessions.ts
+  s_1e114e823b9048::t_408a40e9546f7f 83
+  s_1e114e823b9048::t_8e2bc0e4afc92b 155-163
+src/components/sessions/session-format.test.ts
+  s_1e114e823b9048::t_1af0ca1c77cf28 176-203
+skills/keynobi/SKILL.md
+  s_1e114e823b9048::t_cfe5707f6ab543 3
+  s_1e114e823b9048::t_60ac22f71fe3d6 22
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_a4fae595acef04 159
+  s_1e114e823b9048::t_5aeb4a25321413 554
+  s_1e114e823b9048::t_92884e114f2a7f 555
+  s_1e114e823b9048::t_b87c4df18f5690 151-152
+  s_1e114e823b9048::t_7dc683013c06cf 162-163
+  s_1e114e823b9048::t_80e02c493d1295 164
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_bcd8288d8c0eb4 1152,1190,1234,1270,1603-1643,2003-2043,2072,2115
+src/bindings/DebugSessionCounts.ts
+  s_1e114e823b9048::t_bcd8288d8c0eb4 10-14
+src/bindings/DebugSessionAgentAction.ts
+  s_1e114e823b9048::t_bcd8288d8c0eb4 1-12
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_6671baff002e06 158
+  s_1e114e823b9048::t_9dab2c9564a247 383
+  s_1e114e823b9048::t_7d354f547e41ae 171-172
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_fce4317fdc934f 351
+  s_1e114e823b9048::t_13c651e58df386 514-534
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_4394daa8cc3afd 168
+src-tauri/src/services/debug_sessions/crashes.rs
+  s_1e114e823b9048::t_c56c7bca47833a 889
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e51ccd0b3e1e183fe0ab6a2e28eff373e515a1bc",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    },
+    "s_cc10fab120827c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "505312a4-569f-45c1-8212-11530a451d9c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
