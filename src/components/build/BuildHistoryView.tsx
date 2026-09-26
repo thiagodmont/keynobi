@@ -9,6 +9,7 @@ import type { HistoricalLogState } from "./build-history-log";
 import { LaunchTimingSummary } from "./LaunchTimingSummary";
 import { MappingSnapshotSummary } from "./MappingSnapshotSummary";
 import { InstalledBuildSummary } from "./InstalledBuildSummary";
+import { BuildSessionLinks } from "@/components/sessions/BuildSessionLinks";
 import styles from "./BuildHistoryView.module.css";
 
 export function formatBuildTime(iso: string): string {
@@ -56,6 +57,7 @@ export function HistoryViewBanner(props: { view: BuildView; onBack: () => void }
           <MappingSnapshotSummary mappings={savedMappings()} />
         </Show>
         <Show when={recordWithApks()}>{(r) => <InstalledBuildSummary record={r()} />}</Show>
+        <Show when={recordWithApks()}>{(r) => <BuildSessionLinks record={r()} />}</Show>
         <Show when={isBuilding()}>
           <span class={styles.running} role="status">
             {buildRunningLabel(buildState.origin)}

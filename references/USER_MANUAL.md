@@ -151,6 +151,22 @@ Select a past build (click it, or Tab to the list, move with Up/Down, and press 
 - While a past build's log loads, the tab says so. If the log was removed by the retention settings above, the tab says **This build's log was removed**; its problems and result are still shown. If the log cannot be read, the tab shows the error with a **Retry** button. A build that has dropped out of the last 10 is reported as no longer in the history.
 - **R8 mapping saved: release (map id 6b1c2f0)** means the build shrank and obfuscated the app with R8, and Keynobi kept a copy of the `mapping.txt` it wrote for that variant. The next build of the variant overwrites the project's file; the copy keeps the mapping that matches this build's APK, which is what turns an obfuscated crash from that APK back into class and method names. The map id is the `pg_map_id` R8 writes at the top of the mapping (not every version writes one); the tooltip adds the module, the start of the file's SHA-256, and its size. The line appears only for a successful build that wrote a mapping during that build: a build that reused the previous mapping without rewriting it (nothing changed) shows none. Copies are kept while their build is in the history and removed with it (or with **Clear build history**), except the mapping of what is still installed on a device (below); mappings over 256 MB are not copied.
 - **Installed on Pixel_7 · 10:32** means this build's APK is the last one Keynobi installed of its app on that device (the emulator's AVD name, else the device model, else its serial), at that time (with the date when it was not today). Keynobi records every install it does, from **Run App** or from an AI client's `install_apk`, and recognizes the build by the APK's SHA-256, so the line appears whichever way the APK was installed through Keynobi. Installing another APK of the same app on the device replaces it. Keynobi keeps the R8 mapping of what is installed on each device even after the build leaves the history or you clear the history, so a crash on that device can still be deobfuscated; it keeps the last 16 device and app pairs. Installs done outside Keynobi (Android Studio, `adb install`) are not seen, so the line can be out of date after one.
+- **Session: 2 crashes on Pixel_7** opens the debug session of this build's install on that device (see below).
+
+### Debug sessions
+
+Every install Keynobi does, from **Run App** or from an AI client's `install_apk`, opens a debug session: that build of the app on that device, until the next install of the app there. Keynobi records what happens to it: the build and the install, each launch with its launch time, crashes and ANRs Logcat showed (with the log lines around the first 10), the process exits Android recorded, Logcat reconnects, stops, and clears, the device going offline and coming back, and your bookmarks. A crash of an app Keynobi did not install, or that was reinstalled outside Keynobi, goes to a session marked **Unattributed**, never to a guessed build.
+
+Open **Show Debug Sessions** from the Command Palette, or click **Session: …** in a past build's bar.
+
+- The list on the left shows each session, newest first: its build (**#12 · :app debug**), device, app, state, and how many crashes, ANRs, and launches it has. **Open** is the current install; **Superseded** means the app was installed again on that device; **Ended** means you ended it; **Idle** means nothing happened for 24 hours. **Kept** marks a session you keep, and **Standalone** one an AI client recorded while Keynobi was not open (it appears within a few seconds while the dialog is open).
+- The timeline on the right lists the session's events, oldest first. Select one (click it, or Tab to the timeline and use Up/Down, Home, and End) to see it in full below. For a crash or ANR, it says whether the device confirmed that the crashing app was Keynobi's install; **Show log lines** (or Enter on the crash) shows the lines Keynobi kept with it, the newest 200 first; **Load older lines** adds 200 more.
+- **Keep** keeps the session and the R8 mapping of its build when retention would remove them. At most 5 sessions can be kept; stop keeping one to keep another.
+- **End session** closes an open session; the next install opens a new one.
+- **Refresh exit reasons** asks the device why the app's processes ended (Android 11 and later) and adds the exits that belong to the session.
+- **Add bookmark** adds a note (up to 500 characters) to an open session's timeline, for example what you did just before a crash.
+
+Keynobi keeps at most 50 sessions and removes them after the retention period and folder limit set under **Settings → Advanced → Build**; kept sessions are not removed by age.
 
 ---
 
@@ -467,6 +483,7 @@ Command Palette actions without a shortcut:
 - Clean Project
 - Manage Virtual Devices (toggles the Devices sidebar, same as `Cmd+3`)
 - Show App Exit Reasons
+- Show Debug Sessions
 - Copy MCP Setup Commands
 
 In the Logcat query bar: **Enter** commits a pill, **Up/Down** and **Tab** work with suggestions, **Backspace** in an empty bar removes the last pill, and **Esc** closes suggestions, then clears the query.
@@ -476,7 +493,7 @@ In the Logcat query bar: **Enter** commits a pill, **Up/Down** and **Tab** work 
 - **Lists** (projects, connected devices, builds): each list is one Tab stop. Up/Down, Home, and End move within it; Enter or Space selects. Shift+F10, or the context-menu key, opens the actions of the focused project or running emulator.
 - **Row action menus** (Shift+F10 or right-click): focus moves to the first item. Up/Down move, Enter runs an item, Esc or Tab closes the menu and returns focus to the row.
 - **More options** menus: Up/Down highlight an item, Enter runs it, Esc closes the menu.
-- **Dialogs** (Settings, Health Center, MCP Activity, Command Palette, App Exit Reasons, confirmations, and the device and variant pickers): focus moves into the dialog and stays there while it is open. Esc closes it, and focus returns to where it was.
+- **Dialogs** (Settings, Health Center, MCP Activity, Command Palette, App Exit Reasons, Debug Sessions, confirmations, and the device and variant pickers): focus moves into the dialog and stays there while it is open. Esc closes it, and focus returns to where it was.
 - The shortcuts above do not run while a dialog or menu is open.
 
 ---
@@ -501,7 +518,7 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 | `~/.keynobi/build-history.json`, `~/.keynobi/build-logs/` | Build history and build logs |
 | `~/.keynobi/mappings/` | Copies of the R8 mappings of builds in the history and of builds installed on devices |
 | `~/.keynobi/installed-builds.json` | Which build Keynobi last installed on each device, per app |
-| `~/.keynobi/sessions/` | Debug sessions: one per install on a device, with its launches, crashes and ANRs (with up to 1,000 log lines around each of the first 10), the process exits Android recorded, logcat and device connection changes, and bookmarks (not shown in the app yet). A crash of an app Keynobi did not install, or reinstalled elsewhere, goes to a session without a build. Removed after the debug session retention period or when the folder passes its size limit, oldest first, and at most 50 are kept |
+| `~/.keynobi/sessions/` | Debug sessions: one per install on a device, with its launches, crashes and ANRs (with up to 1,000 log lines around each of the first 10), the process exits Android recorded, logcat and device connection changes, and bookmarks (**Show Debug Sessions**). A crash of an app Keynobi did not install, or reinstalled elsewhere, goes to a session without a build. Removed after the debug session retention period or when the folder passes its size limit, oldest first, and at most 50 are kept |
 | `~/.keynobi/retrace/` | The crash stack being deobfuscated, only while `retrace` reads it |
 | `~/.keynobi/mcp-activity.jsonl` | Recent AI client activity |
 | `~/.keynobi/mcp.sock`, `~/.keynobi/mcp-sessions/` | The socket AI clients attach through while Keynobi is open, and a record per standalone MCP server |
