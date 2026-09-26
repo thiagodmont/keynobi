@@ -886,7 +886,7 @@ pub fn get_capture(
     get_capture_in(&data_dir(), id, seq, limit)
 }
 
-fn get_capture_in(
+pub(super) fn get_capture_in(
     data_dir: &Path,
     id: &str,
     seq: u32,

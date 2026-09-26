@@ -103,6 +103,8 @@ pub struct DebugSessionCounts {
     pub bookmarks: u32,
     /// Crashes and ANRs whose log lines were kept.
     pub captures: u32,
+    /// MCP tool calls that acted on the session's device.
+    pub agent_actions: u32,
 }
 
 /// A session's manifest, `sessions/<id>/session.json`.
@@ -326,6 +328,33 @@ pub struct DebugSessionExit {
     pub record: AppExitRecord,
 }
 
+/// How an MCP tool changes things, as its annotations declare.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub enum DebugSessionToolKind {
+    /// Changes state, not destructively.
+    Write,
+    /// Destructive or hard to reverse.
+    Destructive,
+    /// Runs arbitrary project code.
+    OpenWorld,
+}
+
+/// An MCP tool call that acted on the session's device. Its arguments are
+/// never recorded; the agent is the event's actor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DebugSessionAgentAction {
+    pub tool: String,
+    pub kind: DebugSessionToolKind,
+    /// The tool succeeded.
+    pub ok: bool,
+    pub duration_ms: u32,
+    pub serial: String,
+}
+
 /// What happened, by kind.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", content = "data", rename_all = "camelCase")]
@@ -346,6 +375,7 @@ pub enum DebugSessionEventData {
     Crash(DebugSessionCrash),
     Anr(DebugSessionCrash),
     Exit(DebugSessionExit),
+    AgentAction(DebugSessionAgentAction),
 }
 
 /// One line of `sessions/<id>/events.jsonl`.

@@ -12,7 +12,15 @@ const record = makeBuildRecord({ id: 12, apks: [apk] });
 const pixel = summaryOf(
   makeSession({
     id: "s-20260925T110000Z-000000000003",
-    counts: { launches: 1, crashes: 2, anrs: 0, exits: 0, bookmarks: 0, captures: 2 },
+    counts: {
+      launches: 1,
+      crashes: 2,
+      anrs: 0,
+      exits: 0,
+      bookmarks: 0,
+      captures: 2,
+      agentActions: 0,
+    },
   })
 );
 const olderPixel = summaryOf(makeSession({ id: "s-20260925T100000Z-000000000001" }));
