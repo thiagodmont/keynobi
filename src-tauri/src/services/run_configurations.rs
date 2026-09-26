@@ -9,12 +9,17 @@
 //! module (**Default**) or one per application module, from the last variant
 //! and device. The old fields stay and follow the active configuration, so an
 //! older Keynobi still finds its variant.
+//!
+//! Configurations the user shares live in the project's shared file instead
+//! (`shared_run_configurations`); their local state stays here, by name.
 
 use crate::models::error::AppError;
 use crate::models::run_configuration::{
-    LocalRunState, ProjectRunConfigurations, RunConfiguration, RunLaunch, TargetPreference,
+    LocalRunState, ProjectRunConfigurations, RunConfiguration, RunLaunch,
+    SharedRunConfigurationProblem, TargetPreference,
 };
 use crate::models::settings::{AppSettings, ProjectEntry};
+use crate::services::shared_run_configurations::{self, SharedRead};
 use crate::services::{gradle_modules, settings_manager, variant_manager};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -48,6 +53,9 @@ const FALLBACK_VARIANT: &str = "debug";
 #[derive(Debug, Clone, Default)]
 pub struct MigrationSeed {
     modules: Vec<ModuleSeed>,
+    /// Names the project's shared file offers; migration creates no local
+    /// configuration that would hide one.
+    shared_names: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -75,7 +83,10 @@ pub fn migration_seed(gradle_root: &Path) -> MigrationSeed {
             }
         })
         .collect();
-    MigrationSeed { modules }
+    MigrationSeed {
+        modules,
+        shared_names: Vec::new(),
+    }
 }
 
 /// Variants the module's build file (else the root project's) declares, and
@@ -122,17 +133,34 @@ fn read_build_file(gradle_root: &Path, relative: &str) -> Option<(PathBuf, Strin
 /// **Default** for a single application module, else one per module (named
 /// after it) with none active. The variant is the entry's last variant when
 /// the module declares it (or declares none), else the module's default. Each
-/// targets the last used device. Returns whether it changed `entry`; an entry
-/// that has configurations (even none) or a project without an application
-/// module is left alone.
+/// targets the last used device. A name the project's shared file offers is
+/// left to the shared configuration (still active when it would be). Returns
+/// whether it changed `entry`; an entry that has configurations (even none)
+/// or a project without an application module is left alone.
 pub fn migrate(entry: &mut ProjectEntry, seed: &MigrationSeed) -> bool {
     if entry.run_configurations.is_some() || seed.modules.is_empty() {
         return false;
     }
-    let names = migrated_names(&seed.modules);
+    let names: Vec<(String, bool)> = migrated_names(&seed.modules)
+        .into_iter()
+        .map(|name| {
+            match seed
+                .shared_names
+                .iter()
+                .find(|shared| shared.eq_ignore_ascii_case(&name))
+            {
+                Some(shared) => (shared.clone(), true),
+                None => (name, false),
+            }
+        })
+        .collect();
+    entry.active_run_configuration = match names.as_slice() {
+        [(only, _)] => Some(only.clone()),
+        _ => None,
+    };
     let mut configurations = Vec::new();
     let mut local = BTreeMap::new();
-    for (module, name) in seed.modules.iter().zip(names) {
+    for (module, (name, shared)) in seed.modules.iter().zip(names) {
         let variant = match entry.last_build_variant.as_deref() {
             Some(last)
                 if validate_variant(last).is_ok()
@@ -146,14 +174,16 @@ pub fn migrate(entry: &mut ProjectEntry, seed: &MigrationSeed) -> bool {
                 .clone()
                 .unwrap_or_else(|| FALLBACK_VARIANT.to_string()),
         };
-        configurations.push(RunConfiguration {
-            name: name.clone(),
-            module: module.path.clone(),
-            variant,
-            task: None,
-            launch: RunLaunch::Default,
-            logcat_filter: None,
-        });
+        if !shared {
+            configurations.push(RunConfiguration {
+                name: name.clone(),
+                module: module.path.clone(),
+                variant,
+                task: None,
+                launch: RunLaunch::Default,
+                logcat_filter: None,
+            });
+        }
         local.insert(
             name,
             LocalRunState {
@@ -163,10 +193,6 @@ pub fn migrate(entry: &mut ProjectEntry, seed: &MigrationSeed) -> bool {
             },
         );
     }
-    entry.active_run_configuration = match configurations.as_slice() {
-        [only] => Some(only.name.clone()),
-        _ => None,
-    };
     entry.run_configurations = Some(configurations);
     entry.run_local = local;
     true
@@ -359,6 +385,8 @@ fn configurations_of(entry: &ProjectEntry) -> ProjectRunConfigurations {
         configurations: entry.run_configurations.clone().unwrap_or_default(),
         active: entry.active_run_configuration.clone(),
         local: entry.run_local.clone(),
+        shared: Vec::new(),
+        shared_file: None,
     }
 }
 
@@ -430,60 +458,137 @@ fn edit_at<R>(
 }
 
 /// The project's run configurations, created on the first read (see
-/// [`migrate`]).
+/// [`migrate`]): the local ones, then those shared with the project (see
+/// [`with_shared`]).
 pub fn list(project_root: &str) -> Result<ProjectRunConfigurations, AppError> {
     list_at(&settings_path(), project_root)
 }
 
 pub fn list_at(path: &Path, project_root: &str) -> Result<ProjectRunConfigurations, AppError> {
-    let settings = settings_manager::load_settings_at_path(path);
-    let entry = find(&settings, project_root).ok_or_else(|| not_in_registry(project_root))?;
-    if entry.run_configurations.is_some() {
-        return Ok(configurations_of(entry));
-    }
-    // The project's files are read before the data lock.
-    let seed = migration_seed(&gradle_root_of(entry));
-    edit_at(path, project_root, &seed, |entry, _| {
-        Ok(configurations_of(entry))
-    })
+    let Prepared {
+        entry,
+        shared,
+        seed,
+        migrated,
+    } = prepare(path, project_root)?;
+    let listed = if migrated {
+        edit_at(path, project_root, &seed, |entry, _| {
+            Ok(configurations_of(entry))
+        })?
+    } else {
+        configurations_of(&entry)
+    };
+    Ok(with_shared(listed, &shared))
 }
 
 /// Save `config`, replacing the configuration of the same name or adding it
-/// (at most `MAX_RUN_CONFIGURATIONS`), after [`validate_in_project`].
+/// (at most `MAX_RUN_CONFIGURATIONS`), after [`validate_in_project`]. With
+/// `shared`, it is moved into the project's shared file (`Some(true)`) or out
+/// of it into the local ones (`Some(false)`); without, it stays where it is.
 pub fn save(
     project_root: &str,
     config: RunConfiguration,
+    shared: Option<bool>,
 ) -> Result<ProjectRunConfigurations, AppError> {
-    save_at(&settings_path(), project_root, config)
+    save_at(&settings_path(), project_root, config, shared)
 }
 
 pub fn save_at(
     path: &Path,
     project_root: &str,
     config: RunConfiguration,
+    shared: Option<bool>,
 ) -> Result<ProjectRunConfigurations, AppError> {
-    let seed = seed_for(path, project_root)?;
-    edit_at(path, project_root, &seed, |entry, gradle_root| {
-        let configurations = entry.run_configurations.get_or_insert_with(Vec::new);
-        validate_in_project(&config, gradle_root, configurations)
-            .map_err(AppError::InvalidInput)?;
-        match configurations.iter().position(|c| c.name == config.name) {
-            Some(index) => configurations[index] = config.clone(),
-            None if configurations.len() >= MAX_RUN_CONFIGURATIONS => {
-                return Err(AppError::InvalidInput(format!(
-                    "A project can have at most {MAX_RUN_CONFIGURATIONS} run configurations. \
-                     Delete one first."
-                )));
-            }
-            None => configurations.push(config.clone()),
+    let Prepared {
+        entry,
+        shared: file,
+        seed,
+        ..
+    } = prepare(path, project_root)?;
+    let gradle_root = gradle_root_of(&entry);
+    let locals = entry.run_configurations.clone().unwrap_or_default();
+    let is_shared = visible_shared(&locals, &file).any(|c| c.name == config.name);
+    let to_shared = shared.unwrap_or(is_shared);
+    if is_shared && !to_shared {
+        // Unsharing rewrites the file after the local save: check it first.
+        file.check_writable()?;
+    }
+    // Checked here too, so a refused save writes neither file.
+    let others: Vec<RunConfiguration> = locals
+        .iter()
+        .chain(visible_shared(&locals, &file))
+        .filter(|c| c.name != config.name)
+        .cloned()
+        .collect();
+    validate_in_project(&config, &gradle_root, &others).map_err(AppError::InvalidInput)?;
+
+    let saved = if to_shared {
+        let mut list = file.configurations.clone();
+        match list
+            .iter()
+            .position(|c| c.name.eq_ignore_ascii_case(&config.name))
+        {
+            Some(index) => list[index] = config.clone(),
+            None => list.push(config.clone()),
         }
-        entry.run_local.entry(config.name.clone()).or_default();
-        Ok(configurations_of(entry))
-    })
+        shared_run_configurations::write(&gradle_root, &file, &list)?;
+        // The shared one replaces a local one of the same name; its local
+        // state stays.
+        edit_at(path, project_root, &seed, |entry, _| {
+            if let Some(configurations) = entry.run_configurations.as_mut() {
+                configurations.retain(|c| c.name != config.name);
+            }
+            entry.run_local.entry(config.name.clone()).or_default();
+            Ok(configurations_of(entry))
+        })?
+    } else {
+        let shared_names: Vec<RunConfiguration> = visible_shared(&locals, &file)
+            .filter(|c| c.name != config.name)
+            .cloned()
+            .collect();
+        let saved = edit_at(path, project_root, &seed, |entry, gradle_root| {
+            let configurations = entry.run_configurations.get_or_insert_with(Vec::new);
+            let others: Vec<RunConfiguration> = configurations
+                .iter()
+                .chain(&shared_names)
+                .cloned()
+                .collect();
+            validate_in_project(&config, gradle_root, &others).map_err(AppError::InvalidInput)?;
+            match configurations.iter().position(|c| c.name == config.name) {
+                Some(index) => configurations[index] = config.clone(),
+                None if configurations.len() >= MAX_RUN_CONFIGURATIONS => {
+                    return Err(AppError::InvalidInput(format!(
+                        "A project can have at most {MAX_RUN_CONFIGURATIONS} run configurations. \
+                         Delete one first."
+                    )));
+                }
+                None => configurations.push(config.clone()),
+            }
+            entry.run_local.entry(config.name.clone()).or_default();
+            Ok(configurations_of(entry))
+        })?;
+        // Saved locally first, so a failed rewrite leaves it in both places
+        // (the local one is used), never in neither.
+        if is_shared {
+            let rest: Vec<RunConfiguration> = file
+                .configurations
+                .iter()
+                .filter(|c| c.name != config.name)
+                .cloned()
+                .collect();
+            shared_run_configurations::write(&gradle_root, &file, &rest)?;
+        }
+        saved
+    };
+    Ok(with_shared(
+        saved,
+        &shared_run_configurations::read(&gradle_root),
+    ))
 }
 
-/// Delete the configuration named `name`. No configuration is active
-/// afterwards when it was the active one.
+/// Delete the configuration named `name`, from the project's shared file
+/// when it is shared. No configuration is active afterwards when it was the
+/// active one.
 pub fn delete(project_root: &str, name: &str) -> Result<ProjectRunConfigurations, AppError> {
     delete_at(&settings_path(), project_root, name)
 }
@@ -493,12 +598,29 @@ pub fn delete_at(
     project_root: &str,
     name: &str,
 ) -> Result<ProjectRunConfigurations, AppError> {
-    let seed = seed_for(path, project_root)?;
-    edit_at(path, project_root, &seed, |entry, _| {
+    let Prepared {
+        entry,
+        shared: file,
+        seed,
+        ..
+    } = prepare(path, project_root)?;
+    let gradle_root = gradle_root_of(&entry);
+    let locals = entry.run_configurations.clone().unwrap_or_default();
+    let is_shared = visible_shared(&locals, &file).any(|c| c.name == name);
+    if is_shared {
+        let rest: Vec<RunConfiguration> = file
+            .configurations
+            .iter()
+            .filter(|c| c.name != name)
+            .cloned()
+            .collect();
+        shared_run_configurations::write(&gradle_root, &file, &rest)?;
+    }
+    let deleted = edit_at(path, project_root, &seed, |entry, _| {
         let configurations = entry.run_configurations.get_or_insert_with(Vec::new);
         let before = configurations.len();
         configurations.retain(|c| c.name != name);
-        if configurations.len() == before {
+        if configurations.len() == before && !is_shared {
             return Err(no_such_configuration(name));
         }
         entry.run_local.remove(name);
@@ -506,7 +628,15 @@ pub fn delete_at(
             entry.active_run_configuration = None;
         }
         Ok(configurations_of(entry))
-    })
+    })?;
+    Ok(with_shared(
+        deleted,
+        &if is_shared {
+            shared_run_configurations::read(&gradle_root)
+        } else {
+            file
+        },
+    ))
 }
 
 /// Make the configuration named `name` the active one. The project's last
@@ -520,18 +650,8 @@ pub fn set_active_at(
     project_root: &str,
     name: &str,
 ) -> Result<ProjectRunConfigurations, AppError> {
-    let seed = seed_for(path, project_root)?;
-    edit_at(path, project_root, &seed, |entry, _| {
-        if !entry
-            .run_configurations
-            .iter()
-            .flatten()
-            .any(|c| c.name == name)
-        {
-            return Err(no_such_configuration(name));
-        }
+    edit_known(path, project_root, name, |entry| {
         entry.active_run_configuration = Some(name.to_string());
-        Ok(configurations_of(entry))
     })
 }
 
@@ -552,22 +672,12 @@ pub fn record_last_device_at(
     serial: &str,
 ) -> Result<ProjectRunConfigurations, AppError> {
     crate::utils::validation::validate_device_serial(serial).map_err(AppError::InvalidInput)?;
-    let seed = seed_for(path, project_root)?;
-    edit_at(path, project_root, &seed, |entry, _| {
-        if !entry
-            .run_configurations
-            .iter()
-            .flatten()
-            .any(|c| c.name == name)
-        {
-            return Err(no_such_configuration(name));
-        }
+    edit_known(path, project_root, name, |entry| {
         entry
             .run_local
             .entry(name.to_string())
             .or_default()
             .last_device = Some(serial.to_string());
-        Ok(configurations_of(entry))
     })
 }
 
@@ -597,34 +707,178 @@ pub fn set_target_at(
         }
         TargetPreference::Ask | TargetPreference::LastUsed => {}
     }
-    let seed = seed_for(path, project_root)?;
-    edit_at(path, project_root, &seed, |entry, _| {
-        if !entry
-            .run_configurations
-            .iter()
-            .flatten()
-            .any(|c| c.name == name)
-        {
-            return Err(no_such_configuration(name));
-        }
+    edit_known(path, project_root, name, |entry| {
         entry.run_local.entry(name.to_string()).or_default().target = target;
-        Ok(configurations_of(entry))
     })
+}
+
+/// Approve running the shared configuration named `name` as the project's
+/// shared file is now: `sha256` is the file's hash the user reviewed. Refused
+/// when the file changed since.
+pub fn approve_shared(
+    project_root: &str,
+    name: &str,
+    sha256: &str,
+) -> Result<ProjectRunConfigurations, AppError> {
+    approve_shared_at(&settings_path(), project_root, name, sha256)
+}
+
+pub fn approve_shared_at(
+    path: &Path,
+    project_root: &str,
+    name: &str,
+    sha256: &str,
+) -> Result<ProjectRunConfigurations, AppError> {
+    if sha256.len() != 64 || !sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(AppError::InvalidInput(
+            "Invalid SHA-256: expected 64 hexadecimal characters.".into(),
+        ));
+    }
+    let Prepared {
+        entry,
+        shared: file,
+        seed,
+        ..
+    } = prepare(path, project_root)?;
+    let locals = entry.run_configurations.clone().unwrap_or_default();
+    if !visible_shared(&locals, &file).any(|c| c.name == name) {
+        return Err(AppError::NotFound(format!(
+            "There is no shared run configuration named '{name}'."
+        )));
+    }
+    if file.sha256() != Some(sha256) {
+        return Err(AppError::InvalidInput(format!(
+            "The project's shared run configurations ({}) changed since you reviewed them. \
+             Review them again.",
+            shared_run_configurations::SHARED_FILE
+        )));
+    }
+    let approved = edit_at(path, project_root, &seed, |entry, _| {
+        entry
+            .run_local
+            .entry(name.to_string())
+            .or_default()
+            .approved_project_file_sha256 = Some(sha256.to_string());
+        Ok(configurations_of(entry))
+    })?;
+    Ok(with_shared(approved, &file))
 }
 
 fn no_such_configuration(name: &str) -> AppError {
     AppError::NotFound(format!("There is no run configuration named '{name}'."))
 }
 
-/// What migration needs, when the project's entry has no configurations yet.
-fn seed_for(path: &Path, project_root: &str) -> Result<MigrationSeed, AppError> {
+/// A project's registry entry and shared file, read before any edit takes
+/// the data lock.
+struct Prepared {
+    /// The entry, with its first configurations created in memory when it
+    /// has none (saved by the next edit, which is given `seed`).
+    entry: ProjectEntry,
+    shared: SharedRead,
+    seed: MigrationSeed,
+    /// Whether the entry had no configurations.
+    migrated: bool,
+}
+
+/// Read the project's entry and shared file (see [`migrate`]).
+fn prepare(path: &Path, project_root: &str) -> Result<Prepared, AppError> {
     let settings = settings_manager::load_settings_at_path(path);
-    let entry = find(&settings, project_root).ok_or_else(|| not_in_registry(project_root))?;
-    Ok(if entry.run_configurations.is_some() {
-        MigrationSeed::default()
-    } else {
-        migration_seed(&gradle_root_of(entry))
+    let mut entry = find(&settings, project_root)
+        .ok_or_else(|| not_in_registry(project_root))?
+        .clone();
+    let gradle_root = gradle_root_of(&entry);
+    let shared = shared_run_configurations::read(&gradle_root);
+    if entry.run_configurations.is_some() {
+        return Ok(Prepared {
+            entry,
+            shared,
+            seed: MigrationSeed::default(),
+            migrated: false,
+        });
+    }
+    // The project's files are read before the data lock.
+    let seed = MigrationSeed {
+        shared_names: shared
+            .configurations
+            .iter()
+            .map(|c| c.name.clone())
+            .collect(),
+        ..migration_seed(&gradle_root)
+    };
+    migrate(&mut entry, &seed);
+    Ok(Prepared {
+        entry,
+        shared,
+        seed,
+        migrated: true,
     })
+}
+
+/// Run `edit` on the entry when `name` is one of its configurations, local
+/// or shared.
+fn edit_known(
+    path: &Path,
+    project_root: &str,
+    name: &str,
+    edit: impl FnOnce(&mut ProjectEntry),
+) -> Result<ProjectRunConfigurations, AppError> {
+    let Prepared { shared, seed, .. } = prepare(path, project_root)?;
+    let edited = edit_at(path, project_root, &seed, |entry, _| {
+        let locals = entry.run_configurations.clone().unwrap_or_default();
+        if !locals.iter().any(|c| c.name == name)
+            && !visible_shared(&locals, &shared).any(|c| c.name == name)
+        {
+            return Err(no_such_configuration(name));
+        }
+        edit(entry);
+        Ok(configurations_of(entry))
+    })?;
+    Ok(with_shared(edited, &shared))
+}
+
+/// The shared configurations no local one hides: a local configuration wins
+/// over a shared one of the same name (ignoring case).
+fn visible_shared<'a>(
+    locals: &'a [RunConfiguration],
+    shared: &'a SharedRead,
+) -> impl Iterator<Item = &'a RunConfiguration> {
+    shared.configurations.iter().filter(move |shared| {
+        !locals
+            .iter()
+            .any(|local| local.name.eq_ignore_ascii_case(&shared.name))
+    })
+}
+
+/// `project`'s local configurations followed by the shared ones no local one
+/// hides. A hidden one is reported in the shared file's problems.
+fn with_shared(
+    mut project: ProjectRunConfigurations,
+    shared: &SharedRead,
+) -> ProjectRunConfigurations {
+    let mut file = shared.file.clone();
+    for config in &shared.configurations {
+        if let Some(local) = project
+            .configurations
+            .iter()
+            .find(|c| c.name.eq_ignore_ascii_case(&config.name))
+        {
+            if let Some(file) = file.as_mut() {
+                file.problems.push(SharedRunConfigurationProblem {
+                    name: Some(config.name.clone()),
+                    message: format!(
+                        "Your local configuration '{}' has the same name and is used instead. \
+                         Rename or delete it to use the project's.",
+                        local.name
+                    ),
+                });
+            }
+            continue;
+        }
+        project.shared.push(config.name.clone());
+        project.configurations.push(config.clone());
+    }
+    project.shared_file = file;
+    project
 }
 
 #[cfg(test)]
@@ -823,7 +1077,7 @@ mod tests {
         let listed = list_at(&path, &root_of(&project)).unwrap();
         assert!(listed.configurations.is_empty());
         assert_eq!(stored(&path, &project).run_configurations, Some(Vec::new()));
-        let saved = save_at(&path, &root_of(&project), config("Mine", ":app")).unwrap();
+        let saved = save_at(&path, &root_of(&project), config("Mine", ":app"), None).unwrap();
         assert_eq!(saved.configurations, vec![config("Mine", ":app")]);
     }
 
@@ -1021,11 +1275,11 @@ mod tests {
         let (_dir, path) = settings_with(vec![entry(project.path())]);
         let root = root_of(&project);
 
-        let err = save_at(&path, &root, config("Wear", ":wear")).unwrap_err();
+        let err = save_at(&path, &root, config("Wear", ":wear"), None).unwrap_err();
         assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
         assert_eq!(stored(&path, &project).run_configurations, None);
 
-        let saved = save_at(&path, &root, config("Second", ":app")).unwrap();
+        let saved = save_at(&path, &root, config("Second", ":app"), None).unwrap();
         let names: Vec<&str> = saved
             .configurations
             .iter()
@@ -1045,7 +1299,7 @@ mod tests {
             variant: "release".into(),
             ..config(DEFAULT_RUN_CONFIGURATION, ":app")
         };
-        let saved = save_at(&path, &root, replaced.clone()).unwrap();
+        let saved = save_at(&path, &root, replaced.clone(), None).unwrap();
 
         assert_eq!(saved.configurations, vec![replaced]);
         // The active configuration's variant is the project's last variant.
@@ -1061,18 +1315,18 @@ mod tests {
         let (_dir, path) = settings_with(vec![entry(project.path())]);
         let root = root_of(&project);
         for i in 1..MAX_RUN_CONFIGURATIONS {
-            save_at(&path, &root, config(&format!("C{i}"), ":app")).unwrap();
+            save_at(&path, &root, config(&format!("C{i}"), ":app"), None).unwrap();
         }
         assert_eq!(
             list_at(&path, &root).unwrap().configurations.len(),
             MAX_RUN_CONFIGURATIONS
         );
 
-        let err = save_at(&path, &root, config("One more", ":app")).unwrap_err();
+        let err = save_at(&path, &root, config("One more", ":app"), None).unwrap_err();
 
         assert!(err.to_string().contains("at most"), "{err}");
         // Replacing one still works at the cap.
-        save_at(&path, &root, config("C1", ":app")).unwrap();
+        save_at(&path, &root, config("C1", ":app"), None).unwrap();
     }
 
     #[test]
@@ -1087,6 +1341,7 @@ mod tests {
                 variant: "staging".into(),
                 ..config("Staging", ":app")
             },
+            None,
         )
         .unwrap();
 
@@ -1216,7 +1471,7 @@ mod tests {
         let root = root_of(&project);
         // The settings UI loaded its snapshot before any configuration existed.
         let mut snapshot = settings_manager::load_settings_at_path(&path);
-        save_at(&path, &root, config("Mine", ":app")).unwrap();
+        save_at(&path, &root, config("Mine", ":app"), None).unwrap();
 
         snapshot.onboarding_completed = true;
         snapshot.recent_projects[0].run_configurations = Some(Vec::new());
@@ -1265,7 +1520,12 @@ mod tests {
         let (done_tx, done_rx) = mpsc::channel();
         let (this_path, this_root) = (path.clone(), root.clone());
         let this = std::thread::spawn(move || {
-            let saved = save_at(&this_path, &this_root, config("From this one", ":app"));
+            let saved = save_at(
+                &this_path,
+                &this_root,
+                config("From this one", ":app"),
+                None,
+            );
             done_tx.send(()).unwrap();
             saved.unwrap();
         });
@@ -1291,5 +1551,274 @@ mod tests {
                 "From this one"
             ]
         );
+    }
+
+    // ── Shared with the project ──────────────────────────────────────────────
+
+    use crate::services::shared_run_configurations::SHARED_FILE;
+
+    fn write_shared(project: &TempDir, configurations: &str) {
+        write(
+            project.path(),
+            SHARED_FILE,
+            &format!(r#"{{"schemaVersion": 1, "configurations": [{configurations}]}}"#),
+        );
+    }
+
+    fn shared_text(project: &TempDir) -> Option<String> {
+        std::fs::read_to_string(project.path().join(SHARED_FILE)).ok()
+    }
+
+    const PHONE: &str = r#"{"name": "Phone", "module": ":app", "variant": "release"}"#;
+
+    #[test]
+    fn shared_configurations_follow_the_local_ones_and_a_local_one_of_the_same_name_wins() {
+        let project = project(&[":app"]);
+        let (_dir, path) = settings_with(vec![entry(project.path())]);
+        list_at(&path, &root_of(&project)).unwrap();
+        write_shared(
+            &project,
+            &format!(r#"{PHONE}, {{"name": "default", "module": ":app", "variant": "release"}}"#),
+        );
+
+        let listed = list_at(&path, &root_of(&project)).unwrap();
+
+        let names: Vec<&str> = listed
+            .configurations
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        assert_eq!(names, [DEFAULT_RUN_CONFIGURATION, "Phone"]);
+        assert_eq!(listed.shared, ["Phone"]);
+        let file = listed.shared_file.unwrap();
+        assert_eq!(file.path, SHARED_FILE);
+        assert!(file.sha256.is_some());
+        assert_eq!(file.problems.len(), 1, "{:?}", file.problems);
+        assert_eq!(file.problems[0].name.as_deref(), Some("default"));
+        assert!(file.problems[0]
+            .message
+            .contains("Your local configuration 'Default' has the same name and is used instead"));
+    }
+
+    #[test]
+    fn migration_leaves_a_shared_name_to_the_shared_configuration() {
+        let project = project(&[":app"]);
+        write_shared(
+            &project,
+            r#"{"name": "Default", "module": ":app", "variant": "release"}"#,
+        );
+        let mut fresh = entry(project.path());
+        fresh.last_device = Some("emulator-5554".into());
+        let (_dir, path) = settings_with(vec![fresh]);
+
+        let listed = list_at(&path, &root_of(&project)).unwrap();
+
+        assert_eq!(
+            listed.configurations,
+            vec![RunConfiguration {
+                variant: "release".into(),
+                ..config(DEFAULT_RUN_CONFIGURATION, ":app")
+            }]
+        );
+        assert_eq!(listed.shared, [DEFAULT_RUN_CONFIGURATION]);
+        assert_eq!(listed.active.as_deref(), Some(DEFAULT_RUN_CONFIGURATION));
+        // Its local state is kept by name.
+        assert_eq!(
+            listed.local[DEFAULT_RUN_CONFIGURATION]
+                .last_device
+                .as_deref(),
+            Some("emulator-5554")
+        );
+        assert_eq!(stored(&path, &project).run_configurations, Some(Vec::new()));
+    }
+
+    #[test]
+    fn shared_configurations_are_read_in_safe_mode() {
+        let project = project(&[":app"]);
+        write_shared(&project, PHONE);
+        let mut untrusted = entry(project.path());
+        untrusted.trusted = Some(false);
+        let (_dir, path) = settings_with(vec![untrusted]);
+
+        let listed = list_at(&path, &root_of(&project)).unwrap();
+
+        assert_eq!(listed.shared, ["Phone"]);
+    }
+
+    #[test]
+    fn sharing_moves_a_configuration_into_the_file_and_unsharing_moves_it_back() {
+        let project = project(&[":app"]);
+        let (_dir, path) = settings_with(vec![entry(project.path())]);
+        let root = root_of(&project);
+        let phone = RunConfiguration {
+            launch: RunLaunch::DeepLink {
+                uri: "myapp://home".into(),
+            },
+            ..config("Phone", ":app")
+        };
+        save_at(&path, &root, phone.clone(), None).unwrap();
+        set_target_at(
+            &path,
+            &root,
+            "Phone",
+            TargetPreference::Serial {
+                serial: "emulator-5554".into(),
+            },
+        )
+        .unwrap();
+
+        let shared = save_at(&path, &root, phone.clone(), Some(true)).unwrap();
+
+        assert_eq!(shared.shared, ["Phone"]);
+        assert!(shared.configurations.contains(&phone));
+        let text = shared_text(&project).unwrap();
+        assert!(text.contains("\"name\": \"Phone\""), "{text}");
+        assert!(!text.contains("emulator-5554"), "{text}");
+        let local: Vec<String> = stored(&path, &project)
+            .run_configurations
+            .unwrap()
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        assert_eq!(local, [DEFAULT_RUN_CONFIGURATION]);
+        // Its target stays local.
+        assert_eq!(
+            shared.local["Phone"].target,
+            TargetPreference::Serial {
+                serial: "emulator-5554".into()
+            }
+        );
+
+        // Saved again without saying, it stays shared.
+        let edited = RunConfiguration {
+            variant: "release".into(),
+            ..phone.clone()
+        };
+        let listed = save_at(&path, &root, edited.clone(), None).unwrap();
+        assert_eq!(listed.shared, ["Phone"]);
+        assert!(shared_text(&project).unwrap().contains("\"release\""));
+
+        let unshared = save_at(&path, &root, edited.clone(), Some(false)).unwrap();
+
+        assert!(unshared.shared.is_empty());
+        assert_eq!(unshared.shared_file, None);
+        assert!(!project.path().join(".keynobi").exists());
+        assert!(stored(&path, &project)
+            .run_configurations
+            .unwrap()
+            .contains(&edited));
+        assert_eq!(
+            unshared.local["Phone"].target,
+            TargetPreference::Serial {
+                serial: "emulator-5554".into()
+            }
+        );
+    }
+
+    #[test]
+    fn shared_configurations_can_be_chosen_targeted_recorded_and_deleted() {
+        let project = project(&[":app"]);
+        write_shared(&project, PHONE);
+        let (_dir, path) = settings_with(vec![entry(project.path())]);
+        let root = root_of(&project);
+
+        set_active_at(&path, &root, "Phone").unwrap();
+        set_target_at(&path, &root, "Phone", TargetPreference::Ask).unwrap();
+        let listed = record_last_device_at(&path, &root, "Phone", "emulator-5554").unwrap();
+        assert_eq!(listed.active.as_deref(), Some("Phone"));
+        assert_eq!(listed.local["Phone"].target, TargetPreference::Ask);
+        assert_eq!(
+            listed.local["Phone"].last_device.as_deref(),
+            Some("emulator-5554")
+        );
+
+        let deleted = delete_at(&path, &root, "Phone").unwrap();
+
+        assert!(deleted.shared.is_empty());
+        assert_eq!(deleted.active, None);
+        assert!(!deleted.local.contains_key("Phone"));
+        assert_eq!(shared_text(&project), None);
+    }
+
+    #[test]
+    fn a_name_used_by_a_shared_configuration_is_taken() {
+        let project = project(&[":app"]);
+        write_shared(&project, PHONE);
+        let (_dir, path) = settings_with(vec![entry(project.path())]);
+
+        let err = save_at(&path, &root_of(&project), config("phone", ":app"), None).unwrap_err();
+
+        assert!(err
+            .to_string()
+            .contains("A run configuration named 'Phone' already exists."));
+    }
+
+    #[test]
+    fn a_file_with_a_configuration_this_version_cannot_use_is_left_alone() {
+        let project = project(&[":app"]);
+        write_shared(
+            &project,
+            &format!(
+                r#"{PHONE}, {{"name": "Future", "module": ":app", "variant": "debug", "profile": 1}}"#
+            ),
+        );
+        let before = shared_text(&project).unwrap();
+        let (_dir, path) = settings_with(vec![entry(project.path())]);
+        let root = root_of(&project);
+        list_at(&path, &root).unwrap();
+
+        for result in [
+            save_at(&path, &root, config("Mine", ":app"), Some(true)),
+            save_at(&path, &root, config("Phone", ":app"), Some(false)),
+            delete_at(&path, &root, "Phone"),
+        ] {
+            let err = result.unwrap_err();
+            assert!(
+                err.to_string().contains("Fix or remove the file first"),
+                "{err}"
+            );
+        }
+        assert_eq!(shared_text(&project).unwrap(), before);
+        // The refused unshare kept nothing: "Phone" is still shared only.
+        let listed = list_at(&path, &root).unwrap();
+        assert_eq!(listed.shared, ["Phone"]);
+        assert!(!stored(&path, &project)
+            .run_configurations
+            .unwrap()
+            .iter()
+            .any(|c| c.name == "Mine"));
+    }
+
+    #[test]
+    fn approving_a_shared_configuration_records_the_hash_the_user_reviewed() {
+        let project = project(&[":app"]);
+        write_shared(&project, PHONE);
+        let (_dir, path) = settings_with(vec![entry(project.path())]);
+        let root = root_of(&project);
+        let sha = list_at(&path, &root)
+            .unwrap()
+            .shared_file
+            .unwrap()
+            .sha256
+            .unwrap();
+
+        let approved = approve_shared_at(&path, &root, "Phone", &sha).unwrap();
+        assert_eq!(
+            approved.local["Phone"]
+                .approved_project_file_sha256
+                .as_deref(),
+            Some(sha.as_str())
+        );
+
+        let stale = "0".repeat(64);
+        let err = approve_shared_at(&path, &root, "Phone", &stale).unwrap_err();
+        assert!(
+            err.to_string().contains("changed since you reviewed them"),
+            "{err}"
+        );
+        let err = approve_shared_at(&path, &root, "Phone", "not a hash").unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        let err = approve_shared_at(&path, &root, DEFAULT_RUN_CONFIGURATION, &sha).unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
     }
 }

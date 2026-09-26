@@ -49,11 +49,18 @@ function backend(
         name: name as string,
         plan: `Run '${String(name)}': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7`,
       }),
-    save_run_configuration: ({ config }) => {
+    list_run_configurations: () => project,
+    save_run_configuration: ({ config, shared }) => {
       const saved = config as RunConfiguration;
       const rest = project.configurations.filter((c) => c.name !== saved.name);
+      const others = project.shared.filter((n) => n !== saved.name);
+      const toShared = (shared as boolean | null) ?? project.shared.includes(saved.name);
       project = {
-        ...makeProjectRunConfigurations([...rest, saved], targets()),
+        ...makeProjectRunConfigurations(
+          [...rest, saved],
+          targets(),
+          toShared ? [...others, saved.name] : others
+        ),
         active: project.active,
       };
       return project;
@@ -278,6 +285,7 @@ describe("RunConfigurationsDialog", () => {
         launch: { kind: "default" },
         logcatFilter: "package:mine",
       },
+      shared: false,
     });
     expect(callsTo("set_run_configuration_target")[0][1]).toEqual({
       name: "Release",
@@ -341,6 +349,171 @@ describe("RunConfigurationsDialog", () => {
       expect(screen.queryByRole("dialog", { name: "Delete run configuration?" })).toBeNull()
     );
     expect(callsTo("delete_run_configuration")).toHaveLength(0);
+  });
+
+  it("shares a configuration with the project", async () => {
+    const { project } = backend(makeProjectRunConfigurations());
+    open();
+
+    const share = within(dialog()).getByRole("checkbox", { name: "Share with project" });
+    expect((share as HTMLInputElement).checked).toBe(false);
+    fireEvent.click(share);
+    fireEvent.click(button("Save"));
+
+    await vi.waitFor(() => expect(callsTo("save_run_configuration")).toHaveLength(1));
+    expect(callsTo("save_run_configuration")[0][1]).toMatchObject({
+      config: { name: "Default" },
+      shared: true,
+    });
+    expect(project().shared).toEqual(["Default"]);
+    const list = within(dialog()).getByRole("listbox", { name: "Run configurations" });
+    await vi.waitFor(() =>
+      expect(within(list).getByRole("option").textContent).toContain("Shared")
+    );
+  });
+
+  it("marks a shared configuration and moves it back to this Mac when unshared", async () => {
+    const { project } = backend(
+      makeProjectRunConfigurations(
+        [makeRunConfiguration(), makeRunConfiguration({ name: "Team" })],
+        {},
+        ["Team"]
+      )
+    );
+    open();
+
+    const list = within(dialog()).getByRole("listbox", { name: "Run configurations" });
+    const options = within(list).getAllByRole("option");
+    expect(options[0].textContent).not.toContain("Shared");
+    expect(options[1].textContent).toContain("Shared");
+    fireEvent.click(options[1]);
+    await vi.waitFor(() => expect(field("Name").value).toBe("Team"));
+    const share = within(dialog()).getByRole("checkbox", {
+      name: "Share with project",
+    }) as HTMLInputElement;
+    expect(share.checked).toBe(true);
+
+    fireEvent.click(share);
+    fireEvent.click(button("Save"));
+
+    await vi.waitFor(() => expect(callsTo("save_run_configuration")).toHaveLength(1));
+    expect(callsTo("save_run_configuration")[0][1]).toMatchObject({
+      config: { name: "Team" },
+      shared: false,
+    });
+    expect(project().shared).toEqual([]);
+  });
+
+  it("shows why the project's shared file cannot be used", () => {
+    backend({
+      ...makeProjectRunConfigurations(),
+      sharedFile: {
+        path: ".keynobi/run-configurations.json",
+        sha256: null,
+        error: "It is not valid JSON: expected value at line 1 column 1.",
+        problems: [],
+      },
+    });
+    open();
+
+    const alert = within(dialog()).getByTestId("shared-run-config-problems");
+    expect(alert.textContent).toContain("It is not valid JSON");
+    expect(dialog().textContent).toContain(
+      "The project's shared run configurations (.keynobi/run-configurations.json) cannot be used"
+    );
+  });
+
+  it("names the shared configurations it does not offer, and why", () => {
+    backend({
+      ...makeProjectRunConfigurations([makeRunConfiguration()], {}, []),
+      sharedFile: {
+        path: ".keynobi/run-configurations.json",
+        sha256: "b".repeat(64),
+        error: null,
+        problems: [
+          { name: "Wear", message: "The module :wear is not a module of this project." },
+          { name: null, message: "The file has more than 50 configurations." },
+        ],
+      },
+    });
+    open();
+
+    const items = within(within(dialog()).getByTestId("shared-run-config-problems")).getAllByRole(
+      "listitem"
+    );
+    expect(items.map((i) => i.textContent)).toEqual([
+      "'Wear': The module :wear is not a module of this project.",
+      "A configuration: The file has more than 50 configurations.",
+    ]);
+  });
+
+  it("approves a shared configuration from its plan, for the file it was shown", async () => {
+    let approved: string | null = null;
+    const initial = makeProjectRunConfigurations(
+      [makeRunConfiguration({ name: "Bundle", task: ":app:bundleDebug" })],
+      {},
+      ["Bundle"]
+    );
+    backend(initial, {
+      resolve_run_configuration: ({ name }) => {
+        if (approved === null) {
+          throw {
+            kind: "approvalRequired",
+            message:
+              "Run configuration 'Bundle' is shared with the project (.keynobi/run-configurations.json) and builds :app:bundleDebug, which is not an assemble task. You have not approved it yet. Review it, then approve it to run it.",
+          };
+        }
+        return makeResolvedRun({
+          name: name as string,
+          plan: "Run 'Bundle': build :app:bundleDebug",
+        });
+      },
+      approve_shared_run_configuration: ({ sha256 }) => {
+        approved = sha256 as string;
+        return initial;
+      },
+    });
+    open();
+
+    await within(dialog()).findByText(/You have not approved it yet/);
+    fireEvent.click(button("Approve…"));
+    const confirm = await screen.findByRole("dialog", {
+      name: "Approve shared run configuration?",
+    });
+    expect(confirm.textContent).toContain("builds :app:bundleDebug");
+    fireEvent.click(within(confirm).getByRole("button", { name: "Approve" }));
+
+    await vi.waitFor(() => expect(callsTo("approve_shared_run_configuration")).toHaveLength(1));
+    expect(callsTo("approve_shared_run_configuration")[0][1]).toEqual({
+      name: "Bundle",
+      sha256: "a".repeat(64),
+    });
+    const plan = await within(dialog()).findByTestId("run-config-plan");
+    expect(plan.textContent).toContain("Run 'Bundle': build :app:bundleDebug");
+  });
+
+  it("does not approve when the confirmation is cancelled", async () => {
+    backend(
+      makeProjectRunConfigurations([makeRunConfiguration({ name: "Bundle" })], {}, ["Bundle"]),
+      {
+        resolve_run_configuration: () => {
+          throw { kind: "approvalRequired", message: "Approve it to run it." };
+        },
+      }
+    );
+    open();
+
+    await within(dialog()).findByText("Approve it to run it.");
+    fireEvent.click(button("Approve…"));
+    const confirm = await screen.findByRole("dialog", {
+      name: "Approve shared run configuration?",
+    });
+    fireEvent.click(within(confirm).getByRole("button", { name: "Cancel" }));
+
+    await vi.waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Approve shared run configuration?" })).toBeNull()
+    );
+    expect(callsTo("approve_shared_run_configuration")).toHaveLength(0);
   });
 
   it("asks before discarding unsaved changes", async () => {

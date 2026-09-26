@@ -1,5 +1,6 @@
 import {
   type JSX,
+  For,
   Show,
   createEffect,
   createMemo,
@@ -13,6 +14,7 @@ import {
   Alert,
   Badge,
   Button,
+  Checkbox,
   FormField,
   Input,
   Listbox,
@@ -30,11 +32,12 @@ import {
   isAppErrorKind,
   listApplicationModules,
 } from "@/lib/tauri-api";
-import { runConfigState } from "@/stores/run-configurations.store";
+import { isSharedRunConfiguration, runConfigState } from "@/stores/run-configurations.store";
 import { projectState } from "@/stores/project.store";
 import { deviceState } from "@/stores/device.store";
 import { variantState } from "@/stores/variant.store";
 import {
+  approveSharedRunConfiguration,
   closeRunConfigurationsEditor,
   copyName,
   deleteRunConfiguration,
@@ -66,7 +69,7 @@ function savedTarget(name: string): TargetPreference {
 
 function savedDraft(name: string): RunConfigurationDraft | null {
   const config = runConfigState.configurations.find((c) => c.name === name);
-  return config ? draftFrom(config, savedTarget(name)) : null;
+  return config ? draftFrom(config, savedTarget(name), name, isSharedRunConfiguration(name)) : null;
 }
 
 /** A name no configuration has: `Configuration 2`. */
@@ -242,7 +245,12 @@ export function RunConfigurationsDialog(): JSX.Element {
     const current = draft();
     if (!current) return;
     const names = runConfigState.configurations.map((c) => c.name);
-    await startDraft({ ...current, savedName: null, name: copyName(current.name, names) });
+    await startDraft({
+      ...current,
+      savedName: null,
+      name: copyName(current.name, names),
+      shared: false,
+    });
   }
 
   async function remove(): Promise<void> {
@@ -254,9 +262,12 @@ export function RunConfigurationsDialog(): JSX.Element {
       return;
     }
     const name = current.savedName;
+    const file = runConfigState.sharedFile?.path;
     const choice = await showDialog({
       title: "Delete run configuration?",
-      message: `Delete '${name}'? This cannot be undone.`,
+      message: isSharedRunConfiguration(name)
+        ? `Delete '${name}'? It is removed from the project's shared file (${file}), for everyone who uses it. This cannot be undone.`
+        : `Delete '${name}'? This cannot be undone.`,
       buttons: [
         { label: "Delete", value: "delete", style: "danger" },
         { label: "Cancel", value: "cancel", style: "secondary" },
@@ -281,7 +292,12 @@ export function RunConfigurationsDialog(): JSX.Element {
     setSaving(true);
     setSaveError(null);
     try {
-      await saveRunConfiguration(config, parseTarget(current.target), current.savedName);
+      await saveRunConfiguration(
+        config,
+        parseTarget(current.target),
+        current.savedName,
+        current.shared
+      );
       setShowErrors(false);
       if (selected() === config.name) {
         setDraft(savedDraft(config.name));
@@ -332,6 +348,41 @@ export function RunConfigurationsDialog(): JSX.Element {
     void refetchPlan();
   }
 
+  /** The shared configuration to offer approving when the plan needs it. */
+  const toApprove = () => {
+    const result = plan();
+    const name = saved()?.name;
+    if (!result || result.ok || !name || !isAppErrorKind(result.error, "approvalRequired")) {
+      return null;
+    }
+    return { name, reason: result.text };
+  };
+
+  async function approve(name: string, reason: string): Promise<void> {
+    try {
+      if (await approveSharedRunConfiguration(name, reason)) void refetchPlan();
+    } catch (e) {
+      setSaveError(formatError(e));
+    }
+  }
+
+  /** Why the project's shared file, or some of its configurations, are not offered. */
+  const sharedFileProblems = () => {
+    const file = runConfigState.sharedFile;
+    if (!file) return null;
+    if (file.error) {
+      return { variant: "error" as const, lines: [file.error], path: file.path };
+    }
+    if (!file.problems.length) return null;
+    return {
+      variant: "warning" as const,
+      lines: file.problems.map(
+        (p) => `${p.name ? `'${p.name}'` : "A configuration"}: ${p.message}`
+      ),
+      path: file.path,
+    };
+  };
+
   const fieldId = (field: string) => `run-config-${field}`;
 
   return (
@@ -349,6 +400,22 @@ export function RunConfigurationsDialog(): JSX.Element {
           <h2 id="run-configurations-title" class={styles.title}>
             Run Configurations
           </h2>
+          <Show when={sharedFileProblems()}>
+            {(problems) => (
+              <Alert
+                variant={problems().variant}
+                title={
+                  problems().variant === "error"
+                    ? `The project's shared run configurations (${problems().path}) cannot be used`
+                    : `Some shared run configurations (${problems().path}) are not offered`
+                }
+              >
+                <ul class={styles.problems} data-testid="shared-run-config-problems">
+                  <For each={problems().lines}>{(line) => <li>{line}</li>}</For>
+                </ul>
+              </Alert>
+            )}
+          </Show>
           <div class={styles.body}>
             <div class={styles.sidebar}>
               <ScrollArea class={styles.list}>
@@ -363,6 +430,9 @@ export function RunConfigurationsDialog(): JSX.Element {
                   {(config) => (
                     <div class={styles.item}>
                       <span class={styles.itemName}>{config().name}</span>
+                      <Show when={isSharedRunConfiguration(config().name)}>
+                        <Badge size="xs">Shared</Badge>
+                      </Show>
                       <Show when={config().name === runConfigState.active}>
                         <Badge variant="accent" size="xs">
                           Active
@@ -513,6 +583,16 @@ export function RunConfigurationsDialog(): JSX.Element {
                       onInput={(logcatFilter) => update({ logcatFilter })}
                     />
                   </FormField>
+                  <div class={styles.share}>
+                    <Checkbox checked={current().shared} onChange={(shared) => update({ shared })}>
+                      Share with project
+                    </Checkbox>
+                    <p class={styles.note}>
+                      Saved in the project's .keynobi/run-configurations.json for everyone who opens
+                      it: module, variant, task, launch, and Logcat filter. The target device stays
+                      on this Mac.
+                    </p>
+                  </div>
                   <section class={styles.plan} aria-labelledby="run-config-plan-title">
                     <h3 id="run-config-plan-title" class={styles.planTitle}>
                       Resolved plan
@@ -532,18 +612,35 @@ export function RunConfigurationsDialog(): JSX.Element {
                               <Alert
                                 variant="warning"
                                 action={
-                                  <Show when={avdToLaunch()}>
-                                    {(avd) => (
-                                      <Button
-                                        size="xs"
-                                        variant="primary"
-                                        disabled={deviceState.launchingAvd === avd()}
-                                        onClick={() => void launchAvd(avd())}
-                                      >
-                                        Launch AVD
-                                      </Button>
-                                    )}
-                                  </Show>
+                                  avdToLaunch() || toApprove() ? (
+                                    <>
+                                      <Show when={avdToLaunch()}>
+                                        {(avd) => (
+                                          <Button
+                                            size="xs"
+                                            variant="primary"
+                                            disabled={deviceState.launchingAvd === avd()}
+                                            onClick={() => void launchAvd(avd())}
+                                          >
+                                            Launch AVD
+                                          </Button>
+                                        )}
+                                      </Show>
+                                      <Show when={toApprove()}>
+                                        {(pending) => (
+                                          <Button
+                                            size="xs"
+                                            variant="primary"
+                                            onClick={() =>
+                                              void approve(pending().name, pending().reason)
+                                            }
+                                          >
+                                            Approve…
+                                          </Button>
+                                        )}
+                                      </Show>
+                                    </>
+                                  ) : undefined
                                 }
                               >
                                 {result().text}

@@ -66,7 +66,8 @@ pub struct LocalRunState {
     pub target: TargetPreference,
     /// Serial of the device it last ran on.
     pub last_device: Option<String>,
-    /// SHA-256 of the shared configuration file the user last approved.
+    /// SHA-256 of the project's shared configuration file when the user last
+    /// approved running this shared configuration.
     pub approved_project_file_sha256: Option<String>,
 }
 
@@ -80,6 +81,38 @@ pub struct ProjectRunConfigurations {
     pub active: Option<String>,
     /// Local state by configuration name.
     pub local: BTreeMap<String, LocalRunState>,
+    /// Names of the configurations read from the project's shared file.
+    #[serde(default)]
+    pub shared: Vec<String>,
+    /// The project's shared file; `None` when the project has none.
+    #[serde(default)]
+    pub shared_file: Option<SharedRunConfigurationsFile>,
+}
+
+/// The project's shared run configuration file
+/// (`<gradle root>/.keynobi/run-configurations.json`), as last read.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct SharedRunConfigurationsFile {
+    /// Path relative to the Gradle root.
+    pub path: String,
+    /// SHA-256 of the file's bytes; `None` when it could not be read.
+    pub sha256: Option<String>,
+    /// Why none of the file's configurations are offered.
+    pub error: Option<String>,
+    /// Configurations of the file that are not offered, and why.
+    pub problems: Vec<SharedRunConfigurationProblem>,
+}
+
+/// A configuration of the shared file that is not offered.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct SharedRunConfigurationProblem {
+    /// Its name, when the file gives one.
+    pub name: Option<String>,
+    pub message: String,
 }
 
 /// A run configuration checked against the project and the connected devices:

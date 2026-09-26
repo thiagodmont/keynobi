@@ -49,6 +49,8 @@ import type {
   RunDevice,
   RunLaunch,
   SdkDownloadProgress,
+  SharedRunConfigurationProblem,
+  SharedRunConfigurationsFile,
   SystemHealthReport,
   SystemImageInfo,
   TargetPreference,
@@ -91,6 +93,10 @@ export const typeFixtures = {
     {
       "kind": "other",
       "message": "unexpected"
+    },
+    {
+      "kind": "approvalRequired",
+      "message": "Run configuration 'Pay' is shared"
     }
   ] satisfies Wire<AppError>[],
   ProjectEntry: [
@@ -392,6 +398,105 @@ export const typeFixtures = {
             "kind": "lastUsed"
           }
         }
+      },
+      "shared": [
+        "Wear deep link"
+      ],
+      "sharedFile": {
+        "error": null,
+        "path": ".keynobi/run-configurations.json",
+        "problems": [
+          {
+            "message": "':lib' is not an application module of this project.",
+            "name": "Library"
+          },
+          {
+            "message": "It is not a valid run configuration: missing field `name`.",
+            "name": null
+          }
+        ],
+        "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+      }
+    },
+    {
+      "active": "Default",
+      "configurations": [
+        {
+          "launch": {
+            "kind": "default"
+          },
+          "logcatFilter": null,
+          "module": ":app",
+          "name": "Default",
+          "task": null,
+          "variant": "debug"
+        },
+        {
+          "launch": {
+            "kind": "deepLink",
+            "uri": "myapp://home"
+          },
+          "logcatFilter": "package:mine level:warn",
+          "module": ":wear",
+          "name": "Wear deep link",
+          "task": ":wear:bundleFreeRelease",
+          "variant": "freeRelease"
+        },
+        {
+          "launch": {
+            "kind": "activity",
+            "name": ".SettingsActivity"
+          },
+          "logcatFilter": null,
+          "module": ":app",
+          "name": "Settings",
+          "task": null,
+          "variant": "debug"
+        },
+        {
+          "launch": {
+            "kind": "none"
+          },
+          "logcatFilter": null,
+          "module": ":app",
+          "name": "Install only",
+          "task": null,
+          "variant": "release"
+        }
+      ],
+      "local": {
+        "Default": {
+          "approvedProjectFileSha256": null,
+          "lastDevice": null,
+          "target": {
+            "kind": "lastUsed"
+          }
+        },
+        "Wear deep link": {
+          "approvedProjectFileSha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+          "lastDevice": null,
+          "target": {
+            "kind": "lastUsed"
+          }
+        }
+      },
+      "shared": [
+        "Wear deep link"
+      ],
+      "sharedFile": {
+        "error": null,
+        "path": ".keynobi/run-configurations.json",
+        "problems": [
+          {
+            "message": "':lib' is not an application module of this project.",
+            "name": "Library"
+          },
+          {
+            "message": "It is not a valid run configuration: missing field `name`.",
+            "name": null
+          }
+        ],
+        "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
       }
     },
     {
@@ -416,7 +521,9 @@ export const typeFixtures = {
             "kind": "lastUsed"
           }
         }
-      }
+      },
+      "shared": [],
+      "sharedFile": null
     },
     {
       "active": "Default",
@@ -440,14 +547,56 @@ export const typeFixtures = {
             "kind": "lastUsed"
           }
         }
+      },
+      "shared": [],
+      "sharedFile": {
+        "error": "It is larger than 64 KiB, so it is not read.",
+        "path": ".keynobi/run-configurations.json",
+        "problems": [],
+        "sha256": null
       }
     },
     {
       "active": null,
       "configurations": [],
-      "local": {}
+      "local": {},
+      "shared": [],
+      "sharedFile": null
     }
   ] satisfies Wire<ProjectRunConfigurations>[],
+  SharedRunConfigurationsFile: [
+    {
+      "error": null,
+      "path": ".keynobi/run-configurations.json",
+      "problems": [
+        {
+          "message": "':lib' is not an application module of this project.",
+          "name": "Library"
+        },
+        {
+          "message": "It is not a valid run configuration: missing field `name`.",
+          "name": null
+        }
+      ],
+      "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+    },
+    {
+      "error": "It is larger than 64 KiB, so it is not read.",
+      "path": ".keynobi/run-configurations.json",
+      "problems": [],
+      "sha256": null
+    }
+  ] satisfies Wire<SharedRunConfigurationsFile>[],
+  SharedRunConfigurationProblem: [
+    {
+      "message": "':lib' is not an application module of this project.",
+      "name": "Library"
+    },
+    {
+      "message": "It is not a valid run configuration: missing field `name`.",
+      "name": null
+    }
+  ] satisfies Wire<SharedRunConfigurationProblem>[],
   ResolvedRun: [
     {
       "device": {

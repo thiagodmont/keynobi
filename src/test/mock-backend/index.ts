@@ -1,6 +1,10 @@
 import type { AgentSkillStatus } from "@/bindings";
 import { settingsHandlers } from "./settings";
-import { projectHandlers } from "./projects";
+import {
+  mockSharedRunConfigurationsFile,
+  projectHandlers,
+  setMockSharedRunConfigurationsFile,
+} from "./projects";
 import { devicesHandlers } from "./devices";
 import { addMockPastBuild, buildHandlers, setMockAppBuildLineDelay, startMockBuild } from "./build";
 import { logcatHandlers } from "./logcat";
@@ -92,5 +96,9 @@ if (import.meta.env.VITE_E2E === "true") {
     /** A build already in the history; returns its history ID. */
     addPastBuild: addMockPastBuild,
     setAppBuildLineDelay: setMockAppBuildLineDelay,
+    /** The mock project's shared run configuration file, as on disk; null when absent. */
+    sharedRunConfigurationsFile: mockSharedRunConfigurationsFile,
+    /** Replace the shared file, as a pulled commit would. */
+    setSharedRunConfigurationsFile: setMockSharedRunConfigurationsFile,
   };
 }

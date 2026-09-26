@@ -750,6 +750,34 @@ fn migrated() -> ProjectEntry {
     }
 }
 
+/// A shared file that was read, with a configuration it does not offer, and
+/// one that could not be read.
+fn shared_run_configurations_files() -> Vec<SharedRunConfigurationsFile> {
+    vec![
+        SharedRunConfigurationsFile {
+            path: ".keynobi/run-configurations.json".into(),
+            sha256: Some("9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08".into()),
+            error: None,
+            problems: vec![
+                SharedRunConfigurationProblem {
+                    name: Some("Library".into()),
+                    message: "':lib' is not an application module of this project.".into(),
+                },
+                SharedRunConfigurationProblem {
+                    name: None,
+                    message: "It is not a valid run configuration: missing field `name`.".into(),
+                },
+            ],
+        },
+        SharedRunConfigurationsFile {
+            path: ".keynobi/run-configurations.json".into(),
+            sha256: None,
+            error: Some("It is larger than 64 KiB, so it is not read.".into()),
+            problems: Vec::new(),
+        },
+    ]
+}
+
 fn run_configurations() -> Vec<RunConfiguration> {
     vec![
         RunConfiguration {
@@ -961,6 +989,7 @@ fn fixtures() -> Fixtures {
             AppError::SettingsError("unreadable".into()),
             AppError::McpError("not listening".into()),
             AppError::Other("unexpected".into()),
+            AppError::ApprovalRequired("Run configuration 'Pay' is shared".into()),
         ],
     );
 
@@ -983,11 +1012,38 @@ fn fixtures() -> Fixtures {
                 configurations: run_configurations(),
                 active: Some("Default".into()),
                 local: local_run_states(),
+                shared: vec!["Wear deep link".into()],
+                shared_file: Some(shared_run_configurations_files().remove(0)),
+            },
+            // After approving the shared configuration.
+            ProjectRunConfigurations {
+                configurations: run_configurations(),
+                active: Some("Default".into()),
+                local: local_run_states()
+                    .into_iter()
+                    .map(|(name, state)| {
+                        let approved = (name == "Wear deep link").then(|| {
+                            "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+                                .to_string()
+                        });
+                        (
+                            name,
+                            LocalRunState {
+                                approved_project_file_sha256: approved,
+                                ..state
+                            },
+                        )
+                    })
+                    .collect(),
+                shared: vec!["Wear deep link".into()],
+                shared_file: Some(shared_run_configurations_files().remove(0)),
             },
             ProjectRunConfigurations {
                 configurations: migrated().run_configurations.unwrap_or_default(),
                 active: migrated().active_run_configuration,
                 local: migrated().run_local,
+                shared: Vec::new(),
+                shared_file: None,
             },
             // After a run recorded the device it installed on.
             ProjectRunConfigurations {
@@ -1002,9 +1058,22 @@ fn fixtures() -> Fixtures {
                 )]
                 .into_iter()
                 .collect(),
+                shared: Vec::new(),
+                shared_file: Some(shared_run_configurations_files().remove(1)),
             },
             ProjectRunConfigurations::default(),
         ],
+    );
+    f.add(
+        "SharedRunConfigurationsFile",
+        &shared_run_configurations_files(),
+    );
+    f.add(
+        "SharedRunConfigurationProblem",
+        &shared_run_configurations_files()
+            .into_iter()
+            .flat_map(|f| f.problems)
+            .collect::<Vec<_>>(),
     );
     f.add("ResolvedRun", &resolved_runs());
     f.add(

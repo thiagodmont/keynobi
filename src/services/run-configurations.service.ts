@@ -1,6 +1,9 @@
 import {
+  approveSharedRunConfiguration as approveSharedRunConfigurationApi,
   deleteRunConfiguration as deleteRunConfigurationApi,
+  errorMessage,
   formatError,
+  isAppErrorKind,
   launchAvd,
   listRunConfigurations,
   refreshDevices,
@@ -26,7 +29,7 @@ import {
 } from "@/stores/run-configurations.store";
 import { deviceState, setDevices, setLaunchingAvd } from "@/stores/device.store";
 import { loadVariants, selectVariant, variantState } from "@/stores/variant.store";
-import { showToast } from "@/components/ui";
+import { showDialog, showToast } from "@/components/ui";
 
 /** Palette action IDs registered for the open project's configurations. */
 let registeredActionIds: string[] = [];
@@ -109,20 +112,22 @@ export async function refreshRunConfigurations(): Promise<void> {
 /**
  * Save `config` with its `target`. `previousName` is the name it had when
  * editing started (null for a new one): a renamed configuration replaces it,
- * and stays active when it was. Rejects with the backend's reason, nothing
- * saved.
+ * and stays active when it was. `shared` puts it in the project's shared file
+ * (true) or keeps it on this Mac (false); null leaves it where it is. Rejects
+ * with the backend's reason, nothing saved.
  */
 export async function saveRunConfiguration(
   config: RunConfiguration,
   target: TargetPreference,
-  previousName: string | null
+  previousName: string | null,
+  shared: boolean | null = null
 ): Promise<void> {
   const root = openRoot();
   const renamed = previousName !== null && previousName !== config.name;
   if (renamed && runConfigState.configurations.some((c) => c.name === config.name)) {
     throw new Error(`A run configuration named '${config.name}' already exists.`);
   }
-  await saveRunConfigurationApi(config);
+  await saveRunConfigurationApi(config, shared);
   let project = await setRunConfigurationTarget(config.name, target);
   if (renamed) {
     const wasActive = project.active === previousName;
@@ -149,6 +154,55 @@ export function copyName(name: string, existing: readonly string[]): string {
   for (let i = 2; ; i++) {
     const next = `${base} ${i}`;
     if (!taken.has(next.toLowerCase())) return next;
+  }
+}
+
+/**
+ * Ask the user to approve running the shared configuration named `name`,
+ * which a run was refused for (`approvalRequired`, whose message is
+ * `reason`). The approval is recorded for the project's shared file as it is
+ * now, so a later change to the file asks again. False when declined.
+ */
+export async function approveSharedRunConfiguration(
+  name: string,
+  reason: string
+): Promise<boolean> {
+  const root = openRoot();
+  const project = await listRunConfigurations();
+  if (projectState.projectRoot !== root) return false;
+  show(root, project);
+  const file = project.sharedFile;
+  if (!file?.sha256 || !project.shared.includes(name)) {
+    throw new Error(`'${name}' is no longer a shared run configuration of this project.`);
+  }
+  const choice = await showDialog({
+    title: "Approve shared run configuration?",
+    message: `${reason} Approve only if you trust this version of ${file.path}.`,
+    buttons: [
+      { label: "Approve", value: "approve", style: "primary" },
+      { label: "Cancel", value: "cancel", style: "secondary" },
+    ],
+  });
+  if (choice !== "approve") return false;
+  const approved = await approveSharedRunConfigurationApi(name, file.sha256);
+  if (projectState.projectRoot === root) show(root, approved);
+  return true;
+}
+
+/**
+ * Resolve a run like `resolveRunConfiguration`. A shared configuration that
+ * needs the user's approval asks for it first; null when it is declined.
+ */
+export async function resolveApprovedRun(
+  opts: { name?: string | null; selectedSerial?: string | null; buildOnly?: boolean } = {}
+): Promise<ResolvedRun | null> {
+  try {
+    return await resolveRunConfiguration(opts);
+  } catch (e) {
+    if (!isAppErrorKind(e, "approvalRequired")) throw e;
+    const name = opts.name ?? runConfigState.active ?? (await listRunConfigurations()).active;
+    if (!name || !(await approveSharedRunConfiguration(name, errorMessage(e)))) return null;
+    return resolveRunConfiguration(opts);
   }
 }
 

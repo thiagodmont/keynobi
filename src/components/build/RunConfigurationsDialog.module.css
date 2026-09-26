@@ -141,3 +141,14 @@
   justify-content: flex-end;
   gap: 8px;
 }
+
+.share {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.problems {
+  margin: 0;
+  padding-left: 16px;
+}

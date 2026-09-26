@@ -6,4 +6,4 @@
  * Serializes as `{"kind": "notFound", "message": "..."}` so the TypeScript
  * frontend can match on the `kind` field and show context-appropriate messages.
  */
-export type AppError = { "kind": "notFound", "message": string } | { "kind": "permissionDenied", "message": string } | { "kind": "invalidInput", "message": string } | { "kind": "io", "message": string } | { "kind": "processFailed", "message": string } | { "kind": "settingsError", "message": string } | { "kind": "mcpError", "message": string } | { "kind": "other", "message": string };
+export type AppError = { "kind": "notFound", "message": string } | { "kind": "permissionDenied", "message": string } | { "kind": "invalidInput", "message": string } | { "kind": "io", "message": string } | { "kind": "processFailed", "message": string } | { "kind": "settingsError", "message": string } | { "kind": "mcpError", "message": string } | { "kind": "other", "message": string } | { "kind": "approvalRequired", "message": string };

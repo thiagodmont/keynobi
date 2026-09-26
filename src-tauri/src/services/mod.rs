@@ -37,6 +37,7 @@ pub mod retrace_match;
 pub mod run_configurations;
 pub mod run_plan;
 pub mod settings_manager;
+pub mod shared_run_configurations;
 #[cfg(feature = "telemetry")]
 pub mod telemetry_sentry;
 pub mod ui_automation;

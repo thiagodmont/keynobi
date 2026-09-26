@@ -34,6 +34,7 @@ const ERROR_CODES: Record<AppError["kind"], true> = {
   settingsError: true,
   mcpError: true,
   other: true,
+  approvalRequired: true,
 };
 
 /** Most frames kept per exception (the newest ones, nearest the error). */

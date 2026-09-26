@@ -114,7 +114,7 @@ describe("run configurations service", () => {
 
     await saveRunConfiguration(added, { kind: "ask" }, null);
 
-    expect(callsTo("save_run_configuration")[0][1]).toEqual({ config: added });
+    expect(callsTo("save_run_configuration")[0][1]).toEqual({ config: added, shared: null });
     expect(callsTo("set_run_configuration_target")[0][1]).toEqual({
       name: "Tablet",
       target: { kind: "ask" },

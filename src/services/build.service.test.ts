@@ -17,10 +17,21 @@ import {
   startBuild,
 } from "@/stores/build.store";
 import { resetDeviceState } from "@/stores/device.store";
+import { setProjects } from "@/stores/projects.store";
 import { resetVariantState } from "@/stores/variant.store";
 import { updateSetting } from "@/stores/settings.store";
-import { beginProjectOpen, setApplicationId } from "@/stores/project.store";
-import { makeLaunchTiming, makeResolvedRun } from "@/test/factories/build";
+import {
+  beginProjectOpen,
+  clearProject,
+  setApplicationId,
+  setProject,
+} from "@/stores/project.store";
+import {
+  makeLaunchTiming,
+  makeProjectRunConfigurations,
+  makeResolvedRun,
+  makeRunConfiguration,
+} from "@/test/factories/build";
 import type { TargetPreference } from "@/bindings";
 import type * as UiModule from "@/components/ui";
 
@@ -1168,6 +1179,109 @@ describe("Build Only builds the active run configuration", () => {
 
     expect(callsTo("resolve_run_configuration")[0]?.[1]).toMatchObject({ name: "Wear" });
     expect(callsTo("run_gradle_task")[0]?.[1]).toEqual({ task: ":wear:assembleDebug" });
+  });
+
+  describe("a shared configuration that needs approval", () => {
+    const needsApproval = {
+      kind: "approvalRequired",
+      message:
+        "Run configuration 'Bundle' is shared with the project (.keynobi/run-configurations.json) and builds :app:bundleDebug, which is not an assemble task. You have not approved it yet. Review it, then approve it to run it.",
+    };
+
+    beforeEach(() => {
+      setProject("/projects/app", "app");
+      setProjects([
+        {
+          id: "app",
+          path: "/projects/app",
+          name: "app",
+          gradleRoot: "/projects/app",
+          lastOpened: "2026-01-01T00:00:00Z",
+          pinned: false,
+          lastBuildVariant: null,
+          lastDevice: null,
+          trusted: true,
+        },
+      ]);
+      let approved = false;
+      mockInvoke.mockImplementation((cmd) => {
+        if (cmd === "resolve_run_configuration") {
+          return approved
+            ? Promise.resolve(makeResolvedRun({ name: "Bundle", task: ":app:bundleDebug" }))
+            : Promise.reject(needsApproval);
+        }
+        if (cmd === "list_run_configurations") {
+          return Promise.resolve(
+            makeProjectRunConfigurations(
+              [makeRunConfiguration({ name: "Bundle", task: ":app:bundleDebug" })],
+              {},
+              ["Bundle"]
+            )
+          );
+        }
+        if (cmd === "approve_shared_run_configuration") {
+          approved = true;
+          return Promise.resolve(makeProjectRunConfigurations());
+        }
+        if (cmd === "run_gradle_task") return Promise.resolve(1);
+        return Promise.resolve(undefined);
+      });
+    });
+
+    afterEach(() => {
+      clearProject();
+      setProjects([]);
+    });
+
+    it("asks once, records the approval for the file it showed, and builds", async () => {
+      dialogMock.showDialog.mockResolvedValue("approve");
+
+      const build = runBuildOnly("Bundle");
+      await vi.waitFor(() => expect(buildState.phase).toBe("running"));
+      await cancelBuild();
+      await build;
+
+      expect(dialogMock.showDialog).toHaveBeenCalledTimes(1);
+      expect(dialogMock.showDialog).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Approve shared run configuration?",
+          message: expect.stringContaining(
+            "builds :app:bundleDebug, which is not an assemble task"
+          ),
+        })
+      );
+      expect(callsTo("approve_shared_run_configuration")[0]?.[1]).toEqual({
+        name: "Bundle",
+        sha256: "a".repeat(64),
+      });
+      expect(callsTo("resolve_run_configuration")).toHaveLength(2);
+      expect(callsTo("run_gradle_task")[0]?.[1]).toEqual({ task: ":app:bundleDebug" });
+    });
+
+    it("builds nothing when the approval is declined", async () => {
+      dialogMock.showDialog.mockResolvedValue("cancel");
+
+      await runBuildOnly("Bundle");
+
+      expect(callsTo("approve_shared_run_configuration")).toHaveLength(0);
+      expect(callsTo("run_gradle_task")).toHaveLength(0);
+      flushPendingLines();
+      expect(buildLogStore.entries.map((e) => e.message).join("\n")).toContain(
+        "The shared run configuration was not approved — build cancelled."
+      );
+    });
+
+    it("runs nothing when the approval is declined for Run App", async () => {
+      dialogMock.showDialog.mockResolvedValue("cancel");
+
+      await runAndDeploy();
+
+      expect(callsTo("run_gradle_task")).toHaveLength(0);
+      flushPendingLines();
+      expect(buildLogStore.entries.map((e) => e.message).join("\n")).toContain(
+        "The shared run configuration was not approved — run cancelled."
+      );
+    });
   });
 
   it("builds nothing and says why when no configuration is active", async () => {

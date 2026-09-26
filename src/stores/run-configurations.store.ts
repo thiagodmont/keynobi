@@ -1,5 +1,10 @@
 import { createStore } from "solid-js/store";
-import type { LocalRunState, ProjectRunConfigurations, RunConfiguration } from "@/bindings";
+import type {
+  LocalRunState,
+  ProjectRunConfigurations,
+  RunConfiguration,
+  SharedRunConfigurationsFile,
+} from "@/bindings";
 
 export interface RunConfigurationsState {
   /** The project they belong to; null when none is loaded. */
@@ -7,6 +12,10 @@ export interface RunConfigurationsState {
   configurations: RunConfiguration[];
   active: string | null;
   local: Record<string, LocalRunState>;
+  /** Names of the configurations shared with the project. */
+  shared: string[];
+  /** The project's shared file; null when it has none. */
+  sharedFile: SharedRunConfigurationsFile | null;
   /** The Edit Run Configurations dialog is open. */
   editorOpen: boolean;
 }
@@ -16,6 +25,8 @@ const initialState = (): RunConfigurationsState => ({
   configurations: [],
   active: null,
   local: {},
+  shared: [],
+  sharedFile: null,
   editorOpen: false,
 });
 
@@ -30,6 +41,8 @@ export function setRunConfigurations(projectRoot: string, project: ProjectRunCon
     configurations: project.configurations,
     active: project.active,
     local: project.local as Record<string, LocalRunState>,
+    shared: project.shared,
+    sharedFile: project.sharedFile,
   });
 }
 
@@ -44,6 +57,11 @@ export function setRunConfigEditorOpen(open: boolean): void {
 /** The active configuration, or null when none is chosen. */
 export function activeRunConfiguration(): RunConfiguration | null {
   return runConfigState.configurations.find((c) => c.name === runConfigState.active) ?? null;
+}
+
+/** Whether the configuration named `name` is shared with the project. */
+export function isSharedRunConfiguration(name: string): boolean {
+  return runConfigState.shared.includes(name);
 }
 
 /** Test helper. */
