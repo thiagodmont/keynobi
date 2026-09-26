@@ -1,0 +1,97 @@
+src/lib/launch-timing.ts
+  s_1e114e823b9048::t_a48cf12c64af34 9-28
+references/CODE_PATTERN.md
+  s_1e114e823b9048::t_2599c8ad41c2a3 253
+src/lib/tauri-api.ts
+  s_1e114e823b9048::t_9c33a35af49551 184,197
+  s_1e114e823b9048::t_accec2e3b940fc 259-263
+src/services/build.service.ts
+  s_1e114e823b9048::t_be02c240356395 85
+  s_1e114e823b9048::t_d0125c0bfb1c59 12,39,190-198,570
+src/lib/launch-timing.test.ts
+  s_1e114e823b9048::t_f9d0d87cb0d9cf 23-46
+  s_1e114e823b9048::t_e64568d023e097 5,7
+src/services/build.service.init.test.ts
+  s_1e114e823b9048::t_9a34af1b26151f 9-10
+src/components/build/LaunchTimingSummary.tsx
+  s_1e114e823b9048::t_41d63c04b3f7a1 1,5,13-17,33-39
+  s_1e114e823b9048::t_be02c240356395 32
+src-tauri/src/services/build_runner.rs
+  s_1e114e823b9048::t_6a4555d3cfd4b6 2999-3000,3087-3103
+  s_1e114e823b9048::t_4752b16e1f5ebb 3104-3105
+src-tauri/src/models/build.rs
+  s_1e114e823b9048::t_cd22abf052aee4 268-286
+src/bindings/LaunchTiming.ts
+  s_1e114e823b9048::t_8c84ca3a2402f3 35-45
+src-tauri/src/services/app_inspector.rs
+  s_1e114e823b9048::t_b7c239c07e4902 3,263-271,276,434,440,446
+src/bindings/LaunchTimingEvent.ts
+  s_1e114e823b9048::t_8c84ca3a2402f3 1-12
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_66b52dd42087d2 20
+  s_1e114e823b9048::t_a1a52a934a3cca 680-687
+  s_1e114e823b9048::t_6a4555d3cfd4b6 216-217,227-228
+  s_1e114e823b9048::t_ba56d46e6a1b4c 695-702
+  s_1e114e823b9048::t_3b0b01a8aa45df 1071-1074
+  s_1e114e823b9048::t_71db65a8ff6628 1070
+src/test/mock-backend/devices.ts
+  s_1e114e823b9048::t_05c1b18674c0ab 167-168,170-178
+src/bindings/index.ts
+  s_1e114e823b9048::t_2afd252412081c 39
+src/components/build/LaunchTimingSummary.test.tsx
+  s_1e114e823b9048::t_d18d9f3cea260a 36-60
+src/services/build.service.test.ts
+  s_1e114e823b9048::t_183d8cefed2f39 703-714
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_2599c8ad41c2a3 81-82,508
+src-tauri/src/commands/device.rs
+  s_1e114e823b9048::t_29aefdca92887f 242-243
+  s_1e114e823b9048::t_777bc4e0dc53eb 18-19
+  s_1e114e823b9048::t_6b758e19ac519e 180
+  s_1e114e823b9048::t_75d576f84a71a7 152-156,158,166-167,176-179,181-189,194,208-210,215-224
+scripts/ipc-payloads.test.mjs
+  s_1e114e823b9048::t_76dc4094bcf031 351-356
+src/test/factories/build.ts
+  s_1e114e823b9048::t_a3c222fc71bd27 105-106
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_2599c8ad41c2a3 132,145
+e2e/smoke/build-flow.spec.ts
+  s_1e114e823b9048::t_bbbcd28fc6df58 60-67
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_a2b62576b24c0d 758-762
+  s_1e114e823b9048::t_8400d38a125b39 24,509-510,574-575,691-692,702-703,712-741,747-757,1650-1681
+  s_1e114e823b9048::t_9f4ecc6534e421 1682
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_2599c8ad41c2a3 143
+src-tauri/src/services/mod.rs
+  s_1e114e823b9048::t_211741c972c9c7 18
+src-tauri/src/services/launch_display.rs
+  s_1e114e823b9048::t_22228cc7dc00f7 1-9,12-13,15-85,92-170,172-173,178-202,204-207,209-212,214-220,281-300,311-371,373-394,399-406,411,420-430,435-459,464-475,479-487,492-495,499-502,607
+  s_1e114e823b9048::t_54af734d02eeb3 86-91
+  s_1e114e823b9048::t_7c76ed3ef006e9 171
+  s_1e114e823b9048::t_13aa41ebfaca79 503-521,523,526-528,530-553,558-565,567-569,571,580-581,584-590,592-594,606
+  s_1e114e823b9048::t_f8d8abae75b79d 522,524-525,529
+  s_1e114e823b9048::t_ed0f78c07e5a59 572
+  s_1e114e823b9048::t_8c84ca3a2402f3 575-578
+  s_1e114e823b9048::t_910f73d3563d8b 566,570,573-574,579,582-583,591
+  s_1e114e823b9048::t_5e17f4b08d2730 203,208,213,232-234,254-257,476-478,496-498
+  s_1e114e823b9048::t_584ce7e1e1b853 221-225,231,235-253,258-280
+  s_1e114e823b9048::t_04736339f5df3f 174-177,226-230,301-310,372,395-398,407-410,412-419,431-434,460-463,488-491,554-557,595-605
+  s_1e114e823b9048::t_de36ece9e4363e 10-11,14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "38fc94283d16465d6a6b7ba9a64ed4b2f6095c92",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
