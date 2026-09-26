@@ -227,14 +227,22 @@ An invalid regular expression is treated as plain text.
 - When a filter is active, right-click a row and choose **Expand 10 up** or **Expand 10 down** to reveal adjacent rows without clearing the filter. Rows added this way have a green left marker.
 - Scrolling away from the end or selecting a row enters read mode: the visible list is frozen so the row you are reading cannot be pushed out. New logs are still captured; **Jump to end** applies them.
 - In **Entry Detail**, click a tag, package, level, PID, TID, time, or message value to add it to the query as an **AND** or **OR** filter. Select part of the message first to filter by only that text. Use **Copy** to copy the entry.
-- For a crash line, **Deobfuscate** in **Entry Detail** turns the whole crash's stack back into your class, method, and file names with the R8 `retrace` tool from the Android SDK, and shows which build's mapping it used: **Deobfuscated with the R8 mapping of build #12 (:app release, map id 6b1c2f0), matched by Keynobi's install on Pixel_7 …**. **Copy stack** copies the result. See [Deobfuscating crashes](#deobfuscating-crashes).
+- For a crash line, **Deobfuscate** in **Entry Detail** turns the whole crash's stack back into your class, method, and file names with the R8 `retrace` tool from the Android SDK, and shows which build's mapping it used and how it knew: **Deobfuscated with the R8 mapping of build #12 (:app release, map id 6b1c2f0…), matched by map id.** **Copy stack** copies the result. See [Deobfuscating crashes](#deobfuscating-crashes).
 
 #### Deobfuscating crashes
 
-Keynobi deobfuscates a crash only with the mapping of the build it installed itself on the device the crash came from (with **Run App** or an AI client's `install_apk`). A wrong mapping would give a stack that looks right but names the wrong code, so when Keynobi cannot be sure which build is on the device it shows **Not deobfuscated** and why, and leaves the stack as it is:
+Keynobi deobfuscates a crash only with a mapping it kept (of a build in its history, or of a build it installed on a device) and only when it can tell that this mapping produced the crashing app. The line after **matched by** says how:
 
-- The app was installed outside Keynobi (Android Studio, `adb install`): **Keynobi has no record of installing …**, or, when Keynobi installed an earlier build, **the app was reinstalled outside Keynobi after build #12**. Keynobi asks the device for the app's version code and last update time before each deobfuscation to catch this. Install the build with **Run App** and reproduce the crash.
-- The installed variant is not minified, or its mapping was not kept: **no R8 mapping was recorded for this install**.
+- **matched by map id**: recent R8 versions write the mapping's id into the stack trace itself (frames read `(r8-map-id-6b1c2f0…:12)`), and Keynobi kept the mapping with that id. This is exact, and the device is not asked, so it works however the app was installed and even after the device is gone.
+- **matched by the SHA-256 of the APK on Pixel_7 …**: Keynobi asks the device for the installed APK and compares its SHA-256 with the APKs Keynobi's builds wrote and the ones it installed. This recognises a build Keynobi made even when Android Studio or `adb install` installed it.
+- **matched by Keynobi's install on Pixel_7 … and confirmed by the device**: the device could not hash its APK (very old Android versions have no `sha256sum`), so Keynobi used its own record of what it installed there and checked the app's version code and last update time.
+
+A wrong mapping would give a stack that looks right but names the wrong code, so when Keynobi cannot be sure it shows **Not deobfuscated** and why, and leaves the stack as it is:
+
+- The trace names a map id Keynobi has no mapping for: **no saved mapping for map id …**. The build left the history, or was not built by Keynobi. Keynobi never tries another mapping in that case.
+- The APK on the device is not one Keynobi built or installed: **… was not written by a build Keynobi kept or installed**, or **… is not the one Keynobi installed … the app was reinstalled outside Keynobi**. Build it with Keynobi (for example **Run App**) and reproduce the crash.
+- The app is installed as split APKs (an app bundle, for example from Play or `bundletool`): **… installed on Pixel_7 as 3 split APKs**. Install a single APK, or use a build whose traces carry a map id.
+- The installed variant is not minified, or its mapping was not kept: **no R8 mapping was recorded for this install** or **no R8 mapping was saved for it**.
 - The device cannot be asked (disconnected, or an emulator that no longer runs): **could not check …**.
 
 It needs the **Android SDK Command-line Tools** (for `retrace`) in the SDK set in Settings, and a JDK 17 or newer (the same JDK builds use). Without them it shows **Retrace not available** and what to install; Health Center's **R8 retrace** check says whether the tool is there. The first deobfuscation of a crash takes about a second, longer with a large mapping; asking again for the same crash is instant.
@@ -534,7 +542,7 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 ### A crash is not deobfuscated
 
 - **Retrace not available**: install **Android SDK Command-line Tools** in Android Studio's SDK Manager (SDK Tools tab) for the SDK set in Settings, and make sure the Java / JDK check in Health Center shows JDK 17 or newer.
-- **Not deobfuscated**: the message says why. Most often the app on the device was not installed by Keynobi, or was reinstalled since: build and install it with **Run App** (a minified variant, such as `release` with `isMinifyEnabled = true`) and reproduce the crash.
+- **Not deobfuscated**: the message says why. Most often the app on the device was not built by Keynobi, or that build has left the history: build it with Keynobi and install it (with **Run App**, or any other way for a single APK), using a minified variant such as `release` with `isMinifyEnabled = true`, and reproduce the crash.
 
 ### Stack-trace lines do not open in Android Studio
 

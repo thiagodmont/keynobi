@@ -176,8 +176,8 @@ pub async fn export_logcat(app: AppHandle, contents: String) -> Result<Option<St
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-/// Deobfuscate crash `crash_group_id` from the logcat buffer with the R8
-/// mapping of the build Keynobi installed on the device it came from.
+/// Deobfuscate crash `crash_group_id` from the logcat buffer with the saved
+/// R8 mapping of the build that produced it (see `services::retrace`).
 /// `NotFound` when the crash left the buffer; a missing tool, a refusal, or a
 /// failed run is reported in the outcome.
 #[tauri::command]

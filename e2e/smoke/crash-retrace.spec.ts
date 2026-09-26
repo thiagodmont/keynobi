@@ -26,7 +26,7 @@ test("Deobfuscate in Entry Detail shows the crash's stack with the mapping it us
       entries: [
         line(500, "FATAL EXCEPTION: main"),
         line(501, "java.lang.RuntimeException: boom"),
-        line(502, "\tat a.a.b(SourceFile:24)"),
+        line(502, "\tat a.a.b(r8-map-id-6b1c2f0:24)"),
       ],
     });
   });
@@ -36,7 +36,7 @@ test("Deobfuscate in Entry Detail shows the crash's stack with the mapping it us
 
   await expect(page.getByText("Deobfuscated", { exact: true })).toBeVisible();
   await expect(
-    page.getByText(/R8 mapping of build #12 \(:app release, map id 6b1c2f0\)/)
+    page.getByText(/R8 mapping of build #12 \(:app release, map id 6b1c2f0\), matched by map id/)
   ).toBeVisible();
   await expect(page.getByLabel("Deobfuscated stack")).toContainText(
     "at com.example.mockapp.MainActivity.onCreate(MainActivity.kt:24)"

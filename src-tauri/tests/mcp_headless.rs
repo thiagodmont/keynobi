@@ -1791,25 +1791,94 @@ const CRASH_MAPPING: &str = "# pg_map_id: 6b1c2f0\ncom.example.app.MainActivity 
 /// A device whose logcat shows one crash of `com.example.app`, and whose
 /// `dumpsys package` answers with the returned file.
 fn write_crashing_adb(sandbox: &Sandbox) -> std::path::PathBuf {
+    write_crashing_adb_with(sandbox, "SourceFile")
+}
+
+/// [`write_crashing_adb`], with `source` as the crash frame's source file.
+/// `pm path` lists one `base.apk`, and `sha256sum` answers with the hash
+/// [`set_device_hash`] saved, else as a device without the command.
+fn write_crashing_adb_with(sandbox: &Sandbox, source: &str) -> std::path::PathBuf {
     let dumpsys = sandbox.sdk().join("dumpsys.txt");
     sandbox.write_adb(&format!(
         r#"case "$*" in
   devices*) printf 'List of devices attached\n{CRASH_SERIAL}\tdevice\n' ;;
   *"shell ps"*) printf 'PID NAME\n1234 com.example.app\n' ;;
+  *"shell pm path"*) echo 'package:/data/app/~~Xy1==/com.example.app-Ab2==/base.apk' ;;
+  *"shell sha256sum"*)
+    if [ -f '{hash}' ]; then echo "$(cat '{hash}')  base.apk"
+    else echo '/system/bin/sh: sha256sum: inaccessible or not found' >&2; exit 127; fi ;;
   *logcat*)
     printf '%s\n' \
       '09-25 10:32:01.100  1234  1234 E AndroidRuntime: FATAL EXCEPTION: main' \
       '09-25 10:32:01.100  1234  1234 E AndroidRuntime: Process: com.example.app, PID: 1234' \
       '09-25 10:32:01.100  1234  1234 E AndroidRuntime: java.lang.RuntimeException: boom' \
-      '09-25 10:32:01.100  1234  1234 E AndroidRuntime: 	at a.a.onCreate(SourceFile:1)' \
+      '09-25 10:32:01.100  1234  1234 E AndroidRuntime: 	at a.a.onCreate({source}:1)' \
       '09-25 10:32:02.000   999   999 I ActivityManager: Process com.example.app (pid 1234) has died'
     exec sleep 60 ;;
-  *"dumpsys package"*) cat '{}' ;;
+  *"dumpsys package"*) cat '{dumpsys}' ;;
   *"shell date"*) echo "$(date -u +%s):+0000" ;;
 esac"#,
-        dumpsys.display()
+        hash = device_hash_file(sandbox).display(),
+        dumpsys = dumpsys.display()
     ));
     dumpsys
+}
+
+fn device_hash_file(sandbox: &Sandbox) -> std::path::PathBuf {
+    sandbox.sdk().join("device-sha256.txt")
+}
+
+/// What the crashing device's `sha256sum` reports for the installed APK.
+fn set_device_hash(sandbox: &Sandbox, sha256: &str) {
+    std::fs::write(device_hash_file(sandbox), sha256).unwrap();
+}
+
+/// Save `CRASH_MAPPING` with `pg_map_id` and a history record #12 that wrote
+/// an `:app release` APK with SHA-256 `apk_sha256` and saved that mapping.
+fn record_build_with_mapping(sandbox: &Sandbox, apk_sha256: &str, pg_map_id: &str) {
+    use keynobi_lib::models::build::{BuildRecord, BuildStatus, BuiltApk, MappingSnapshot};
+    use sha2::Digest;
+    let data = sandbox.home.join(".keynobi");
+    let sha256: String = sha2::Sha256::digest(CRASH_MAPPING.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    write_file(
+        &data.join("mappings").join(format!("{sha256}.txt")),
+        CRASH_MAPPING.as_bytes(),
+    );
+    let record = BuildRecord {
+        id: 12,
+        task: "assembleRelease".into(),
+        status: BuildStatus::Idle,
+        errors: vec![],
+        started_at: chrono::Utc::now().to_rfc3339(),
+        project_root: None,
+        origin: None,
+        cancelled_by: None,
+        launch: None,
+        mappings: vec![MappingSnapshot {
+            module: ":app".into(),
+            variant: "release".into(),
+            sha256,
+            bytes: CRASH_MAPPING.len() as u64,
+            pg_map_id: Some(pg_map_id.into()),
+        }],
+        apks: vec![BuiltApk {
+            module: ":app".into(),
+            variant: "release".into(),
+            application_id: Some("com.example.app".into()),
+            version_code: Some(42),
+            sha256: apk_sha256.into(),
+            bytes: 1,
+            path: "app/build/outputs/apk/release/app-release.apk".into(),
+        }],
+    };
+    std::fs::write(
+        data.join("build-history.json"),
+        serde_json::to_string(&vec![record]).unwrap(),
+    )
+    .unwrap();
 }
 
 fn write_dumpsys(
@@ -1876,7 +1945,7 @@ fn write_fake_retrace(sandbox: &Sandbox) -> std::path::PathBuf {
         &retrace,
         &format!(
             "[ $# -eq 0 ] && exit 0\necho run >> '{}'\n\
-             sed 's/a\\.a\\.onCreate(SourceFile:1)/com.example.app.MainActivity.onCreate(MainActivity.kt:24)/' \"$2\"",
+             sed 's/a\\.a\\.onCreate([^)]*)/com.example.app.MainActivity.onCreate(MainActivity.kt:24)/' \"$2\"",
             runs.display()
         ),
     );
@@ -1937,7 +2006,9 @@ fn crash_tools_deobfuscate_with_the_installed_builds_mapping_only_when_asked() {
     assert!(
         line.contains("R8 mapping of build #12 (:app release, map id 6b1c2f0)")
             && line.contains(&format!("install on {CRASH_SERIAL}"))
-            && line.contains("versionCode 42"),
+            && line.contains("versionCode 42")
+            // This device has no `sha256sum`.
+            && line.contains("the device could not hash its APK"),
         "{line}"
     );
     assert_eq!(retrace["build_id"], 12);
@@ -1985,4 +2056,104 @@ fn crash_tools_deobfuscate_with_the_installed_builds_mapping_only_when_asked() {
         .as_str()
         .unwrap()
         .starts_with("Not deobfuscated: "));
+}
+
+#[test]
+fn crash_tools_match_an_apk_another_tool_installed_by_its_device_hash() {
+    let sandbox = Sandbox::new();
+    write_crashing_adb(&sandbox);
+    // Build #12 wrote the APK; Keynobi has no record of installing it.
+    let apk_sha256 = "b2".repeat(32);
+    record_build_with_mapping(&sandbox, &apk_sha256, "6b1c2f0");
+    set_device_hash(&sandbox, &apk_sha256);
+    write_fake_retrace(&sandbox);
+    let mut client = sandbox.start();
+    stream_the_crash(&mut client);
+
+    let trace = client.call_tool_json("get_crash_stack_trace", json!({ "retrace": true }));
+    let retrace = &trace["retrace"];
+    assert_eq!(retrace["status"], "retraced", "{trace}");
+    assert_eq!(retrace["matched_by"], "device_hash", "{retrace}");
+    assert_eq!(retrace["build_id"], 12);
+    let line = retrace["mapping_line"].as_str().unwrap();
+    assert!(
+        line.contains(&format!(
+            "matched by the SHA-256 of the APK on {CRASH_SERIAL} (b2b2b2b2b2b2…), which build \
+             #12 wrote"
+        )),
+        "{line}"
+    );
+    assert!(
+        retrace["trace"]
+            .as_str()
+            .unwrap()
+            .contains("at com.example.app.MainActivity.onCreate(MainActivity.kt:24)"),
+        "{retrace}"
+    );
+    let calls = sandbox.adb_calls();
+    assert!(
+        calls.contains(&format!("-s {CRASH_SERIAL} shell pm path com.example.app"))
+            && calls.iter().any(|c| c.starts_with(&format!(
+                "-s {CRASH_SERIAL} shell sha256sum '/data/app/~~Xy1==/"
+            ))),
+        "{calls:?}"
+    );
+    assert!(!calls.iter().any(|c| c.contains("dumpsys")), "{calls:?}");
+
+    // Another APK on the device now: refused, with the original trace.
+    set_device_hash(&sandbox, &"c3".repeat(32));
+    let refused = client.call_tool_json("get_crash_stack_trace", json!({ "retrace": true }));
+    let retrace = &refused["retrace"];
+    assert_eq!(retrace["status"], "refused", "{refused}");
+    assert!(
+        retrace["reason"]
+            .as_str()
+            .unwrap()
+            .contains("was not written by a build Keynobi kept or installed"),
+        "{retrace}"
+    );
+    assert!(
+        retrace["trace"]
+            .as_str()
+            .unwrap()
+            .contains("at a.a.onCreate(SourceFile:1)"),
+        "{retrace}"
+    );
+}
+
+#[test]
+fn crash_tools_match_the_trace_by_its_map_id_without_asking_the_device() {
+    let map_id = "9d2c4e6f8a0b1c3d5e7f9a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d9e1f3a5b7c9d";
+    let sandbox = Sandbox::new();
+    write_crashing_adb_with(&sandbox, &format!("r8-map-id-{map_id}"));
+    record_build_with_mapping(&sandbox, &"b2".repeat(32), map_id);
+    write_fake_retrace(&sandbox);
+    let mut client = sandbox.start();
+    stream_the_crash(&mut client);
+
+    let trace = client.call_tool_json("get_crash_stack_trace", json!({ "retrace": true }));
+    let retrace = &trace["retrace"];
+    assert_eq!(retrace["status"], "retraced", "{trace}");
+    assert_eq!(retrace["matched_by"], "map_id", "{retrace}");
+    assert_eq!(retrace["map_id"], map_id);
+    assert_eq!(retrace["build_id"], 12);
+    assert_eq!(
+        retrace["mapping_line"],
+        "Deobfuscated with the R8 mapping of build #12 (:app release, map id 9d2c4e6…), \
+         matched by map id."
+    );
+    assert!(
+        retrace["trace"]
+            .as_str()
+            .unwrap()
+            .contains("at com.example.app.MainActivity.onCreate(MainActivity.kt:24)"),
+        "{retrace}"
+    );
+    let calls = sandbox.adb_calls();
+    assert!(
+        !calls
+            .iter()
+            .any(|c| c.contains("pm path") || c.contains("sha256sum") || c.contains("dumpsys")),
+        "{calls:?}"
+    );
 }

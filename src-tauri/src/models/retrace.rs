@@ -18,13 +18,20 @@ pub enum RetraceStatus {
     Failed,
 }
 
-/// How the mapping was matched to the crash.
+/// How the mapping was matched to the crash, strongest first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/bindings/")]
 pub enum MappingMatch {
+    /// The trace's frames name the mapping's `pg_map_id` as their source
+    /// file (`r8-map-id-<id>`). Exact; the device is not asked.
+    MapId,
+    /// The SHA-256 of the APK installed on the device equals that of an APK
+    /// a kept build wrote or Keynobi installed.
+    DeviceHash,
     /// Keynobi's record of the build it installed on the device, checked
     /// against the version code and last update time the device reports.
+    /// Used only when the device cannot hash its APK.
     InstallRecord,
 }
 

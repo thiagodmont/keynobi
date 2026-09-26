@@ -110,7 +110,7 @@ Opening a project must never run its code. Anything that executes project-contro
 - Spawn host processes with an argument vector through `tokio::process::Command`. Never build a host shell command string.
 - `adb shell` is different: the adb client joins its arguments with spaces and the device's `/system/bin/sh` parses the result again. Every `adb shell` argument that is not a hard-coded literal goes through `utils::device_shell::quote_device_shell_arg`; allowlist validation is defence in depth on top of that.
 - Reject option-shaped values (leading `-`) where a positional value is expected.
-- Every one-shot external command has a deadline. adb, the device, and SDK tools can hang (a wedged adb server, an install waiting on the device, a JVM stuck on start-up); without a deadline the caller, and loops such as device polling, block forever. A timeout kills the child and reports what timed out and what to try. The deadlines are named in `utils/process.rs` (for example `ADB_QUERY_TIMEOUT` 10 s, `ADB_INSTALL_TIMEOUT` 5 min, `RETRACE_TIMEOUT` 120 s).
+- Every one-shot external command has a deadline. adb, the device, and SDK tools can hang (a wedged adb server, an install waiting on the device, a JVM stuck on start-up); without a deadline the caller, and loops such as device polling, block forever. A timeout kills the child and reports what timed out and what to try. The deadlines are named in `utils/process.rs` (for example `ADB_QUERY_TIMEOUT` 10 s, `ADB_APK_HASH_TIMEOUT` 60 s, `ADB_INSTALL_TIMEOUT` 5 min, `RETRACE_TIMEOUT` 120 s).
 - Pass data to a tool through a file or stdin, not by pasting it into an argument a shell reads. `retrace` gets the crash trace as a private file in the data directory, removed whatever happens.
 
 ### Least Privilege

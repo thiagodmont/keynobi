@@ -16,6 +16,8 @@ use tokio::process::Command;
 pub const ADB_QUERY_TIMEOUT: Duration = Duration::from_secs(10);
 /// App launches (`am start`, `monkey`), which wait for the activity to start.
 pub const ADB_LAUNCH_TIMEOUT: Duration = Duration::from_secs(30);
+/// `sha256sum` of an installed APK on the device: large APKs on slow storage.
+pub const ADB_APK_HASH_TIMEOUT: Duration = Duration::from_secs(60);
 /// `adb install`: large APKs, slow USB links, and on-device verification.
 pub const ADB_INSTALL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 /// `adb exec-out screencap -p`: transfers a full-screen PNG.

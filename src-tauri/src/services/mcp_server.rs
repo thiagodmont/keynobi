@@ -348,7 +348,7 @@ pub struct GetCrashLogsParams {
     #[schemars(description = "Max crash entries to return (default 20, max 200)")]
     pub count: Option<usize>,
     #[schemars(
-        description = "If true, also deobfuscate the newest crashes among the entries (at most 5) with the R8 mapping of the build Keynobi installed on the device; default false"
+        description = "If true, also deobfuscate the newest crashes among the entries (at most 5) with the saved R8 mapping of the build that produced them, matched by the map id in the trace or the installed APK's hash; default false"
     )]
     pub retrace: Option<bool>,
 }
@@ -460,7 +460,7 @@ pub struct GetCrashStackTraceParams {
     )]
     pub crash_group_id: Option<u64>,
     #[schemars(
-        description = "If true, also deobfuscate the trace with the R8 mapping of the build Keynobi installed on the device; default false"
+        description = "If true, also deobfuscate the trace with the saved R8 mapping of the build that produced it, matched by the map id in the trace or the installed APK's hash; default false"
     )]
     pub retrace: Option<bool>,
 }
@@ -910,7 +910,7 @@ impl AndroidMcpServer {
     /// Get a parsed crash stack trace from the in-memory logcat buffer.
     /// Requires logcat to be running (call start_logcat first).
     #[tool(
-        description = "Get a parsed crash stack trace from logcat. Returns exception type, message, stack frames, and caused-by chain. Requires start_logcat to be running. With retrace: true, also returns `retrace`: the trace deobfuscated with the R8 mapping of the build Keynobi installed on the device, and a mapping_line naming the build, variant, and map id and how the mapping was matched; when no mapping can be identified with certainty, or retrace or a JDK 17+ is missing, it returns the original trace and the reason.",
+        description = "Get a parsed crash stack trace from logcat. Returns exception type, message, stack frames, and caused-by chain. Requires start_logcat to be running. With retrace: true, also returns `retrace`: the trace deobfuscated with the saved R8 mapping of the build that produced it, and a mapping_line naming the build, variant, and map id and how the mapping was matched (matched_by: map_id from the trace, device_hash of the installed APK, or install_record); when no mapping can be identified with certainty, or retrace or a JDK 17+ is missing, it returns the original trace and the reason.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -1193,7 +1193,7 @@ impl AndroidMcpServer {
 
     /// Get recent crash logs (FATAL EXCEPTION, ANR, native crashes).
     #[tool(
-        description = "Get recent crash logs: FATAL EXCEPTION, ANR, and native crashes from logcat. With retrace: true, also returns `retraced`: the newest crashes among the entries (at most 5), each deobfuscated with the R8 mapping of the build Keynobi installed on the device, with a mapping_line naming the build, variant, and map id, or the original trace and the reason it was not deobfuscated.",
+        description = "Get recent crash logs: FATAL EXCEPTION, ANR, and native crashes from logcat. With retrace: true, also returns `retraced`: the newest crashes among the entries (at most 5), each deobfuscated with the saved R8 mapping of the build that produced it, with a mapping_line naming the build, variant, and map id, or the original trace and the reason it was not deobfuscated.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,

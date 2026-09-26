@@ -216,7 +216,7 @@ export function LogEntryDetailPanel(props: LogEntryDetailPanelProps) {
               tone="accent"
               loading={retrace().kind === "loading"}
               onClick={() => void deobfuscate()}
-              title="Deobfuscate this crash with the R8 mapping of the build Keynobi installed"
+              title="Deobfuscate this crash with the saved R8 mapping of the build that produced it"
             >
               {retrace().kind === "loading" ? "Deobfuscating…" : "Deobfuscate"}
             </Button>

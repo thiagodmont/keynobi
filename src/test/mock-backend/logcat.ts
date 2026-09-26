@@ -149,7 +149,8 @@ function contextEntries(args: unknown): ProcessedEntry[] {
 
 /**
  * Deobfuscate a stored crash group the way the backend reports it: build #12's
- * mapping for the mock app, matched by Keynobi's install on the emulator.
+ * mapping for the mock app, matched by the map id when the frames name one
+ * (`r8-map-id-…`), else by the hash of the APK on the emulator.
  */
 function retraceCrash(args: unknown): RetraceOutcome {
   const { crashGroupId } = (args ?? {}) as { crashGroupId?: number };
@@ -158,10 +159,11 @@ function retraceCrash(args: unknown): RetraceOutcome {
     throw { kind: "NotFound", message: `Crash ${crashGroupId} is no longer in the logcat buffer.` };
   }
   const trace = lines.map((e) => `${e.message}\n`).join("");
+  const byMapId = /\(r8-map-id-[^):]+/.test(trace);
   return {
     status: "retraced",
     trace: trace.replace(
-      /\ba\.a\.b\(SourceFile:(\d+)\)/g,
+      /\ba\.a\.b\((?:SourceFile|r8-map-id-[^):]+):(\d+)\)/g,
       "com.example.mockapp.MainActivity.onCreate(MainActivity.kt:$1)"
     ),
     buildId: 12,
@@ -172,14 +174,16 @@ function retraceCrash(args: unknown): RetraceOutcome {
       bytes: 48_213_771,
       pgMapId: "6b1c2f0",
     },
-    matchedBy: "installRecord",
+    matchedBy: byMapId ? "mapId" : "deviceHash",
     device: "Pixel_7",
     package: lines.find((e) => e.package)?.package ?? null,
     reason: null,
     summary:
-      "Deobfuscated with the R8 mapping of build #12 (:app release, map id 6b1c2f0), matched by " +
-      "Keynobi's install on Pixel_7 at 2026-04-23T09:58:00Z and confirmed by the device " +
-      "(versionCode 42, last updated 2026-04-23 09:58:00).",
+      "Deobfuscated with the R8 mapping of build #12 (:app release, map id 6b1c2f0), " +
+      (byMapId
+        ? "matched by map id."
+        : "matched by the SHA-256 of the APK on Pixel_7 (4f2a9c1e7b3d…), the one Keynobi " +
+          "installed at 2026-04-23T09:58:00Z."),
   };
 }
 
