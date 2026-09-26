@@ -15,6 +15,7 @@ import type {
   BuildStatus,
   BuiltApk,
   DebugSession,
+  DebugSessionAttachmentData,
   DebugSessionCapture,
   DebugSessionDetail,
   DebugSessionEvent,
@@ -1729,6 +1730,7 @@ export const typeFixtures = {
       "counts": {
         "agentActions": 2,
         "anrs": 0,
+        "attachments": 1,
         "bookmarks": 1,
         "captures": 1,
         "crashes": 0,
@@ -1767,6 +1769,7 @@ export const typeFixtures = {
       "counts": {
         "agentActions": 0,
         "anrs": 0,
+        "attachments": 0,
         "bookmarks": 0,
         "captures": 0,
         "crashes": 0,
@@ -1808,6 +1811,7 @@ export const typeFixtures = {
       "counts": {
         "agentActions": 0,
         "anrs": 0,
+        "attachments": 0,
         "bookmarks": 0,
         "captures": 0,
         "crashes": 0,
@@ -1862,6 +1866,7 @@ export const typeFixtures = {
       "counts": {
         "agentActions": 2,
         "anrs": 0,
+        "attachments": 1,
         "bookmarks": 1,
         "captures": 1,
         "crashes": 0,
@@ -1898,6 +1903,7 @@ export const typeFixtures = {
       "counts": {
         "agentActions": 0,
         "anrs": 0,
+        "attachments": 0,
         "bookmarks": 0,
         "captures": 0,
         "crashes": 0,
@@ -1932,6 +1938,7 @@ export const typeFixtures = {
       "counts": {
         "agentActions": 0,
         "anrs": 0,
+        "attachments": 0,
         "bookmarks": 0,
         "captures": 0,
         "crashes": 0,
@@ -2323,10 +2330,44 @@ export const typeFixtures = {
       },
       "kind": "agentAction",
       "seq": 20
+    },
+    {
+      "actor": {
+        "kind": "app"
+      },
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "bytes": 412311,
+        "height": 1280,
+        "kind": "screenshot",
+        "name": "screenshot-17.png",
+        "serial": "emulator-5554",
+        "width": 576
+      },
+      "kind": "attachment",
+      "seq": 21
     }
   ] satisfies Wire<DebugSessionEvent>[],
   DebugSessionDetail: [
     {
+      "attachments": [
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "bytes": 412311,
+            "height": 1280,
+            "kind": "screenshot",
+            "name": "screenshot-17.png",
+            "serial": "emulator-5554",
+            "width": 576
+          },
+          "kind": "attachment",
+          "seq": 21
+        }
+      ],
       "crashes": [
         {
           "actor": {
@@ -2742,6 +2783,22 @@ export const typeFixtures = {
           },
           "kind": "agentAction",
           "seq": 20
+        },
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "bytes": 412311,
+            "height": 1280,
+            "kind": "screenshot",
+            "name": "screenshot-17.png",
+            "serial": "emulator-5554",
+            "width": 576
+          },
+          "kind": "attachment",
+          "seq": 21
         }
       ],
       "eventsTruncated": true,
@@ -2791,6 +2848,7 @@ export const typeFixtures = {
         "counts": {
           "agentActions": 2,
           "anrs": 0,
+          "attachments": 1,
           "bookmarks": 1,
           "captures": 1,
           "crashes": 0,
@@ -2823,6 +2881,7 @@ export const typeFixtures = {
       }
     },
     {
+      "attachments": [],
       "crashes": [],
       "events": [],
       "eventsTruncated": false,
@@ -2834,6 +2893,7 @@ export const typeFixtures = {
         "counts": {
           "agentActions": 0,
           "anrs": 0,
+          "attachments": 0,
           "bookmarks": 0,
           "captures": 0,
           "crashes": 0,
@@ -2914,6 +2974,13 @@ export const typeFixtures = {
       "truncated": false
     }
   ] satisfies Wire<DebugSessionCapture>[],
+  DebugSessionAttachmentData: [
+    {
+      "base64": "iVBORw0KGgo=",
+      "mediaType": "image/png",
+      "seq": 17
+    }
+  ] satisfies Wire<DebugSessionAttachmentData>[],
   SessionExportResult: [
     {
       "bytes": 48213,

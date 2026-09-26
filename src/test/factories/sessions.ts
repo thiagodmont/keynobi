@@ -44,6 +44,7 @@ export function makeSession(overrides: Partial<DebugSession> = {}): DebugSession
       bookmarks: 0,
       captures: 0,
       agentActions: 0,
+      attachments: 0,
     },
     lastEventAt: AT,
     eventCount: 2,
@@ -126,5 +127,6 @@ export function makeSessionDetail(
     events,
     eventsTruncated: false,
     crashes: events.filter((e) => e.kind === "crash" || e.kind === "anr"),
+    attachments: events.filter((e) => e.kind === "attachment"),
   };
 }

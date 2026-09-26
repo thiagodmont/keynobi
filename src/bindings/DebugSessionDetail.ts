@@ -18,4 +18,9 @@ eventsTruncated: boolean,
  * The session's crash and ANR events, even those older than `events`,
  * oldest first; at most `MAX_CRASHES_RETURNED`, the newest.
  */
-crashes: Array<DebugSessionEvent>, };
+crashes: Array<DebugSessionEvent>, 
+/**
+ * The session's attachment events, even those older than `events`,
+ * oldest first.
+ */
+attachments: Array<DebugSessionEvent>, };

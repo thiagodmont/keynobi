@@ -386,6 +386,7 @@ fn debug_sessions() -> Vec<DebugSession> {
                 bookmarks: 1,
                 captures: 1,
                 agent_actions: 2,
+                attachments: 1,
             },
             last_event_at: TIME.into(),
             event_count: 4,
@@ -608,6 +609,14 @@ fn debug_session_events() -> Vec<DebugSessionEvent> {
             kind: DebugSessionToolKind::OpenWorld,
             ok: true,
             duration_ms: 95_000,
+            serial: "emulator-5554".into(),
+        }),
+        DebugSessionEventData::Attachment(DebugSessionAttachment {
+            kind: DebugSessionAttachmentKind::Screenshot,
+            name: "screenshot-17.png".into(),
+            bytes: 412_311,
+            width: 576,
+            height: 1280,
             serial: "emulator-5554".into(),
         }),
     ];
@@ -1473,12 +1482,17 @@ fn fixtures() -> Fixtures {
                         )
                     })
                     .collect(),
+                attachments: debug_session_events()
+                    .into_iter()
+                    .filter(|e| matches!(e.event, DebugSessionEventData::Attachment(_)))
+                    .collect(),
             },
             DebugSessionDetail {
                 session: debug_sessions().remove(1),
                 events: vec![],
                 events_truncated: false,
                 crashes: vec![],
+                attachments: vec![],
             },
         ],
     );
@@ -1496,6 +1510,14 @@ fn fixtures() -> Fixtures {
                 truncated: false,
             },
         ],
+    );
+    f.add(
+        "DebugSessionAttachmentData",
+        &[DebugSessionAttachmentData {
+            seq: 17,
+            media_type: "image/png".into(),
+            base64: "iVBORw0KGgo=".into(),
+        }],
     );
     f.add(
         "SessionExportResult",

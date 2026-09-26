@@ -664,6 +664,7 @@ export function listenLogcatStopped(cb: (reason: string) => void): Promise<Unlis
 // ── Debug sessions ────────────────────────────────────────────────────────────
 
 import type {
+  DebugSessionAttachmentData,
   DebugSessionCapture,
   DebugSessionDetail,
   DebugSessionEvent,
@@ -673,6 +674,7 @@ import type {
   SessionExportResult,
 } from "@/bindings";
 export type {
+  DebugSessionAttachmentData,
   DebugSessionCapture,
   DebugSessionDetail,
   DebugSessionEvent,
@@ -757,6 +759,19 @@ export async function importDebugSession(): Promise<DebugSessionSummary | null> 
 /** Delete an imported debug session. */
 export async function deleteImportedDebugSession(id: string): Promise<void> {
   return invoke<void>("delete_imported_debug_session", { id });
+}
+
+/** Take a screenshot of an open debug session's device and attach it to the session. */
+export async function attachSessionScreenshot(id: string): Promise<DebugSessionEvent> {
+  return invoke<DebugSessionEvent>("attach_session_screenshot", { id });
+}
+
+/** The screenshot of attachment event `seq` of a debug session, as base64. */
+export async function getSessionAttachment(
+  id: string,
+  seq: number
+): Promise<DebugSessionAttachmentData> {
+  return invoke<DebugSessionAttachmentData>("get_session_attachment", { id, seq });
 }
 
 // ── MCP Server ─────────────────────────────────────────────────────────────────

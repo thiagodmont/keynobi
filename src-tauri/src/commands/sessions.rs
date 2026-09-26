@@ -1,8 +1,9 @@
 //! Debug session commands: thin wrappers over `services::debug_sessions`.
 
+use crate::models::build::BuildActor;
 use crate::models::debug_session::{
-    DebugSessionCapture, DebugSessionDetail, DebugSessionEvent, DebugSessionExitRefresh,
-    DebugSessionSummary, SessionExportOptions, SessionExportResult,
+    DebugSessionAttachmentData, DebugSessionCapture, DebugSessionDetail, DebugSessionEvent,
+    DebugSessionExitRefresh, DebugSessionSummary, SessionExportOptions, SessionExportResult,
 };
 use crate::models::error::AppError;
 use crate::services::adb_manager::{get_adb_path, DeviceState};
@@ -157,4 +158,21 @@ pub async fn import_debug_session(app: AppHandle) -> Result<Option<DebugSessionS
 #[tauri::command]
 pub async fn delete_imported_debug_session(id: String) -> Result<(), AppError> {
     blocking(move || debug_sessions::delete_imported_session(&id)).await
+}
+
+/// Take a screenshot of an open debug session's device and attach it.
+#[tauri::command]
+pub async fn attach_session_screenshot(id: String) -> Result<DebugSessionEvent, AppError> {
+    let (settings, _) = settings_manager::load_settings();
+    let adb = get_adb_path(&settings);
+    debug_sessions::attach_screenshot(&id, &adb, BuildActor::App).await
+}
+
+/// The screenshot of attachment event `seq` of a debug session.
+#[tauri::command]
+pub async fn get_session_attachment(
+    id: String,
+    seq: u32,
+) -> Result<DebugSessionAttachmentData, AppError> {
+    blocking(move || debug_sessions::get_attachment(&id, seq)).await
 }

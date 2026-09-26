@@ -7,19 +7,22 @@
 //!   keeps only the last of two entries with one name), lists at most
 //!   [`MAX_BUNDLE_ENTRIES`] distinct names, and no two entries share data;
 //! - every name is one the export writes, exactly: `manifest.json`,
-//!   `session.json`, `timeline.jsonl`, `redaction.json`, and
-//!   `logs/crash-<seq>.log`, so no absolute path, `..`, backslash, or folder
-//!   gets through;
+//!   `session.json`, `timeline.jsonl`, `redaction.json`,
+//!   `logs/crash-<seq>.log`, and `attachments/screenshot-<seq>.png`, so no
+//!   absolute path, `..`, backslash, or folder gets through;
 //! - every entry is a regular file, stored or deflated, not encrypted, and its
 //!   bytes, counted as they are inflated, stay within
 //!   [`MAX_BUNDLE_ENTRY_BYTES`], [`MAX_BUNDLE_UNCOMPRESSED_BYTES`] in total,
 //!   and [`MAX_BUNDLE_COMPRESSION_RATIO`];
 //! - `bundleVersion` and `schemaVersion` are ones this version writes, and
-//!   every JSON file parses with no field the schema does not know.
+//!   every JSON file parses with no field the schema does not know;
+//! - every screenshot is a PNG (signature and header) within
+//!   [`MAX_ATTACHMENT_BYTES`] and the screenshot pixel cap.
 //!
 //! What is accepted is rewritten, not copied: at most the caps of a recorded
 //! session ([`MAX_EVENTS_PER_SESSION`], [`MAX_SESSION_BYTES`],
-//! [`MAX_CAPTURES_PER_SESSION`], [`MAX_CAPTURE_ENTRIES`], [`MAX_CAPTURE_BYTES`]),
+//! [`MAX_CAPTURES_PER_SESSION`], [`MAX_CAPTURE_ENTRIES`], [`MAX_CAPTURE_BYTES`],
+//! [`MAX_ATTACHMENTS_PER_SESSION`]),
 //! into `<data dir>/imports/<new id>/` with files created new and private.
 //! Imported sessions live apart from recorded ones: the index, attribution,
 //! mapping pins, and retention never see them. They are read-only and kept
@@ -77,6 +80,7 @@ enum Entry {
     Timeline,
     Redaction,
     CrashLog(u32),
+    Screenshot(u32),
 }
 
 /// The entry `name` is, when it is exactly a name the export writes.
@@ -88,16 +92,23 @@ fn allowlisted(name: &[u8]) -> Option<Entry> {
         TIMELINE_ENTRY => Some(Entry::Timeline),
         REDACTION_ENTRY => Some(Entry::Redaction),
         _ => {
-            let seq = name.strip_prefix("logs/crash-")?.strip_suffix(".log")?;
-            let canonical = (1..=10).contains(&seq.len())
-                && seq.bytes().all(|b| b.is_ascii_digit())
-                && !seq.starts_with('0');
-            canonical
-                .then(|| seq.parse().ok())
-                .flatten()
-                .map(Entry::CrashLog)
+            if let Some(seq) = name.strip_prefix("logs/crash-") {
+                return canonical_seq(seq.strip_suffix(".log")?).map(Entry::CrashLog);
+            }
+            let seq = name
+                .strip_prefix("attachments/screenshot-")?
+                .strip_suffix(".png")?;
+            canonical_seq(seq).map(Entry::Screenshot)
         }
     }
+}
+
+/// A seq written as the export writes it: decimal, no leading zero.
+fn canonical_seq(seq: &str) -> Option<u32> {
+    let canonical = (1..=10).contains(&seq.len())
+        && seq.bytes().all(|b| b.is_ascii_digit())
+        && !seq.starts_with('0');
+    canonical.then(|| seq.parse().ok()).flatten()
 }
 
 /// `name` as an error message may show it.
@@ -409,12 +420,16 @@ pub(super) struct PreparedImport {
     pub events: Vec<u8>,
     /// `captures/crash-<seq>.jsonl`, by seq.
     pub captures: BTreeMap<u32, Vec<u8>>,
+    /// `attachments/<name>`, checked PNGs.
+    pub attachments: BTreeMap<String, Vec<u8>>,
 }
 
 impl PreparedImport {
     fn bytes(&self) -> u64 {
         let session = serde_json::to_vec_pretty(&self.session).map_or(0, |s| s.len());
-        (session + self.events.len() + self.captures.values().map(Vec::len).sum::<usize>()) as u64
+        let captures: usize = self.captures.values().map(Vec::len).sum();
+        let attachments: usize = self.attachments.values().map(Vec::len).sum();
+        (session + self.events.len() + captures + attachments) as u64
     }
 }
 
@@ -438,13 +453,15 @@ pub(super) fn prepare_import(
     let timeline = take(Entry::Timeline, TIMELINE_ENTRY)?;
     let report: RedactionReport =
         parse_strict(&take(Entry::Redaction, REDACTION_ENTRY)?, REDACTION_ENTRY)?;
-    let logs: BTreeMap<u32, Vec<u8>> = files
-        .into_iter()
-        .filter_map(|(entry, data)| match entry {
-            Entry::CrashLog(seq) => Some((seq, data)),
+    let mut logs: BTreeMap<u32, Vec<u8>> = BTreeMap::new();
+    let mut screenshots: BTreeMap<u32, Vec<u8>> = BTreeMap::new();
+    for (entry, data) in files {
+        match entry {
+            Entry::CrashLog(seq) => logs.insert(seq, data),
+            Entry::Screenshot(seq) => screenshots.insert(seq, data),
             _ => None,
-        })
-        .collect();
+        };
+    }
 
     if manifest.schema_version != DEBUG_SESSION_SCHEMA_VERSION
         || session.schema_version != DEBUG_SESSION_SCHEMA_VERSION
@@ -483,6 +500,11 @@ pub(super) fn prepare_import(
     .iter()
     .map(|s| s.to_string())
     .chain(logs.keys().map(|seq| format!("logs/crash-{seq}.log")))
+    .chain(
+        screenshots
+            .keys()
+            .map(|seq| export::attachment_entry(&attachments::screenshot_name(*seq))),
+    )
     .collect();
     if listed.len() != manifest.entries.len()
         || listed.len() != present.len()
@@ -584,12 +606,45 @@ pub(super) fn prepare_import(
     }
     counts.captures = captures.len() as u32;
 
+    // Screenshots of attachment events the timeline kept, within the caps.
+    let mut stored = BTreeMap::new();
+    let mut attachment_bytes = 0u64;
+    for (seq, png) in screenshots {
+        let name = attachments::screenshot_name(seq);
+        let entry = export::attachment_entry(&name);
+        attachments::checked_png(&png).map_err(|e| refused(format!("{entry}: {e}")))?;
+        let named = events.iter().any(|e| {
+            e.seq == seq
+                && matches!(&e.event, DebugSessionEventData::Attachment(a) if a.name == name)
+        });
+        if !named {
+            omitted.push(omission(entry, "no attachment of the timeline names it"));
+            continue;
+        }
+        let size = png.len() as u64;
+        let full = stored.len() >= MAX_ATTACHMENTS_PER_SESSION as usize
+            || events_file.len() as u64 + attachment_bytes + size > MAX_SESSION_BYTES;
+        if full {
+            omitted.push(omission(
+                entry,
+                format!(
+                    "an imported session keeps at most {MAX_ATTACHMENTS_PER_SESSION} attachments \
+                     within {} MiB",
+                    MAX_SESSION_BYTES / (1024 * 1024)
+                ),
+            ));
+            continue;
+        }
+        attachment_bytes += size;
+        stored.insert(name, png);
+    }
+
     let mut session = session;
     session.recorded_by = DebugSessionRecorder::Imported;
     session.kept = false;
     session.counts = counts;
     session.event_count = events.len() as u32;
-    session.bytes = events_file.len() as u64;
+    session.bytes = events_file.len() as u64 + attachment_bytes;
     session.last_event_at = events
         .last()
         .map_or_else(|| session.opened_at.clone(), |e| e.at.clone());
@@ -606,6 +661,7 @@ pub(super) fn prepare_import(
         session,
         events: events_file,
         captures,
+        attachments: stored,
     })
 }
 
@@ -702,6 +758,13 @@ pub(super) fn store_import_in(
                 std::fs::create_dir(&captures).map_err(|e| AppError::io(captures.display(), e))?;
                 for (seq, data) in &prepared.captures {
                     write_new(&captures.join(crashes::capture_file(*seq)), data)?;
+                }
+            }
+            if !prepared.attachments.is_empty() {
+                let folder = dir.join(attachments::ATTACHMENTS_DIR);
+                std::fs::create_dir(&folder).map_err(|e| AppError::io(folder.display(), e))?;
+                for (name, png) in &prepared.attachments {
+                    write_new(&folder.join(name), png)?;
                 }
             }
             let manifest = serde_json::to_vec_pretty(&prepared.session)

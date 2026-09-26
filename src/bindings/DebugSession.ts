@@ -28,7 +28,7 @@ kept: boolean, counts: DebugSessionCounts, lastEventAt: string, eventCount: numb
  */
 droppedEvents: number, 
 /**
- * Size of the session's event log.
+ * Size of the session's event log and attachments.
  */
 bytes: number, 
 /**

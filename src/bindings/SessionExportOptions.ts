@@ -12,4 +12,8 @@ redaction: RedactionRules,
 /**
  * The log lines kept with each crash and ANR.
  */
-includeCrashLogs: boolean, };
+includeCrashLogs: boolean, 
+/**
+ * Attached screenshots, which redaction cannot reach.
+ */
+includeAttachments: boolean, };

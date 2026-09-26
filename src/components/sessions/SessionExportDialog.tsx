@@ -27,6 +27,7 @@ export function SessionExportDialog(props: {
       deviceSerials: true,
     },
     includeCrashLogs: true,
+    includeAttachments: true,
   });
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -72,13 +73,20 @@ export function SessionExportDialog(props: {
           </h2>
           <p id="session-export-description" class={styles.description}>
             Saves a .zip with the session, its timeline, and what you select below. Redaction is
-            best effort: check the file before you share it. R8 mappings are never included.
+            best effort: check the file before you share it. Screenshots are images and are not
+            redacted: leave them out if they show personal data. R8 mappings are never included.
           </p>
           <Checkbox
             checked={options().includeCrashLogs}
             onChange={(on) => setOptions((o) => ({ ...o, includeCrashLogs: on }))}
           >
             Log lines kept with crashes and ANRs
+          </Checkbox>
+          <Checkbox
+            checked={options().includeAttachments}
+            onChange={(on) => setOptions((o) => ({ ...o, includeAttachments: on }))}
+          >
+            Attached screenshots (not redacted)
           </Checkbox>
           <fieldset class={styles.rules}>
             <legend class={styles.legend}>Redact</legend>

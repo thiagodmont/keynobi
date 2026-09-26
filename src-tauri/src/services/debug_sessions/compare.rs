@@ -771,6 +771,7 @@ mod tests {
     fn detail(session: DebugSession, events: Vec<DebugSessionEvent>) -> DebugSessionDetail {
         DebugSessionDetail {
             crashes: crashes::crash_events(&events),
+            attachments: vec![],
             session,
             events,
             events_truncated: false,

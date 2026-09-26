@@ -276,6 +276,17 @@ export function describeEvent(event: DebugSessionEvent): EventView {
         text: parts.join(" · "),
       };
     }
+    case "attachment": {
+      const { width, height, bytes } = event.data;
+      const by = actorLabel(event.actor);
+      return {
+        label: "Screenshot",
+        variant: "info",
+        text: `Screenshot attached · ${width}×${height} · ${formatBytes(bytes)}${
+          by ? ` · by ${by}` : ""
+        }`,
+      };
+    }
   }
 }
 

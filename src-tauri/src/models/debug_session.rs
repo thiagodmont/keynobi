@@ -132,6 +132,8 @@ pub struct DebugSessionCounts {
     pub captures: u32,
     /// MCP tool calls that acted on the session's device.
     pub agent_actions: u32,
+    /// Screenshots attached to the session.
+    pub attachments: u32,
 }
 
 /// A session's manifest, `sessions/<id>/session.json`.
@@ -159,7 +161,7 @@ pub struct DebugSession {
     pub event_count: u32,
     /// Events not recorded because a cap was reached.
     pub dropped_events: u32,
-    /// Size of the session's event log.
+    /// Size of the session's event log and attachments.
     #[ts(type = "number")]
     pub bytes: u64,
     /// Set on a session imported from a bundle.
@@ -386,6 +388,32 @@ pub struct DebugSessionAgentAction {
     pub serial: String,
 }
 
+/// What an attachment holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub enum DebugSessionAttachmentKind {
+    /// A PNG screenshot of the session's device.
+    Screenshot,
+}
+
+/// A file attached to the session: `attachments/<name>`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DebugSessionAttachment {
+    pub kind: DebugSessionAttachmentKind,
+    /// `screenshot-<seq>.png`, named by the event's `seq`.
+    pub name: String,
+    #[ts(type = "number")]
+    pub bytes: u64,
+    /// The image's size in pixels.
+    pub width: u32,
+    pub height: u32,
+    /// The device it shows.
+    pub serial: String,
+}
+
 /// What happened, by kind.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", content = "data", rename_all = "camelCase")]
@@ -407,6 +435,7 @@ pub enum DebugSessionEventData {
     Anr(DebugSessionCrash),
     Exit(DebugSessionExit),
     AgentAction(DebugSessionAgentAction),
+    Attachment(DebugSessionAttachment),
 }
 
 /// One line of `sessions/<id>/events.jsonl`.
@@ -437,6 +466,21 @@ pub struct DebugSessionDetail {
     /// The session's crash and ANR events, even those older than `events`,
     /// oldest first; at most `MAX_CRASHES_RETURNED`, the newest.
     pub crashes: Vec<DebugSessionEvent>,
+    /// The session's attachment events, even those older than `events`,
+    /// oldest first.
+    pub attachments: Vec<DebugSessionEvent>,
+}
+
+/// An attachment's content (`get_session_attachment`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DebugSessionAttachmentData {
+    /// The attachment event's `seq`.
+    pub seq: u32,
+    /// `image/png`.
+    pub media_type: String,
+    pub base64: String,
 }
 
 /// The log lines kept with a crash (`get_session_capture`).
@@ -472,6 +516,8 @@ pub struct SessionExportOptions {
     pub redaction: RedactionRules,
     /// The log lines kept with each crash and ANR.
     pub include_crash_logs: bool,
+    /// Attached screenshots, which redaction cannot reach.
+    pub include_attachments: bool,
 }
 
 impl Default for SessionExportOptions {
@@ -479,6 +525,7 @@ impl Default for SessionExportOptions {
         SessionExportOptions {
             redaction: RedactionRules::default(),
             include_crash_logs: true,
+            include_attachments: true,
         }
     }
 }

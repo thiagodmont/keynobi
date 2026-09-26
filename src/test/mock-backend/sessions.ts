@@ -3,6 +3,7 @@ import type {
   BuildActor,
   BuildRecord,
   DebugSession,
+  DebugSessionAttachmentData,
   DebugSessionCapture,
   DebugSessionEvent,
   DebugSessionEventData,
@@ -26,6 +27,11 @@ const MAX_MOCK_CAPTURES = 10;
 const MOCK_CONTEXT_BEFORE = 500;
 /** As `MAX_CAPTURE_ENTRIES` in the backend. */
 const MAX_MOCK_CAPTURE_ENTRIES = 1000;
+/** A 1x1 PNG, what the mock device's screen shows. */
+const MOCK_SCREENSHOT_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+/** As `MAX_ATTACHMENTS_PER_SESSION` in the backend. */
+const MAX_MOCK_ATTACHMENTS = 10;
 /** `EntryFlags.ANR`. */
 const ANR_FLAG = 1 << 1;
 
@@ -87,6 +93,7 @@ function append(entry: MockSession, actor: BuildActor | null, event: DebugSessio
   if (event.kind === "anr") counts.anrs += 1;
   if (event.kind === "exit") counts.exits += 1;
   if (event.kind === "agentAction") counts.agentActions += 1;
+  if (event.kind === "attachment") counts.attachments += 1;
   if ((event.kind === "crash" || event.kind === "anr") && event.data.capture) counts.captures += 1;
   return recorded;
 }
@@ -156,6 +163,7 @@ function importMockSession(): MockSession {
         bookmarks: 0,
         captures: 0,
         agentActions: 0,
+        attachments: 0,
       },
       lastEventAt: at,
       eventCount: 0,
@@ -282,6 +290,7 @@ export function openMockSession(entry: InstalledBuild, record: BuildRecord | und
         bookmarks: 0,
         captures: 0,
         agentActions: 0,
+        attachments: 0,
       },
       lastEventAt: now,
       eventCount: 0,
@@ -390,6 +399,7 @@ export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
         events: [...entry.events],
         eventsTruncated: false,
         crashes: entry.events.filter((e) => e.kind === "crash" || e.kind === "anr"),
+        attachments: entry.events.filter((e) => e.kind === "attachment"),
       };
     },
     get_session_capture: (args: unknown): DebugSessionCapture => {
@@ -424,6 +434,13 @@ export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
       if (!options.includeCrashLogs && entry.captures.size > 0) {
         omitted.push({ item: "crash log lines", reason: "not selected" });
       }
+      const attached = entry.events.flatMap((e) =>
+        e.kind === "attachment" ? [`attachments/${e.data.name}`] : []
+      );
+      if (!options.includeAttachments && attached.length > 0) {
+        omitted.push({ item: "attachments", reason: "not selected" });
+      }
+      const attachments = options.includeAttachments ? attached : [];
       const rules = options.redaction;
       const enabled: Record<RedactionRule, boolean> = {
         emails: rules.emails,
@@ -435,7 +452,14 @@ export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
       return {
         path: `/mock/Desktop/keynobi-session-${entry.session.package}.zip`,
         bytes: 4096,
-        entries: ["manifest.json", "session.json", "timeline.jsonl", ...logs, "redaction.json"],
+        entries: [
+          "manifest.json",
+          "session.json",
+          "timeline.jsonl",
+          ...logs,
+          ...attachments,
+          "redaction.json",
+        ],
         redactions: (Object.keys(enabled) as RedactionRule[]).map((rule) => ({
           rule,
           enabled: enabled[rule],
@@ -443,6 +467,48 @@ export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
         })),
         omitted,
       };
+    },
+    // Like the backend after adb screencap returned the screen.
+    attach_session_screenshot: (args: unknown): DebugSessionEvent => {
+      const entry = findRecorded((args as { id: string }).id);
+      const fail = (message: string): never => {
+        const error: AppError = { kind: "invalidInput", message };
+        throw error;
+      };
+      if (entry.session.closedAt !== null) fail(`Debug session ${entry.session.id} is closed`);
+      if (entry.session.counts.attachments >= MAX_MOCK_ATTACHMENTS) {
+        fail(`Debug session ${entry.session.id} is full (MAX_ATTACHMENTS_PER_SESSION)`);
+      }
+      const seq = entry.events.length + 1;
+      const bytes = Math.floor((MOCK_SCREENSHOT_BASE64.length * 3) / 4);
+      entry.session.bytes += bytes;
+      return append(
+        entry,
+        { kind: "app" },
+        {
+          kind: "attachment",
+          data: {
+            kind: "screenshot",
+            name: `screenshot-${seq}.png`,
+            bytes,
+            width: 1,
+            height: 1,
+            serial: entry.session.device.serial,
+          },
+        }
+      );
+    },
+    get_session_attachment: (args: unknown): DebugSessionAttachmentData => {
+      const { id, seq } = args as { id: string; seq: number };
+      const found = find(id).events.some((e) => e.seq === seq && e.kind === "attachment");
+      if (!found) {
+        const error: AppError = {
+          kind: "notFound",
+          message: `Debug session ${id} has no attachment for event ${seq}`,
+        };
+        throw error;
+      }
+      return { seq, mediaType: "image/png", base64: MOCK_SCREENSHOT_BASE64 };
     },
     refresh_session_exit_reasons: (args: unknown): DebugSessionExitRefresh => {
       findRecorded((args as { id: string }).id);
