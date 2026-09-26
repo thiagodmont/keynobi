@@ -1,0 +1,128 @@
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_4632b8e865e76e 2407
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_a19ae1f33463e1 1071,1073-1122,2228
+  s_1e114e823b9048::t_70dc741f5794b8 970-988,1054-1063,1233-1251,1428-1446,1847-1865,2210-2227
+  s_1e114e823b9048::t_b94746abcb0e99 1064-1070,1072
+src/test/factories/sessions.ts
+  s_1e114e823b9048::t_388d890ce14c6f 2,56-65
+  s_1e114e823b9048::t_a046701bfd1a79 66-69
+src-tauri/src/utils/process.rs
+  s_1e114e823b9048::t_66b41f01a7f922 36-38
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_43331f6fc378a0 167
+src/bindings/BuildFileHash.ts
+  s_1e114e823b9048::t_70dc741f5794b8 1-14
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_0d939a5e4221de 157
+  s_1e114e823b9048::t_99ce0f74ade53b 369
+  s_1e114e823b9048::t_e490b8446c63b8 156
+src-tauri/src/services/debug_sessions/agent.rs
+  s_1e114e823b9048::t_8848cf317cf69c 365-373
+src/components/sessions/session-format.ts
+  s_1e114e823b9048::t_9a64035c57ca23 4
+  s_1e114e823b9048::t_fa358ae992d5f7 51-71
+src/bindings/index.ts
+  s_1e114e823b9048::t_3f248d295f2fb1 43-44
+src/components/sessions/session-format.test.ts
+  s_1e114e823b9048::t_388d890ce14c6f 5,20,238-258
+  s_1e114e823b9048::t_5a14a28061421e 259
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_e472a1b9934030 173
+  s_1e114e823b9048::t_df429a004dced1 566
+  s_1e114e823b9048::t_f9f46c5530e918 105-114
+  s_1e114e823b9048::t_030133a4471b64 565
+src-tauri/src/models/build.rs
+  s_1e114e823b9048::t_1dd58e68e8db31 164-205
+src-tauri/src/services/installed_builds.rs
+  s_1e114e823b9048::t_4632b8e865e76e 1356
+skills/keynobi/SKILL.md
+  s_1e114e823b9048::t_aa17c4f1654ac4 22
+src-tauri/src/services/mapping_snapshots.rs
+  s_1e114e823b9048::t_4632b8e865e76e 804
+src-tauri/src/services/debug_sessions/compare.rs
+  s_1e114e823b9048::t_b8fb97313e9f4b 518
+  s_1e114e823b9048::t_aa64901b2ee082 110-147
+  s_1e114e823b9048::t_673084baa7fdb5 158-159
+  s_1e114e823b9048::t_e85641a572ed27 399-509,519-523
+  s_1e114e823b9048::t_4632b8e865e76e 665
+  s_1e114e823b9048::t_15708e8d007026 2-4,7,17,19-21
+  s_1e114e823b9048::t_c530723ab76fd8 549-550
+  s_1e114e823b9048::t_a0da0425f8b7bd 798,802-881,883-926
+  s_1e114e823b9048::t_228be779adf59c 882
+  s_1e114e823b9048::t_38e0987ddc750f 927
+src/test/mock-backend/build.ts
+  s_1e114e823b9048::t_ab6f6af95f1229 66-80
+  s_1e114e823b9048::t_2c8c94f08fc6b6 112
+  s_1e114e823b9048::t_9ebc933a28684b 6
+src/bindings/BuildProvenance.ts
+  s_1e114e823b9048::t_70dc741f5794b8 1-42
+src/components/sessions/SessionsDialog.test.tsx
+  s_1e114e823b9048::t_597710176fb5cb 14
+  s_1e114e823b9048::t_1e693b98727876 256-273
+src/bindings/BuildRecord.ts
+  s_1e114e823b9048::t_70dc741f5794b8 4,41-46
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_07f71cd0b0c459 163
+  s_1e114e823b9048::t_a95c4c61259d5a 172
+src-tauri/src/services/build_provenance.rs
+  s_1e114e823b9048::t_757bc072710641 282-284,286-287,289
+  s_1e114e823b9048::t_f0f33b12fb44ee 1-249,251-252,260-281,285,288,290-411,413-556
+  s_1e114e823b9048::t_c99662aa43eb47 250,253-259,412
+src-tauri/src/models/debug_session.rs
+  s_1e114e823b9048::t_76ad53131d03ba 5
+  s_1e114e823b9048::t_a1ab37659560fe 57-60
+src/components/sessions/SessionDetail.tsx
+  s_1e114e823b9048::t_7501b1641bccb5 258,260-261
+  s_1e114e823b9048::t_f5ecba2b8360b1 259
+  s_1e114e823b9048::t_e391377ae7c09d 15-20,39,72-81
+  s_1e114e823b9048::t_6b96c02218d5d5 82-83
+  s_1e114e823b9048::t_bd8772cf298d7b 257
+e2e/smoke/debug-sessions.spec.ts
+  s_1e114e823b9048::t_b722498d0e4bd7 55-56
+src-tauri/src/services/mod.rs
+  s_1e114e823b9048::t_b3612faf9bc7f9 10
+src-tauri/src/services/debug_sessions.rs
+  s_1e114e823b9048::t_4632b8e865e76e 1527
+  s_1e114e823b9048::t_b2cdbe26ab2c9e 340
+  s_1e114e823b9048::t_fac00edd8383cf 1624-1654
+src-tauri/src/services/jdk.rs
+  s_1e114e823b9048::t_2197284a599b18 122-140
+  s_1e114e823b9048::t_5b82e11f5d82b6 765-784
+src/bindings/DebugSessionBuild.ts
+  s_1e114e823b9048::t_70dc741f5794b8 3,11-15
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_a0414b1eea4d43 3082
+src-tauri/src/services/build_runner.rs
+  s_1e114e823b9048::t_d534ca2abbe0f3 3405-3411
+  s_1e114e823b9048::t_4632b8e865e76e 947,1151,2813,2837,2872,2903,2992,3506
+  s_1e114e823b9048::t_3c234011ef37ba 1192,1194-1201,1207,1211-1222
+  s_1e114e823b9048::t_cecd0c47054680 8
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_228be779adf59c 1070-1112,1128
+  s_1e114e823b9048::t_9330cd16315862 1113-1127
+  s_1e114e823b9048::t_e3a4c5d76d472f 233-267
+  s_1e114e823b9048::t_e32f51f1bc73fe 367
+src-tauri/src/services/retrace_match.rs
+  s_1e114e823b9048::t_4632b8e865e76e 283
+src-tauri/src/services/retrace.rs
+  s_1e114e823b9048::t_4632b8e865e76e 1483
+src/test/mock-backend/sessions.ts
+  s_1e114e823b9048::t_fe95528781db96 133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "80f5f3528ecebd1553b0157e5ce7bb3cc5e60d26",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
