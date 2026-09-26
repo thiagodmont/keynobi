@@ -29,6 +29,7 @@ references/MCP_SERVER.md
   s_1e114e823b9048::t_c113d58553c7ff 130
   s_1e114e823b9048::t_87e56e57a6b573 248
   s_1e114e823b9048::t_9d18f40374c0fc 295
+  s_1e114e823b9048::t_2c04bf072b85b2 318
 src-tauri/src/services/installed_builds.rs
   s_1e114e823b9048::t_1be7b672704612 504-505
   s_1e114e823b9048::t_71037e36644fdd 506-510
