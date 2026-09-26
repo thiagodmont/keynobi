@@ -81,6 +81,17 @@ pub fn describe_failure(what: &str, err: &io::Error, hint: &str) -> String {
     }
 }
 
+/// The first non-empty line of a tool's output, trimmed and cut to 300
+/// characters, to quote in an error.
+pub fn first_line(bytes: &[u8]) -> Option<String> {
+    const MAX_CHARS: usize = 300;
+    String::from_utf8_lossy(bytes)
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .map(|line| line.chars().take(MAX_CHARS).collect())
+}
+
 /// A deadline for people: `5 min`, `90 s`, `200 ms`.
 pub fn format_duration(d: Duration) -> String {
     let secs = d.as_secs();

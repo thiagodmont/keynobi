@@ -67,7 +67,7 @@ All persistent app data lives under `~/.keynobi/`, resolved by `settings_manager
 | `build-history.json`, `build-logs/build-{id}.jsonl` | Build history and per-build logs. |
 | `mappings/<sha256>.txt` | Copies of the R8 mappings successful builds wrote, named by content and listed on their history records and on the installs that pin them. |
 | `installed-builds.json` | What Keynobi last installed on each device, per package, and the build that produced it. |
-| `sessions/index.json`, `sessions/<id>/session.json`, `sessions/<id>/events.jsonl` | Debug sessions: a summary of each, its manifest, and its appended timeline. |
+| `sessions/index.json`, `sessions/<id>/session.json`, `sessions/<id>/events.jsonl`, `sessions/<id>/captures/crash-<seq>.jsonl` | Debug sessions: a summary of each, its manifest, its appended timeline, and the log lines kept with its crashes. |
 | `retrace/` | The crash trace `retrace` reads: a private file per call, removed when the call returns (and, if a process died mid-call, after an hour). |
 | `mcp-activity.jsonl` | MCP activity log (appended and rotated under the data lock). |
 | `mcp.sock` | Socket the app serves attached MCP sessions on (`0600`; the data directory is `0700`). |
@@ -76,7 +76,7 @@ All persistent app data lives under `~/.keynobi/`, resolved by `settings_manager
 | `build-locks/<hash>.lock` | One per project being built, held for the whole build and naming the building process's pid, so two processes never build one project at once. |
 | `ui-automator-locks/<hash>.lock` | One per device serial, held while a process runs UI Automator on that device and naming its pid, so two processes never capture one device at once. |
 
-Every read-modify-write of `settings.json`, `build-history.json`, `installed-builds.json`, or a debug session's `index.json` and `session.json`, every append to its `events.jsonl`, and every file published to or removed from `mappings/` (a copy is written to a private temporary file there first, without the lock), runs under `settings_manager::with_data_lock` (a process mutex plus a file lock on `.lock`) and re-reads the file inside it, because other processes write the same files. Write atomically to a `unique_tmp_path` and rename. The lock is not reentrant; never take it inside itself.
+Every read-modify-write of `settings.json`, `build-history.json`, `installed-builds.json`, or a debug session's `index.json` and `session.json`, every append to its `events.jsonl`, and every file published to or removed from `mappings/` or a session's `captures/` (a copy is written to a private temporary file first, without the lock), runs under `settings_manager::with_data_lock` (a process mutex plus a file lock on `.lock`) and re-reads the file inside it, because other processes write the same files. Write atomically to a `unique_tmp_path` and rename. The lock is not reentrant; never take it inside itself.
 
 Frontend-only preferences (saved logcat filters, last query, dismissed update versions) live in WebView `localStorage`.
 
@@ -166,6 +166,7 @@ Every long-lived collection, in memory or on disk, must have an explicit, named 
 | R8 mapping snapshots | `MAX_MAPPING_BYTES` (256 MiB per file), `MAX_MAPPINGS_PER_BUILD` (8), `MAX_MAPPING_SNAPSHOTS` (32 files) unpinned; unreferenced snapshots are pruned with the history, and snapshots installed builds name are never pruned |
 | Installed builds | `MAX_INSTALLED_TARGETS` (16 device and package pairs, oldest dropped); `MAX_APKS_PER_BUILD` (8 hashed APKs per build record) |
 | Debug sessions | `MAX_SESSIONS` (50), settings `sessions.retentionDays` (14) and `sessions.maxFolderMb` (200); per session `MAX_EVENTS_PER_SESSION` (2,000), `MAX_BOOKMARKS_PER_SESSION` (100), `MAX_SESSION_BYTES` (16 MiB), later events counted as dropped; `MAX_KEPT_SESSIONS` (5); `MAX_BOOKMARK_NOTE_CHARS` and `MAX_EVENT_TEXT_CHARS` (500); `MAX_EVENTS_RETURNED` (500 per read); `MAX_PENDING_SESSION_EVENTS` (256 queued for the writer, overflow counted as dropped); `MAX_KNOWN_EMULATORS` (64) |
+| Debug session crashes | `MAX_PENDING_CRASHES` (64 queued for the capture writer, overflow counted as dropped); per crash `CAPTURE_CONTEXT_BEFORE` (500 lines before it), `MAX_CAPTURE_ENTRIES` (1,000 lines) and `MAX_CAPTURE_BYTES` (1 MiB); `MAX_CAPTURES_PER_SESSION` (10, later crashes keep the event only); `MAX_CRASHES_RETURNED` (100 per read); `MAX_PENDING_EXIT_READS` (16 sessions waiting for their exit reasons) |
 | Crash deobfuscation (`retrace`) | `MAX_RETRACE_INPUT_BYTES` (256 KiB trace), `MAX_RETRACE_OUTPUT_BYTES` (1 MiB), `MAX_RETRACE_CACHE` (32 results, least recently used dropped), `MAX_RETRACED_CRASH_GROUPS` (5 per `get_crash_logs` call), `RETRACE_TIMEOUT` (120 s) |
 | Logcat stream starts remembered (which device an entry came from) | `MAX_STREAM_STARTS` (32, oldest dropped) |
 | UI hierarchy | `MAX_XML_BYTES`, `MAX_NODES`, `MAX_DEPTH`, `MAX_ATTR_LEN` |

@@ -138,7 +138,7 @@ The test `every_tool_declares_annotations_matching_the_reference_docs` fails if 
 
 | Tool | Kind | Notes |
 |------|------|-------|
-| `start_logcat` | W | `device_serial?`; 5 s startup timeout. |
+| `start_logcat` | W | `device_serial?`; 5 s startup timeout. Crashes and ANRs the stream reads are added, with the log lines around them, to the debug session of their device and package (`DOMAIN_PATTERNS.md` § Debug Sessions). |
 | `stop_logcat` | W | |
 | `clear_logcat` | D | Clears Keynobi's buffer, not the device buffer. |
 | `get_logcat_entries` | R | `count` (default `mcp.logcatDefaultCount` = 200, max 10,000), `min_level`, `tag`, `text`, `package`, `only_crashes`. |

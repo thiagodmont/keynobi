@@ -3,4 +3,8 @@
 /**
  * How many events of each kind a session holds.
  */
-export type DebugSessionCounts = { launches: number, crashes: number, anrs: number, exits: number, bookmarks: number, };
+export type DebugSessionCounts = { launches: number, crashes: number, anrs: number, exits: number, bookmarks: number, 
+/**
+ * Crashes and ANRs whose log lines were kept.
+ */
+captures: number, };

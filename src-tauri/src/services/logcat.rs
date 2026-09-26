@@ -190,6 +190,9 @@ pub struct LogcatStateInner {
     /// The device each stream read, from the first entry ID it could store,
     /// oldest first; at most [`MAX_STREAM_STARTS`].
     stream_starts: VecDeque<StreamStart>,
+    /// The newest crash group the store has passed to debug sessions. Group
+    /// IDs only grow, so a larger one is a crash not seen before.
+    crash_groups_seen: u64,
 }
 
 /// Most stream starts remembered for [`LogcatStateInner::device_of_entry`].
@@ -256,6 +259,7 @@ impl LogcatStateInner {
             dropped_lines: Arc::new(std::sync::atomic::AtomicU64::new(0)),
             ids: Arc::new(IdAllocator::new()),
             stream_starts: VecDeque::new(),
+            crash_groups_seen: 0,
         }
     }
 
@@ -391,10 +395,14 @@ pub fn parse_ps_output(text: &str) -> HashMap<i32, String> {
     map
 }
 
+/// Store `processed` and return the entries the stream filter passes. The
+/// first entry of each crash group not seen before is added to `crashes`
+/// (for debug sessions), without I/O.
 fn store_and_filter_processed_entries(
     state: &mut LogcatStateInner,
     ctx: &mut PipelineContext,
     processed: Vec<ProcessedEntry>,
+    crashes: &mut Vec<debug_sessions::CrashSeen>,
 ) -> Vec<ProcessedEntry> {
     if !ctx.new_packages.is_empty() {
         for pkg in ctx.new_packages.drain(..) {
@@ -409,6 +417,15 @@ fn store_and_filter_processed_entries(
     let mut to_emit: Vec<ProcessedEntry> = Vec::with_capacity(processed.len().min(MAX_BATCH_SIZE));
 
     for entry in processed {
+        if let Some(gid) = entry.crash_group_id {
+            if gid > state.crash_groups_seen {
+                state.crash_groups_seen = gid;
+                crashes.push(debug_sessions::CrashSeen::new(
+                    &entry,
+                    state.device_of_entry(entry.id),
+                ));
+            }
+        }
         let passes = filter.as_ref().is_none_or(|f| f.matches(&entry));
         if passes {
             to_emit.push(entry.clone());
@@ -665,6 +682,11 @@ pub async fn start_logcat_stream(
         // Locks LogcatState once per 100ms tick to batch-write + sync packages.
         let logcat_state_pipeline = logcat_state.clone();
         let app_handle_pipeline = app_handle.clone();
+        let crash_source = debug_sessions::CrashSource::new(
+            logcat_state.clone(),
+            adb_bin.clone(),
+            app_handle.is_some(),
+        );
         let pipeline_handle = tokio::spawn(async move {
             // Signals the reader to stop when this task exits, for any reason.
             let _shutdown_guard = ShutdownOnDrop(shutdown_tx);
@@ -744,6 +766,7 @@ pub async fn start_logcat_stream(
                 // check and here. Storing a superseded stream's entries would
                 // interleave its IDs with the replacement's and break the
                 // store's ID ordering.
+                let mut crashes = Vec::new();
                 let to_emit = {
                     let mut state = logcat_state.lock().await;
                     if !owns_stream(&state, generation) {
@@ -754,7 +777,12 @@ pub async fn start_logcat_stream(
                         if processed.is_empty() {
                             Vec::new()
                         } else {
-                            store_and_filter_processed_entries(&mut state, &mut ctx, processed)
+                            store_and_filter_processed_entries(
+                                &mut state,
+                                &mut ctx,
+                                processed,
+                                &mut crashes,
+                            )
                         }
                     }
                     // Lock dropped here.
@@ -762,6 +790,10 @@ pub async fn start_logcat_stream(
 
                 // Emit the filtered entries in chunks of MAX_BATCH_SIZE.
                 emit_entry_batches(app_handle.as_ref(), &to_emit);
+                // Only queues: the capture waits for the crash to finish.
+                for crash in crashes {
+                    crash_source.record(crash);
+                }
 
                 if drain.rows > 0 {
                     tracing::trace!(
@@ -1226,6 +1258,7 @@ PID NAME
                     false,
                 ),
             ],
+            &mut Vec::new(),
         );
 
         assert_eq!(state.store.len(), 2, "all entries should be stored");
@@ -1237,6 +1270,54 @@ PID NAME
         );
         assert!(state.known_packages.contains("com.example.app"));
         assert_eq!(state.store.stats.packages_seen, 1);
+    }
+
+    #[test]
+    fn each_new_crash_group_is_passed_on_once_with_its_first_entry() {
+        let mut state = LogcatStateInner::new();
+        state.record_stream_start(Some("R5CT".into()));
+        let mut ctx = PipelineContext::new();
+        let crash_line = |id: u64, gid: u64| ProcessedEntry {
+            crash_group_id: Some(gid),
+            pid: 4321,
+            ..entry(
+                id,
+                LogcatLevel::Error,
+                "AndroidRuntime",
+                "FATAL EXCEPTION: main",
+                Some("com.example.app"),
+                true,
+            )
+        };
+        let mut crashes = Vec::new();
+
+        store_and_filter_processed_entries(
+            &mut state,
+            &mut ctx,
+            vec![
+                entry(1, LogcatLevel::Info, "App", "hi", None, false),
+                crash_line(2, 1),
+                crash_line(3, 1),
+            ],
+            &mut crashes,
+        );
+        // The rest of the group arrives in the next batch, then a new group.
+        store_and_filter_processed_entries(
+            &mut state,
+            &mut ctx,
+            vec![crash_line(4, 1), crash_line(5, 2)],
+            &mut crashes,
+        );
+
+        let seen: Vec<(u64, u64)> = crashes
+            .iter()
+            .map(|c| (c.crash_group_id, c.first_entry_id))
+            .collect();
+        assert_eq!(seen, [(1, 2), (2, 5)]);
+        assert_eq!(crashes[0].pid, 4321);
+        assert_eq!(crashes[0].package.as_deref(), Some("com.example.app"));
+        assert_eq!(crashes[0].device, EntryDevice::Serial("R5CT".into()));
+        assert!(!crashes[0].anr);
     }
 
     // ── Ring buffer stress tests ──────────────────────────────────────────────

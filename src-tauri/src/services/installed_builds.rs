@@ -18,13 +18,20 @@ use crate::services::debug_sessions;
 use crate::services::gradle_modules;
 use crate::services::mapping_snapshots::{self, MappingSource};
 use crate::services::settings_manager::{data_dir, unique_tmp_path, with_data_lock_in};
+use crate::utils::device_shell::quote_device_shell_arg;
 use crate::utils::path::{
     resolve_project_file, validate_apk_within_build_outputs, validate_within_root,
 };
+use crate::utils::process::{
+    describe_failure, first_line, output_with_timeout, ADB_QUERY_TIMEOUT, ADB_UNRESPONSIVE_HINT,
+};
+use chrono::{DateTime, FixedOffset, NaiveDateTime, TimeDelta, TimeZone, Utc};
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::process::Stdio;
+use std::time::{Duration, SystemTime};
+use tokio::process::Command;
 
 /// Most (device, package) installs kept; the oldest is dropped first. Each
 /// can keep one R8 mapping past the build history's retention.
@@ -684,6 +691,267 @@ pub fn installed_build_in(
         .into_iter()
         .rev()
         .find(|e| e.package == package && target.is_device_of(e))
+}
+
+// ── Checking an install on the device ─────────────────────────────────────────
+
+/// Largest `adb shell` output read (`dumpsys package`).
+const MAX_DEVICE_QUERY_BYTES: usize = 1024 * 1024;
+
+/// How much later than Keynobi's recorded install the device may report the
+/// app's last update: `dumpsys` prints whole seconds, and the two clocks are
+/// compared through one `date` call.
+const UPDATE_TIME_TOLERANCE_SECS: i64 = 30;
+
+/// `build #12`, or `an unrecorded build`.
+pub fn build_name(build_id: Option<u32>) -> String {
+    build_id.map_or_else(
+        || "an unrecorded build".to_string(),
+        |id| format!("build #{id}"),
+    )
+}
+
+/// Why the device did not confirm an install, as a sentence for the user.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InstallMismatch {
+    /// The device could not be asked, or its answer could not be read.
+    Unchecked(String),
+    /// The package is not installed on the device any more.
+    NotInstalled(String),
+    /// The device runs another install of the package: another version
+    /// code, or an update after Keynobi's install.
+    Reinstalled(String),
+}
+
+impl InstallMismatch {
+    pub fn into_message(self) -> String {
+        match self {
+            InstallMismatch::Unchecked(m)
+            | InstallMismatch::NotInstalled(m)
+            | InstallMismatch::Reinstalled(m) => m,
+        }
+    }
+}
+
+/// What `dumpsys package` reports about an installed package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DevicePackage {
+    version_code: Option<u64>,
+    /// Device local time, as printed.
+    last_update: Option<String>,
+}
+
+/// The `Package [<package>]` block of `dumpsys package <package>`, or `None`
+/// when the package is not installed.
+fn parse_dumpsys_package(text: &str, package: &str) -> Option<DevicePackage> {
+    let header = format!("Package [{package}]");
+    let mut lines = text.lines();
+    let indent = lines.by_ref().find_map(|line| {
+        let trimmed = line.trim_start();
+        trimmed
+            .starts_with(&header)
+            .then(|| line.len() - trimmed.len())
+    })?;
+    let mut found = DevicePackage {
+        version_code: None,
+        last_update: None,
+    };
+    for line in lines {
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // The block ends at the next line indented no deeper than its header.
+        if line.len() - trimmed.len() <= indent {
+            break;
+        }
+        if found.version_code.is_none() {
+            if let Some(rest) = trimmed.strip_prefix("versionCode=") {
+                found.version_code = rest
+                    .split(|c: char| !c.is_ascii_digit())
+                    .next()
+                    .and_then(|digits| digits.parse().ok());
+            }
+        }
+        if found.last_update.is_none() {
+            if let Some(rest) = trimmed.strip_prefix("lastUpdateTime=") {
+                found.last_update = Some(rest.trim().to_string());
+            }
+        }
+    }
+    Some(found)
+}
+
+/// `date +%s:%z` output: the device's clock and UTC offset.
+fn parse_device_clock(text: &str) -> Option<(i64, FixedOffset)> {
+    let (epoch, offset) = text.trim().split_once(':')?;
+    let epoch = epoch.trim().parse().ok()?;
+    let offset = offset.trim();
+    let sign = match offset.as_bytes().first()? {
+        b'+' => 1,
+        b'-' => -1,
+        _ => return None,
+    };
+    let digits = offset.get(1..)?;
+    if digits.len() != 4 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let hours: i32 = digits[..2].parse().ok()?;
+    let minutes: i32 = digits[2..].parse().ok()?;
+    Some((
+        epoch,
+        FixedOffset::east_opt(sign * (hours * 3600 + minutes * 60))?,
+    ))
+}
+
+/// A device's clock, read once: its time and UTC offset, and the host's time
+/// when it answered.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeviceClock {
+    pub device_now: i64,
+    pub offset: FixedOffset,
+    pub host_now: DateTime<Utc>,
+}
+
+impl DeviceClock {
+    /// `local`, a device local time, on the host's clock: converted with the
+    /// device's UTC offset and corrected for its clock's difference from the
+    /// host's.
+    pub fn to_host_time(&self, local: NaiveDateTime) -> Option<DateTime<Utc>> {
+        let on_device = self
+            .offset
+            .from_local_datetime(&local)
+            .single()?
+            .with_timezone(&Utc);
+        let skew = TimeDelta::try_seconds(self.device_now - self.host_now.timestamp())?;
+        Some(on_device - skew)
+    }
+}
+
+/// Ask the device for its clock (`date +%s:%z`).
+pub async fn device_clock(adb: &Path, serial: &str) -> Result<DeviceClock, String> {
+    let text = adb_shell(adb, serial, &["date", "+%s:%z"]).await?;
+    let host_now = Utc::now();
+    let (device_now, offset) = parse_device_clock(&text)
+        .ok_or_else(|| format!("unrecognised device clock {:?}", text.trim()))?;
+    Ok(DeviceClock {
+        device_now,
+        offset,
+        host_now,
+    })
+}
+
+/// Whether the device's `lastUpdateTime` (local time) is later than
+/// `installed_at`, on the host's clock.
+fn updated_after_install(
+    last_update: NaiveDateTime,
+    clock: &DeviceClock,
+    installed_at: DateTime<Utc>,
+) -> Option<bool> {
+    let on_host_clock = clock.to_host_time(last_update)?;
+    Some(on_host_clock > installed_at + TimeDelta::try_seconds(UPDATE_TIME_TOLERANCE_SECS)?)
+}
+
+/// Run `adb -s serial shell args` within [`ADB_QUERY_TIMEOUT`]. The caller
+/// quotes anything the device shell must not re-parse.
+pub(crate) async fn adb_shell(adb: &Path, serial: &str, args: &[&str]) -> Result<String, String> {
+    adb_shell_within(adb, serial, args, ADB_QUERY_TIMEOUT).await
+}
+
+/// [`adb_shell`] with its own timeout, for a command slower than a query.
+pub(crate) async fn adb_shell_within(
+    adb: &Path,
+    serial: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<String, String> {
+    let output = output_with_timeout(
+        Command::new(adb)
+            .args(["-s", serial, "shell"])
+            .args(args)
+            .stdin(Stdio::null()),
+        timeout,
+    )
+    .await
+    .map_err(|e| describe_failure(&format!("adb shell {}", args[0]), &e, ADB_UNRESPONSIVE_HINT))?;
+    if !output.status.success() {
+        let why = first_line(&output.stderr)
+            .or_else(|| first_line(&output.stdout))
+            .unwrap_or_else(|| format!("exit status {}", output.status));
+        return Err(format!("adb shell {} failed: {why}", args[0]));
+    }
+    let end = output.stdout.len().min(MAX_DEVICE_QUERY_BYTES);
+    Ok(String::from_utf8_lossy(&output.stdout[..end]).into_owned())
+}
+
+/// Ask the device (`serial`, called `device` in messages) whether `installed`
+/// is still the app it runs: the same version code, and no update after
+/// Keynobi's install. Returns what the device confirmed, or why it did not.
+/// Deobfuscation and debug sessions both rely on it.
+pub async fn verify_install_on_device(
+    adb: &Path,
+    serial: &str,
+    device: &str,
+    installed: &InstalledBuild,
+) -> Result<String, InstallMismatch> {
+    let build = build_name(installed.build_id);
+    let unchecked = |why: String| {
+        InstallMismatch::Unchecked(format!(
+            "could not check that {} on {device} is still {build} ({why})",
+            installed.package
+        ))
+    };
+    let dumpsys = adb_shell(
+        adb,
+        serial,
+        &[
+            "dumpsys",
+            "package",
+            &quote_device_shell_arg(&installed.package),
+        ],
+    )
+    .await
+    .map_err(unchecked)?;
+    let clock = device_clock(adb, serial).await.map_err(unchecked)?;
+
+    let Some(app) = parse_dumpsys_package(&dumpsys, &installed.package) else {
+        return Err(InstallMismatch::NotInstalled(format!(
+            "{} is no longer installed on {device}",
+            installed.package
+        )));
+    };
+    let Some(device_version) = app.version_code else {
+        return Err(unchecked("the device reported no versionCode".into()));
+    };
+    if let Some(recorded) = installed.version_code {
+        if u64::from(recorded) != device_version {
+            return Err(InstallMismatch::Reinstalled(format!(
+                "the app was reinstalled outside Keynobi after {build}: {device} runs \
+                 versionCode {device_version}, Keynobi installed versionCode {recorded}"
+            )));
+        }
+    }
+    let Some(last_update) = app.last_update else {
+        return Err(unchecked("the device reported no lastUpdateTime".into()));
+    };
+    let parsed = NaiveDateTime::parse_from_str(&last_update, "%Y-%m-%d %H:%M:%S")
+        .map_err(|_| unchecked(format!("unrecognised lastUpdateTime {last_update:?}")))?;
+    let installed_at = DateTime::parse_from_rfc3339(&installed.installed_at)
+        .map_err(|_| unchecked("the install record has no valid time".into()))?
+        .with_timezone(&Utc);
+    match updated_after_install(parsed, &clock, installed_at) {
+        Some(false) => Ok(format!(
+            "versionCode {device_version}, last updated {last_update}"
+        )),
+        Some(true) => Err(InstallMismatch::Reinstalled(format!(
+            "the app was reinstalled outside Keynobi after {build}: {device} last updated \
+             {} at {last_update} (device time), after Keynobi's install at {}",
+            installed.package, installed.installed_at
+        ))),
+        None => Err(unchecked(format!(
+            "cannot compare lastUpdateTime {last_update:?} with the install time"
+        ))),
+    }
 }
 
 #[cfg(test)]
@@ -1539,6 +1807,197 @@ mod tests {
         assert_eq!(
             describe_install(&unmatched),
             "Recorded com.example on emulator-5554 as an APK no recorded build wrote."
+        );
+    }
+
+    // ── Checking an install on the device ────────────────────────────────────
+
+    const PACKAGE: &str = "com.example.app";
+    const SERIAL: &str = "R5CT1234ABC";
+
+    fn dumpsys(version_code: u64, last_update: DateTime<Utc>) -> String {
+        format!(
+            "Packages:\n  Package [{PACKAGE}] (1a2b3c):\n    userId=10123\n    \
+             versionCode={version_code} minSdk=24 targetSdk=34\n    versionName=1.0\n    \
+             lastUpdateTime={}\n\nQueries:\n  system apps queryable: false\n",
+            last_update.format("%Y-%m-%d %H:%M:%S")
+        )
+    }
+
+    /// Keynobi's install of build #12, versionCode 42, ten minutes ago.
+    fn installed_ten_minutes_ago() -> InstalledBuild {
+        InstalledBuild {
+            serial: SERIAL.into(),
+            avd_name: None,
+            model: None,
+            package: PACKAGE.into(),
+            apk_sha256: "a1".repeat(32),
+            build_id: Some(12),
+            version_code: Some(42),
+            mappings: vec![],
+            installed_at: (Utc::now() - TimeDelta::minutes(10)).to_rfc3339(),
+        }
+    }
+
+    /// A fake adb answering `dumpsys package` with `dumpsys` and `date` with
+    /// the host clock in UTC.
+    fn device_answering(dir: &Path, dumpsys: &str) -> PathBuf {
+        let answer = dir.join("dumpsys.txt");
+        std::fs::write(&answer, dumpsys).unwrap();
+        let adb = dir.join("adb");
+        std::fs::write(
+            &adb,
+            format!(
+                "#!/bin/sh\ncase \"$*\" in\n\
+                 *'dumpsys package'*) cat '{}' ;;\n\
+                 *date*) echo \"$(date -u +%s):+0000\" ;;\n\
+                 esac\n",
+                answer.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&adb, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+            .unwrap();
+        crate::utils::process::test_support::run_once(&adb);
+        adb
+    }
+
+    #[tokio::test]
+    async fn the_device_confirms_an_install_or_says_why_not() {
+        let dir = TempDir::new().unwrap();
+        let installed = installed_ten_minutes_ago();
+        let at = DateTime::parse_from_rfc3339(&installed.installed_at)
+            .unwrap()
+            .with_timezone(&Utc);
+        let verify = |adb: PathBuf| {
+            let installed = installed.clone();
+            async move { verify_install_on_device(&adb, SERIAL, SERIAL, &installed).await }
+        };
+
+        let adb = device_answering(dir.path(), &dumpsys(42, at - TimeDelta::seconds(2)));
+        assert!(verify(adb).await.unwrap().starts_with("versionCode 42"));
+
+        let adb = device_answering(dir.path(), &dumpsys(42, at + TimeDelta::minutes(5)));
+        assert!(matches!(
+            verify(adb).await,
+            Err(InstallMismatch::Reinstalled(m)) if m.contains("reinstalled outside Keynobi after build #12")
+        ));
+        let adb = device_answering(dir.path(), &dumpsys(43, at));
+        assert!(matches!(
+            verify(adb).await,
+            Err(InstallMismatch::Reinstalled(m)) if m.contains("runs versionCode 43")
+        ));
+        let adb = device_answering(dir.path(), "Packages:\n");
+        assert!(matches!(
+            verify(adb).await,
+            Err(InstallMismatch::NotInstalled(_))
+        ));
+        let adb = device_answering(
+            dir.path(),
+            &format!("  Package [{PACKAGE}] (1):\n    versionCode=42\n"),
+        );
+        assert!(matches!(
+            verify(adb).await,
+            Err(InstallMismatch::Unchecked(m)) if m.contains("no lastUpdateTime")
+        ));
+        let missing = dir.path().join("no-adb");
+        assert!(matches!(
+            verify(missing).await,
+            Err(InstallMismatch::Unchecked(m))
+                if m.starts_with("could not check that com.example.app on R5CT1234ABC is still build #12")
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_package_is_quoted_for_the_device_shell() {
+        let dir = TempDir::new().unwrap();
+        let (adb, record) = crate::utils::device_shell::test_support::fake_adb(dir.path());
+        let mut hostile = installed_ten_minutes_ago();
+        hostile.package = "com.example;reboot $(id)".into();
+
+        let _ = verify_install_on_device(&adb, SERIAL, SERIAL, &hostile).await;
+
+        let calls = crate::utils::device_shell::test_support::recorded_calls(&record);
+        assert_eq!(calls[0], ["dumpsys", "package", "com.example;reboot $(id)"]);
+        assert_eq!(calls[1], ["date", "+%s:%z"]);
+    }
+
+    #[test]
+    fn dumpsys_output_is_read_from_the_package_block_only() {
+        let text = "Packages:\n  Package [com.other] (1):\n    versionCode=7 minSdk=21\n    \
+                    lastUpdateTime=2020-01-01 00:00:00\n  Package [com.example.app] (2):\n    \
+                    versionCode=42 minSdk=24 targetSdk=34\n    \
+                    lastUpdateTime=2026-09-25 10:32:01\n    User 0: installed=true\n  \
+                    Package [com.later] (3):\n    versionCode=9\n";
+        assert_eq!(
+            parse_dumpsys_package(text, PACKAGE),
+            Some(DevicePackage {
+                version_code: Some(42),
+                last_update: Some("2026-09-25 10:32:01".into()),
+            })
+        );
+        assert_eq!(parse_dumpsys_package(text, "com.missing"), None);
+        assert_eq!(
+            parse_dumpsys_package(
+                "  Package [com.example.app] (2):\n  Package [x]:\n    versionCode=1\n",
+                PACKAGE
+            ),
+            Some(DevicePackage {
+                version_code: None,
+                last_update: None,
+            })
+        );
+    }
+
+    #[test]
+    fn the_device_clock_and_offset_are_parsed() {
+        assert_eq!(
+            parse_device_clock("1790377228:-0400\n"),
+            Some((1_790_377_228, FixedOffset::west_opt(4 * 3600).unwrap()))
+        );
+        assert_eq!(
+            parse_device_clock("1790377228:+0530"),
+            Some((
+                1_790_377_228,
+                FixedOffset::east_opt(5 * 3600 + 30 * 60).unwrap()
+            ))
+        );
+        assert_eq!(parse_device_clock("1790377228"), None);
+        assert_eq!(parse_device_clock("1790377228:EDT"), None);
+    }
+
+    #[test]
+    fn the_update_time_is_compared_in_the_devices_zone_and_clock() {
+        let installed_at = DateTime::parse_from_rfc3339("2026-09-25T14:32:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let host_now = installed_at + TimeDelta::minutes(10);
+        let local = |s: &str| NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap();
+        let clock = |device_now: i64| DeviceClock {
+            device_now,
+            offset: FixedOffset::west_opt(4 * 3600).unwrap(),
+            host_now,
+        };
+        let in_sync = host_now.timestamp();
+
+        // 10:31:58 EDT is 14:31:58 UTC: the install itself.
+        assert_eq!(
+            updated_after_install(local("2026-09-25 10:31:58"), &clock(in_sync), installed_at),
+            Some(false)
+        );
+        // Five minutes after the install.
+        assert_eq!(
+            updated_after_install(local("2026-09-25 10:37:00"), &clock(in_sync), installed_at),
+            Some(true)
+        );
+        // A device clock five minutes fast moves its times back by as much.
+        assert_eq!(
+            updated_after_install(
+                local("2026-09-25 10:37:00"),
+                &clock(in_sync + 300),
+                installed_at
+            ),
+            Some(false)
         );
     }
 }

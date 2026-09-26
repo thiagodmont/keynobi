@@ -1,10 +1,14 @@
 //! Debug session commands: thin wrappers over `services::debug_sessions`.
 
-use crate::models::debug_session::{DebugSessionDetail, DebugSessionEvent, DebugSessionSummary};
+use crate::models::debug_session::{
+    DebugSessionCapture, DebugSessionDetail, DebugSessionEvent, DebugSessionExitRefresh,
+    DebugSessionSummary,
+};
 use crate::models::error::AppError;
-use crate::services::adb_manager::DeviceState;
+use crate::services::adb_manager::{get_adb_path, DeviceState};
 use crate::services::debug_sessions;
 use crate::services::installed_builds::InstallTarget;
+use crate::services::settings_manager;
 use tauri::State;
 
 async fn blocking<T: Send + 'static>(
@@ -66,4 +70,24 @@ pub async fn add_session_bookmark(
         debug_sessions::add_bookmark(session_id.as_deref(), device.as_ref(), &note, log_entry_id)
     })
     .await
+}
+
+/// The log lines kept with crash event `seq` of a debug session: the newest
+/// `limit` (at most `MAX_CAPTURE_ENTRIES`), ending with the crash.
+#[tauri::command]
+pub async fn get_session_capture(
+    id: String,
+    seq: u32,
+    limit: Option<u32>,
+) -> Result<DebugSessionCapture, AppError> {
+    blocking(move || debug_sessions::get_capture(&id, seq, limit)).await
+}
+
+/// Read the app's exit reasons from the session's device and add those that
+/// belong to the session.
+#[tauri::command]
+pub async fn refresh_session_exit_reasons(id: String) -> Result<DebugSessionExitRefresh, AppError> {
+    let (settings, _) = settings_manager::load_settings();
+    let adb = get_adb_path(&settings);
+    debug_sessions::refresh_exit_reasons(&id, &adb).await
 }

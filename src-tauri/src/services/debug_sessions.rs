@@ -6,12 +6,14 @@
 //! package supersedes it, when the user ends it, or after
 //! [`SESSION_IDLE_SECS`] without an event (computed when sessions are read,
 //! not by a timer). Its timeline records launches, logcat stream changes,
-//! device connection changes, and bookmarks.
+//! device connection changes, bookmarks, and crashes, ANRs, and process exits
+//! (see [`crashes`]).
 //!
 //! Storage, under `<data dir>/sessions/`:
 //! - `index.json`: a summary of every session, the only file the list reads.
 //! - `<id>/session.json`: the manifest ([`DebugSession`]).
 //! - `<id>/events.jsonl`: the timeline, appended.
+//! - `<id>/captures/crash-<seq>.jsonl`: the log lines kept with crash event `seq`.
 //!
 //! The app and standalone MCP processes write the same files, so every
 //! read-modify-write and every append runs under the data lock, re-reading
@@ -39,6 +41,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{LazyLock, Mutex as StdMutex};
 use std::time::{Duration, SystemTime};
+
+mod crashes;
+pub use crashes::{
+    dropped_crashes, get_capture, refresh_exit_reasons, CrashSeen, CrashSource, CRASH_SETTLE,
+    EXIT_READ_DELAY, MAX_CAPTURES_PER_SESSION, MAX_CAPTURE_BYTES, MAX_CAPTURE_ENTRIES,
+    MAX_CRASHES_RETURNED, MAX_PENDING_CRASHES,
+};
 
 // ── Caps ──────────────────────────────────────────────────────────────────────
 
@@ -477,7 +486,10 @@ fn remove_orphans(data_dir: &Path, index: &[DebugSessionSummary]) {
             && !index.iter().any(|s| s.id == name)
         {
             let _ = std::fs::remove_dir_all(entry.path());
-        } else if meta.is_file() && name.starts_with(INDEX_FILE) && name.ends_with(".tmp") {
+        } else if meta.is_file()
+            && (name.starts_with(INDEX_FILE) || name.starts_with(crashes::CAPTURE_TMP))
+            && name.ends_with(".tmp")
+        {
             let _ = std::fs::remove_file(entry.path());
         }
     }
@@ -554,9 +566,19 @@ fn append_locked(
     session.event_count += 1;
     session.bytes += line.len() as u64;
     session.last_event_at = at;
+    let counts = &mut session.counts;
     match &recorded.event {
-        DebugSessionEventData::Launch(_) => session.counts.launches += 1,
-        DebugSessionEventData::Bookmark(_) => session.counts.bookmarks += 1,
+        DebugSessionEventData::Launch(_) => counts.launches += 1,
+        DebugSessionEventData::Bookmark(_) => counts.bookmarks += 1,
+        DebugSessionEventData::Crash(crash) => {
+            counts.crashes += 1;
+            counts.captures += u32::from(crash.capture.is_some());
+        }
+        DebugSessionEventData::Anr(anr) => {
+            counts.anrs += 1;
+            counts.captures += u32::from(anr.capture.is_some());
+        }
+        DebugSessionEventData::Exit(_) => counts.exits += 1,
         _ => {}
     }
     Ok(Append::Recorded(Box::new(recorded)))
@@ -1181,6 +1203,7 @@ fn get_session_in(
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
         .collect();
+    let crashes = crashes::crash_events(&events);
     let events_truncated = events.len() > MAX_EVENTS_RETURNED;
     if events_truncated {
         events.drain(..events.len() - MAX_EVENTS_RETURNED);
@@ -1189,6 +1212,7 @@ fn get_session_in(
         session,
         events,
         events_truncated,
+        crashes,
     })
 }
 

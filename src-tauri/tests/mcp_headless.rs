@@ -1843,6 +1843,90 @@ esac"#,
     assert_eq!(launch["actor"]["standalone"], true);
 }
 
+#[test]
+fn a_crash_after_install_and_launch_is_captured_on_the_session() {
+    let sandbox = Sandbox::new();
+    sandbox.write_adb(
+        r#"case "$*" in
+  *" install "*) echo Success ;;
+  *"am start -W -n"*) printf 'Status: ok\nTotalTime: 812\nComplete\n' ;;
+  *"shell ps"*) printf 'PID NAME\n4321 com.example.sandbox.debug\n' ;;
+  *logcat*)
+    printf '%s\n' \
+      '09-25 10:32:01.000  4321  4321 I MainActivity: onCreate' \
+      '09-25 10:32:01.100  4321  4321 E AndroidRuntime: FATAL EXCEPTION: main' \
+      '09-25 10:32:01.100  4321  4321 E AndroidRuntime: Process: com.example.sandbox.debug, PID: 4321' \
+      '09-25 10:32:01.100  4321  4321 E AndroidRuntime: java.lang.RuntimeException: boom' \
+      '09-25 10:32:01.100  4321  4321 E AndroidRuntime: 	at a.a.onCreate(SourceFile:1)'
+    exec sleep 60 ;;
+  *exit-info*)
+    printf '  package: com.example.sandbox.debug\n    ApplicationExitInfo #0:\n'
+    printf '      timestamp=%s pid=4321 realUid=10152\n' "$(date -u '+%Y-%m-%d %H:%M:%S.000')"
+    printf '      process=com.example.sandbox.debug reason=4 (APP CRASH(EXCEPTION)) status=0\n' ;;
+  *"dumpsys package"*)
+    printf '  Package [com.example.sandbox.debug] (1):\n    versionCode=1\n'
+    printf '    lastUpdateTime=%s\n' "$(date -u '+%Y-%m-%d %H:%M:%S')" ;;
+  *getprop*) echo 34 ;;
+  *"shell date"*) echo "$(date -u +%s):+0000" ;;
+esac"#,
+    );
+    let debug = sandbox.project.join("app/build/outputs/apk/debug");
+    write_file(&debug.join("app-debug.apk"), b"apk");
+    write_file(
+        &debug.join("output-metadata.json"),
+        br#"{"applicationId":"com.example.sandbox.debug","variantName":"debug",
+            "elements":[{"outputFile":"app-debug.apk"}]}"#,
+    );
+    let mut client = sandbox.start();
+
+    let install = client.call_tool(
+        "install_apk",
+        json!({ "device_serial": "R5CT0001", "apk_path": debug.join("app-debug.apk") }),
+    );
+    assert!(!install.is_error, "{}", install.text);
+    let launch = client.call_tool(
+        "launch_app",
+        json!({
+            "device_serial": "R5CT0001",
+            "package": "com.example.sandbox.debug",
+            "activity": ".MainActivity"
+        }),
+    );
+    assert!(!launch.is_error, "{}", launch.text);
+    let logcat = client.call_tool("start_logcat", json!({ "device_serial": "R5CT0001" }));
+    assert!(!logcat.is_error, "{}", logcat.text);
+
+    // install, launch, crash, and the crash's exit reason.
+    let (session, kinds) = wait_for_session_events(&sandbox, 4);
+    assert_eq!(kinds, ["install", "launch", "crash", "exit"]);
+    assert_eq!(session["counts"]["crashes"], 1);
+    assert_eq!(session["counts"]["captures"], 1);
+    assert_eq!(session["counts"]["exits"], 1);
+    let dir = sandbox
+        .home
+        .join(".keynobi/sessions")
+        .join(session["id"].as_str().unwrap());
+    let events = std::fs::read_to_string(dir.join("events.jsonl")).unwrap();
+    let crash: serde_json::Value = serde_json::from_str(events.lines().nth(2).unwrap()).unwrap();
+    assert_eq!(crash["data"]["summary"], "java.lang.RuntimeException: boom");
+    assert_eq!(crash["data"]["pid"], 4321);
+    assert_eq!(crash["data"]["attribution"]["method"], "installRecord");
+    assert_eq!(crash["data"]["attribution"]["verified"], true, "{crash}");
+    assert_eq!(crash["data"]["capture"]["entries"], 5, "{crash}");
+    let seq = crash["seq"].as_u64().unwrap();
+    let capture =
+        std::fs::read_to_string(dir.join("captures").join(format!("crash-{seq}.jsonl"))).unwrap();
+    let messages: Vec<String> = capture
+        .lines()
+        .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap()["message"].to_string())
+        .collect();
+    assert!(messages[0].contains("onCreate"), "{messages:?}");
+    assert!(messages[1].contains("FATAL EXCEPTION"), "{messages:?}");
+    let exit: serde_json::Value = serde_json::from_str(events.lines().nth(3).unwrap()).unwrap();
+    assert_eq!(exit["data"]["matchedBy"], "pid", "{exit}");
+    assert_eq!(exit["data"]["record"]["reason"], "crash");
+}
+
 fn resource_uris(client: &mut headless::McpClient) -> Vec<String> {
     client.request("resources/list", json!({}))["resources"]
         .as_array()

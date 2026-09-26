@@ -614,8 +614,20 @@ export function listenLogcatStopped(cb: (reason: string) => void): Promise<Unlis
 
 // ── Debug sessions ────────────────────────────────────────────────────────────
 
-import type { DebugSessionDetail, DebugSessionEvent, DebugSessionSummary } from "@/bindings";
-export type { DebugSessionDetail, DebugSessionEvent, DebugSessionSummary };
+import type {
+  DebugSessionCapture,
+  DebugSessionDetail,
+  DebugSessionEvent,
+  DebugSessionExitRefresh,
+  DebugSessionSummary,
+} from "@/bindings";
+export type {
+  DebugSessionCapture,
+  DebugSessionDetail,
+  DebugSessionEvent,
+  DebugSessionExitRefresh,
+  DebugSessionSummary,
+};
 
 /** Every debug session (one per install on a device), newest first. */
 export async function listDebugSessions(): Promise<DebugSessionSummary[]> {
@@ -650,6 +662,24 @@ export async function addSessionBookmark(
     note,
     logEntryId: opts.logEntryId ?? null,
   });
+}
+
+/**
+ * The log lines kept with crash event `seq` of a debug session: the newest
+ * `limit` (at most 1,000), ending with the crash. Rejects with `NotFound`
+ * when none were kept.
+ */
+export async function getSessionCapture(
+  id: string,
+  seq: number,
+  limit: number | null = null
+): Promise<DebugSessionCapture> {
+  return invoke<DebugSessionCapture>("get_session_capture", { id, seq, limit });
+}
+
+/** Read the app's exit reasons from the session's device and add those that belong to it. */
+export async function refreshSessionExitReasons(id: string): Promise<DebugSessionExitRefresh> {
+  return invoke<DebugSessionExitRefresh>("refresh_session_exit_reasons", { id });
 }
 
 // ── MCP Server ─────────────────────────────────────────────────────────────────

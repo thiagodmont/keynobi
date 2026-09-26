@@ -325,6 +325,8 @@ describe("the mock backend matches the real payloads", () => {
     await handleInvoke("__e2e_append_logcat_entries", {
       entries: [crash, { ...crash, id: 91, message: "\tat a.a.b(SourceFile:12)" }],
     });
+    // That crash is on the first session, with the lines kept around it.
+    const detail = await handleInvoke("get_debug_session", { id: mockSessionId(1) });
     const args = {
       get_build_log_entries: { id: addMockPastBuild({ task: "assembleDebug", state: "success" }) },
       launch_app_on_device: { serial: "emulator-5554", package: "com.example.mockapp" },
@@ -343,6 +345,8 @@ describe("the mock backend matches the real payloads", () => {
       delete_run_configuration: { name: "Wear deep link" },
       set_active_run_configuration: { name: "Default" },
       get_debug_session: { id: mockSessionId(1) },
+      get_session_capture: { id: mockSessionId(1), seq: detail.crashes[0]?.seq },
+      refresh_session_exit_reasons: { id: mockSessionId(1) },
     };
     for (const [command, type] of invokedTypes()) {
       if (!isNamedType(type)) continue;

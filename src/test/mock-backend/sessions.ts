@@ -3,21 +3,34 @@ import type {
   BuildActor,
   BuildRecord,
   DebugSession,
+  DebugSessionCapture,
   DebugSessionEvent,
   DebugSessionEventData,
+  DebugSessionExitRefresh,
   DebugSessionSummary,
   InstalledBuild,
   LaunchTiming,
+  ProcessedEntry,
 } from "@/bindings";
 
 /** Most sessions kept, as `MAX_SESSIONS` in the backend. */
 const MAX_MOCK_SESSIONS = 50;
 /** As `MAX_KEPT_SESSIONS` in the backend. */
 const MAX_MOCK_KEPT = 5;
+/** As `MAX_CAPTURES_PER_SESSION` in the backend. */
+const MAX_MOCK_CAPTURES = 10;
+/** As `CAPTURE_CONTEXT_BEFORE` in the backend. */
+const MOCK_CONTEXT_BEFORE = 500;
+/** As `MAX_CAPTURE_ENTRIES` in the backend. */
+const MAX_MOCK_CAPTURE_ENTRIES = 1000;
+/** `EntryFlags.ANR`. */
+const ANR_FLAG = 1 << 1;
 
 interface MockSession {
   session: DebugSession;
   events: DebugSessionEvent[];
+  /** Log lines kept with each crash event, by its `seq`. */
+  captures: Map<number, ProcessedEntry[]>;
 }
 
 let sessions: MockSession[] = [];
@@ -61,8 +74,13 @@ function append(entry: MockSession, actor: BuildActor | null, event: DebugSessio
   entry.session.eventCount += 1;
   entry.session.bytes += JSON.stringify(recorded).length + 1;
   entry.session.lastEventAt = at;
-  if (event.kind === "launch") entry.session.counts.launches += 1;
-  if (event.kind === "bookmark") entry.session.counts.bookmarks += 1;
+  const counts = entry.session.counts;
+  if (event.kind === "launch") counts.launches += 1;
+  if (event.kind === "bookmark") counts.bookmarks += 1;
+  if (event.kind === "crash") counts.crashes += 1;
+  if (event.kind === "anr") counts.anrs += 1;
+  if (event.kind === "exit") counts.exits += 1;
+  if ((event.kind === "crash" || event.kind === "anr") && event.data.capture) counts.captures += 1;
   return recorded;
 }
 
@@ -133,13 +151,14 @@ export function openMockSession(entry: InstalledBuild, record: BuildRecord | und
       closeReason: null,
       recordedBy: "app",
       kept: false,
-      counts: { launches: 0, crashes: 0, anrs: 0, exits: 0, bookmarks: 0 },
+      counts: { launches: 0, crashes: 0, anrs: 0, exits: 0, bookmarks: 0, captures: 0 },
       lastEventAt: now,
       eventCount: 0,
       droppedEvents: 0,
       bytes: 0,
     },
     events: [],
+    captures: new Map(),
   };
   if (build) append(created, record?.origin ?? null, { kind: "build", data: build });
   append(created, { kind: "app" }, { kind: "install", data: install });
@@ -163,6 +182,56 @@ export function recordMockLaunch(pkg: string, timing: LaunchTiming, late = false
   }
 }
 
+let lastCrashGroup = 0;
+
+/**
+ * Like the backend: the first entry of each new crash group adds a crash to
+ * the newest open session of its package, keeping the lines before it and
+ * the group's lines while the session has captures left.
+ */
+export function recordMockCrashes(added: ProcessedEntry[], buffer: ProcessedEntry[]) {
+  for (const first of added) {
+    const gid = first.crashGroupId;
+    if (gid === null || gid <= lastCrashGroup) continue;
+    lastCrashGroup = gid;
+    const entry = [...sessions]
+      .reverse()
+      .find((s) => s.session.closedAt === null && s.session.package === first.package);
+    if (!entry) continue;
+    const at = buffer.indexOf(first);
+    const lines = [
+      ...buffer.slice(Math.max(0, at - MOCK_CONTEXT_BEFORE), at),
+      ...buffer.slice(at).filter((e) => e.crashGroupId === gid),
+    ].slice(-MAX_MOCK_CAPTURE_ENTRIES);
+    const captured = entry.session.counts.captures < MAX_MOCK_CAPTURES;
+    const recorded = append(entry, null, {
+      kind: (first.flags & ANR_FLAG) !== 0 ? "anr" : "crash",
+      data: {
+        serial: entry.session.device.serial,
+        pid: first.pid,
+        summary: first.message,
+        signature: gid.toString(16).padStart(16, "0"),
+        receivedAt: new Date().toISOString(),
+        deviceTime: first.timestamp,
+        attribution: {
+          method: entry.session.install ? "installRecord" : "unattributed",
+          verified: entry.session.install !== null,
+          reason: null,
+        },
+        capture: captured
+          ? {
+              entries: lines.length,
+              bytes: lines.reduce((n, e) => n + JSON.stringify(e).length + 1, 0),
+              truncated: false,
+            }
+          : null,
+        droppedLines: 0,
+      },
+    });
+    if (captured) entry.captures.set(recorded.seq, lines);
+  }
+}
+
 export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
   return {
     list_debug_sessions: () => [...sessions].reverse().map(summary),
@@ -172,7 +241,28 @@ export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
         session: { ...entry.session, counts: { ...entry.session.counts } },
         events: [...entry.events],
         eventsTruncated: false,
+        crashes: entry.events.filter((e) => e.kind === "crash" || e.kind === "anr"),
       };
+    },
+    get_session_capture: (args: unknown): DebugSessionCapture => {
+      const { id, seq, limit } = args as { id: string; seq: number; limit?: number | null };
+      const lines = find(id).captures.get(seq);
+      if (!lines) {
+        const error: AppError = {
+          kind: "notFound",
+          message: `Debug session ${id} kept no log lines for event ${seq}`,
+        };
+        throw error;
+      }
+      const keep = Math.min(
+        Math.max(limit ?? MAX_MOCK_CAPTURE_ENTRIES, 1),
+        MAX_MOCK_CAPTURE_ENTRIES
+      );
+      return { seq, entries: lines.slice(-keep), truncated: lines.length > keep };
+    },
+    refresh_session_exit_reasons: (args: unknown): DebugSessionExitRefresh => {
+      find((args as { id: string }).id);
+      return { added: 0, message: null };
     },
     end_debug_session: (args: unknown) => {
       const { session } = find((args as { id: string }).id);
