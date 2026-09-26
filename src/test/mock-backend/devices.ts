@@ -164,8 +164,18 @@ export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
         serial,
         avdName: device?.avdName ?? null,
         model: device?.model ?? null,
+        displayedMs: 790,
+        fullyDrawnMs: null,
       };
-      if (typeof buildId === "number") attachMockLaunch(buildId, timing);
+      if (typeof buildId === "number") {
+        attachMockLaunch(buildId, timing);
+        // Like the backend: the app's reportFullyDrawn arrives after the launch returned.
+        setTimeout(() => {
+          const launch: LaunchTiming = { ...timing, fullyDrawnMs: 1400 };
+          attachMockLaunch(buildId, launch);
+          triggerEvent("build:launch_timing", { recordId: buildId, launch });
+        }, 1000);
+      }
       return { output: "Status: ok\nLaunchState: COLD\nTotalTime: 812\nWaitTime: 815", timing };
     },
     stop_app_on_device: () => undefined,

@@ -32,4 +32,14 @@ avdName: string | null,
 /**
  * Device model, for display.
  */
-model: string | null, };
+model: string | null, 
+/**
+ * Time to initial display, from the logcat `Displayed` line; `None`
+ * when this process's logcat stream did not show it for this launch.
+ */
+displayedMs: number | null, 
+/**
+ * Time to full display, from the logcat `Fully drawn` line the app's
+ * `reportFullyDrawn` produces; `None` when none arrived in time.
+ */
+fullyDrawnMs: number | null, };

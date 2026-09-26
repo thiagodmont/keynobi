@@ -700,6 +700,18 @@ describe("builds this window did not start", () => {
     resetBuildServiceForTests();
   });
 
+  it("reloads the history when a launch's display times arrive after it returned", async () => {
+    const launch = makeLaunchTiming({ displayedMs: 790, fullyDrawnMs: 1400 });
+    const record = { id: 12, task: "assembleDebug", launch };
+    mockInvoke.mockImplementation((cmd) =>
+      cmd === "get_build_history" ? Promise.resolve([record]) : Promise.resolve(undefined)
+    );
+
+    emit("build:launch_timing", { recordId: 12, launch });
+
+    await vi.waitFor(() => expect(buildState.history[0]?.launch?.fullyDrawnMs).toBe(1400));
+  });
+
   it("shows an agent's build with who started it, its output and outcome, and never deploys it", () => {
     started(4, "assembleRelease");
 

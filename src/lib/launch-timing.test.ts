@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { makeBuildRecord, makeLaunchTiming } from "@/test/factories/build";
 import {
   compareLaunch,
+  describeDisplayTimes,
   describeLaunchDelta,
+  formatDisplayDuration,
   formatLaunchDelta,
   formatLaunchTime,
   sameLaunchDevice,
@@ -15,6 +17,30 @@ describe("formatLaunchTime", () => {
   it("names the launch state when the device reported it", () => {
     expect(formatLaunchTime(makeLaunchTiming())).toBe("812 ms (cold)");
     expect(formatLaunchTime(makeLaunchTiming({ launchState: null }))).toBe("812 ms");
+  });
+});
+
+describe("describeDisplayTimes", () => {
+  it("lists the display times that were reported, in milliseconds under a second", () => {
+    expect(describeDisplayTimes(makeLaunchTiming())).toEqual([]);
+    expect(
+      describeDisplayTimes(makeLaunchTiming({ displayedMs: 790, fullyDrawnMs: 1412 }))
+    ).toEqual(["displayed 790 ms", "fully drawn 1.4 s"]);
+    expect(describeDisplayTimes(makeLaunchTiming({ fullyDrawnMs: 999 }))).toEqual([
+      "fully drawn 999 ms",
+    ]);
+    expect(formatDisplayDuration(62003)).toBe("62.0 s");
+  });
+
+  it("does not change the compared launch time", () => {
+    const withDisplay = makeBuildRecord({
+      id: 42,
+      launch: makeLaunchTiming({ totalMs: 812, displayedMs: 400, fullyDrawnMs: 3000 }),
+    });
+    expect(compareLaunch([earlier, withDisplay], withDisplay)).toEqual({
+      previousId: 41,
+      deltaMs: 54,
+    });
   });
 });
 

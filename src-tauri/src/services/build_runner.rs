@@ -2996,6 +2996,8 @@ mod tests {
             serial: "emulator-5554".into(),
             avd_name: Some("Pixel_7".into()),
             model: None,
+            displayed_ms: None,
+            fully_drawn_ms: None,
         }
     }
 
@@ -3080,6 +3082,25 @@ mod tests {
         // And a launch time can be recorded on it.
         attach_launch_timing_in(dir.path(), 4, cold_launch(812)).unwrap();
         assert_eq!(launch_of(dir.path(), 4), Some(cold_launch(812)));
+    }
+
+    #[test]
+    fn launch_times_saved_before_display_times_were_kept_still_load() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(BUILD_HISTORY_FILE),
+            r#"[{"id":4,"task":"assembleDebug","status":{"state":"success","success":true,
+                "durationMs":1000,"errorCount":0,"warningCount":0},"errors":[],
+                "startedAt":"2026-01-01T00:00:00Z","projectRoot":"/p",
+                "launch":{"totalMs":812,"waitMs":815,"launchState":"cold",
+                  "measuredAt":"2026-01-01T00:01:00Z","serial":"emulator-5554",
+                  "avdName":"Pixel_7","model":null}}]"#,
+        )
+        .unwrap();
+
+        let launch = launch_of(dir.path(), 4).expect("the launch time loads");
+        assert_eq!(launch.total_ms, 812);
+        assert_eq!((launch.displayed_ms, launch.fully_drawn_ms), (None, None));
     }
 
     // ── R8 mapping snapshots ──────────────────────────────────────────────────
