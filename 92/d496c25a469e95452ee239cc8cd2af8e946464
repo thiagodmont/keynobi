@@ -1,0 +1,103 @@
+src/bindings/SystemHealthReport.ts
+  s_1e114e823b9048::t_457418dbe5b9c7 73-82
+src/components/mcp/McpPanel.tsx
+  s_1e114e823b9048::t_6b098d50f4594a 13,433
+  s_1e114e823b9048::t_a3ccb6b4409fe7 434
+src-tauri/src/services/android_cli.rs
+  s_1e114e823b9048::t_7d9d505f33f3a0 35-39,76-81,115,182-186,207-211
+  s_1e114e823b9048::t_249b8f3e164bf8 1-34,40-75,82-114,116-181,187-206,212-246
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_5fece9fa9624e4 18-19,37,75-81,88,195-196,218,270-271,318,349-350
+src-tauri/src/commands/mcp.rs
+  s_1e114e823b9048::t_7e0206517f7c73 2-3,578-602
+  s_1e114e823b9048::t_3e689c8d0d86a2 9,177,180,183-184,187-190,298
+  s_1e114e823b9048::t_a71bd46ddff3a7 11,299
+  s_1e114e823b9048::t_5877c625e103a8 603
+src-tauri/src/services/mod.rs
+  s_1e114e823b9048::t_4a228a0742e588 2-3
+src/stores/health.store.test.ts
+  s_1e114e823b9048::t_1fe95528a93952 9-11,13,36-37,84-88,90-104
+  s_1e114e823b9048::t_f91030ec399390 89
+  s_1e114e823b9048::t_b92ca4c1d786f4 105
+src/components/mcp/AgentSkillSection.tsx
+  s_1e114e823b9048::t_62d36e8673c999 1-3,12-87,91-129
+  s_1e114e823b9048::t_f91030ec399390 4-11,88-90
+src/components/mcp/AgentSkillSection.test.tsx
+  s_1e114e823b9048::t_59117e87fe9c6f 1-100
+src-tauri/src/commands/health.rs
+  s_1e114e823b9048::t_4a228a0742e588 3,33-37,39-41,43-44,157-159
+  s_1e114e823b9048::t_7d9d505f33f3a0 42
+  s_1e114e823b9048::t_19a16349a80dcc 32,38
+src-tauri/src/lib.rs
+  s_1e114e823b9048::t_7e0206517f7c73 29-30,398-399
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_5ea59c2b9ba2e3 329,383-389,498,504
+src/components/mcp/AgentSkillSection.module.css
+  s_1e114e823b9048::t_bda84b6e521648 1-56
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_367970e6cacca6 452-457
+README.md
+  s_1e114e823b9048::t_acdda7b3ae98f0 58-59
+src/stores/health.store.ts
+  s_1e114e823b9048::t_68ae728222350b 18,95-102,215-231
+  s_1e114e823b9048::t_b9deb2efc595dd 232
+src-tauri/src/utils/mod.rs
+  s_1e114e823b9048::t_d3fa4c13d9a9d4 1
+src-tauri/src/models/health.rs
+  s_1e114e823b9048::t_4a228a0742e588 45-49,91-92
+skills/keynobi/SKILL.md
+  s_1e114e823b9048::t_f5067dd17f7d44 1-39
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_84d2e784ffc28e 3364
+  s_1e114e823b9048::t_51c95722dea8fe 16,19-20,3197-3201,3203-3205,3207-3211
+  s_1e114e823b9048::t_19a16349a80dcc 3196,3202
+  s_1e114e823b9048::t_60fff416723080 3398-3402,3442,3907-3945,4078
+  s_1e114e823b9048::t_41ea67ec0b076e 5022-5037,5043-5093,5098-5099
+  s_1e114e823b9048::t_7d9d505f33f3a0 3437-3441,5038-5042,5094-5097
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_0eb5e6058dcc54 16,567-568,586-587,994-1014
+  s_1e114e823b9048::t_947ea7d2f433bf 1015-1016
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_457418dbe5b9c7 3,264-265,283-284,1381-1400
+src-tauri/src/utils/process.rs
+  s_1e114e823b9048::t_d3fa4c13d9a9d4 31-32,34-35
+src/lib/tauri-api.ts
+  s_1e114e823b9048::t_e919663c9959db 554,594-605
+  s_1e114e823b9048::t_a5f029be64426e 606
+src-tauri/src/services/agent_skill.rs
+  s_1e114e823b9048::t_1230617202958b 1-88,95-193,198-236,241-260,265-300,305-319,325-327
+  s_1e114e823b9048::t_7d9d505f33f3a0 89-94,194-197,237-240,261-264,301-304,320-324
+src/test/mock-backend/index.ts
+  s_1e114e823b9048::t_e919663c9959db 1,12-22,61-65
+references/CODE_PATTERN.md
+  s_1e114e823b9048::t_367970e6cacca6 34,44,349
+src/test/mock-backend/settings.ts
+  s_1e114e823b9048::t_e919663c9959db 88-89
+src/bindings/index.ts
+  s_1e114e823b9048::t_c61670ebf7d9d5 79-80
+src-tauri/src/utils/cli_lookup.rs
+  s_1e114e823b9048::t_17ad4e7ab43a31 1-132,137-198
+  s_1e114e823b9048::t_7d9d505f33f3a0 133-136
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_77c8dcb63188a8 1736-1764
+src/bindings/AgentSkillState.ts
+  s_1e114e823b9048::t_f9e25ed60d0b2d 1-6
+src/bindings/AgentSkillStatus.ts
+  s_1e114e823b9048::t_4783b039d7da87 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "92d496c25a469e95452ee239cc8cd2af8e946464",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
