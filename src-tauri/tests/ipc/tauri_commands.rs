@@ -40,9 +40,10 @@ async fn get_selected_device(
 
 #[tauri::command]
 async fn get_variants_from_gradle(
+    module: Option<String>,
     fs_state: State<'_, keynobi_lib::FsState>,
-) -> Result<VariantList, String> {
-    keynobi_lib::commands::variant::get_variants_from_gradle(fs_state).await
+) -> Result<VariantList, AppError> {
+    keynobi_lib::commands::variant::get_variants_from_gradle(module, fs_state).await
 }
 
 #[tauri::command]
@@ -269,4 +270,101 @@ fn tauri_ipc_variant_discovery_runs_gradle_only_for_a_trusted_project() {
     // after running it.
     let _ = get_ipc_response(&webview, request("get_variants_from_gradle", json!({})));
     assert!(marker.exists(), "gradlew did not run for a trusted project");
+}
+
+/// Trust `project` in the isolated settings.
+fn trust(project: &std::path::Path) {
+    keynobi_lib::services::settings_manager::mutate_settings(|s| {
+        s.recent_projects.push(ProjectEntry {
+            id: project.to_string_lossy().into_owned(),
+            path: project.to_string_lossy().into_owned(),
+            trusted: Some(true),
+            ..Default::default()
+        })
+    })
+    .unwrap();
+}
+
+/// A trusted project with two application modules whose `gradlew` writes its
+/// arguments to `args` and lists one variant per module.
+fn two_app_modules(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let project = dir.canonicalize().unwrap().join("project");
+    let app = "plugins { id(\"com.android.application\") }\n";
+    for module in ["mobile", "wear"] {
+        std::fs::create_dir_all(project.join(module)).unwrap();
+        std::fs::write(project.join(module).join("build.gradle.kts"), app).unwrap();
+    }
+    std::fs::write(
+        project.join("settings.gradle.kts"),
+        "include(\":mobile\", \":wear\")\n",
+    )
+    .unwrap();
+    let args = project.join("gradlew-args");
+    let gradlew = project.join("gradlew");
+    std::fs::write(
+        &gradlew,
+        format!(
+            "#!/bin/sh\necho \"$@\" >> '{}'\n\
+             case \"$1\" in\n\
+             :wear:tasks) echo 'assembleWearDebug - Assembles main outputs for the wearDebug variant.' ;;\n\
+             *) echo 'assembleMobileDebug - Assembles main outputs for the mobileDebug variant.' ;;\n\
+             esac\n",
+            args.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&gradlew, std::fs::Permissions::from_mode(0o755)).unwrap();
+    trust(&project);
+    (project, args)
+}
+
+#[test]
+fn tauri_ipc_variant_discovery_asks_gradle_for_the_named_module_only() {
+    crate::common::isolate_data_dir();
+    let dir = tempfile::tempdir().unwrap();
+    let (project, args) = two_app_modules(dir.path());
+    let app = create_app_with_project(&project);
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("failed to build mock webview");
+
+    let list: VariantList = deserialize(
+        get_ipc_response(
+            &webview,
+            request("get_variants_from_gradle", json!({ "module": ":wear" })),
+        )
+        .expect("the wear module's variants"),
+    );
+
+    let names: Vec<&str> = list.variants.iter().map(|v| v.name.as_str()).collect();
+    assert_eq!(names, vec!["wearDebug"]);
+    let ran = std::fs::read_to_string(&args).unwrap();
+    assert_eq!(
+        ran.lines().collect::<Vec<_>>(),
+        vec![":wear:tasks --all --console=plain"]
+    );
+}
+
+#[test]
+fn tauri_ipc_variant_discovery_refuses_a_module_that_is_not_an_application() {
+    crate::common::isolate_data_dir();
+    let dir = tempfile::tempdir().unwrap();
+    let (project, args) = two_app_modules(dir.path());
+    let app = create_app_with_project(&project);
+    let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+        .build()
+        .expect("failed to build mock webview");
+
+    let err = get_ipc_response(
+        &webview,
+        request("get_variants_from_gradle", json!({ "module": ":lib" })),
+    )
+    .expect_err("not an application module");
+
+    assert!(err.to_string().contains(":mobile, :wear"), "{err}");
+    assert!(
+        !args.exists(),
+        "gradlew ran for a module that is not an application"
+    );
 }

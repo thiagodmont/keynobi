@@ -67,6 +67,26 @@ deployTest("Run App records the launch time on the build it installed", async ({
   );
 });
 
+deployTest("Run App builds the application module and installs the APK that build wrote", async ({
+  page,
+}) => {
+  await selectMockProject(page);
+  await page.getByRole("tab", { name: "Build" }).click();
+  await page
+    .getByTitle(/^Run App/)
+    .first()
+    .click();
+
+  await expect(page.getByText(/^── Deploy: :app debug → /)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/^▶ APK \(build #\d+\): .*app-debug\.apk$/)).toBeVisible({
+    timeout: 10_000,
+  });
+  const history = (await page.evaluate(() => window.__e2e__.invoke("get_build_history"))) as {
+    task: string;
+  }[];
+  expect(history.map((record) => record.task)).toContain(":app:assembleDebug");
+});
+
 deployTest("a past build says which device Run App installed it on", async ({ page }) => {
   await selectMockProject(page);
   await page.getByRole("tab", { name: "Build" }).click();

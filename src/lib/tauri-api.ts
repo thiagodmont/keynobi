@@ -182,6 +182,7 @@ import type {
   BuildLinesEvent,
   BuildCompleteEvent,
   LaunchTimingEvent,
+  RunApk,
 } from "@/bindings";
 import { Channel } from "@tauri-apps/api/core";
 
@@ -228,9 +229,30 @@ export async function getBuildLogEntries(id: number): Promise<BuildLine[]> {
   return invoke<BuildLine[]>("get_build_log_entries", { id });
 }
 
-/** Rejects with the reason (and the variants that have outputs) when no APK matches `variant`. */
-export async function findApkPath(variant: string): Promise<string> {
-  return invoke<string>("find_apk_path", { variant });
+/**
+ * The Gradle path of the application module to build (`:app`; `:` for the
+ * root project): `module`, or the project's only one. Rejects listing the
+ * application modules when there are several and none was named.
+ */
+export async function getApplicationModule(module: string | null = null): Promise<string> {
+  return invoke<string>("get_application_module", { module });
+}
+
+/**
+ * The APK to install after build `buildId` of `variant` in `module`: the one
+ * that build recorded, else (Gradle found it up to date) the variant's APK in
+ * the module's build outputs. Rejects with the reason (and the variants that
+ * have outputs) when no APK matches; another variant's is never returned.
+ */
+export async function findApkPath(
+  variant: string,
+  opts: { module?: string | null; buildId?: number | null } = {}
+): Promise<RunApk> {
+  return invoke<RunApk>("find_apk_path", {
+    variant,
+    module: opts.module ?? null,
+    buildId: opts.buildId ?? null,
+  });
 }
 
 /**
@@ -271,8 +293,8 @@ export type { BuildVariant, VariantList };
  * Returns only explicitly declared variants — resolves instantly.
  * May return an empty list; use getVariantsFromGradle for the full picture.
  */
-export async function getVariantsPreview(): Promise<VariantList> {
-  return invoke<VariantList>("get_variants_preview");
+export async function getVariantsPreview(module: string | null = null): Promise<VariantList> {
+  return invoke<VariantList>("get_variants_preview", { module });
 }
 
 /**
@@ -280,8 +302,8 @@ export async function getVariantsPreview(): Promise<VariantList> {
  * Discovers every variant the project actually exposes, regardless of
  * how they are defined. Takes a few seconds on first run (daemon startup).
  */
-export async function getVariantsFromGradle(): Promise<VariantList> {
-  return invoke<VariantList>("get_variants_from_gradle");
+export async function getVariantsFromGradle(module: string | null = null): Promise<VariantList> {
+  return invoke<VariantList>("get_variants_from_gradle", { module });
 }
 
 export async function setActiveVariant(variant: string): Promise<void> {

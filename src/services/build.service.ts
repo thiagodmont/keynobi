@@ -2,6 +2,7 @@ import {
   runGradleTask,
   cancelBuild as cancelBuildApi,
   findApkPath,
+  getApplicationModule,
   getPackageNameFromApk,
   installApkOnDevice,
   launchAppOnDevice,
@@ -37,7 +38,7 @@ import { settingsState } from "@/stores/settings.store";
 import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { buildRunningLabel } from "@/lib/build-actor";
 import { describeDisplayTimes, formatLaunchTime } from "@/lib/launch-timing";
-import type { BuildError } from "@/bindings";
+import type { BuildError, RunApk } from "@/bindings";
 
 let buildUnlisteners: Array<() => void> | null = null;
 // Held so concurrent callers await the SAME registration. A plain
@@ -482,6 +483,9 @@ export async function runAndDeploy(): Promise<void> {
     if (!variant) {
       throw new Error("No build variant selected. Open Build → Select Variant.");
     }
+    // Rejects listing the application modules when there are several.
+    const module = await getApplicationModule(variantState.module);
+    assertSameProject(projectGeneration);
 
     // Resolve a device before the build so we can bail early — but only when
     // the result will actually be installed; a build-only run needs no device.
@@ -501,10 +505,11 @@ export async function runAndDeploy(): Promise<void> {
     // 1. Build. startBuild() inside runBuild() clears the log, so we add a
     //    context header as the very first callback line from the Gradle channel.
     setDeployPhase("building");
+    const target = `${module} ${variant}`;
     const completion = await runBuildGuarded(
-      `assemble${capitalize(variant)}`,
+      assembleTask(module, variant),
       {
-        headerLines: [serial ? `── Deploy: ${variant} → ${serial} ──` : `── Build: ${variant} ──`],
+        headerLines: [serial ? `── Deploy: ${target} → ${serial} ──` : `── Build: ${target} ──`],
       },
       true
     );
@@ -527,14 +532,15 @@ export async function runAndDeploy(): Promise<void> {
       throw new Error("No device selected.");
     }
 
-    // 2. Find APK.
+    // 2. Find the APK this build wrote. Rejects with the reason when no APK
+    //    of this module and variant exists; another variant's is never used.
     assertSameProject(projectGeneration);
-    logStep(`Searching for APK (variant: ${variant})…`);
-    // Rejects with the reason when no APK of this variant exists; another
-    // variant's APK is never used.
-    const apkPath = await findApkPath(variant);
+    logStep(`Searching for the APK of ${target}…`);
+    const buildId = completion?.success ? completion.recordId : null;
+    const apk = await findApkPath(variant, { module, buildId });
     assertSameProject(projectGeneration);
-    logStep(`APK: ${apkPath}`);
+    logStep(describeRunApk(apk));
+    const apkPath = apk.path;
 
     // 3. Install.
     setDeployPhase("installing");
@@ -561,7 +567,6 @@ export async function runAndDeploy(): Promise<void> {
       logStep(`adb shell am start -W (package: ${packageName})`);
       // The launch time is recorded on the build this deploy ran, named by
       // its own build:complete, never on whichever build finished last.
-      const buildId = completion?.success ? completion.recordId : null;
       const launch = await launchAppOnDevice(serial, packageName, { buildId });
       logStep(`Launch: ${launch.output.trim()}`);
       setLastLaunchedAt(Date.now(), packageName);
@@ -729,6 +734,19 @@ function assertSameProject(generation: number): void {
 /** Emit a visible error into the build log AND the Problems tab. */
 function logError(message: string): void {
   addBuildLine({ kind: "error", content: message, file: null, line: null, col: null });
+}
+
+/** `:mobile:assembleDebug`; the root project's task has no prefix. */
+function assembleTask(module: string, variant: string): string {
+  const task = `assemble${capitalize(variant)}`;
+  return module === ":" ? task : `${module}:${task}`;
+}
+
+/** Which build wrote the APK Run App installs. */
+function describeRunApk(apk: RunApk): string {
+  if (apk.fromThisBuild) return `APK (build #${apk.buildId}): ${apk.path}`;
+  if (apk.buildId !== null) return `APK unchanged since build #${apk.buildId}: ${apk.path}`;
+  return `APK unchanged by this build, and no build in the history wrote it: ${apk.path}`;
 }
 
 function capitalize(s: string): string {

@@ -66,8 +66,10 @@ build:started from another origin (an agent)
   -> its build:lines stream in; build:complete shows the outcome (never deployed)
 
 runAndDeploy()
+  -> get_application_module (the only one; several are an error listing them)
   -> resolve target device (prompt with the device picker if none is online)
-  -> runBuild()            (its build:complete names the history record: recordId)
+  -> runBuild(":<module>:assemble<Variant>")  (build:complete names the record: recordId)
+  -> find_apk_path(variant, module, buildId = that recordId)
   -> install -> launch     (launch_app_on_device with buildId = that recordId)
   -> finally: clear deployPhase
 ```
@@ -144,6 +146,9 @@ Nothing assumes the application module is `:app`. `services/gradle_modules.rs` f
 
 - **One application module**: APK lookup (`find_output_apk`), APK install validation, the variant preview and `gradlew <module>:tasks`, default-variant inference, `get_application_id`, Project App Info, and MCP `get_build_config`, `list_build_variants`, and resources all use it.
 - **Several**: code that needs one module (`resolve_application_module`) uses the module a caller names, as a module path or a task in it (`:mobile:assembleDebug`, MCP `find_apk_path` `module`), and otherwise returns an error listing the modules. Code that does not need to choose covers all of them: the MCP package scope, built application IDs, and APK install validation.
+- **Run App** resolves the module first (`get_application_module`, with `variantState.module`, null until a module can be chosen) and builds only it: `:<module>:assemble<Variant>`, or `assemble<Variant>` for the root project. An unqualified `assemble<Variant>` would run in every module.
+- **Variant discovery** takes an optional `module` (`get_variants_preview`, `get_variants_from_gradle`; `variant_manager::preview_variants`, `variant_task_queries`). A named module is queried alone (`gradlew :wear:tasks`) and never falls back to the whole build's `tasks`, and its default variant is inferred from its own build file. Without one, the project's only application module is used as before. The frontend cache (`variant.store.ts`) is keyed by project root and module.
+- **The APK Run App installs** comes from `installed_builds::run_apk` (Tauri `find_apk_path(variant, module, buildId)`, returning `RunApk`): the APK the run's own record lists in `BuildRecord.apks` for that module and variant (a signed one before an `-unsigned` one; several are an error). When the record lists none, because Gradle found the APK up to date and did not rewrite it, it falls back to `find_output_apk(module, variant)` and hashes the file to name the newest record in the history that wrote it. The build log says which: **APK (build #12)**, **APK unchanged since build #9**, or that no kept build wrote it. Neither path crosses modules or variants.
 
 ### Output Parsing
 
@@ -173,7 +178,7 @@ Nothing assumes the application module is `:app`. `services/gradle_modules.rs` f
 - Build history IDs must stay unique across restarts and clears so log filenames never collide. `persist_build_record_in` allocates them under the data lock, above every ID in the persisted history and in `build-logs/`.
 - A finished build is appended to the history as re-read from disk, so builds another process recorded are kept, and log rotation checks against that merged history.
 - `save_settings` (the settings UI's full snapshot) keeps `recentProjects` and `lastActiveProject` from disk; the backend owns them, including each project's trust.
-- **Deploy installs only the requested variant's APK.** `find_output_apk` looks in the application module's `build/outputs/apk`, reads AGP's `output-metadata.json` (else the directory path under `apk/`), and returns an error when no APK or more than one APK matches. It never falls back to another variant's APK or another module's. It ignores APKs that resolve outside the application module's `build/outputs` (a symlinked module, `build`, or `outputs` directory, or an `outputFile` that points elsewhere), and install uses the canonical path the validator returns.
+- **Deploy installs only the requested module's and variant's APK.** It prefers the one the run's own build recorded (see [Application Module](#application-module)). `find_output_apk` looks in the application module's `build/outputs/apk`, reads AGP's `output-metadata.json` (else the directory path under `apk/`), and returns an error when no APK or more than one APK matches. It never falls back to another variant's APK or another module's. It ignores APKs that resolve outside the application module's `build/outputs` (a symlinked module, `build`, or `outputs` directory, or an `outputFile` that points elsewhere), and install uses the canonical path the validator returns.
 - **Launch uses the installed APK's package name** (aapt2, else `output-metadata.json`). If neither works, deploy installs but does not launch; it never guesses from the project's `applicationId`.
 
 ---
@@ -518,7 +523,7 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **MCP error model.** Coordinate, permission, and deep-link validation failures return `CallToolResult::error` instead of `McpError::invalid_params`.
 - **Activity log.** Summaries are not redacted.
 - **Project App Info `applicationId`.** `applicationId` is read with a first-match pattern, so a commented-out `applicationId` above the real one is shown (and used for `package:mine`).
-- **Several application modules.** There is no way to choose the module in the app: Run and deploy, the variant preview, and App Info fail with the list of modules, and variant discovery with Gradle lists every module's tasks. MCP `find_apk_path` takes a `module`; `get_build_config` takes a directory name, not a nested module path.
+- **Several application modules.** There is no way to choose the module in the app: Run App, the variant preview, and App Info fail with the list of modules, and variant discovery with Gradle, asked for no module, lists every module's tasks. Variant discovery, `get_application_module`, and `find_apk_path` take a module, but nothing in the UI sets `variantState.module` yet. **Build Only** (`Cmd+Shift+R`) still runs an unqualified `assemble<Variant>` in every module. MCP `find_apk_path` takes a `module`; `get_build_config` takes a directory name, not a nested module path.
 - **Module detection limits.** Only string-literal `include`s are read (no computed lists or `includeFlat`), `projectDir` only in the `file("…")` and `File(rootDir, "…")` forms, only the `gradle/libs.versions.toml` catalog, and a convention plugin only when its id ends in `android.application`.
 - **Airplane-mode fallback.** On devices without `cmd connectivity airplane-mode`, the fallback broadcast is a protected broadcast that a non-root shell is normally refused; the setting is then restored and the step reported as failed. Needs verification on a device.
 - **Starting an AVD across processes.** The guard against starting one AVD twice is per process. If the app and a standalone MCP server launch the same AVD at the same moment, the second emulator fails on the AVD's lock and that launch reports the failure even though the AVD comes up. An emulator whose AVD name never resolves (no console answer and neither property) is shown as a device but not as its AVD, so Stop is offered only from the connected list.

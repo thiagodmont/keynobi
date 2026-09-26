@@ -221,7 +221,6 @@ export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
       layoutContext: {},
       commandLog: [],
     }),
-    find_apk_path: () => "/mock/app-debug.apk",
     get_package_name_from_apk: () => "com.example.mockapp.debug",
   };
 }

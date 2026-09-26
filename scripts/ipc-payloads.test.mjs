@@ -308,7 +308,7 @@ describe("the mock backend matches the real payloads", () => {
     let checked = 0;
     // Commands that look something up need something to find. A release
     // build's record carries a saved mapping, so its shape is compared too.
-    addMockPastBuild({ task: "assembleRelease", state: "success" });
+    const releaseBuild = addMockPastBuild({ task: "assembleRelease", state: "success" });
     // One install matched to that build, one of an APK no build wrote.
     await handleInvoke("install_apk_on_device", {
       serial: "emulator-5554",
@@ -327,6 +327,7 @@ describe("the mock backend matches the real payloads", () => {
       get_build_log_entries: { id: addMockPastBuild({ task: "assembleDebug", state: "success" }) },
       launch_app_on_device: { serial: "emulator-5554", package: "com.example.mockapp" },
       retrace_crash: { crashGroupId: 90 },
+      find_apk_path: { variant: "release", module: ":app", buildId: releaseBuild },
     };
     for (const [command, type] of invokedTypes()) {
       if (!isNamedType(type)) continue;

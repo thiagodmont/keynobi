@@ -35,6 +35,7 @@ import type {
   ProjectEntry,
   RetraceOutcome,
   RetraceStatus,
+  RunApk,
   SdkDownloadProgress,
   SystemHealthReport,
   SystemImageInfo,
@@ -647,6 +648,18 @@ export const typeFixtures = {
       "versionCode": null
     }
   ] satisfies Wire<BuiltApk>[],
+  RunApk: [
+    {
+      "buildId": 21,
+      "fromThisBuild": true,
+      "path": "/work/app/build/outputs/apk/debug/app-debug.apk"
+    },
+    {
+      "buildId": null,
+      "fromThisBuild": false,
+      "path": "/work/app/build/outputs/apk/debug/app-debug.apk"
+    }
+  ] satisfies Wire<RunApk>[],
   InstalledBuild: [
     {
       "apkSha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",

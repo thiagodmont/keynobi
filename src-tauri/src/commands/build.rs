@@ -1,6 +1,7 @@
-use crate::models::build::{BuildError, BuildLine, BuildRecord, BuildStatus};
+use crate::models::build::{BuildError, BuildLine, BuildRecord, BuildStatus, RunApk};
 use crate::models::error::AppError;
-use crate::services::build_runner::{self, find_output_apk, BuildActor, BuildState};
+use crate::services::build_runner::{self, BuildActor, BuildState};
+use crate::services::installed_builds;
 use crate::services::process_manager::ProcessManager;
 use crate::services::settings_manager;
 use crate::FsState;
@@ -187,25 +188,82 @@ pub async fn get_package_name_from_apk(
         })
 }
 
-/// Find the output APK path for the given variant after a successful build.
+/// The Gradle path of the application module to build (`:app`; `:` for the
+/// root project): `module` when it names one, else the project's only one.
+///
+/// Errors listing the application modules when the project has several and
+/// none was named, or when `module` is not one of them.
+#[tauri::command]
+pub async fn get_application_module(
+    module: Option<String>,
+    fs_state: State<'_, FsState>,
+) -> Result<String, AppError> {
+    let gradle_root = open_gradle_root(&fs_state).await?;
+    crate::services::gradle_modules::resolve_application_module(&gradle_root, module.as_deref())
+        .map(|m| m.path)
+        .map_err(AppError::InvalidInput)
+}
+
+/// The APK to install after build `build_id` of `variant` in `module` (the
+/// project's only application module when omitted): the one that build
+/// recorded, else, when Gradle found it up to date, the variant's APK in the
+/// module's build outputs.
 ///
 /// Errors (with the reason and the variants that do have outputs) instead of
-/// returning another variant's APK, and when the project has several
-/// application modules.
+/// returning another variant's or module's APK.
 #[tauri::command]
 pub async fn find_apk_path(
     variant: String,
+    module: Option<String>,
+    build_id: Option<u32>,
     fs_state: State<'_, FsState>,
-) -> Result<String, String> {
-    let gradle_root: PathBuf = {
+    build_state: State<'_, BuildState>,
+) -> Result<RunApk, AppError> {
+    // Both from one lock, so a project switch cannot pair two projects.
+    let (gradle_root, project_root) = {
         let fs = fs_state.0.lock().await;
-        fs.gradle_root
+        let gradle_root = fs
+            .gradle_root
             .as_ref()
             .or(fs.project_root.as_ref())
             .cloned()
-            .ok_or("No project open")?
+            .ok_or_else(|| AppError::NotFound("No project open".into()))?;
+        let project_root = fs
+            .project_root
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned());
+        (gradle_root, project_root)
     };
-    find_output_apk(&gradle_root, None, &variant).map(|p| p.to_string_lossy().into_owned())
+    let history: Vec<BuildRecord> = {
+        let bs = build_state.inner.lock().await;
+        bs.history
+            .iter()
+            .filter(|r| r.project_root == project_root)
+            .cloned()
+            .collect()
+    };
+    // Hashing an up-to-date APK reads it from disk.
+    tokio::task::spawn_blocking(move || {
+        installed_builds::run_apk(
+            &gradle_root,
+            &history,
+            build_id,
+            module.as_deref(),
+            &variant,
+        )
+    })
+    .await
+    .map_err(|e| AppError::Other(e.to_string()))?
+    .map_err(AppError::NotFound)
+}
+
+async fn open_gradle_root(fs_state: &State<'_, FsState>) -> Result<PathBuf, AppError> {
+    let fs = fs_state.0.lock().await;
+    fs.gradle_root
+        .as_ref()
+        .or(fs.project_root.as_ref())
+        .cloned()
+        .ok_or_else(|| AppError::NotFound("No project open".into()))
 }
 
 #[cfg(test)]
