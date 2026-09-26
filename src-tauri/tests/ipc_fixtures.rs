@@ -243,6 +243,56 @@ fn mapping_snapshots() -> Vec<MappingSnapshot> {
     ]
 }
 
+fn built_apks() -> Vec<BuiltApk> {
+    vec![
+        BuiltApk {
+            module: ":app".into(),
+            variant: "release".into(),
+            application_id: Some("com.example.app".into()),
+            version_code: Some(42),
+            sha256: "a1".repeat(32),
+            bytes: 12_582_912,
+            path: "app/build/outputs/apk/release/app-release.apk".into(),
+        },
+        BuiltApk {
+            module: ":wear".into(),
+            variant: "paidRelease".into(),
+            application_id: None,
+            version_code: None,
+            sha256: "b2".repeat(32),
+            bytes: 4_096,
+            path: "wear/build/outputs/apk/paid/release/wear-paid-release.apk".into(),
+        },
+    ]
+}
+
+fn installed_builds() -> Vec<InstalledBuild> {
+    vec![
+        InstalledBuild {
+            serial: "emulator-5554".into(),
+            avd_name: Some("Pixel_7".into()),
+            model: Some("sdk_gphone64_arm64".into()),
+            package: "com.example.app".into(),
+            apk_sha256: "a1".repeat(32),
+            build_id: Some(20),
+            version_code: Some(42),
+            mappings: mapping_snapshots().into_iter().take(1).collect(),
+            installed_at: TIME.into(),
+        },
+        InstalledBuild {
+            serial: "R5CT1234ABC".into(),
+            avd_name: None,
+            model: None,
+            package: "com.example.app.debug".into(),
+            apk_sha256: "c3".repeat(32),
+            build_id: None,
+            version_code: None,
+            mappings: vec![],
+            installed_at: TIME.into(),
+        },
+    ]
+}
+
 fn build_result(success: bool) -> BuildResult {
     BuildResult {
         success,
@@ -533,6 +583,7 @@ fn fixtures() -> Fixtures {
             cancelled_by: actor,
             launch: None,
             mappings: vec![],
+            apks: vec![],
         })
         .chain(launch_timings().into_iter().map(|launch| BuildRecord {
             id: 20,
@@ -545,10 +596,13 @@ fn fixtures() -> Fixtures {
             cancelled_by: None,
             launch: Some(launch),
             mappings: mapping_snapshots(),
+            apks: built_apks(),
         }))
         .collect();
     f.add("BuildRecord", &records);
     f.add("MappingSnapshot", &mapping_snapshots());
+    f.add("BuiltApk", &built_apks());
+    f.add("InstalledBuild", &installed_builds());
     f.add(
         "LaunchState",
         &[

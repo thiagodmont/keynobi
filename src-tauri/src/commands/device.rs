@@ -1,20 +1,20 @@
 use crate::models::app_exit::AppExitReasons;
-use crate::models::build::{LaunchResult, LaunchTiming};
+use crate::models::build::{InstalledBuild, LaunchResult, LaunchTiming};
 use crate::models::device::{
     AvailableSystemImage, AvdInfo, Device, DeviceConnectionState, DeviceDefinition, DeviceKind,
     SdkDownloadProgress, SystemImageInfo,
 };
 use crate::models::error::AppError;
 use crate::services::adb_manager::{
-    create_avd, delete_avd, download_system_image, enrich_device_props, get_adb_path,
-    get_avdmanager_path, get_emulator_path, get_sdkmanager_path, install_apk, launch_app,
-    launch_emulator, list_available_system_images, list_avds, list_device_definitions,
-    list_devices, list_system_images, stop_app, stop_emulator, validate_avd_name,
-    validate_device_profile_id, validate_system_image_id, wipe_avd_data, AmStartTiming,
-    DeviceState, DeviceStateInner,
+    create_avd, delete_avd, download_system_image, enrich_device_props, find_aapt2, get_adb_path,
+    get_avdmanager_path, get_emulator_path, get_sdkmanager_path, launch_app, launch_emulator,
+    list_available_system_images, list_avds, list_device_definitions, list_devices,
+    list_system_images, stop_app, stop_emulator, validate_avd_name, validate_device_profile_id,
+    validate_system_image_id, wipe_avd_data, AmStartTiming, DeviceState, DeviceStateInner,
 };
 use crate::services::app_exit_info;
 use crate::services::build_runner::{attach_launch_timing, BuildState};
+use crate::services::installed_builds;
 use crate::services::settings_manager;
 use crate::FsState;
 use serde::Serialize;
@@ -109,12 +109,13 @@ pub async fn get_selected_device(
     Ok(device_state.0.lock().await.selected_serial.clone())
 }
 
-/// Install an APK on the given device.
+/// Install an APK on the given device, and record which build produced it.
 #[tauri::command]
 pub async fn install_apk_on_device(
     serial: String,
     apk_path: String,
     fs_state: State<'_, FsState>,
+    device_state: State<'_, DeviceState>,
 ) -> Result<String, AppError> {
     validate_device_serial(&serial)?;
     let root = {
@@ -126,12 +127,22 @@ pub async fn install_apk_on_device(
             .ok_or_else(|| AppError::NotFound("No project is open".into()))?
     };
     let apk = crate::utils::path::validate_apk_within_build_outputs(&root, &apk_path)?;
-    let apk_path = apk.to_string_lossy().into_owned();
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
-    install_apk(&adb, &serial, &apk_path)
+    let aapt2 = find_aapt2(&settings);
+    installed_builds::install_and_record(&adb, aapt2.as_deref(), &serial, &apk, &device_state)
         .await
+        .map(|outcome| outcome.output)
         .map_err(AppError::Io)
+}
+
+/// What Keynobi last installed on each device, per package, and the build
+/// that produced it.
+#[tauri::command]
+pub async fn list_installed_builds() -> Result<Vec<InstalledBuild>, AppError> {
+    tokio::task::spawn_blocking(installed_builds::list_installed_builds)
+        .await
+        .map_err(|e| AppError::Other(format!("Failed to read installed builds: {e}")))
 }
 
 /// Launch an app on the given device. With `build_id`, the launch time is

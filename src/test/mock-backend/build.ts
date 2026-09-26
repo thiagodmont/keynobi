@@ -5,6 +5,9 @@ import type {
   BuildLine,
   BuildRecord,
   BuildStatus,
+  BuiltApk,
+  Device,
+  InstalledBuild,
   LaunchTiming,
   MappingSnapshot,
 } from "@/bindings";
@@ -70,7 +73,7 @@ function recordStatus(
 }
 
 function recordBuild(
-  build: Omit<BuildRecord, "id" | "status" | "projectRoot" | "launch" | "mappings"> & {
+  build: Omit<BuildRecord, "id" | "status" | "projectRoot" | "launch" | "mappings" | "apks"> & {
     state: "success" | "failed" | "cancelled";
   },
   lines: BuildLine[] | null
@@ -85,6 +88,7 @@ function recordBuild(
       projectRoot: MOCK_PROJECT_ROOT,
       launch: null,
       mappings: mockMappings(state, build.task),
+      apks: mockApks(state, build.task, id),
     },
     lines,
   });
@@ -106,6 +110,60 @@ function mockMappings(state: "success" | "failed" | "cancelled", task: string): 
       pgMapId: "6b1c2f0",
     },
   ];
+}
+
+/** Like the backend, a successful assemble build records the APK it wrote. */
+function mockApks(state: "success" | "failed" | "cancelled", task: string, id: number): BuiltApk[] {
+  const variant = /^assemble(.+)$/.exec(task)?.[1];
+  if (state !== "success" || !variant) return [];
+  const name = variant.charAt(0).toLowerCase() + variant.slice(1);
+  return [
+    {
+      module: ":app",
+      variant: name,
+      applicationId: /debug/i.test(name) ? "com.example.mockapp.debug" : "com.example.mockapp",
+      versionCode: 1,
+      sha256: id.toString(16).padStart(64, "0"),
+      bytes: 8_388_608,
+      path: `app/build/outputs/apk/${name}/app-${name}.apk`,
+    },
+  ];
+}
+
+/** Most installs kept, as `MAX_INSTALLED_TARGETS` in the backend. */
+const MAX_MOCK_INSTALLS = 16;
+let installs: InstalledBuild[] = [];
+
+function sameDevice(a: InstalledBuild, b: InstalledBuild): boolean {
+  if (a.avdName !== null || b.avdName !== null) return a.avdName === b.avdName;
+  return a.serial === b.serial;
+}
+
+/**
+ * Like the backend: an install is matched to the newest build that wrote an
+ * APK of the same file name (the backend compares hashes) and replaces the
+ * earlier install of that package on that device.
+ */
+export function recordMockInstall(serial: string, device: Device | undefined, apkPath: string) {
+  const file = apkPath.split("/").pop();
+  const match = [...history]
+    .reverse()
+    .map(({ record }) => ({ record, apk: record.apks.find((a) => a.path.endsWith(`/${file}`)) }))
+    .find((m) => m.apk !== undefined);
+  const apk = match?.apk;
+  const entry: InstalledBuild = {
+    serial,
+    avdName: device?.avdName ?? null,
+    model: device?.model ?? null,
+    package: apk?.applicationId ?? "com.example.mockapp.debug",
+    apkSha256: apk?.sha256 ?? "f".repeat(64),
+    buildId: match?.record.id ?? null,
+    versionCode: apk?.versionCode ?? null,
+    mappings: match?.record.mappings.filter((m) => m.variant === apk?.variant) ?? [],
+    installedAt: new Date().toISOString(),
+  };
+  installs = installs.filter((i) => !(i.package === entry.package && sameDevice(i, entry)));
+  installs = [...installs, entry].slice(-MAX_MOCK_INSTALLS);
 }
 
 /** Like the backend: a launch time is recorded only on a successful build. */
@@ -225,6 +283,7 @@ export function buildHandlers(): Record<string, (args: unknown) => unknown> {
     get_build_status: () => ({ ...buildStatus }),
     get_build_errors: () => [],
     get_build_history: () => history.map((entry) => entry.record),
+    list_installed_builds: () => [...installs],
     clear_build_history: () => {
       history = [];
     },

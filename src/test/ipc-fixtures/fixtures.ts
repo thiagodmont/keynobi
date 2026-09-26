@@ -12,9 +12,11 @@ import type {
   BuildRecord,
   BuildStartedEvent,
   BuildStatus,
+  BuiltApk,
   Device,
   DeviceDefinition,
   DeviceListChangedEvent,
+  InstalledBuild,
   LaunchResult,
   LaunchState,
   LaunchTiming,
@@ -346,6 +348,7 @@ export const typeFixtures = {
   ] satisfies Wire<BuildError>[],
   BuildRecord: [
     {
+      "apks": [],
       "cancelledBy": {
         "kind": "app"
       },
@@ -364,6 +367,7 @@ export const typeFixtures = {
       "task": "assembleDebug"
     },
     {
+      "apks": [],
       "cancelledBy": {
         "kind": "appQuit"
       },
@@ -382,6 +386,7 @@ export const typeFixtures = {
       "task": "assembleDebug"
     },
     {
+      "apks": [],
       "cancelledBy": {
         "clientName": "Claude Code",
         "kind": "agent",
@@ -406,6 +411,7 @@ export const typeFixtures = {
       "task": "assembleDebug"
     },
     {
+      "apks": [],
       "cancelledBy": {
         "clientName": null,
         "kind": "agent",
@@ -430,6 +436,7 @@ export const typeFixtures = {
       "task": "assembleDebug"
     },
     {
+      "apks": [],
       "cancelledBy": null,
       "errors": [
         {
@@ -463,6 +470,26 @@ export const typeFixtures = {
       "task": "assembleDebug"
     },
     {
+      "apks": [
+        {
+          "applicationId": "com.example.app",
+          "bytes": 12582912,
+          "module": ":app",
+          "path": "app/build/outputs/apk/release/app-release.apk",
+          "sha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "variant": "release",
+          "versionCode": 42
+        },
+        {
+          "applicationId": null,
+          "bytes": 4096,
+          "module": ":wear",
+          "path": "wear/build/outputs/apk/paid/release/wear-paid-release.apk",
+          "sha256": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "variant": "paidRelease",
+          "versionCode": null
+        }
+      ],
       "cancelledBy": null,
       "errors": [],
       "id": 20,
@@ -506,6 +533,26 @@ export const typeFixtures = {
       "task": "assembleDebug"
     },
     {
+      "apks": [
+        {
+          "applicationId": "com.example.app",
+          "bytes": 12582912,
+          "module": ":app",
+          "path": "app/build/outputs/apk/release/app-release.apk",
+          "sha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "variant": "release",
+          "versionCode": 42
+        },
+        {
+          "applicationId": null,
+          "bytes": 4096,
+          "module": ":wear",
+          "path": "wear/build/outputs/apk/paid/release/wear-paid-release.apk",
+          "sha256": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "variant": "paidRelease",
+          "versionCode": null
+        }
+      ],
       "cancelledBy": null,
       "errors": [],
       "id": 20,
@@ -565,6 +612,58 @@ export const typeFixtures = {
       "variant": "paidRelease"
     }
   ] satisfies Wire<MappingSnapshot>[],
+  BuiltApk: [
+    {
+      "applicationId": "com.example.app",
+      "bytes": 12582912,
+      "module": ":app",
+      "path": "app/build/outputs/apk/release/app-release.apk",
+      "sha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "variant": "release",
+      "versionCode": 42
+    },
+    {
+      "applicationId": null,
+      "bytes": 4096,
+      "module": ":wear",
+      "path": "wear/build/outputs/apk/paid/release/wear-paid-release.apk",
+      "sha256": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+      "variant": "paidRelease",
+      "versionCode": null
+    }
+  ] satisfies Wire<BuiltApk>[],
+  InstalledBuild: [
+    {
+      "apkSha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "avdName": "Pixel_7",
+      "buildId": 20,
+      "installedAt": "2026-04-23T10:00:00Z",
+      "mappings": [
+        {
+          "bytes": 48213771,
+          "module": ":app",
+          "pgMapId": "6b1c2f0",
+          "sha256": "6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a",
+          "variant": "release"
+        }
+      ],
+      "model": "sdk_gphone64_arm64",
+      "package": "com.example.app",
+      "serial": "emulator-5554",
+      "versionCode": 42
+    },
+    {
+      "apkSha256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "avdName": null,
+      "buildId": null,
+      "installedAt": "2026-04-23T10:00:00Z",
+      "mappings": [],
+      "model": null,
+      "package": "com.example.app.debug",
+      "serial": "R5CT1234ABC",
+      "versionCode": null
+    }
+  ] satisfies Wire<InstalledBuild>[],
   LaunchState: [
     "cold",
     "warm",

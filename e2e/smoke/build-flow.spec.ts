@@ -61,6 +61,21 @@ deployTest("Run App records the launch time on the build it installed", async ({
   await expect(page.getByTestId("launch-timing").first()).toHaveText("Launch 812 ms (cold)");
 });
 
+deployTest("a past build says which device Run App installed it on", async ({ page }) => {
+  await selectMockProject(page);
+  await page.getByRole("tab", { name: "Build" }).click();
+  await page
+    .getByTitle(/^Run App/)
+    .first()
+    .click();
+  await expect(page.getByText("▶ Launch time: 812 ms (cold)")).toBeVisible({ timeout: 10_000 });
+
+  await page.getByRole("listbox", { name: "Builds" }).getByRole("option").first().click();
+
+  await expect(page.getByText(/^Viewing build #\d+ from /)).toBeVisible();
+  await expect(page.getByText(/^Installed on Pixel_6_API_34 · /)).toBeVisible();
+});
+
 test("an agent's build shows who started it and can be cancelled from the app", async ({
   page,
 }) => {

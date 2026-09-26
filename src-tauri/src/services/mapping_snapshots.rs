@@ -4,11 +4,12 @@
 //! A snapshot is `<data dir>/mappings/<sha256>.txt`, so identical mappings are
 //! stored once. A mapping is first copied to a private temporary file without
 //! the data lock (mappings can be hundreds of MB). Publishing the copy, linking
-//! it to its build record, saving the history, and pruning snapshots the kept
-//! history no longer references all happen in one critical section under the
-//! data lock, so another process never prunes a snapshot its history names.
+//! it to its build record, saving the history, and pruning snapshots neither
+//! the kept history nor an installed build (`installed_builds`) references all
+//! happen in one critical section under the data lock, so another process
+//! never prunes a snapshot its history names.
 
-use crate::models::build::{BuildRecord, MappingSnapshot};
+use crate::models::build::{BuildRecord, InstalledBuild, MappingSnapshot};
 use crate::models::error::AppError;
 use crate::services::gradle_modules;
 use crate::services::settings_manager::unique_tmp_path;
@@ -25,9 +26,11 @@ use std::time::{Duration, SystemTime};
 /// `MAX_MAPPING_SNAPSHOTS` times this.
 pub const MAX_MAPPING_BYTES: u64 = 256 * 1024 * 1024;
 
-/// Most snapshot files kept. Retention normally keeps only what the build
-/// history references; past this backstop the least recently saved go first,
-/// even when a record still names them.
+/// Most snapshot files kept for the build history. Retention normally keeps
+/// only what the history references; past this backstop the least recently
+/// saved go first, even when a record still names them. Snapshots pinned by an
+/// installed build are never removed and do not count; there are at most
+/// `installed_builds::MAX_INSTALLED_TARGETS` of those.
 pub const MAX_MAPPING_SNAPSHOTS: usize = 32;
 
 /// Most mappings recorded for one build (application modules × variants).
@@ -62,11 +65,12 @@ fn is_sha256_hex(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// Where a finished build's mappings are, and when it started.
+/// Where a finished build's mappings (and APKs, see `installed_builds`) are,
+/// and when it started.
 #[derive(Debug, Clone)]
 pub struct MappingSource {
     pub gradle_root: PathBuf,
-    /// Mappings modified before this were written by an earlier build.
+    /// Files modified before this were written by an earlier build.
     pub build_started: SystemTime,
 }
 
@@ -349,19 +353,40 @@ pub fn publish_snapshots(data_dir: &Path, prepared: Vec<PreparedMapping>) -> Vec
     published
 }
 
-/// The snapshots retention keeps: those the kept build history references.
-/// Anything else that must outlive its build record is added here.
-pub fn mappings_to_keep<'a>(history: impl IntoIterator<Item = &'a BuildRecord>) -> HashSet<String> {
-    history
-        .into_iter()
-        .flat_map(|record| record.mappings.iter().map(|m| m.sha256.clone()))
-        .collect()
+/// The snapshots retention keeps, by SHA-256.
+#[derive(Debug, Default)]
+pub struct KeptMappings {
+    /// Named by the kept build history.
+    pub referenced: HashSet<String>,
+    /// Named by what Keynobi installed on a device (`installed_builds`),
+    /// whether or not the build is still in the history. Never removed.
+    pub pinned: HashSet<String>,
+}
+
+/// The snapshots retention keeps: those the kept build history references,
+/// and those pinned by the APKs installed on devices. Anything else that must
+/// outlive its build record is added here.
+pub fn mappings_to_keep<'a>(
+    history: impl IntoIterator<Item = &'a BuildRecord>,
+    installed: &[InstalledBuild],
+) -> KeptMappings {
+    KeptMappings {
+        referenced: history
+            .into_iter()
+            .flat_map(|record| record.mappings.iter().map(|m| m.sha256.clone()))
+            .collect(),
+        pinned: installed
+            .iter()
+            .flat_map(|install| install.mappings.iter().map(|m| m.sha256.clone()))
+            .collect(),
+    }
 }
 
 /// Delete snapshots not in `keep`, temporary copies abandoned more than
-/// `STALE_TMP_AGE` ago, and, past `MAX_MAPPING_SNAPSHOTS`, the least recently
-/// saved. Returns how many files were removed. Callers hold the data lock.
-pub fn prune_snapshots(data_dir: &Path, keep: &HashSet<String>) -> usize {
+/// `STALE_TMP_AGE` ago, and, past `MAX_MAPPING_SNAPSHOTS` unpinned ones, the
+/// least recently saved that are not pinned. Returns how many files were
+/// removed. Callers hold the data lock.
+pub fn prune_snapshots(data_dir: &Path, keep: &KeptMappings) -> usize {
     let Ok(entries) = std::fs::read_dir(mappings_dir(data_dir)) else {
         return 0;
     };
@@ -381,7 +406,11 @@ pub fn prune_snapshots(data_dir: &Path, keep: &HashSet<String>) -> usize {
         }
         let mtime = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
         if let Some(sha) = name.strip_suffix(".txt").filter(|s| is_sha256_hex(s)) {
-            if keep.contains(sha) {
+            if keep.pinned.contains(sha) {
+                // A device runs the APK it belongs to: kept, backstop or not.
+                continue;
+            }
+            if keep.referenced.contains(sha) {
                 kept.push((path, mtime));
             } else if std::fs::remove_file(&path).is_ok() {
                 removed += 1;
@@ -762,6 +791,7 @@ mod tests {
                     pg_map_id: None,
                 })
                 .collect(),
+            apks: Vec::new(),
         }
     }
 
@@ -779,7 +809,7 @@ mod tests {
         let dropped = put_snapshot(data.path(), 2);
         let history = [record_with(1, &[&kept])];
 
-        let removed = prune_snapshots(data.path(), &mappings_to_keep(&history));
+        let removed = prune_snapshots(data.path(), &mappings_to_keep(&history, &[]));
 
         assert_eq!(removed, 1);
         assert_eq!(saved_files(data.path()), vec![format!("{kept}.txt")]);
@@ -798,7 +828,7 @@ mod tests {
         let other = mappings_dir(data.path()).join("notes.md");
         std::fs::write(&other, "x").unwrap();
 
-        prune_snapshots(data.path(), &HashSet::new());
+        prune_snapshots(data.path(), &KeptMappings::default());
 
         assert!(fresh.exists());
         assert!(!abandoned.exists());
@@ -818,13 +848,67 @@ mod tests {
         let refs: Vec<&str> = shas.iter().map(String::as_str).collect();
         let history = [record_with(1, &refs)];
 
-        let removed = prune_snapshots(data.path(), &mappings_to_keep(&history));
+        let removed = prune_snapshots(data.path(), &mappings_to_keep(&history, &[]));
 
         assert_eq!(removed, 2);
         assert_eq!(saved_files(data.path()).len(), MAX_MAPPING_SNAPSHOTS);
         assert!(!snapshot_path(data.path(), &shas[0]).unwrap().exists());
         assert!(!snapshot_path(data.path(), &shas[1]).unwrap().exists());
         assert!(snapshot_path(data.path(), &shas[2]).unwrap().exists());
+    }
+
+    fn installed_with(sha: &str) -> InstalledBuild {
+        InstalledBuild {
+            serial: "emulator-5554".into(),
+            avd_name: Some("Pixel_7".into()),
+            model: None,
+            package: "com.example".into(),
+            apk_sha256: "ab".repeat(32),
+            build_id: Some(1),
+            version_code: None,
+            mappings: record_with(1, &[sha]).mappings,
+            installed_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn an_installed_build_keeps_its_mapping_after_the_history_drops_it() {
+        let data = TempDir::new().unwrap();
+        let pinned = put_snapshot(data.path(), 1);
+        let dropped = put_snapshot(data.path(), 2);
+
+        let removed = prune_snapshots(
+            data.path(),
+            &mappings_to_keep(&[], &[installed_with(&pinned)]),
+        );
+
+        assert_eq!(removed, 1);
+        assert!(snapshot_path(data.path(), &pinned).unwrap().exists());
+        assert!(!snapshot_path(data.path(), &dropped).unwrap().exists());
+    }
+
+    #[test]
+    fn the_backstop_never_removes_a_pinned_mapping() {
+        let data = TempDir::new().unwrap();
+        let shas: Vec<String> = (0..MAX_MAPPING_SNAPSHOTS + 2)
+            .map(|n| put_snapshot(data.path(), n))
+            .collect();
+        for (n, sha) in shas.iter().enumerate() {
+            let when = an_hour_ago() + Duration::from_secs(n as u64);
+            set_mtime(&snapshot_path(data.path(), sha).unwrap(), when);
+        }
+        let refs: Vec<&str> = shas.iter().map(String::as_str).collect();
+        let history = [record_with(1, &refs)];
+        // The least recently saved, which the backstop would remove first.
+        let installed = [installed_with(&shas[0])];
+
+        let removed = prune_snapshots(data.path(), &mappings_to_keep(&history, &installed));
+
+        assert_eq!(removed, 1);
+        assert!(snapshot_path(data.path(), &shas[0]).unwrap().exists());
+        assert!(!snapshot_path(data.path(), &shas[1]).unwrap().exists());
+        assert!(snapshot_path(data.path(), &shas[2]).unwrap().exists());
+        assert_eq!(saved_files(data.path()).len(), MAX_MAPPING_SNAPSHOTS + 1);
     }
 
     #[test]

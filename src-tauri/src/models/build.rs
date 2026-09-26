@@ -156,6 +156,60 @@ pub struct BuildRecord {
     /// for builds that wrote none and for records saved before mappings were kept.
     #[serde(default)]
     pub mappings: Vec<MappingSnapshot>,
+    /// The APKs this build wrote, hashed when it finished, so an install of
+    /// one can be traced back to this build. Empty for builds that wrote none
+    /// and for records saved before APKs were hashed.
+    #[serde(default)]
+    pub apks: Vec<BuiltApk>,
+}
+
+/// One APK a successful build wrote, as listed in AGP's `output-metadata.json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct BuiltApk {
+    /// Gradle path of the application module (`:app`; `:` for the root project).
+    pub module: String,
+    /// The variant AGP names in `output-metadata.json` (`debug`, `paidRelease`).
+    pub variant: String,
+    /// The variant's application ID, `applicationIdSuffix` included.
+    pub application_id: Option<String>,
+    pub version_code: Option<u32>,
+    /// SHA-256 of the APK, lowercase hex.
+    pub sha256: String,
+    #[ts(type = "number")]
+    pub bytes: u64,
+    /// Relative to the Gradle root.
+    pub path: String,
+}
+
+/// The APK Keynobi last installed on one device for one package, and the
+/// build that produced it. Saved in `installed-builds.json` in the data
+/// directory, so it outlives the build's history record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct InstalledBuild {
+    /// The adb serial the APK was installed on.
+    pub serial: String,
+    /// The emulator's AVD name, when it reported one. Emulator serials are
+    /// reused, so an emulator is identified by this, not by its serial.
+    pub avd_name: Option<String>,
+    /// The device model, for display only.
+    pub model: Option<String>,
+    /// The package the APK installs.
+    pub package: String,
+    /// SHA-256 of the installed APK, lowercase hex.
+    pub apk_sha256: String,
+    /// The history record of the build that wrote this APK; `None` when no
+    /// recorded build did (for example an APK another tool built).
+    pub build_id: Option<u32>,
+    pub version_code: Option<u32>,
+    /// The saved R8 mappings of the APK's module and variant, copied from the
+    /// build's record. Kept while this entry names them.
+    pub mappings: Vec<MappingSnapshot>,
+    /// RFC 3339.
+    pub installed_at: String,
 }
 
 /// A copy of one R8 `mapping.txt` a build wrote, saved as
@@ -295,6 +349,22 @@ mod tests {
         assert_eq!(record.cancelled_by, None);
         assert_eq!(record.launch, None);
         assert!(record.mappings.is_empty());
+        assert!(record.apks.is_empty());
+    }
+
+    #[test]
+    fn a_record_keeps_its_apks_through_json() {
+        let json = r#"{"id":4,"task":"assembleDebug","status":{"state":"cancelled"},
+            "errors":[],"startedAt":"2026-01-01T00:00:00Z","projectRoot":"/p",
+            "apks":[{"module":":app","variant":"debug","applicationId":"com.example.debug",
+            "versionCode":7,"sha256":"ab","bytes":12,
+            "path":"app/build/outputs/apk/debug/app-debug.apk"}]}"#;
+        let record: BuildRecord = serde_json::from_str(json).unwrap();
+        assert_eq!(record.apks.len(), 1);
+        assert_eq!(record.apks[0].version_code, Some(7));
+        let back: BuildRecord =
+            serde_json::from_value(serde_json::to_value(&record).unwrap()).unwrap();
+        assert_eq!(back.apks, record.apks);
     }
 
     #[test]

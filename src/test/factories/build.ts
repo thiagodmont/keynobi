@@ -3,6 +3,8 @@ import type {
   BuildLine,
   BuildRecord,
   BuildStatus,
+  BuiltApk,
+  InstalledBuild,
   LaunchTiming,
   MappingSnapshot,
 } from "@/bindings";
@@ -47,6 +49,7 @@ export function makeBuildRecord(overrides: Partial<BuildRecord> = {}): BuildReco
     cancelledBy: null,
     launch: null,
     mappings: [],
+    apks: [],
     ...overrides,
   };
 }
@@ -58,6 +61,34 @@ export function makeMappingSnapshot(overrides: Partial<MappingSnapshot> = {}): M
     sha256: "6b1c2f0a".repeat(8),
     bytes: 48_213_771,
     pgMapId: "6b1c2f0",
+    ...overrides,
+  };
+}
+
+export function makeBuiltApk(overrides: Partial<BuiltApk> = {}): BuiltApk {
+  return {
+    module: ":app",
+    variant: "release",
+    applicationId: "com.example.app",
+    versionCode: 42,
+    sha256: "a1".repeat(32),
+    bytes: 12_582_912,
+    path: "app/build/outputs/apk/release/app-release.apk",
+    ...overrides,
+  };
+}
+
+export function makeInstalledBuild(overrides: Partial<InstalledBuild> = {}): InstalledBuild {
+  return {
+    serial: "emulator-5554",
+    avdName: "Pixel_7",
+    model: "sdk_gphone64_arm64",
+    package: "com.example.app",
+    apkSha256: "a1".repeat(32),
+    buildId: 1,
+    versionCode: 42,
+    mappings: [],
+    installedAt: new Date().toISOString(),
     ...overrides,
   };
 }

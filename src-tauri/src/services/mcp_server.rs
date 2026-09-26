@@ -24,6 +24,7 @@ use crate::services::crash_inspector;
 use crate::services::device_inspector;
 use crate::services::gradle_modules;
 use crate::services::health_inspector;
+use crate::services::installed_builds;
 use crate::services::jdk;
 use crate::services::logcat::{self, LogcatFilter, LogcatState};
 use crate::services::mcp_activity::{self, McpActivityEntry};
@@ -2879,13 +2880,25 @@ impl AndroidMcpServer {
 
         let (settings, _) = settings_manager::load_settings();
         let adb = adb_manager::get_adb_path(&settings);
+        let aapt2 = adb_manager::find_aapt2(&settings);
 
-        let result = adb_manager::install_apk(&adb, &p.device_serial, &apk.to_string_lossy())
-            .await
-            .map_err(|e| McpError::internal_error(format!("APK install failed: {e}"), None))?;
+        let outcome = installed_builds::install_and_record(
+            &adb,
+            aapt2.as_deref(),
+            &p.device_serial,
+            &apk,
+            &self.device_state,
+        )
+        .await
+        .map_err(|e| McpError::internal_error(format!("APK install failed: {e}"), None))?;
 
+        let recorded = match &outcome.recorded {
+            Some(entry) => format!("\n{}", installed_builds::describe_install(entry)),
+            None => String::new(),
+        };
         Ok(CallToolResult::success(vec![ContentBlock::text(format!(
-            "APK installed: {result}"
+            "APK installed: {}{recorded}",
+            outcome.output
         ))]))
     }
 
