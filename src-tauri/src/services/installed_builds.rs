@@ -8,10 +8,13 @@
 //! for the APK's module and variant, so it outlives the build's history
 //! record. Mapping retention keeps the mappings saved installs name.
 
-use crate::models::build::{BuildRecord, BuiltApk, InstalledBuild, MappingSnapshot, RunApk};
+use crate::models::build::{
+    BuildActor, BuildRecord, BuiltApk, InstalledBuild, MappingSnapshot, RunApk,
+};
 use crate::models::error::AppError;
 use crate::services::adb_manager::{self, DeviceState};
 use crate::services::build_runner::{self, OutputMetadata};
+use crate::services::debug_sessions;
 use crate::services::gradle_modules;
 use crate::services::mapping_snapshots::{self, MappingSource};
 use crate::services::settings_manager::{data_dir, unique_tmp_path, with_data_lock_in};
@@ -364,9 +367,15 @@ impl InstallTarget {
     /// Whether `entry` was installed on this device: the same AVD, or, for a
     /// device without an AVD name, the same serial.
     fn is_device_of(&self, entry: &InstalledBuild) -> bool {
-        match (&self.avd_name, &entry.avd_name) {
+        self.is_same_device(&entry.serial, entry.avd_name.as_deref())
+    }
+
+    /// Whether the device `serial` / `avd_name` names is this one: the same
+    /// AVD, or, for a device without an AVD name, the same serial.
+    pub fn is_same_device(&self, serial: &str, avd_name: Option<&str>) -> bool {
+        match (self.avd_name.as_deref(), avd_name) {
             (Some(mine), Some(theirs)) => mine == theirs,
-            (None, None) => self.serial == entry.serial,
+            (None, None) => self.serial == serial,
             _ => false,
         }
     }
@@ -393,17 +402,19 @@ pub struct InstallOutcome {
 
 /// Install `apk` (a canonical path already validated inside the project's
 /// build outputs) on `serial` and, when the install succeeds, record which
-/// build produced it. The Tauri command and the MCP tool both call this.
-/// A failed install records nothing; a failure to record is logged and does
-/// not fail the install.
+/// build produced it, and open a debug session for it (`by` installed it).
+/// The Tauri command and the MCP tool both call this. A failed install
+/// records nothing; a failure to record is logged and does not fail the
+/// install.
 pub async fn install_and_record(
     adb: &Path,
     aapt2: Option<&Path>,
     serial: &str,
     apk: &Path,
     device_state: &DeviceState,
+    by: BuildActor,
 ) -> Result<InstallOutcome, String> {
-    install_and_record_in(&data_dir(), adb, aapt2, serial, apk, device_state).await
+    install_and_record_in(&data_dir(), adb, aapt2, serial, apk, device_state, by).await
 }
 
 async fn install_and_record_in(
@@ -413,6 +424,7 @@ async fn install_and_record_in(
     serial: &str,
     apk: &Path,
     device_state: &DeviceState,
+    by: BuildActor,
 ) -> Result<InstallOutcome, String> {
     // Hashing reads the same bytes adb is sending, at the same time.
     let to_hash = apk.to_path_buf();
@@ -450,8 +462,11 @@ async fn install_and_record_in(
 
     let dir = dir.to_path_buf();
     let installed_at = chrono::Utc::now().to_rfc3339();
+    let retention = debug_sessions::Retention::from_settings();
     let recorded = tokio::task::spawn_blocking(move || {
-        record_install_in(&dir, &target, &installed, installed_at)
+        let entry = record_install_in(&dir, &target, &installed, installed_at)?;
+        debug_sessions::open_for_install_in(&dir, &target, &entry, by, retention);
+        Ok(entry)
     })
     .await
     .map_err(|e| e.to_string())
@@ -1398,6 +1413,7 @@ mod tests {
             "emulator-5554",
             &path.canonicalize().unwrap(),
             &DeviceState::new(),
+            BuildActor::App,
         )
         .await
         .unwrap();
@@ -1410,6 +1426,11 @@ mod tests {
         assert_eq!(entry.version_code, Some(7));
         assert_eq!(entry.mappings, vec![mapping(1, "release")]);
         assert_eq!(load_installed_builds_from(data.path()), vec![entry]);
+        let sessions = debug_sessions::load_index_from(data.path());
+        assert_eq!(sessions.len(), 1, "the install opens a debug session");
+        assert_eq!(sessions[0].build_id, Some(9));
+        assert_eq!(sessions[0].device.avd_name.as_deref(), Some("Pixel_7"));
+        assert_eq!(sessions[0].package, "com.example.release");
     }
 
     #[tokio::test]
@@ -1427,6 +1448,7 @@ mod tests {
             "R5CT1234",
             &path.canonicalize().unwrap(),
             &DeviceState::new(),
+            BuildActor::App,
         )
         .await
         .unwrap();
@@ -1457,11 +1479,38 @@ mod tests {
             "emulator-5554",
             &path.canonicalize().unwrap(),
             &DeviceState::new(),
+            BuildActor::App,
         )
         .await;
 
         assert!(result.is_err());
         assert!(!data.path().join(INSTALLED_BUILDS_FILE).exists());
+        assert!(debug_sessions::load_index_from(data.path()).is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_session_that_cannot_be_written_does_not_fail_the_install() {
+        let project = project();
+        let data = TempDir::new().unwrap();
+        let tools = TempDir::new().unwrap();
+        let path = write_apk(project.path(), "debug", "app-debug.apk", "debug", b"apk");
+        let adb = fake_adb(tools.path(), "Pixel_7", "echo Success");
+        // A file where the sessions folder should be.
+        std::fs::write(debug_sessions::sessions_dir(data.path()), "").unwrap();
+
+        let outcome = install_and_record_in(
+            data.path(),
+            &adb,
+            None,
+            "R5CT1234",
+            &path.canonicalize().unwrap(),
+            &DeviceState::new(),
+            BuildActor::App,
+        )
+        .await
+        .unwrap();
+
+        assert!(outcome.recorded.is_some(), "the install is still recorded");
     }
 
     #[test]

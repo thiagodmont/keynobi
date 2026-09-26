@@ -1,5 +1,6 @@
 pub mod app_exit;
 pub mod build;
+pub mod debug_session;
 pub mod device;
 pub mod error;
 pub mod health;
@@ -13,6 +14,7 @@ pub mod variant;
 
 pub use app_exit::*;
 pub use build::*;
+pub use debug_session::*;
 pub use device::*;
 pub use error::*;
 pub use health::*;

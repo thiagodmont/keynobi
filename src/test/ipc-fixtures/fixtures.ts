@@ -14,6 +14,10 @@ import type {
   BuildStartedEvent,
   BuildStatus,
   BuiltApk,
+  DebugSession,
+  DebugSessionDetail,
+  DebugSessionEvent,
+  DebugSessionSummary,
   Device,
   DeviceDefinition,
   DeviceListChangedEvent,
@@ -614,6 +618,10 @@ export const typeFixtures = {
         "maxFiles": 500,
         "maxResults": 10000
       },
+      "sessions": {
+        "maxFolderMb": 200,
+        "retentionDays": 14
+      },
       "telemetry": {
         "enabled": false
       }
@@ -670,6 +678,10 @@ export const typeFixtures = {
         "contextLines": 2,
         "maxFiles": 500,
         "maxResults": 10000
+      },
+      "sessions": {
+        "maxFolderMb": 200,
+        "retentionDays": 14
       },
       "telemetry": {
         "enabled": false
@@ -1109,6 +1121,615 @@ export const typeFixtures = {
       "versionCode": null
     }
   ] satisfies Wire<InstalledBuild>[],
+  DebugSession: [
+    {
+      "build": {
+        "apk": {
+          "module": ":app",
+          "sha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "variant": "release",
+          "versionCode": 42
+        },
+        "id": 20,
+        "mappings": [
+          {
+            "pgMapId": "6b1c2f0",
+            "sha256": "6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a"
+          }
+        ],
+        "origin": {
+          "kind": "app"
+        },
+        "startedAt": "2026-04-23T10:00:00Z",
+        "task": "assembleRelease"
+      },
+      "bytes": 1804,
+      "closeReason": null,
+      "closedAt": null,
+      "counts": {
+        "anrs": 0,
+        "bookmarks": 1,
+        "crashes": 0,
+        "exits": 0,
+        "launches": 1
+      },
+      "device": {
+        "avdName": "Pixel_7",
+        "model": "sdk_gphone64_arm64",
+        "serial": "emulator-5554"
+      },
+      "droppedEvents": 0,
+      "eventCount": 4,
+      "id": "s-20260925T103200Z-4f2a9c00b1de",
+      "install": {
+        "apkSha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "by": {
+          "kind": "app"
+        },
+        "installedAt": "2026-04-23T10:00:00Z",
+        "versionCode": 42
+      },
+      "kept": true,
+      "lastEventAt": "2026-04-23T10:00:00Z",
+      "openedAt": "2026-04-23T10:00:00Z",
+      "package": "com.example.app",
+      "projectRoot": "/Users/me/MyApp",
+      "recordedBy": "app",
+      "schemaVersion": 1
+    },
+    {
+      "build": null,
+      "bytes": 310,
+      "closeReason": "superseded",
+      "closedAt": "2026-04-23T10:00:00Z",
+      "counts": {
+        "anrs": 0,
+        "bookmarks": 0,
+        "crashes": 0,
+        "exits": 0,
+        "launches": 0
+      },
+      "device": {
+        "avdName": null,
+        "model": null,
+        "serial": "R5CT1234ABC"
+      },
+      "droppedEvents": 3,
+      "eventCount": 1,
+      "id": "s-20260925T091500Z-0123456789ab",
+      "install": {
+        "apkSha256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+        "by": {
+          "clientName": null,
+          "kind": "agent",
+          "sessionId": null,
+          "standalone": true
+        },
+        "installedAt": "2026-04-23T10:00:00Z",
+        "versionCode": null
+      },
+      "kept": false,
+      "lastEventAt": "2026-04-23T10:00:00Z",
+      "openedAt": "2026-04-23T10:00:00Z",
+      "package": "com.example.app.debug",
+      "projectRoot": null,
+      "recordedBy": "standalone",
+      "schemaVersion": 1
+    }
+  ] satisfies Wire<DebugSession>[],
+  DebugSessionSummary: [
+    {
+      "apkSha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "buildId": 20,
+      "bytes": 1804,
+      "closeReason": null,
+      "closedAt": null,
+      "counts": {
+        "anrs": 0,
+        "bookmarks": 1,
+        "crashes": 0,
+        "exits": 0,
+        "launches": 1
+      },
+      "device": {
+        "avdName": "Pixel_7",
+        "model": "sdk_gphone64_arm64",
+        "serial": "emulator-5554"
+      },
+      "droppedEvents": 0,
+      "eventCount": 4,
+      "id": "s-20260925T103200Z-4f2a9c00b1de",
+      "kept": true,
+      "lastEventAt": "2026-04-23T10:00:00Z",
+      "mappingSha256s": [
+        "6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a"
+      ],
+      "module": ":app",
+      "openedAt": "2026-04-23T10:00:00Z",
+      "package": "com.example.app",
+      "projectRoot": "/Users/me/MyApp",
+      "recordedBy": "app",
+      "variant": "release",
+      "versionCode": 42
+    },
+    {
+      "apkSha256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+      "buildId": null,
+      "bytes": 310,
+      "closeReason": "superseded",
+      "closedAt": "2026-04-23T10:00:00Z",
+      "counts": {
+        "anrs": 0,
+        "bookmarks": 0,
+        "crashes": 0,
+        "exits": 0,
+        "launches": 0
+      },
+      "device": {
+        "avdName": null,
+        "model": null,
+        "serial": "R5CT1234ABC"
+      },
+      "droppedEvents": 3,
+      "eventCount": 1,
+      "id": "s-20260925T091500Z-0123456789ab",
+      "kept": false,
+      "lastEventAt": "2026-04-23T10:00:00Z",
+      "mappingSha256s": [],
+      "module": null,
+      "openedAt": "2026-04-23T10:00:00Z",
+      "package": "com.example.app.debug",
+      "projectRoot": null,
+      "recordedBy": "standalone",
+      "variant": null,
+      "versionCode": null
+    }
+  ] satisfies Wire<DebugSessionSummary>[],
+  DebugSessionEvent: [
+    {
+      "actor": {
+        "kind": "app"
+      },
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "apk": {
+          "module": ":app",
+          "sha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "variant": "release",
+          "versionCode": 42
+        },
+        "id": 20,
+        "mappings": [
+          {
+            "pgMapId": "6b1c2f0",
+            "sha256": "6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a"
+          }
+        ],
+        "origin": {
+          "kind": "app"
+        },
+        "startedAt": "2026-04-23T10:00:00Z",
+        "task": "assembleRelease"
+      },
+      "kind": "build",
+      "seq": 1
+    },
+    {
+      "actor": null,
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "apkSha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+        "by": {
+          "kind": "app"
+        },
+        "installedAt": "2026-04-23T10:00:00Z",
+        "versionCode": 42
+      },
+      "kind": "install",
+      "seq": 2
+    },
+    {
+      "actor": {
+        "kind": "app"
+      },
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "restart": false,
+        "serial": "emulator-5554",
+        "timing": {
+          "avdName": "Pixel_7_API_34",
+          "displayedMs": 790,
+          "fullyDrawnMs": null,
+          "launchState": "cold",
+          "measuredAt": "2026-04-23T10:00:00Z",
+          "model": "sdk_gphone64_arm64",
+          "serial": "emulator-5554",
+          "totalMs": 812,
+          "waitMs": 815
+        }
+      },
+      "kind": "launch",
+      "seq": 3
+    },
+    {
+      "actor": null,
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "avdName": "Pixel_7_API_34",
+        "displayedMs": 790,
+        "fullyDrawnMs": 1400,
+        "launchState": "cold",
+        "measuredAt": "2026-04-23T10:00:00Z",
+        "model": "sdk_gphone64_arm64",
+        "serial": "emulator-5554",
+        "totalMs": 812,
+        "waitMs": 815
+      },
+      "kind": "launchTiming",
+      "seq": 4
+    },
+    {
+      "actor": {
+        "kind": "app"
+      },
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "restart": true,
+        "serial": "emulator-5554",
+        "timing": null
+      },
+      "kind": "launch",
+      "seq": 5
+    },
+    {
+      "actor": null,
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "reason": null,
+        "serial": "emulator-5554"
+      },
+      "kind": "logcatReconnect",
+      "seq": 6
+    },
+    {
+      "actor": {
+        "kind": "app"
+      },
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "reason": "logcat reconnected 10 times",
+        "serial": "emulator-5554"
+      },
+      "kind": "logcatStopped",
+      "seq": 7
+    },
+    {
+      "actor": null,
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "reason": null,
+        "serial": "emulator-5554"
+      },
+      "kind": "logcatCleared",
+      "seq": 8
+    },
+    {
+      "actor": {
+        "kind": "app"
+      },
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "serial": "emulator-5554"
+      },
+      "kind": "deviceOffline",
+      "seq": 9
+    },
+    {
+      "actor": null,
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "serial": "emulator-5554"
+      },
+      "kind": "deviceOnline",
+      "seq": 10
+    },
+    {
+      "actor": {
+        "kind": "app"
+      },
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "logEntryId": 90,
+        "note": "Reproduced the crash here"
+      },
+      "kind": "bookmark",
+      "seq": 11
+    },
+    {
+      "actor": null,
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "logEntryId": null,
+        "note": "Slow start"
+      },
+      "kind": "bookmark",
+      "seq": 12
+    }
+  ] satisfies Wire<DebugSessionEvent>[],
+  DebugSessionDetail: [
+    {
+      "events": [
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "apk": {
+              "module": ":app",
+              "sha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+              "variant": "release",
+              "versionCode": 42
+            },
+            "id": 20,
+            "mappings": [
+              {
+                "pgMapId": "6b1c2f0",
+                "sha256": "6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a"
+              }
+            ],
+            "origin": {
+              "kind": "app"
+            },
+            "startedAt": "2026-04-23T10:00:00Z",
+            "task": "assembleRelease"
+          },
+          "kind": "build",
+          "seq": 1
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "apkSha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "by": {
+              "kind": "app"
+            },
+            "installedAt": "2026-04-23T10:00:00Z",
+            "versionCode": 42
+          },
+          "kind": "install",
+          "seq": 2
+        },
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "restart": false,
+            "serial": "emulator-5554",
+            "timing": {
+              "avdName": "Pixel_7_API_34",
+              "displayedMs": 790,
+              "fullyDrawnMs": null,
+              "launchState": "cold",
+              "measuredAt": "2026-04-23T10:00:00Z",
+              "model": "sdk_gphone64_arm64",
+              "serial": "emulator-5554",
+              "totalMs": 812,
+              "waitMs": 815
+            }
+          },
+          "kind": "launch",
+          "seq": 3
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "avdName": "Pixel_7_API_34",
+            "displayedMs": 790,
+            "fullyDrawnMs": 1400,
+            "launchState": "cold",
+            "measuredAt": "2026-04-23T10:00:00Z",
+            "model": "sdk_gphone64_arm64",
+            "serial": "emulator-5554",
+            "totalMs": 812,
+            "waitMs": 815
+          },
+          "kind": "launchTiming",
+          "seq": 4
+        },
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "restart": true,
+            "serial": "emulator-5554",
+            "timing": null
+          },
+          "kind": "launch",
+          "seq": 5
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "reason": null,
+            "serial": "emulator-5554"
+          },
+          "kind": "logcatReconnect",
+          "seq": 6
+        },
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "reason": "logcat reconnected 10 times",
+            "serial": "emulator-5554"
+          },
+          "kind": "logcatStopped",
+          "seq": 7
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "reason": null,
+            "serial": "emulator-5554"
+          },
+          "kind": "logcatCleared",
+          "seq": 8
+        },
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "serial": "emulator-5554"
+          },
+          "kind": "deviceOffline",
+          "seq": 9
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "serial": "emulator-5554"
+          },
+          "kind": "deviceOnline",
+          "seq": 10
+        },
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "logEntryId": 90,
+            "note": "Reproduced the crash here"
+          },
+          "kind": "bookmark",
+          "seq": 11
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "logEntryId": null,
+            "note": "Slow start"
+          },
+          "kind": "bookmark",
+          "seq": 12
+        }
+      ],
+      "eventsTruncated": true,
+      "session": {
+        "build": {
+          "apk": {
+            "module": ":app",
+            "sha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+            "variant": "release",
+            "versionCode": 42
+          },
+          "id": 20,
+          "mappings": [
+            {
+              "pgMapId": "6b1c2f0",
+              "sha256": "6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a"
+            }
+          ],
+          "origin": {
+            "kind": "app"
+          },
+          "startedAt": "2026-04-23T10:00:00Z",
+          "task": "assembleRelease"
+        },
+        "bytes": 1804,
+        "closeReason": null,
+        "closedAt": null,
+        "counts": {
+          "anrs": 0,
+          "bookmarks": 1,
+          "crashes": 0,
+          "exits": 0,
+          "launches": 1
+        },
+        "device": {
+          "avdName": "Pixel_7",
+          "model": "sdk_gphone64_arm64",
+          "serial": "emulator-5554"
+        },
+        "droppedEvents": 0,
+        "eventCount": 4,
+        "id": "s-20260925T103200Z-4f2a9c00b1de",
+        "install": {
+          "apkSha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "by": {
+            "kind": "app"
+          },
+          "installedAt": "2026-04-23T10:00:00Z",
+          "versionCode": 42
+        },
+        "kept": true,
+        "lastEventAt": "2026-04-23T10:00:00Z",
+        "openedAt": "2026-04-23T10:00:00Z",
+        "package": "com.example.app",
+        "projectRoot": "/Users/me/MyApp",
+        "recordedBy": "app",
+        "schemaVersion": 1
+      }
+    },
+    {
+      "events": [],
+      "eventsTruncated": false,
+      "session": {
+        "build": null,
+        "bytes": 310,
+        "closeReason": "superseded",
+        "closedAt": "2026-04-23T10:00:00Z",
+        "counts": {
+          "anrs": 0,
+          "bookmarks": 0,
+          "crashes": 0,
+          "exits": 0,
+          "launches": 0
+        },
+        "device": {
+          "avdName": null,
+          "model": null,
+          "serial": "R5CT1234ABC"
+        },
+        "droppedEvents": 3,
+        "eventCount": 1,
+        "id": "s-20260925T091500Z-0123456789ab",
+        "install": {
+          "apkSha256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3",
+          "by": {
+            "clientName": null,
+            "kind": "agent",
+            "sessionId": null,
+            "standalone": true
+          },
+          "installedAt": "2026-04-23T10:00:00Z",
+          "versionCode": null
+        },
+        "kept": false,
+        "lastEventAt": "2026-04-23T10:00:00Z",
+        "openedAt": "2026-04-23T10:00:00Z",
+        "package": "com.example.app.debug",
+        "projectRoot": null,
+        "recordedBy": "standalone",
+        "schemaVersion": 1
+      }
+    }
+  ] satisfies Wire<DebugSessionDetail>[],
   LaunchState: [
     "cold",
     "warm",

@@ -9,6 +9,7 @@ import type { LspSettings } from "./LspSettings";
 import type { McpSettings } from "./McpSettings";
 import type { ProjectEntry } from "./ProjectEntry";
 import type { SearchSettings } from "./SearchSettings";
+import type { SessionSettings } from "./SessionSettings";
 import type { TelemetrySettings } from "./TelemetrySettings";
 
 /**
@@ -16,7 +17,7 @@ import type { TelemetrySettings } from "./TelemetrySettings";
  * Every field uses `#[serde(default)]` so the file is forward-compatible —
  * adding new settings never breaks existing config files.
  */
-export type AppSettings = { appearance: AppearanceSettings, search: SearchSettings, android: AndroidSettings, lsp: LspSettings, java: JavaSettings, advanced: AdvancedSettings, build: BuildSettings, logcat: LogcatSettings, mcp: McpSettings, telemetry: TelemetrySettings, 
+export type AppSettings = { appearance: AppearanceSettings, search: SearchSettings, android: AndroidSettings, lsp: LspSettings, java: JavaSettings, advanced: AdvancedSettings, build: BuildSettings, logcat: LogcatSettings, mcp: McpSettings, telemetry: TelemetrySettings, sessions: SessionSettings, 
 /**
  * When true, the first-run setup wizard has been completed (or dismissed).
  */

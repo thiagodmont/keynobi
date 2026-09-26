@@ -9,6 +9,7 @@ pub mod build_lock;
 pub mod build_parser;
 pub mod build_runner;
 pub mod crash_inspector;
+pub mod debug_sessions;
 pub mod device_inspector;
 pub mod fs_manager;
 pub mod gradle_modules;

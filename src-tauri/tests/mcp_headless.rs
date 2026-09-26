@@ -1753,6 +1753,96 @@ fn two_standalone_servers_record_their_installs() {
     assert_eq!(serials, vec!["R5CT0001", "R5CT0002"]);
 }
 
+/// The first debug session and its event kinds, once its summary counts `count` events.
+fn wait_for_session_events(sandbox: &Sandbox, count: usize) -> (serde_json::Value, Vec<String>) {
+    let sessions = sandbox.home.join(".keynobi/sessions");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    loop {
+        let index: Option<serde_json::Value> = std::fs::read_to_string(sessions.join("index.json"))
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok());
+        if let Some(session) = index.as_ref().and_then(|i| i["sessions"].get(0)) {
+            let id = session["id"].as_str().unwrap();
+            let events =
+                std::fs::read_to_string(sessions.join(id).join("events.jsonl")).unwrap_or_default();
+            let kinds: Vec<String> = events
+                .lines()
+                .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+                .map(|e| e["kind"].as_str().unwrap().to_string())
+                .collect();
+            if session["eventCount"].as_u64() >= Some(count as u64) {
+                return (session.clone(), kinds);
+            }
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "no debug session with {count} events: {index:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+#[test]
+fn install_apk_then_launch_app_records_a_debug_session() {
+    let sandbox = Sandbox::new();
+    sandbox.write_adb(
+        r#"case "$*" in
+  *" install "*) echo Success ;;
+  *"am start -W -n"*)
+    echo 'Status: ok'
+    echo 'LaunchState: COLD'
+    echo 'TotalTime: 812'
+    echo 'WaitTime: 815'
+    echo 'Complete'
+    ;;
+esac"#,
+    );
+    let debug = sandbox.project.join("app/build/outputs/apk/debug");
+    write_file(&debug.join("app-debug.apk"), b"apk");
+    write_file(
+        &debug.join("output-metadata.json"),
+        br#"{"applicationId":"com.example.sandbox.debug","variantName":"debug",
+            "elements":[{"outputFile":"app-debug.apk"}]}"#,
+    );
+    let mut client = sandbox.start();
+
+    let install = client.call_tool(
+        "install_apk",
+        json!({ "device_serial": "R5CT0001", "apk_path": debug.join("app-debug.apk") }),
+    );
+    assert!(!install.is_error, "{}", install.text);
+    let launch = client.call_tool(
+        "launch_app",
+        json!({
+            "device_serial": "R5CT0001",
+            "package": "com.example.sandbox.debug",
+            "activity": ".MainActivity"
+        }),
+    );
+    assert!(!launch.is_error, "{}", launch.text);
+
+    let (session, kinds) = wait_for_session_events(&sandbox, 2);
+    assert_eq!(kinds, ["install", "launch"]);
+    assert_eq!(session["package"], "com.example.sandbox.debug");
+    assert_eq!(session["device"]["serial"], "R5CT0001");
+    assert_eq!(session["recordedBy"], "standalone");
+    assert_eq!(session["buildId"], serde_json::Value::Null);
+    assert_eq!(session["counts"]["launches"], 1);
+    let id = session["id"].as_str().unwrap();
+    let events = std::fs::read_to_string(
+        sandbox
+            .home
+            .join(".keynobi/sessions")
+            .join(id)
+            .join("events.jsonl"),
+    )
+    .unwrap();
+    let launch: serde_json::Value = serde_json::from_str(events.lines().nth(1).unwrap()).unwrap();
+    assert_eq!(launch["data"]["timing"]["totalMs"], 812);
+    assert_eq!(launch["actor"]["kind"], "agent");
+    assert_eq!(launch["actor"]["standalone"], true);
+}
+
 fn resource_uris(client: &mut headless::McpClient) -> Vec<String> {
     client.request("resources/list", json!({}))["resources"]
         .as_array()

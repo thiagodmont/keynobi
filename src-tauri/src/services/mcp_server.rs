@@ -23,6 +23,7 @@ use crate::services::app_inspector;
 use crate::services::build_inspector;
 use crate::services::build_runner::{self, AgentActor, BuildActor, BuildState};
 use crate::services::crash_inspector;
+use crate::services::debug_sessions;
 use crate::services::device_inspector;
 use crate::services::gradle_modules;
 use crate::services::health_inspector;
@@ -989,6 +990,7 @@ impl AndroidMcpServer {
     async fn restart_app(
         &self,
         Parameters(p): Parameters<RestartAppParams>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         validate_package_name(&p.package)?;
         if let Some(ref s) = p.device_serial {
@@ -1012,7 +1014,11 @@ impl AndroidMcpServer {
             };
 
         match app_inspector::restart_app(&adb, &serial, &p.package, clear_data).await {
-            Ok(result) => Ok(CallToolResult::structured(json!(result))),
+            Ok(result) => {
+                let (state, by) = (self.device_state.clone(), self.agent(&ctx.peer));
+                debug_sessions::record_restart(adb, state, &serial, &p.package, &result, by);
+                Ok(CallToolResult::structured(json!(result)))
+            }
             Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(e)])),
         }
     }
@@ -2923,6 +2929,7 @@ impl AndroidMcpServer {
     async fn install_apk(
         &self,
         Parameters(p): Parameters<InstallApkParams>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.device_serial)?;
         let apk = self.validate_apk_path(&p.apk_path).await?;
@@ -2937,6 +2944,7 @@ impl AndroidMcpServer {
             &p.device_serial,
             &apk,
             &self.device_state,
+            self.agent(&ctx.peer),
         )
         .await
         .map_err(|e| McpError::internal_error(format!("APK install failed: {e}"), None))?;
@@ -2963,6 +2971,7 @@ impl AndroidMcpServer {
     async fn launch_app(
         &self,
         Parameters(p): Parameters<LaunchAppParams>,
+        ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
         validate_device_serial(&p.device_serial)?;
         validate_package_name(&p.package)?;
@@ -2978,6 +2987,13 @@ impl AndroidMcpServer {
             adb_manager::launch_app(&adb, &p.device_serial, &p.package, p.activity.as_deref())
                 .await
                 .map_err(|e| McpError::internal_error(format!("Launch failed: {e}"), None))?;
+        let launch = debug_sessions::LaunchRecord::from_am_start(
+            &p.device_serial,
+            &p.package,
+            result.timing,
+            self.agent(&ctx.peer),
+        );
+        debug_sessions::record_launch(adb, self.device_state.clone(), launch);
 
         Ok(CallToolResult::success(vec![ContentBlock::text(format!(
             "App launched: {}\n{}",

@@ -612,6 +612,46 @@ export function listenLogcatStopped(cb: (reason: string) => void): Promise<Unlis
   return listen<string>("logcat:stopped", (event) => cb(event.payload));
 }
 
+// ── Debug sessions ────────────────────────────────────────────────────────────
+
+import type { DebugSessionDetail, DebugSessionEvent, DebugSessionSummary } from "@/bindings";
+export type { DebugSessionDetail, DebugSessionEvent, DebugSessionSummary };
+
+/** Every debug session (one per install on a device), newest first. */
+export async function listDebugSessions(): Promise<DebugSessionSummary[]> {
+  return invoke<DebugSessionSummary[]>("list_debug_sessions");
+}
+
+/** A debug session and its most recent timeline events. Rejects with `NotFound` once pruned. */
+export async function getDebugSession(id: string): Promise<DebugSessionDetail> {
+  return invoke<DebugSessionDetail>("get_debug_session", { id });
+}
+
+/** End an open debug session. */
+export async function endDebugSession(id: string): Promise<void> {
+  return invoke<void>("end_debug_session", { id });
+}
+
+/** Keep a debug session (exempt from age pruning; keeps its R8 mappings), or stop keeping it. */
+export async function setDebugSessionKept(id: string, kept: boolean): Promise<void> {
+  return invoke<void>("set_debug_session_kept", { id, kept });
+}
+
+/**
+ * Add a note to a debug session: `sessionId`, else the newest open session on
+ * the selected device. `logEntryId` anchors it to a logcat entry.
+ */
+export async function addSessionBookmark(
+  note: string,
+  opts: { sessionId?: string | null; logEntryId?: number | null } = {}
+): Promise<DebugSessionEvent> {
+  return invoke<DebugSessionEvent>("add_session_bookmark", {
+    sessionId: opts.sessionId ?? null,
+    note,
+    logEntryId: opts.logEntryId ?? null,
+  });
+}
+
 // ── MCP Server ─────────────────────────────────────────────────────────────────
 
 import type {

@@ -8,6 +8,7 @@ import type {
   LaunchTiming,
 } from "@/bindings";
 import { attachMockLaunch, recordMockInstall } from "./build";
+import { recordMockLaunch } from "./sessions";
 import { triggerEvent } from "./events";
 
 export const mockEmulator: Device = {
@@ -154,7 +155,11 @@ export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
       return "Success";
     },
     launch_app_on_device: (args: unknown): LaunchResult => {
-      const { serial, buildId } = args as { serial: string; buildId?: number | null };
+      const {
+        serial,
+        package: pkg,
+        buildId,
+      } = args as { serial: string; package?: string; buildId?: number | null };
       const device = mockDevices.find((d) => d.serial === serial);
       const timing: LaunchTiming = {
         totalMs: 812,
@@ -174,8 +179,10 @@ export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
           const launch: LaunchTiming = { ...timing, fullyDrawnMs: 1400 };
           attachMockLaunch(buildId, launch);
           triggerEvent("build:launch_timing", { recordId: buildId, launch });
+          if (typeof pkg === "string") recordMockLaunch(pkg, launch, true);
         }, 1000);
       }
+      if (typeof pkg === "string") recordMockLaunch(pkg, timing);
       return { output: "Status: ok\nLaunchState: COLD\nTotalTime: 812\nWaitTime: 815", timing };
     },
     stop_app_on_device: () => undefined,

@@ -299,6 +299,149 @@ fn installed_builds() -> Vec<InstalledBuild> {
     ]
 }
 
+/// A session a Run App install of build #20 opened, kept and still open, and
+/// one a standalone agent's install of an APK no build wrote opened, since
+/// superseded.
+fn debug_sessions() -> Vec<DebugSession> {
+    vec![
+        DebugSession {
+            schema_version: DEBUG_SESSION_SCHEMA_VERSION,
+            id: "s-20260925T103200Z-4f2a9c00b1de".into(),
+            project_root: Some("/Users/me/MyApp".into()),
+            package: "com.example.app".into(),
+            device: DebugSessionDevice {
+                serial: "emulator-5554".into(),
+                avd_name: Some("Pixel_7".into()),
+                model: Some("sdk_gphone64_arm64".into()),
+            },
+            build: Some(DebugSessionBuild {
+                id: 20,
+                task: "assembleRelease".into(),
+                started_at: TIME.into(),
+                origin: Some(BuildActor::App),
+                apk: DebugSessionApk {
+                    module: ":app".into(),
+                    variant: "release".into(),
+                    sha256: "a1".repeat(32),
+                    version_code: Some(42),
+                },
+                mappings: vec![DebugSessionMapping {
+                    sha256: "6b1c2f0a".repeat(8),
+                    pg_map_id: Some("6b1c2f0".into()),
+                }],
+            }),
+            install: Some(DebugSessionInstall {
+                apk_sha256: "a1".repeat(32),
+                version_code: Some(42),
+                installed_at: TIME.into(),
+                by: BuildActor::App,
+            }),
+            opened_at: TIME.into(),
+            closed_at: None,
+            close_reason: None,
+            recorded_by: DebugSessionRecorder::App,
+            kept: true,
+            counts: DebugSessionCounts {
+                launches: 1,
+                crashes: 0,
+                anrs: 0,
+                exits: 0,
+                bookmarks: 1,
+            },
+            last_event_at: TIME.into(),
+            event_count: 4,
+            dropped_events: 0,
+            bytes: 1_804,
+        },
+        DebugSession {
+            schema_version: DEBUG_SESSION_SCHEMA_VERSION,
+            id: "s-20260925T091500Z-0123456789ab".into(),
+            project_root: None,
+            package: "com.example.app.debug".into(),
+            device: DebugSessionDevice {
+                serial: "R5CT1234ABC".into(),
+                avd_name: None,
+                model: None,
+            },
+            build: None,
+            install: Some(DebugSessionInstall {
+                apk_sha256: "c3".repeat(32),
+                version_code: None,
+                installed_at: TIME.into(),
+                by: BuildActor::Agent(AgentActor {
+                    session_id: None,
+                    client_name: None,
+                    standalone: true,
+                }),
+            }),
+            opened_at: TIME.into(),
+            closed_at: Some(TIME.into()),
+            close_reason: Some(DebugSessionCloseReason::Superseded),
+            recorded_by: DebugSessionRecorder::Standalone,
+            kept: false,
+            counts: DebugSessionCounts::default(),
+            last_event_at: TIME.into(),
+            event_count: 1,
+            dropped_events: 3,
+            bytes: 310,
+        },
+    ]
+}
+
+/// One event of every kind, with and without optional values.
+fn debug_session_events() -> Vec<DebugSessionEvent> {
+    let session = debug_sessions().remove(0);
+    let logcat = |reason: Option<&str>| DebugSessionLogcatChange {
+        serial: "emulator-5554".into(),
+        reason: reason.map(str::to_owned),
+    };
+    let device = DebugSessionDeviceChange {
+        serial: "emulator-5554".into(),
+    };
+    let events = vec![
+        DebugSessionEventData::Build(session.build.clone().unwrap()),
+        DebugSessionEventData::Install(session.install.clone().unwrap()),
+        // `Fully drawn` arrived after the launch was recorded.
+        DebugSessionEventData::Launch(DebugSessionLaunch {
+            serial: "emulator-5554".into(),
+            timing: Some(LaunchTiming {
+                fully_drawn_ms: None,
+                ..launch_timings().remove(0)
+            }),
+            restart: false,
+        }),
+        DebugSessionEventData::LaunchTiming(launch_timings().remove(0)),
+        DebugSessionEventData::Launch(DebugSessionLaunch {
+            serial: "emulator-5554".into(),
+            timing: None,
+            restart: true,
+        }),
+        DebugSessionEventData::LogcatReconnect(logcat(None)),
+        DebugSessionEventData::LogcatStopped(logcat(Some("logcat reconnected 10 times"))),
+        DebugSessionEventData::LogcatCleared(logcat(None)),
+        DebugSessionEventData::DeviceOffline(device.clone()),
+        DebugSessionEventData::DeviceOnline(device),
+        DebugSessionEventData::Bookmark(DebugSessionBookmark {
+            note: "Reproduced the crash here".into(),
+            log_entry_id: Some(90),
+        }),
+        DebugSessionEventData::Bookmark(DebugSessionBookmark {
+            note: "Slow start".into(),
+            log_entry_id: None,
+        }),
+    ];
+    events
+        .into_iter()
+        .enumerate()
+        .map(|(i, event)| DebugSessionEvent {
+            seq: i as u32 + 1,
+            at: TIME.into(),
+            actor: (i % 2 == 0).then_some(BuildActor::App),
+            event,
+        })
+        .collect()
+}
+
 fn retrace_outcomes() -> Vec<RetraceOutcome> {
     let obfuscated = "java.lang.RuntimeException: boom\n\tat a.a.onCreate(SourceFile:1)\n";
     vec![
@@ -843,6 +986,30 @@ fn fixtures() -> Fixtures {
         ],
     );
     f.add("InstalledBuild", &installed_builds());
+    f.add("DebugSession", &debug_sessions());
+    f.add(
+        "DebugSessionSummary",
+        &debug_sessions()
+            .iter()
+            .map(DebugSessionSummary::from)
+            .collect::<Vec<_>>(),
+    );
+    f.add("DebugSessionEvent", &debug_session_events());
+    f.add(
+        "DebugSessionDetail",
+        &[
+            DebugSessionDetail {
+                session: debug_sessions().remove(0),
+                events: debug_session_events(),
+                events_truncated: true,
+            },
+            DebugSessionDetail {
+                session: debug_sessions().remove(1),
+                events: vec![],
+                events_truncated: false,
+            },
+        ],
+    );
     f.add(
         "LaunchState",
         &[

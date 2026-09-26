@@ -34,6 +34,10 @@ use commands::run_configuration::{
     delete_run_configuration, list_run_configurations, save_run_configuration,
     set_active_run_configuration,
 };
+use commands::sessions::{
+    add_session_bookmark, end_debug_session, get_debug_session, list_debug_sessions,
+    set_debug_session_kept,
+};
 use commands::settings::*;
 use commands::studio::open_in_studio;
 use commands::telemetry::send_native_sentry_test_event;
@@ -249,6 +253,10 @@ pub fn run() {
             ) {
                 tracing::warn!("Failed to rotate build logs: {e}");
             }
+            let retention = services::debug_sessions::Retention::from_settings();
+            if let Err(e) = services::debug_sessions::prune_persisted(retention) {
+                tracing::warn!("Failed to prune debug sessions: {e}");
+            }
 
             // Spawn monitor: polls memory + log folder size every 5s.
             {
@@ -401,6 +409,12 @@ pub fn run() {
             set_logcat_filter,
             get_logcat_stats,
             retrace_crash,
+            // Debug sessions
+            list_debug_sessions,
+            get_debug_session,
+            end_debug_session,
+            set_debug_session_kept,
+            add_session_bookmark,
             // MCP Server
             get_mcp_setup_status,
             get_mcp_activity,

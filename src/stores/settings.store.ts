@@ -49,6 +49,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     allowUnrestrictedGradle: false,
   },
   telemetry: { enabled: false },
+  sessions: { retentionDays: 14, maxFolderMb: 200 },
   onboardingCompleted: false,
   recentProjects: [],
   lastActiveProject: null,

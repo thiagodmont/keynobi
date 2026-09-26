@@ -39,6 +39,7 @@ export function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings 
       allowUnrestrictedGradle: false,
     },
     telemetry: { enabled: false },
+    sessions: { retentionDays: 14, maxFolderMb: 200 },
     onboardingCompleted: true,
     recentProjects: [],
     lastActiveProject: null,
