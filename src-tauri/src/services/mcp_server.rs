@@ -31,6 +31,7 @@ use crate::services::jdk;
 use crate::services::logcat::{self, LogcatFilter, LogcatState};
 use crate::services::mcp_activity::{self, McpActivityEntry};
 use crate::services::mcp_sessions::McpSessionRegistry;
+use crate::services::mcp_toolsets::Toolsets;
 use crate::services::process_manager::ProcessManager;
 use crate::services::project_trust;
 use crate::services::retrace;
@@ -182,6 +183,8 @@ pub struct AndroidMcpServer {
     mode: SessionMode,
     /// The app's id for this session, when attached.
     session_id: Option<u32>,
+    /// The toolsets this session serves; the other tools are hidden.
+    toolsets: Toolsets,
     tool_router: ToolRouter<Self>,
     prompt_router: PromptRouter<Self>,
 }
@@ -206,6 +209,7 @@ impl AndroidMcpServer {
                 pinned_project: None,
             },
             session_id: None,
+            toolsets: Toolsets::all(),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
@@ -232,6 +236,7 @@ impl AndroidMcpServer {
                 reason: "not attached to the Keynobi app".into(),
             },
             session_id: None,
+            toolsets: Toolsets::all(),
             tool_router: Self::tool_router(),
             prompt_router: Self::prompt_router(),
         }
@@ -256,6 +261,16 @@ impl AndroidMcpServer {
     /// The app's registry id of the attached session this server serves.
     pub fn with_session_id(mut self, id: u32) -> Self {
         self.session_id = Some(id);
+        self
+    }
+
+    /// Serve only the tools of `toolsets`: the others are left out of
+    /// `tools/list` and refused when called.
+    pub fn with_toolsets(mut self, toolsets: Toolsets) -> Self {
+        for tool in toolsets.hidden_tools() {
+            self.tool_router.disable_route(tool);
+        }
+        self.toolsets = toolsets;
         self
     }
 
@@ -3358,7 +3373,8 @@ fn build_and_fix_text(args: &BuildAndFixArgs) -> String {
 
 // ── ServerHandler impl ────────────────────────────────────────────────────────
 
-#[tool_handler]
+// The session's own router, which hides the tools of toolsets it does not serve.
+#[tool_handler(router = self.tool_router)]
 #[prompt_handler]
 impl ServerHandler for AndroidMcpServer {
     fn get_info(&self) -> ServerConfig {
@@ -3524,7 +3540,7 @@ impl ServerHandler for AndroidMcpServer {
 impl AndroidMcpServer {
     /// The first sentence of `instructions`: which mode this session runs in and why.
     fn mode_instructions(&self) -> String {
-        match &self.mode {
+        let mode = match &self.mode {
             SessionMode::Attached {
                 pinned_project: Some(project),
             } => format!(
@@ -3541,6 +3557,10 @@ impl AndroidMcpServer {
                 "Mode: standalone, because {reason}. This server has its own state: its \
                  builds and logcat are not visible in the Keynobi app."
             ),
+        };
+        match self.toolsets.describe() {
+            Some(toolsets) => format!("{mode} {toolsets}"),
+            None => mode,
         }
     }
 
@@ -4117,9 +4137,13 @@ impl ServerHandler for LoggingMcpServer {
     ) -> Result<CallToolResponse, McpError> {
         let start = std::time::Instant::now();
         let name = request.name.clone();
-        let result = match self.server.check_session_project(&name).await {
-            Some(refused) => Ok(CallToolResponse::Complete(refused)),
-            None => self.server.call_tool(request, context).await,
+        let result = if let Some(hidden) = self.server.toolsets.refusal(&name) {
+            Err(McpError::invalid_params(hidden, None))
+        } else {
+            match self.server.check_session_project(&name).await {
+                Some(refused) => Ok(CallToolResponse::Complete(refused)),
+                None => self.server.call_tool(request, context).await,
+            }
         };
         let ms = start.elapsed().as_millis() as u64;
         let (status, summary) = match &result {
@@ -4227,7 +4251,7 @@ fn select_headless_project(
 /// failed attach exits non-zero instead of running standalone. When the app
 /// closes an attached session (it quit), the session continues standalone,
 /// or, with `attach_only`, exits non-zero.
-pub async fn run_mcp(project_path: Option<PathBuf>, attach_only: bool) -> i32 {
+pub async fn run_mcp(project_path: Option<PathBuf>, attach_only: bool, toolsets: Toolsets) -> i32 {
     use crate::services::mcp_attach;
 
     // Redirect all tracing to stderr — stdout is reserved for MCP JSON-RPC.
@@ -4249,7 +4273,8 @@ pub async fn run_mcp(project_path: Option<PathBuf>, attach_only: bool) -> i32 {
             .as_ref()
             .map(|(root, _)| mcp_attach::attach_project_key(root)),
         requested.as_ref().map(|(_, how)| *how),
-    );
+    )
+    .with_toolsets(&toolsets);
     let standalone_project = move || {
         requested.or_else(|| {
             select_headless_project(None, None, || {
@@ -4290,6 +4315,7 @@ pub async fn run_mcp(project_path: Option<PathBuf>, attach_only: bool) -> i32 {
                         standalone_project(),
                         APP_QUIT_REASON.to_string(),
                         tokio::io::split(server),
+                        toolsets,
                     ));
                     let (from_server, to_server) = tokio::io::split(relay);
                     mcp_attach::resume_with(resume, &mut stdout, from_server, to_server).await;
@@ -4309,6 +4335,7 @@ pub async fn run_mcp(project_path: Option<PathBuf>, attach_only: bool) -> i32 {
         standalone_project(),
         reason,
         (tokio::io::stdin(), tokio::io::stdout()),
+        toolsets,
     )
     .await
 }
@@ -4323,6 +4350,7 @@ async fn run_standalone<R, W>(
     selection: Option<(PathBuf, ProjectSelection)>,
     reason: String,
     transport: (R, W),
+    toolsets: Toolsets,
 ) -> i32
 where
     R: tokio::io::AsyncRead + Send + Unpin + 'static,
@@ -4376,7 +4404,8 @@ where
             process_manager.clone(),
             project_selection,
         )
-        .with_mode(SessionMode::Standalone { reason }),
+        .with_mode(SessionMode::Standalone { reason })
+        .with_toolsets(toolsets),
     );
     let code = match server.serve(transport).await {
         Ok(running) => {
@@ -5182,6 +5211,69 @@ mod tests {
                 .is_some(),
             "get_crash_stack_trace must accept retrace"
         );
+    }
+
+    /// A new tool must be put in a toolset, or `--toolsets` could not hide
+    /// or show it; the toolsets must also not name tools that do not exist.
+    #[test]
+    fn every_tool_is_in_exactly_one_toolset() {
+        use crate::services::mcp_toolsets::Toolset;
+        let tools: Vec<String> = headless_server()
+            .tool_router
+            .list_all()
+            .iter()
+            .map(|t| t.name.to_string())
+            .collect();
+        for tool in &tools {
+            let sets: Vec<Toolset> = Toolset::ALL
+                .into_iter()
+                .filter(|set| set.tools().contains(&tool.as_str()))
+                .collect();
+            assert_eq!(sets.len(), 1, "{tool} is in toolsets {sets:?}");
+        }
+        for set in Toolset::ALL {
+            for name in set.tools() {
+                assert!(tools.iter().any(|t| t == name), "{name} is not a tool");
+            }
+        }
+    }
+
+    /// The Toolsets table in references/MCP_SERVER.md lists each toolset's tools.
+    #[test]
+    fn the_reference_docs_list_every_toolset() {
+        use crate::services::mcp_toolsets::Toolset;
+        let doc = include_str!("../../../references/MCP_SERVER.md");
+        for set in Toolset::ALL {
+            let row = doc
+                .lines()
+                .find(|l| l.starts_with(&format!("| `{}` |", set.name())))
+                .unwrap_or_else(|| panic!("no Toolsets row for {}", set.name()));
+            let cells: Vec<&str> = row.split('|').map(str::trim).collect();
+            let mut listed: Vec<&str> = cells[3].split('`').skip(1).step_by(2).collect();
+            let mut tools = set.tools().to_vec();
+            listed.sort_unstable();
+            tools.sort_unstable();
+            assert_eq!(listed, tools, "Toolsets row for {}", set.name());
+        }
+    }
+
+    #[test]
+    fn a_session_with_toolsets_lists_only_their_tools() {
+        use crate::services::mcp_toolsets::{Toolset, Toolsets};
+        let server = headless_server().with_toolsets(Toolsets::parse("core,ui").unwrap());
+        let tools = server.tool_router.list_all();
+        assert!(tools.iter().any(|t| t.name == "run_gradle_task"));
+        assert!(tools.iter().any(|t| t.name == "ui_tap"));
+        assert!(!tools.iter().any(|t| t.name == "install_apk"));
+        assert!(server.get_tool("stop_app").is_none());
+        let instructions = server.get_info().instructions.unwrap_or_default();
+        assert!(
+            instructions
+                .contains("Toolsets: core, ui only; the device-admin tools are not available"),
+            "{instructions}"
+        );
+        let all = headless_server().tool_router.list_all().len();
+        assert_eq!(tools.len() + Toolset::DeviceAdmin.tools().len(), all);
     }
 
     #[tokio::test]

@@ -26,6 +26,7 @@ pub mod mcp_attach;
 pub mod mcp_relay;
 pub mod mcp_server;
 pub mod mcp_sessions;
+pub mod mcp_toolsets;
 pub mod monitor;
 pub mod process_manager;
 pub mod project_app_info;

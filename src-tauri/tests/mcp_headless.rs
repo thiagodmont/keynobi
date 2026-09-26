@@ -2217,3 +2217,106 @@ fn crash_tools_match_the_trace_by_its_map_id_without_asking_the_device() {
         "{calls:?}"
     );
 }
+
+/// A call to `tool` refused through `--toolsets`: a JSON-RPC error naming
+/// its toolset.
+fn assert_hidden(client: &mut headless::McpClient, tool: &str, toolset: &str) {
+    let message = client.call_tool_rejected(tool, json!({}));
+    assert!(
+        message.starts_with(&format!("{tool} is in the \"{toolset}\" toolset"))
+            && message.contains(&format!("add {toolset} to --toolsets")),
+        "{message}"
+    );
+}
+
+#[test]
+fn toolsets_limit_the_tools_a_standalone_server_lists_and_runs() {
+    let sandbox = Sandbox::new();
+    let all = sandbox.start().tool_names();
+    assert!(all.iter().any(|t| t == "ui_tap") && all.iter().any(|t| t == "install_apk"));
+
+    let mut client = sandbox.start_args(&["--toolsets", "core"]);
+    let core = client.tool_names();
+    assert!(core.iter().any(|t| t == "run_gradle_task"), "{core:?}");
+    assert!(core.iter().any(|t| t == "list_devices"), "{core:?}");
+    for hidden in ["ui_tap", "screenshot", "install_apk", "stop_app"] {
+        assert!(
+            !core.iter().any(|t| t == hidden),
+            "{hidden} listed: {core:?}"
+        );
+    }
+    assert!(core.len() < all.len());
+    assert!(
+        client.instructions().contains("Toolsets: core only"),
+        "{}",
+        client.instructions()
+    );
+
+    assert_hidden(&mut client, "ui_tap", "ui");
+    assert_hidden(&mut client, "install_apk", "device-admin");
+    assert!(
+        sandbox.adb_calls().is_empty(),
+        "a hidden tool reached the device: {:?}",
+        sandbox.adb_calls()
+    );
+    // Enabled tools still run.
+    client.call_tool_json("get_project_info", json!({}));
+
+    let mut ui = sandbox.start_args(&["--toolsets=ui,device-admin"]);
+    let names = ui.tool_names();
+    assert!(names.iter().any(|t| t == "ui_tap") && names.iter().any(|t| t == "install_apk"));
+    assert!(!names.iter().any(|t| t == "run_gradle_task"), "{names:?}");
+    assert_hidden(&mut ui, "get_project_info", "core");
+}
+
+#[test]
+fn an_unknown_toolset_stops_the_server_at_startup() {
+    let sandbox = Sandbox::new();
+    for args in [&["--toolsets", "core,admin"][..], &["--toolsets"]] {
+        let out = sandbox
+            .command(&sandbox.project, Some(&sandbox.project))
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(2), "{args:?}");
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            stderr.contains("core, ui, device-admin"),
+            "{args:?}: {stderr}"
+        );
+        assert!(out.stdout.is_empty());
+    }
+    assert!(
+        !sandbox.activity_log().contains("Server started"),
+        "{}",
+        sandbox.activity_log()
+    );
+}
+
+/// The app serves an attached session, so it applies the client's toolsets:
+/// a hidden tool cannot be reached through the app.
+#[test]
+fn an_attached_session_serves_only_the_clients_toolsets() {
+    let sandbox = Sandbox::new();
+    let app = TestApp::listen(&sandbox, Some(&sandbox.project));
+    let mut client = sandbox.start_args(&["--toolsets", "core,ui"]);
+    app.wait_for_sessions(1);
+
+    assert!(
+        client.instructions().starts_with("Mode: attached")
+            && client.instructions().contains("Toolsets: core, ui only"),
+        "{}",
+        client.instructions()
+    );
+    let names = client.tool_names();
+    assert!(names.iter().any(|t| t == "ui_tap"), "{names:?}");
+    assert!(!names.iter().any(|t| t == "stop_app"), "{names:?}");
+    assert_hidden(&mut client, "stop_app", "device-admin");
+    assert!(sandbox.adb_calls().is_empty(), "{:?}", sandbox.adb_calls());
+
+    // Another client of the same app still gets every tool.
+    let mut other = sandbox.start();
+    app.wait_for_sessions(2);
+    assert!(other.tool_names().iter().any(|t| t == "stop_app"));
+}

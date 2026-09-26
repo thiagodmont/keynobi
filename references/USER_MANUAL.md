@@ -412,6 +412,8 @@ Your AI client starts a small Keynobi MCP process in the background. If Keynobi 
 
 To require the app, add `--attach-only` after `--mcp`: the MCP server then exits with an error instead of running standalone.
 
+To give an AI client fewer tools, add `--toolsets` after `--mcp` with one or more of `core` (build, logcat, crashes, project, health, and reading devices and apps), `ui` (reading the screen and driving the UI), and `device-admin` (installing, launching, and stopping apps, permissions, network, orientation, deep links, and emulators), separated by commas: for example `--toolsets core,ui`. Without it the client gets every tool. The client does not see the other tools, and a call to one fails with a message naming the toolset to add. An unknown name stops the MCP server at startup with the list of toolsets; the AI client's MCP log shows it. When Keynobi is open, the client attaches to it with the same toolsets.
+
 AI clients can change your device. `restart_app` keeps the app's data unless the client explicitly passes `clear_data: true` for a specific device. Stopping or restarting an app and granting or revoking its permissions work only on your project's app (its application ID and variants such as `.debug`) unless the client passes `allow_foreign_package: true`. Keynobi refuses to turn off Wi-Fi or turn on airplane mode on a device connected over wireless debugging, because that would disconnect it. Review what your AI client asks to run.
 
 ### Driving the device UI
