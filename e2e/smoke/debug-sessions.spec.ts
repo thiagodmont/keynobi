@@ -66,6 +66,18 @@ test("Run App opens a debug session that shows the install and launch, and can b
   await expect(bookmark).toHaveAttribute("aria-selected", "true");
   await expect(dialog.getByRole("region", { name: "Selected event" })).toContainText("Bookmark");
 
+  await dialog.getByRole("button", { name: "Export…" }).click();
+  const exportOptions = page.getByRole("dialog", { name: "Export Debug Session" });
+  await expect(exportOptions.getByLabel("Email addresses")).toBeChecked();
+  await exportOptions.getByLabel("IP addresses (not loopback or 10.0.2.2)").uncheck();
+  await exportOptions.getByRole("button", { name: "Save…" }).click();
+  await expect(exportOptions).toBeHidden();
+  await expect(
+    dialog.getByText(
+      /^Saved keynobi-session-.+\.zip \(4\.0 KB\)\. Redacted 1 path\. Not redacted: IP addresses\./
+    )
+  ).toBeVisible();
+
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
 });

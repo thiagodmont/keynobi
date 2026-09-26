@@ -121,7 +121,7 @@ Tauri capabilities and IPC commands should expose only what the app needs. Prefe
 
 Current surface (`src-tauri/capabilities/default.json`, `src-tauri/tauri.conf.json`):
 
-- The webview has no filesystem permissions and no fs plugin. Its only dialog permission is `dialog:allow-open`, used for the Open Project folder picker, which returns a path string. Everything that reads or writes files runs in Rust behind typed commands, including logcat export (`export_logcat` shows the save dialog and writes the file).
+- The webview has no filesystem permissions and no fs plugin. Its only dialog permission is `dialog:allow-open`, used for the Open Project folder picker, which returns a path string. Everything that reads or writes files runs in Rust behind typed commands, including logcat export (`export_logcat` shows the save dialog and writes the file) and debug session export (`export_debug_session`).
 - No shell plugin: the frontend cannot spawn processes.
 - The CSP allows scripts from `'self'` only, and network connections only to the IPC endpoint, `api.github.com` (update check), and Sentry ingest (opt-in crash reports).
 - Any new capability or CSP origin needs a stated reason in the PR.
@@ -164,6 +164,7 @@ Every long-lived collection, in memory or on disk, must have an explicit, named 
 | One line of process output (build, logcat) | `MAX_LINE_BYTES` (64 KiB) |
 | Build log files | Age, orphan, and folder-size pruning (settings) |
 | R8 mapping snapshots | `MAX_MAPPING_BYTES` (256 MiB per file), `MAX_MAPPINGS_PER_BUILD` (8), `MAX_MAPPING_SNAPSHOTS` (32 files) unpinned; unreferenced snapshots are pruned with the history, and snapshots installed builds name are never pruned |
+| Exported debug session bundle | `MAX_BUNDLE_ENTRIES` (64 files), `MAX_BUNDLE_ENTRY_BYTES` (16 MiB per file), `MAX_BUNDLE_UNCOMPRESSED_BYTES` (100 MiB), `MAX_BUNDLE_BYTES` (50 MiB zip) |
 | Build provenance | `MAX_PROVENANCE_BUILD_FILES` (16 build files hashed per build), `MAX_HASHED_BUILD_FILE_BYTES` (4 MiB per file), `MAX_BRANCH_CHARS` (255); `git status` under `GIT_STATUS_TIMEOUT` (5 s) |
 | Installed builds | `MAX_INSTALLED_TARGETS` (16 device and package pairs, oldest dropped); `MAX_APKS_PER_BUILD` (8 hashed APKs per build record) |
 | Debug sessions | `MAX_SESSIONS` (50), settings `sessions.retentionDays` (14) and `sessions.maxFolderMb` (200); per session `MAX_EVENTS_PER_SESSION` (2,000), `MAX_BOOKMARKS_PER_SESSION` (100), `MAX_AGENT_EVENTS_PER_SESSION` (500), `MAX_SESSION_BYTES` (16 MiB), later events counted as dropped; `MAX_KEPT_SESSIONS` (5); `MAX_BOOKMARK_NOTE_CHARS` and `MAX_EVENT_TEXT_CHARS` (500); `MAX_EVENTS_RETURNED` (500 per read); `MAX_PENDING_SESSION_EVENTS` (256 queued for the writer, overflow counted as dropped); `MAX_KNOWN_EMULATORS` (64); MCP reads `MAX_AGENT_SESSIONS` (50 listed), `MAX_AGENT_EVENTS` (500 per page), `MAX_AGENT_CRASHES` (20), `MAX_COMPARED_SIGNATURES` (20 per comparison) |

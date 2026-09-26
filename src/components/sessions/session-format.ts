@@ -7,6 +7,8 @@ import type {
   DebugSessionDevice,
   DebugSessionEvent,
   DebugSessionSummary,
+  RedactionRule,
+  SessionExportResult,
 } from "@/bindings";
 import type { BadgeVariant } from "@/components/ui";
 import { describeDisplayTimes, formatLaunchTime } from "@/lib/launch-timing";
@@ -279,4 +281,45 @@ export function crashOf(event: DebugSessionEvent): DebugSessionCrash | null {
 /** Whether a session takes bookmarks and can be ended. */
 export function isOpen(session: Pick<DebugSession, "closedAt">): boolean {
   return session.closedAt === null;
+}
+
+/** What each redaction rule replaces, for the export options. */
+export const REDACTION_RULE_LABELS: Record<RedactionRule, string> = {
+  emails: "Email addresses",
+  secrets: "Secrets: tokens, keys, passwords, credentials",
+  ipAddresses: "IP addresses (not loopback or 10.0.2.2)",
+  paths: "Home and project folders",
+  deviceSerials: "Physical device serials (emulators stay)",
+};
+
+const REDACTION_NOUNS: Record<RedactionRule, [string, string]> = {
+  emails: ["email", "emails"],
+  secrets: ["secret", "secrets"],
+  ipAddresses: ["IP address", "IP addresses"],
+  paths: ["path", "paths"],
+  deviceSerials: ["device serial", "device serials"],
+};
+
+/** Bytes for people: "812 B", "4.0 KB", "1.2 MB". */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** "Saved x.zip (4.0 KB). Redacted 2 emails, 1 path. Left out: R8 mappings." */
+export function exportResultLabel(result: SessionExportResult): string {
+  const name = result.path.split("/").pop() ?? result.path;
+  const redacted = result.redactions
+    .filter((r) => r.count > 0)
+    .map((r) => plural(r.count, ...REDACTION_NOUNS[r.rule]));
+  const off = result.redactions.filter((r) => !r.enabled).map((r) => REDACTION_NOUNS[r.rule][1]);
+  return [
+    `Saved ${name} (${formatBytes(result.bytes)}).`,
+    redacted.length > 0 ? `Redacted ${redacted.join(", ")}.` : "Nothing needed redacting.",
+    off.length > 0 ? `Not redacted: ${off.join(", ")}.` : null,
+    result.omitted.length > 0 ? `Left out: ${result.omitted.map((o) => o.item).join(", ")}.` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
 }

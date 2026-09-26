@@ -31,6 +31,7 @@ import {
   STATE_LABELS,
   actorLabel,
   crashOf,
+  exportResultLabel,
   formatSessionTime,
   isUnattributed,
   sessionBuildLabel,
@@ -42,6 +43,7 @@ import {
 } from "./session-format";
 import { SessionTimeline } from "./SessionTimeline";
 import { SessionEventDetail } from "./SessionEventDetail";
+import { SessionExportDialog } from "./SessionExportDialog";
 import styles from "./SessionsDialog.module.css";
 
 /** As `MAX_BOOKMARK_NOTE_CHARS` in the backend. */
@@ -100,6 +102,7 @@ export function SessionDetail(props: {
   const [actionError, setActionError] = createSignal<string | null>(null);
   const [actionNote, setActionNote] = createSignal<string | null>(null);
   const [note, setNote] = createSignal("");
+  const [exporting, setExporting] = createSignal(false);
   let request = 0;
 
   async function load(): Promise<void> {
@@ -325,7 +328,29 @@ export function SessionDetail(props: {
         >
           Refresh exit reasons
         </Button>
+        <Button
+          variant="outline"
+          size="xs"
+          title="Save this session as a .zip to share, with personal data redacted"
+          onClick={() => {
+            setActionError(null);
+            setActionNote(null);
+            setExporting(true);
+          }}
+        >
+          Export…
+        </Button>
       </div>
+      <Show when={exporting()}>
+        <SessionExportDialog
+          sessionId={props.id}
+          onClose={() => setExporting(false)}
+          onExported={(result) => {
+            setExporting(false);
+            setActionNote(exportResultLabel(result));
+          }}
+        />
+      </Show>
 
       <div class={styles.bookmark}>
         <Input

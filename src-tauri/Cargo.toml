@@ -48,6 +48,8 @@ schemars = "1.2.1"
 base64 = "0.23.1"
 # Decode and downscale device screenshots
 png = "0.18"
+# Exported debug session bundles: deflate only, no other codecs or encryption
+zip = { version = "8.6", default-features = false, features = ["deflate-flate2"] }
 # Recursive directory walking for source file lookup
 walkdir = "2"
 # Process memory monitoring (RSS) for the status bar monitor

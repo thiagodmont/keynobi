@@ -237,7 +237,7 @@ fn kind_of(event: &DebugSessionEvent) -> String {
         .unwrap_or_default()
 }
 
-fn level_char(level: &LogcatLevel) -> char {
+pub(super) fn level_char(level: &LogcatLevel) -> char {
     match level {
         LogcatLevel::Verbose => 'V',
         LogcatLevel::Debug => 'D',

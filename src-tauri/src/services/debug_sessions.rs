@@ -45,6 +45,7 @@ use std::time::{Duration, SystemTime};
 mod agent;
 mod compare;
 mod crashes;
+mod export;
 pub use agent::{
     agent_line, list_for_agent, session_for_agent, AgentSessionRequest, SessionFilter, StateFilter,
     DEFAULT_AGENT_EVENTS, DEFAULT_AGENT_LOG_LINES, DEFAULT_AGENT_SESSIONS, MAX_AGENT_CRASHES,
@@ -55,6 +56,10 @@ pub use crashes::{
     dropped_crashes, get_capture, refresh_exit_reasons, CrashSeen, CrashSource, CRASH_SETTLE,
     EXIT_READ_DELAY, MAX_CAPTURES_PER_SESSION, MAX_CAPTURE_BYTES, MAX_CAPTURE_ENTRIES,
     MAX_CRASHES_RETURNED, MAX_PENDING_CRASHES,
+};
+pub use export::{
+    export_file_name, export_session_to, BUNDLE_VERSION, MAX_BUNDLE_BYTES, MAX_BUNDLE_ENTRIES,
+    MAX_BUNDLE_ENTRY_BYTES, MAX_BUNDLE_UNCOMPRESSED_BYTES,
 };
 
 // ── Caps ──────────────────────────────────────────────────────────────────────

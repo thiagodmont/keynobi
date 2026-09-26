@@ -4,6 +4,7 @@
 use crate::models::app_exit::AppExitRecord;
 use crate::models::build::{BuildActor, BuildProvenance, LaunchTiming};
 use crate::models::logcat::ProcessedEntry;
+use crate::models::redaction::{RedactionCount, RedactionRules};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -434,4 +435,49 @@ pub struct DebugSessionExitRefresh {
     pub added: u32,
     /// Why nothing could be read (Android 10 or older), when so.
     pub message: Option<String>,
+}
+
+/// What to put in an exported debug session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct SessionExportOptions {
+    /// The redaction rules to apply; all on by default.
+    pub redaction: RedactionRules,
+    /// The log lines kept with each crash and ANR.
+    pub include_crash_logs: bool,
+}
+
+impl Default for SessionExportOptions {
+    fn default() -> Self {
+        SessionExportOptions {
+            redaction: RedactionRules::default(),
+            include_crash_logs: true,
+        }
+    }
+}
+
+/// Something an exported bundle leaves out, and why.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct SessionExportOmission {
+    pub item: String,
+    pub reason: String,
+}
+
+/// A debug session saved as a bundle (`export_debug_session`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct SessionExportResult {
+    /// Where the bundle was saved, as chosen in the save dialog.
+    pub path: String,
+    #[ts(type = "number")]
+    pub bytes: u64,
+    /// The bundle's files, in order.
+    pub entries: Vec<String>,
+    /// Matches each redaction rule replaced.
+    pub redactions: Vec<RedactionCount>,
+    pub omitted: Vec<SessionExportOmission>,
 }

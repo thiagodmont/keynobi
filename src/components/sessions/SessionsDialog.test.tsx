@@ -7,6 +7,7 @@ import type {
   DebugSessionEvent,
   DebugSessionExitRefresh,
   ProcessedEntry,
+  SessionExportResult,
 } from "@/bindings";
 import { makeLogEntry } from "@/test/factories/logcat";
 import { makeLaunchTiming } from "@/test/factories/build";
@@ -33,6 +34,8 @@ interface FakeBackend {
   /** Kept log lines, by `<session id>/<seq>`. */
   captures: Map<string, ProcessedEntry[]>;
   exitRefresh: DebugSessionExitRefresh;
+  /** What the export returns; `null` when the save dialog is cancelled. */
+  exportResult: SessionExportResult | null;
   /** Commands that reject with this error. */
   failing: Map<string, AppError>;
 }
@@ -99,6 +102,9 @@ function installFake(): void {
       case "refresh_session_exit_reasons":
         session(a.id as string);
         return fake.exitRefresh;
+      case "export_debug_session":
+        session(a.id as string);
+        return fake.exportResult;
     }
     throw new Error(`unexpected command ${command}`);
   });
@@ -208,6 +214,7 @@ describe("SessionsDialog", () => {
       events: new Map(),
       captures: new Map(),
       exitRefresh: { added: 0, message: null },
+      exportResult: null,
       failing: new Map(),
     };
     installFake();
@@ -397,6 +404,76 @@ describe("SessionsDialog", () => {
     expect(screen.queryByRole("alert")).toBeNull();
     expect(add.disabled).toBe(false);
     expect(calls("add_session_bookmark")).toHaveLength(0);
+  });
+
+  it("exports the session with the chosen options and says what was saved and redacted", async () => {
+    const { newest } = seed();
+    await openDialog();
+    fireEvent.click(screen.getByRole("button", { name: "Export…" }));
+    const options = await screen.findByRole("dialog", { name: "Export Debug Session" });
+    const boxes = within(options).getAllByRole("checkbox") as HTMLInputElement[];
+    expect(boxes).toHaveLength(6);
+    expect(boxes.every((b) => b.checked)).toBe(true);
+    fireEvent.click(within(options).getByLabelText("Log lines kept with crashes and ANRs"));
+    fireEvent.click(within(options).getByLabelText("Email addresses"));
+
+    // A cancelled save dialog keeps the options open.
+    fireEvent.click(within(options).getByRole("button", { name: "Save…" }));
+    await waitFor(() => expect(calls("export_debug_session")).toHaveLength(1));
+    expect(lastArgs("export_debug_session")).toEqual({
+      id: newest.id,
+      options: {
+        redaction: {
+          emails: false,
+          secrets: true,
+          ipAddresses: true,
+          paths: true,
+          deviceSerials: true,
+        },
+        includeCrashLogs: false,
+      },
+    });
+    await waitFor(() =>
+      expect(within(options).queryByText("Waiting for the save dialog…")).toBeNull()
+    );
+    expect(screen.getByRole("dialog", { name: "Export Debug Session" })).toBeTruthy();
+
+    fake.exportResult = {
+      path: "/Users/me/Desktop/keynobi-session-com.example.app-20260925.zip",
+      bytes: 4096,
+      entries: ["manifest.json", "session.json", "timeline.jsonl", "redaction.json"],
+      redactions: [
+        { rule: "emails", enabled: false, count: 0 },
+        { rule: "secrets", enabled: true, count: 1 },
+        { rule: "ipAddresses", enabled: true, count: 0 },
+        { rule: "paths", enabled: true, count: 3 },
+        { rule: "deviceSerials", enabled: true, count: 0 },
+      ],
+      omitted: [{ item: "R8 mappings", reason: "never exported" }],
+    };
+    fireEvent.click(within(options).getByRole("button", { name: "Save…" }));
+    expect(
+      await screen.findByText(
+        "Saved keynobi-session-com.example.app-20260925.zip (4.0 KB). Redacted 1 secret, 3 paths. Not redacted: emails. Left out: R8 mappings."
+      )
+    ).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Export Debug Session" })).toBeNull();
+  });
+
+  it("shows why an export failed inside its options, and Escape closes only them", async () => {
+    seed();
+    await openDialog();
+    fireEvent.click(screen.getByRole("button", { name: "Export…" }));
+    const options = await screen.findByRole("dialog", { name: "Export Debug Session" });
+    fake.failing.set("export_debug_session", { kind: "io", message: "'/x.zip': disk full" });
+    fireEvent.click(within(options).getByRole("button", { name: "Save…" }));
+    expect((await within(options).findByRole("alert")).textContent).toContain("disk full");
+
+    fireEvent.keyDown(options, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Export Debug Session" })).toBeNull()
+    );
+    expect(screen.getByRole("dialog", { name: "Debug Sessions" })).toBeTruthy();
   });
 
   it("reports what refreshing the exit reasons found", async () => {

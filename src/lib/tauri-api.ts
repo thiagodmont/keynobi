@@ -707,6 +707,8 @@ import type {
   DebugSessionEvent,
   DebugSessionExitRefresh,
   DebugSessionSummary,
+  SessionExportOptions,
+  SessionExportResult,
 } from "@/bindings";
 export type {
   DebugSessionCapture,
@@ -714,6 +716,8 @@ export type {
   DebugSessionEvent,
   DebugSessionExitRefresh,
   DebugSessionSummary,
+  SessionExportOptions,
+  SessionExportResult,
 };
 
 /** Every debug session (one per install on a device), newest first. */
@@ -767,6 +771,17 @@ export async function getSessionCapture(
 /** Read the app's exit reasons from the session's device and add those that belong to it. */
 export async function refreshSessionExitReasons(id: string): Promise<DebugSessionExitRefresh> {
   return invoke<DebugSessionExitRefresh>("refresh_session_exit_reasons", { id });
+}
+
+/**
+ * Save a debug session as a redacted zip bundle. The backend shows the save
+ * dialog and writes the file; `null` when the dialog was cancelled.
+ */
+export async function exportDebugSession(
+  id: string,
+  options: SessionExportOptions
+): Promise<SessionExportResult | null> {
+  return invoke<SessionExportResult | null>("export_debug_session", { id, options });
 }
 
 // ── MCP Server ─────────────────────────────────────────────────────────────────
