@@ -1753,25 +1753,55 @@ fn two_standalone_servers_record_their_installs() {
     assert_eq!(serials, vec!["R5CT0001", "R5CT0002"]);
 }
 
-/// The first debug session and its event kinds, once its summary counts `count` events.
-fn wait_for_session_events(sandbox: &Sandbox, count: usize) -> (serde_json::Value, Vec<String>) {
+/// The events of debug session `id`, oldest first.
+fn session_events(sandbox: &Sandbox, id: &str) -> Vec<serde_json::Value> {
+    let path = sandbox
+        .home
+        .join(".keynobi/sessions")
+        .join(id)
+        .join("events.jsonl");
+    std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect()
+}
+
+/// The first event of `kind` of debug session `session`.
+fn session_event(sandbox: &Sandbox, session: &serde_json::Value, kind: &str) -> serde_json::Value {
+    session_events(sandbox, session["id"].as_str().unwrap())
+        .into_iter()
+        .find(|e| e["kind"] == kind)
+        .unwrap_or_else(|| panic!("no {kind} event"))
+}
+
+/// The newest debug session and the kinds of its events other than agent
+/// actions, once it has `count` of them and `agent_actions` agent actions.
+fn wait_for_session_events_and_actions(
+    sandbox: &Sandbox,
+    count: usize,
+    agent_actions: usize,
+) -> (serde_json::Value, Vec<String>) {
     let sessions = sandbox.home.join(".keynobi/sessions");
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
         let index: Option<serde_json::Value> = std::fs::read_to_string(sessions.join("index.json"))
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok());
-        if let Some(session) = index.as_ref().and_then(|i| i["sessions"].get(0)) {
-            let id = session["id"].as_str().unwrap();
-            let events =
-                std::fs::read_to_string(sessions.join(id).join("events.jsonl")).unwrap_or_default();
-            let kinds: Vec<String> = events
-                .lines()
-                .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
-                .map(|e| e["kind"].as_str().unwrap().to_string())
-                .collect();
-            if session["eventCount"].as_u64() >= Some(count as u64) {
-                return (session.clone(), kinds);
+        if let Some(session) = index
+            .as_ref()
+            .and_then(|i| i["sessions"].as_array()?.last())
+        {
+            let (actions, others): (Vec<_>, Vec<_>) =
+                session_events(sandbox, session["id"].as_str().unwrap())
+                    .into_iter()
+                    .map(|e| e["kind"].as_str().unwrap().to_string())
+                    .partition(|kind| kind == "agentAction");
+            // The summary, read first, must count every event read after it.
+            let summarized =
+                session["eventCount"].as_u64() >= Some((others.len() + actions.len()) as u64);
+            if others.len() >= count && actions.len() >= agent_actions && summarized {
+                return (session.clone(), others);
             }
         }
         assert!(
@@ -1782,9 +1812,42 @@ fn wait_for_session_events(sandbox: &Sandbox, count: usize) -> (serde_json::Valu
     }
 }
 
-#[test]
-fn install_apk_then_launch_app_records_a_debug_session() {
-    let sandbox = Sandbox::new();
+fn wait_for_session_events(sandbox: &Sandbox, count: usize) -> (serde_json::Value, Vec<String>) {
+    wait_for_session_events_and_actions(sandbox, count, 0)
+}
+
+/// Write a debug APK of `com.example.sandbox.debug` and its metadata; the APK's path.
+fn write_debug_apk(sandbox: &Sandbox) -> std::path::PathBuf {
+    let debug = sandbox.project.join("app/build/outputs/apk/debug");
+    write_file(&debug.join("app-debug.apk"), b"apk");
+    write_file(
+        &debug.join("output-metadata.json"),
+        br#"{"applicationId":"com.example.sandbox.debug","variantName":"debug",
+            "elements":[{"outputFile":"app-debug.apk"}]}"#,
+    );
+    debug.join("app-debug.apk")
+}
+
+/// Install `apk` on R5CT0001 and launch it.
+fn install_and_launch(client: &mut headless::McpClient, apk: &std::path::Path) {
+    let install = client.call_tool(
+        "install_apk",
+        json!({ "device_serial": "R5CT0001", "apk_path": apk }),
+    );
+    assert!(!install.is_error, "{}", install.text);
+    let launch = client.call_tool(
+        "launch_app",
+        json!({
+            "device_serial": "R5CT0001",
+            "package": "com.example.sandbox.debug",
+            "activity": ".MainActivity"
+        }),
+    );
+    assert!(!launch.is_error, "{}", launch.text);
+}
+
+/// An `adb` whose installs succeed and whose launches take 812 ms.
+fn launching_adb(sandbox: &Sandbox) {
     sandbox.write_adb(
         r#"case "$*" in
   *" install "*) echo Success ;;
@@ -1797,29 +1860,16 @@ fn install_apk_then_launch_app_records_a_debug_session() {
     ;;
 esac"#,
     );
-    let debug = sandbox.project.join("app/build/outputs/apk/debug");
-    write_file(&debug.join("app-debug.apk"), b"apk");
-    write_file(
-        &debug.join("output-metadata.json"),
-        br#"{"applicationId":"com.example.sandbox.debug","variantName":"debug",
-            "elements":[{"outputFile":"app-debug.apk"}]}"#,
-    );
+}
+
+#[test]
+fn install_apk_then_launch_app_records_a_debug_session() {
+    let sandbox = Sandbox::new();
+    launching_adb(&sandbox);
+    let apk = write_debug_apk(&sandbox);
     let mut client = sandbox.start();
 
-    let install = client.call_tool(
-        "install_apk",
-        json!({ "device_serial": "R5CT0001", "apk_path": debug.join("app-debug.apk") }),
-    );
-    assert!(!install.is_error, "{}", install.text);
-    let launch = client.call_tool(
-        "launch_app",
-        json!({
-            "device_serial": "R5CT0001",
-            "package": "com.example.sandbox.debug",
-            "activity": ".MainActivity"
-        }),
-    );
-    assert!(!launch.is_error, "{}", launch.text);
+    install_and_launch(&mut client, &apk);
 
     let (session, kinds) = wait_for_session_events(&sandbox, 2);
     assert_eq!(kinds, ["install", "launch"]);
@@ -1828,19 +1878,245 @@ esac"#,
     assert_eq!(session["recordedBy"], "standalone");
     assert_eq!(session["buildId"], serde_json::Value::Null);
     assert_eq!(session["counts"]["launches"], 1);
-    let id = session["id"].as_str().unwrap();
-    let events = std::fs::read_to_string(
-        sandbox
-            .home
-            .join(".keynobi/sessions")
-            .join(id)
-            .join("events.jsonl"),
-    )
-    .unwrap();
-    let launch: serde_json::Value = serde_json::from_str(events.lines().nth(1).unwrap()).unwrap();
+    let launch = session_event(&sandbox, &session, "launch");
     assert_eq!(launch["data"]["timing"]["totalMs"], 812);
     assert_eq!(launch["actor"]["kind"], "agent");
     assert_eq!(launch["actor"]["standalone"], true);
+}
+
+/// Tools that change the device are recorded on its open session, after
+/// they finish; read-only tools and session tools are not.
+#[test]
+fn agent_tool_calls_that_change_the_device_are_recorded_on_its_session() {
+    let sandbox = Sandbox::new();
+    launching_adb(&sandbox);
+    let apk = write_debug_apk(&sandbox);
+    let mut client = sandbox.start();
+
+    install_and_launch(&mut client, &apk);
+    // Read-only, even when it names the device.
+    client.call_tool(
+        "list_debug_sessions",
+        json!({ "device_serial": "R5CT0001" }),
+    );
+    client.call_tool("list_devices", json!({}));
+    // Events are written in order, so the reads would come before this.
+    let relaunch = client.call_tool(
+        "launch_app",
+        json!({ "device_serial": "R5CT0001", "package": "com.example.sandbox.debug", "activity": ".MainActivity" }),
+    );
+    assert!(!relaunch.is_error, "{}", relaunch.text);
+    let (session, _) = wait_for_session_events_and_actions(&sandbox, 3, 3);
+
+    let actions: Vec<serde_json::Value> = session_events(&sandbox, session["id"].as_str().unwrap())
+        .into_iter()
+        .filter(|e| e["kind"] == "agentAction")
+        .collect();
+    let tools: Vec<&str> = actions
+        .iter()
+        .map(|a| a["data"]["tool"].as_str().unwrap())
+        .collect();
+    assert_eq!(tools, ["install_apk", "launch_app", "launch_app"]);
+    let launched = &actions[1];
+    assert_eq!(launched["data"]["kind"], "write", "{launched}");
+    assert_eq!(launched["data"]["ok"], true, "{launched}");
+    assert_eq!(launched["data"]["serial"], "R5CT0001", "{launched}");
+    assert!(launched["data"]["durationMs"].is_u64(), "{launched}");
+    assert_eq!(launched["actor"]["kind"], "agent", "{launched}");
+    assert_eq!(launched["actor"]["standalone"], true, "{launched}");
+    assert_eq!(actions[0]["data"]["kind"], "destructive");
+    assert_eq!(session["counts"]["agentActions"], 3, "{session}");
+}
+
+/// Attached, the app records the agent's actions in its own sessions.
+#[test]
+fn an_attached_agents_actions_are_recorded_by_the_app() {
+    use keynobi_lib::services::{debug_sessions, installed_builds::InstallTarget};
+    let sandbox = Sandbox::new();
+    write_app_module(&sandbox);
+    let app = TestApp::listen(&sandbox, Some(&sandbox.project));
+    let target = InstallTarget {
+        serial: "R5CTATTACHED".into(),
+        avd_name: None,
+        model: None,
+    };
+    let entry = keynobi_lib::models::build::InstalledBuild {
+        serial: target.serial.clone(),
+        avd_name: None,
+        model: None,
+        package: "com.google.android.gms".into(),
+        apk_sha256: "a".repeat(64),
+        build_id: None,
+        version_code: None,
+        mappings: vec![],
+        installed_at: "2026-09-25T10:32:00+00:00".into(),
+    };
+    let session = debug_sessions::open_for_install_in(
+        &keynobi_lib::services::settings_manager::data_dir(),
+        &target,
+        &entry,
+        keynobi_lib::models::build::BuildActor::App,
+        debug_sessions::Retention {
+            days: 0,
+            max_folder_mb: 200,
+        },
+    )
+    .expect("session opened");
+    let mut client = sandbox.start();
+    app.wait_for_sessions(1);
+
+    // Refused before it reaches the device, and recorded as failed.
+    client.call_tool_rejected(
+        "stop_app",
+        json!({ "device_serial": "R5CTATTACHED", "package": "com.google.android.gms" }),
+    );
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let action = loop {
+        let detail = debug_sessions::get_session(&session.id).expect("session");
+        if let Some(event) = detail.events.iter().find(|e| {
+            matches!(
+                e.event,
+                keynobi_lib::models::debug_session::DebugSessionEventData::AgentAction(_)
+            )
+        }) {
+            break serde_json::to_value(event).unwrap();
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "no agent action: {detail:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+    assert_eq!(action["data"]["tool"], "stop_app", "{action}");
+    assert_eq!(action["data"]["kind"], "destructive", "{action}");
+    assert_eq!(action["data"]["ok"], false, "{action}");
+    assert_eq!(action["actor"]["kind"], "agent", "{action}");
+    assert_eq!(action["actor"]["standalone"], false, "{action}");
+    assert!(sandbox.adb_calls().is_empty(), "{:?}", sandbox.adb_calls());
+    // Nothing is recorded in the agent's own data folder.
+    assert!(!sandbox.home.join(".keynobi/sessions").exists());
+}
+
+#[test]
+fn agents_list_inspect_and_compare_debug_sessions() {
+    let sandbox = Sandbox::new();
+    launching_adb(&sandbox);
+    let apk = write_debug_apk(&sandbox);
+    let mut client = sandbox.start();
+    install_and_launch(&mut client, &apk);
+    let (first, _) = wait_for_session_events_and_actions(&sandbox, 2, 2);
+    // A second install supersedes the first session.
+    install_and_launch(&mut client, &apk);
+    let (second, _) = wait_for_session_events_and_actions(&sandbox, 2, 2);
+    let (first_id, second_id) = (
+        first["id"].as_str().unwrap(),
+        second["id"].as_str().unwrap(),
+    );
+    assert_ne!(first_id, second_id);
+
+    let listed = client.call_tool("list_debug_sessions", json!({}));
+    assert!(!listed.is_error, "{}", listed.text);
+    assert!(
+        listed.text.starts_with("2 of 2 debug sessions"),
+        "{}",
+        listed.text
+    );
+    let lines: Vec<&str> = listed.text.lines().skip(1).take(2).collect();
+    assert!(
+        lines[0].starts_with(&format!(
+            "{second_id} | open | com.example.sandbox.debug on R5CT0001"
+        )),
+        "{lines:?}"
+    );
+    assert!(
+        lines[1].starts_with(&format!("{first_id} | superseded |")),
+        "{lines:?}"
+    );
+    let open = client.call_tool(
+        "list_debug_sessions",
+        json!({ "state": "open", "limit": 5 }),
+    );
+    assert!(
+        open.text.starts_with("1 of 1 debug sessions"),
+        "{}",
+        open.text
+    );
+    let none = client.call_tool(
+        "list_debug_sessions",
+        json!({ "device_serial": "emulator-5554" }),
+    );
+    assert!(
+        none.text.starts_with("No debug sessions match"),
+        "{}",
+        none.text
+    );
+    let bad_state = client.call_tool_rejected("list_debug_sessions", json!({ "state": "running" }));
+    assert!(bad_state.contains("Unknown state"), "{bad_state}");
+
+    let detail = client.call_tool_json(
+        "get_debug_session",
+        json!({ "session_id": first_id, "max_events": 2 }),
+    );
+    assert_eq!(detail["session"]["state"], "superseded", "{detail}");
+    assert_eq!(detail["session"]["recorded_by"], "standalone", "{detail}");
+    let kinds: Vec<&str> = detail["timeline"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds.len(), 2, "{detail}");
+    let before = detail["next_before_seq"].as_u64().expect("a cursor");
+    let older = client.call_tool_json(
+        "get_debug_session",
+        json!({ "session_id": first_id, "before_seq": before }),
+    );
+    assert_eq!(older["timeline"][0]["kind"], "install", "{older}");
+    assert_eq!(older["timeline"][0]["seq"], 1, "{older}");
+    let missing = client.call_tool(
+        "get_debug_session",
+        json!({ "session_id": "s-20260925T103200Z-000000000000" }),
+    );
+    assert!(missing.is_error, "{}", missing.text);
+    client.call_tool_rejected("get_debug_session", json!({ "session_id": "../index" }));
+
+    let compared = client.call_tool_json(
+        "compare_debug_sessions",
+        json!({ "from": first_id, "to": second_id }),
+    );
+    assert_eq!(compared["from"]["id"], first_id, "{compared}");
+    assert_eq!(compared["to"]["id"], second_id, "{compared}");
+    assert_eq!(
+        compared["provenance"],
+        serde_json::Value::Null,
+        "{compared}"
+    );
+    assert!(
+        compared["not_recorded"]
+            .as_array()
+            .is_some_and(|n| !n.is_empty()),
+        "{compared}"
+    );
+    // No crashing session yet, so there is no pair to pick.
+    let default = client.call_tool("compare_debug_sessions", json!({}));
+    assert!(default.is_error, "{}", default.text);
+    client.call_tool_rejected("compare_debug_sessions", json!({ "from": first_id }));
+}
+
+#[test]
+fn session_tools_are_core_tools() {
+    let sandbox = Sandbox::new();
+    let core = sandbox.start_args(&["--toolsets", "core"]).tool_names();
+    let mut ui = sandbox.start_args(&["--toolsets", "ui"]);
+    for tool in [
+        "list_debug_sessions",
+        "get_debug_session",
+        "compare_debug_sessions",
+    ] {
+        assert!(core.iter().any(|t| t == tool), "{tool}: {core:?}");
+        assert_hidden(&mut ui, tool, "core");
+    }
 }
 
 #[test]
@@ -1906,8 +2182,7 @@ esac"#,
         .home
         .join(".keynobi/sessions")
         .join(session["id"].as_str().unwrap());
-    let events = std::fs::read_to_string(dir.join("events.jsonl")).unwrap();
-    let crash: serde_json::Value = serde_json::from_str(events.lines().nth(2).unwrap()).unwrap();
+    let crash = session_event(&sandbox, &session, "crash");
     assert_eq!(crash["data"]["summary"], "java.lang.RuntimeException: boom");
     assert_eq!(crash["data"]["pid"], 4321);
     assert_eq!(crash["data"]["attribution"]["method"], "installRecord");
@@ -1922,9 +2197,31 @@ esac"#,
         .collect();
     assert!(messages[0].contains("onCreate"), "{messages:?}");
     assert!(messages[1].contains("FATAL EXCEPTION"), "{messages:?}");
-    let exit: serde_json::Value = serde_json::from_str(events.lines().nth(3).unwrap()).unwrap();
+    let exit = session_event(&sandbox, &session, "exit");
     assert_eq!(exit["data"]["matchedBy"], "pid", "{exit}");
     assert_eq!(exit["data"]["record"]["reason"], "crash");
+
+    let detail = client.call_tool_json(
+        "get_debug_session",
+        json!({ "session_id": session["id"], "capture_seq": seq, "log_lines": 2 }),
+    );
+    let attributed = &detail["crashes"][0];
+    assert_eq!(attributed["seq"], seq, "{detail}");
+    assert_eq!(
+        attributed["attribution"]["method"], "install_record",
+        "{detail}"
+    );
+    assert_eq!(attributed["attribution"]["verified"], true, "{detail}");
+    assert_eq!(detail["capture"]["truncated"], true, "{detail}");
+    let lines = detail["capture"]["lines"].as_array().unwrap();
+    assert_eq!(lines.len(), 2, "{detail}");
+    assert!(
+        lines[1]
+            .as_str()
+            .unwrap()
+            .contains("E/AndroidRuntime(4321)"),
+        "{detail}"
+    );
 }
 
 fn resource_uris(client: &mut headless::McpClient) -> Vec<String> {

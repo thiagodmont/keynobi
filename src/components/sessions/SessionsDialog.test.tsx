@@ -124,11 +124,27 @@ function seed(): { older: DebugSession; newest: DebugSession } {
     kept: true,
     closedAt: "2026-09-25T10:32:00.000000Z",
     closeReason: "superseded",
-    counts: { launches: 0, crashes: 1, anrs: 0, exits: 0, bookmarks: 0, captures: 0 },
+    counts: {
+      launches: 0,
+      crashes: 1,
+      anrs: 0,
+      exits: 0,
+      bookmarks: 0,
+      captures: 0,
+      agentActions: 0,
+    },
   });
   const newest = makeSession({
     id: "s-20260925T103200Z-000000000002",
-    counts: { launches: 1, crashes: 1, anrs: 0, exits: 0, bookmarks: 0, captures: 1 },
+    counts: {
+      launches: 1,
+      crashes: 1,
+      anrs: 0,
+      exits: 0,
+      bookmarks: 0,
+      captures: 1,
+      agentActions: 0,
+    },
     eventCount: 4,
   });
   const newestBuild = newest.build;
@@ -234,6 +250,34 @@ describe("SessionsDialog", () => {
       expect.stringContaining("java.lang.IllegalStateException: boom"),
     ]);
     expect(screen.getByText("1 crash · 0 ANRs · 1 launch · 0 exits · 0 bookmarks")).toBeTruthy();
+  });
+
+  it("shows what an agent did on the device in the timeline", async () => {
+    const { newest } = seed();
+    append(
+      newest,
+      makeSessionEvent(
+        5,
+        {
+          kind: "agentAction",
+          data: {
+            tool: "ui_tap",
+            kind: "write",
+            ok: false,
+            durationMs: 412,
+            serial: "emulator-5554",
+          },
+        },
+        {
+          actor: { kind: "agent", sessionId: null, clientName: "Claude Code", standalone: false },
+        }
+      )
+    );
+    await openDialog();
+
+    const row = timelineRows()[4];
+    expect(within(row).getByText("Agent")).toBeTruthy();
+    expect(row.textContent).toContain("ui_tap by an agent (Claude Code) · 412 ms · failed");
   });
 
   it("opens on the session it was asked for", async () => {

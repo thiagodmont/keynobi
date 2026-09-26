@@ -80,6 +80,7 @@ function append(entry: MockSession, actor: BuildActor | null, event: DebugSessio
   if (event.kind === "crash") counts.crashes += 1;
   if (event.kind === "anr") counts.anrs += 1;
   if (event.kind === "exit") counts.exits += 1;
+  if (event.kind === "agentAction") counts.agentActions += 1;
   if ((event.kind === "crash" || event.kind === "anr") && event.data.capture) counts.captures += 1;
   return recorded;
 }
@@ -151,7 +152,15 @@ export function openMockSession(entry: InstalledBuild, record: BuildRecord | und
       closeReason: null,
       recordedBy: "app",
       kept: false,
-      counts: { launches: 0, crashes: 0, anrs: 0, exits: 0, bookmarks: 0, captures: 0 },
+      counts: {
+        launches: 0,
+        crashes: 0,
+        anrs: 0,
+        exits: 0,
+        bookmarks: 0,
+        captures: 0,
+        agentActions: 0,
+      },
       lastEventAt: now,
       eventCount: 0,
       droppedEvents: 0,

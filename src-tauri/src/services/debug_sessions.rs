@@ -42,7 +42,15 @@ use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{LazyLock, Mutex as StdMutex};
 use std::time::{Duration, SystemTime};
 
+mod agent;
+mod compare;
 mod crashes;
+pub use agent::{
+    agent_line, list_for_agent, session_for_agent, AgentSessionRequest, SessionFilter, StateFilter,
+    DEFAULT_AGENT_EVENTS, DEFAULT_AGENT_LOG_LINES, DEFAULT_AGENT_SESSIONS, MAX_AGENT_CRASHES,
+    MAX_AGENT_EVENTS, MAX_AGENT_SESSIONS,
+};
+pub use compare::{compare_sessions, SessionComparison, MAX_COMPARED_SIGNATURES};
 pub use crashes::{
     dropped_crashes, get_capture, refresh_exit_reasons, CrashSeen, CrashSource, CRASH_SETTLE,
     EXIT_READ_DELAY, MAX_CAPTURES_PER_SESSION, MAX_CAPTURE_BYTES, MAX_CAPTURE_ENTRIES,
@@ -57,6 +65,8 @@ pub const MAX_SESSIONS: usize = 50;
 pub const MAX_EVENTS_PER_SESSION: u32 = 2_000;
 /// Most bookmarks in one session.
 pub const MAX_BOOKMARKS_PER_SESSION: u32 = 100;
+/// Most agent actions in one session.
+pub const MAX_AGENT_EVENTS_PER_SESSION: u32 = 500;
 /// Largest event log of one session.
 pub const MAX_SESSION_BYTES: u64 = 16 * 1024 * 1024;
 /// Most sessions marked Keep. Each pins its R8 mappings.
@@ -542,6 +552,12 @@ fn append_locked(
         session.dropped_events += 1;
         return Ok(Append::Dropped("MAX_BOOKMARKS_PER_SESSION"));
     }
+    if matches!(event, DebugSessionEventData::AgentAction(_))
+        && session.counts.agent_actions >= MAX_AGENT_EVENTS_PER_SESSION
+    {
+        session.dropped_events += 1;
+        return Ok(Append::Dropped("MAX_AGENT_EVENTS_PER_SESSION"));
+    }
     let at = stamp(now);
     let recorded = DebugSessionEvent {
         seq: session.event_count + 1,
@@ -579,6 +595,7 @@ fn append_locked(
             counts.captures += u32::from(anr.capture.is_some());
         }
         DebugSessionEventData::Exit(_) => counts.exits += 1,
+        DebugSessionEventData::AgentAction(_) => counts.agent_actions += 1,
         _ => {}
     }
     Ok(Append::Recorded(Box::new(recorded)))
@@ -1069,6 +1086,33 @@ fn record_logcat_in(data_dir: &Path, serial: Option<&str>, change: LogcatChange)
     })
 }
 
+/// Record an MCP tool call that acted on `serial` on the open sessions of
+/// that device (of `package`, when the call named one). Only queues.
+pub fn record_agent_action(
+    serial: &str,
+    package: Option<&str>,
+    action: DebugSessionAgentAction,
+    agent: BuildActor,
+) -> bool {
+    record_agent_action_in(&data_dir(), serial, package, action, agent)
+}
+
+fn record_agent_action_in(
+    data_dir: &Path,
+    serial: &str,
+    package: Option<&str>,
+    action: DebugSessionAgentAction,
+    agent: BuildActor,
+) -> bool {
+    enqueue(PendingEvent {
+        data_dir: data_dir.to_path_buf(),
+        target: target_of_serial(serial),
+        package: package.map(str::to_string),
+        actor: Some(agent),
+        event: DebugSessionEventData::AgentAction(action),
+    })
+}
+
 /// Tracks which devices the GUI device poll sees online, and records
 /// `deviceOffline` / `deviceOnline` on their open sessions when that changes.
 /// The first list observed is the baseline.
@@ -1184,25 +1228,8 @@ fn get_session_in(
     now: DateTime<Utc>,
 ) -> Result<DebugSessionDetail, AppError> {
     checked_id(id)?;
-    let mut session = read_manifest(data_dir, id).map_err(|_| not_found(id))?;
-    if session.closed_at.is_none() {
-        if let Some(at) = idle_closed_at(&session.last_event_at, now) {
-            session.closed_at = Some(stamp(at));
-            session.close_reason = Some(DebugSessionCloseReason::Idle);
-        }
-    }
-    let path = session_dir(data_dir, id).join(EVENTS_FILE);
-    let mut text = String::new();
-    if let Ok(file) = std::fs::File::open(&path) {
-        let mut limited = file.take(MAX_SESSION_BYTES);
-        limited
-            .read_to_string(&mut text)
-            .map_err(|e| AppError::io(path.display(), e))?;
-    }
-    let mut events: Vec<DebugSessionEvent> = text
-        .lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .collect();
+    let session = read_session_in(data_dir, id, now)?;
+    let mut events = read_events(data_dir, id)?;
     let crashes = crashes::crash_events(&events);
     let events_truncated = events.len() > MAX_EVENTS_RETURNED;
     if events_truncated {
@@ -1214,6 +1241,38 @@ fn get_session_in(
         events_truncated,
         crashes,
     })
+}
+
+/// Session `id`'s manifest as a reader sees it: an idle session is closed.
+fn read_session_in(
+    data_dir: &Path,
+    id: &str,
+    now: DateTime<Utc>,
+) -> Result<DebugSession, AppError> {
+    let mut session = read_manifest(data_dir, id).map_err(|_| not_found(id))?;
+    if session.closed_at.is_none() {
+        if let Some(at) = idle_closed_at(&session.last_event_at, now) {
+            session.closed_at = Some(stamp(at));
+            session.close_reason = Some(DebugSessionCloseReason::Idle);
+        }
+    }
+    Ok(session)
+}
+
+/// Every event of session `id`, oldest first.
+fn read_events(data_dir: &Path, id: &str) -> Result<Vec<DebugSessionEvent>, AppError> {
+    let path = session_dir(data_dir, id).join(EVENTS_FILE);
+    let mut text = String::new();
+    if let Ok(file) = std::fs::File::open(&path) {
+        let mut limited = file.take(MAX_SESSION_BYTES);
+        limited
+            .read_to_string(&mut text)
+            .map_err(|e| AppError::io(path.display(), e))?;
+    }
+    Ok(text
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect())
 }
 
 /// Run `change` on session `id` under the data lock and save it.
@@ -1890,6 +1949,59 @@ mod tests {
             bookmark("one more"),
             Err(AppError::InvalidInput(_))
         ));
+    }
+
+    fn tapped(serial: &str) -> DebugSessionAgentAction {
+        DebugSessionAgentAction {
+            tool: "ui_tap".into(),
+            kind: DebugSessionToolKind::Write,
+            ok: true,
+            duration_ms: 40,
+            serial: serial.into(),
+        }
+    }
+
+    #[test]
+    fn agent_actions_go_to_the_devices_open_sessions_of_the_named_package_and_are_capped() {
+        let dir = TempDir::new().unwrap();
+        let a = open(dir.path(), &phone("R5CT"), "com.a");
+        let b = open(dir.path(), &phone("R5CT"), "com.b");
+        let other = open(dir.path(), &phone("R5XX"), "com.a");
+
+        assert!(record_agent_action_in(
+            dir.path(),
+            "R5CT",
+            Some("com.a"),
+            tapped("R5CT"),
+            agent(true)
+        ));
+        assert!(record_agent_action_in(
+            dir.path(),
+            "R5CT",
+            None,
+            tapped("R5CT"),
+            agent(true)
+        ));
+        QUEUE.flush();
+
+        assert_eq!(
+            kinds(dir.path(), &a.id),
+            ["install", "agentAction", "agentAction"]
+        );
+        assert_eq!(kinds(dir.path(), &b.id), ["install", "agentAction"]);
+        assert_eq!(kinds(dir.path(), &other.id), ["install"]);
+        let recorded = &events(dir.path(), &a.id)[1];
+        assert_eq!(recorded.actor, Some(agent(true)));
+        assert_eq!(summary(dir.path(), &a.id).counts.agent_actions, 2);
+
+        tamper(dir.path(), &b.id, |s| {
+            s.counts.agent_actions = MAX_AGENT_EVENTS_PER_SESSION
+        });
+        record_agent_action_in(dir.path(), "R5CT", None, tapped("R5CT"), agent(true));
+        QUEUE.flush();
+        assert_eq!(kinds(dir.path(), &b.id), ["install", "agentAction"]);
+        assert_eq!(summary(dir.path(), &b.id).dropped_events, 1);
+        assert_eq!(kinds(dir.path(), &a.id).len(), 4);
     }
 
     #[test]

@@ -45,6 +45,7 @@ export type { InstalledBuild } from "./InstalledBuild";
 
 // Debug sessions
 export type { DebugSession } from "./DebugSession";
+export type { DebugSessionAgentAction } from "./DebugSessionAgentAction";
 export type { DebugSessionApk } from "./DebugSessionApk";
 export type { DebugSessionAttribution } from "./DebugSessionAttribution";
 export type { DebugSessionAttributionMethod } from "./DebugSessionAttributionMethod";
@@ -69,6 +70,7 @@ export type { DebugSessionLogcatChange } from "./DebugSessionLogcatChange";
 export type { DebugSessionMapping } from "./DebugSessionMapping";
 export type { DebugSessionRecorder } from "./DebugSessionRecorder";
 export type { DebugSessionSummary } from "./DebugSessionSummary";
+export type { DebugSessionToolKind } from "./DebugSessionToolKind";
 
 // Devices & variants
 export type { Device } from "./Device";

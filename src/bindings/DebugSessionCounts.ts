@@ -7,4 +7,8 @@ export type DebugSessionCounts = { launches: number, crashes: number, anrs: numb
 /**
  * Crashes and ANRs whose log lines were kept.
  */
-captures: number, };
+captures: number, 
+/**
+ * MCP tool calls that acted on the session's device.
+ */
+agentActions: number, };

@@ -348,6 +348,7 @@ fn debug_sessions() -> Vec<DebugSession> {
                 exits: 0,
                 bookmarks: 1,
                 captures: 1,
+                agent_actions: 2,
             },
             last_event_at: TIME.into(),
             event_count: 4,
@@ -509,6 +510,27 @@ fn debug_session_events() -> Vec<DebugSessionEvent> {
             exited_at: TIME.into(),
             matched_by: DebugSessionExitMatch::ProcessName,
             record: session_exit_record(AppExitReason::LowMemory),
+        }),
+        DebugSessionEventData::AgentAction(DebugSessionAgentAction {
+            tool: "ui_tap".into(),
+            kind: DebugSessionToolKind::Write,
+            ok: true,
+            duration_ms: 412,
+            serial: "emulator-5554".into(),
+        }),
+        DebugSessionEventData::AgentAction(DebugSessionAgentAction {
+            tool: "install_apk".into(),
+            kind: DebugSessionToolKind::Destructive,
+            ok: false,
+            duration_ms: 30_021,
+            serial: "emulator-5554".into(),
+        }),
+        DebugSessionEventData::AgentAction(DebugSessionAgentAction {
+            tool: "run_tests".into(),
+            kind: DebugSessionToolKind::OpenWorld,
+            ok: true,
+            duration_ms: 95_000,
+            serial: "emulator-5554".into(),
         }),
     ];
     events
