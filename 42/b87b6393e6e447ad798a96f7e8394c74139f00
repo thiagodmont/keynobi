@@ -1,0 +1,100 @@
+src-tauri/src/services/retrace.rs
+  s_1e114e823b9048::t_8194e2ea759b1f 1273-1274
+  s_1e114e823b9048::t_91e2db1c22fbd5 1248-1252,1256-1257,1259-1261,1263-1265,1268-1269,1271,1275-1292
+  s_1e114e823b9048::t_c020188373ed53 1189
+  s_1e114e823b9048::t_435313d6e84d02 537-545,551
+  s_1e114e823b9048::t_4ba0710ff554c8 380,901-917,923-947,949-991,997-1025,1027-1030,1032-1033,1035-1041
+  s_1e114e823b9048::t_8a1b4bad04b6d5 1898
+  s_1e114e823b9048::t_0099cbdc43e6ec 1147-1161
+  s_1e114e823b9048::t_48df44b84ab341 362-367,372-378
+  s_1e114e823b9048::t_bb8cccf347d880 838-844,850-869
+  s_1e114e823b9048::t_71037e36644fdd 655-660,845-849,918-922,992-996,1827-1833,2064-2065,2169-2173,2177-2181
+  s_1e114e823b9048::t_d548a938848901 22,26-27
+  s_1e114e823b9048::t_476de4529281f0 3-9
+  s_1e114e823b9048::t_b141e6606f0461 640-654,661-694
+  s_1e114e823b9048::t_3942adad7507d3 1876
+  s_1e114e823b9048::t_4f4057ae96a966 1270
+  s_1e114e823b9048::t_12ab02521110d1 379,1816-1826,1834-1875,1877-1897,1899-2063,2066-2168,2174-2176,2182-2205
+  s_1e114e823b9048::t_0b6ff4fce45d86 1119-1123
+  s_1e114e823b9048::t_7c4e4c3922ab14 381
+src-tauri/src/utils/process.rs
+  s_1e114e823b9048::t_bf2c310c51a50e 19-20
+src/bindings/MappingMatch.ts
+  s_1e114e823b9048::t_4f4057ae96a966 4,6
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_2feb7383dec92e 349
+  s_1e114e823b9048::t_0f84daa7407ce5 911,1194
+  s_1e114e823b9048::t_6df984ad5739d5 461
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_c113d58553c7ff 123
+  s_1e114e823b9048::t_87e56e57a6b573 238
+  s_1e114e823b9048::t_9d18f40374c0fc 283
+  s_1e114e823b9048::t_a3db551ee798c6 306
+src-tauri/src/services/installed_builds.rs
+  s_1e114e823b9048::t_1be7b672704612 504-505
+  s_1e114e823b9048::t_71037e36644fdd 506-510
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_bfb0c256a9ed3b 750-757
+  s_1e114e823b9048::t_da403d23eb2d91 306,311-327
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_ef40a99080adf2 117-120
+  s_1e114e823b9048::t_2eb760392a1f35 122-123
+  s_1e114e823b9048::t_390ed2d96efaba 115
+  s_1e114e823b9048::t_d3f44da7f1112f 109
+  s_1e114e823b9048::t_87992e73cc4712 497
+  s_1e114e823b9048::t_7cc720426e603e 498
+  s_1e114e823b9048::t_7ffdc812e7901f 126-127
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_79bff26f245ae9 234,236-245
+  s_1e114e823b9048::t_9606c190504189 230
+  s_1e114e823b9048::t_c1ff95b1eb2a92 536
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_7296a8dd5e7cf0 113
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_eea747993afa09 934,938-955,977-978
+src/components/logcat/LogEntryDetailPanel.test.tsx
+  s_1e114e823b9048::t_96e2f3f7c62062 208,211
+  s_1e114e823b9048::t_e1b5e037a7d0c3 254-278
+src-tauri/src/models/retrace.rs
+  s_1e114e823b9048::t_d2cbccbd9a6a9b 21,26-31,34
+src/test/mock-backend/logcat.ts
+  s_1e114e823b9048::t_fdd1890b5a5c11 162,166
+  s_1e114e823b9048::t_5e506ae65c5b1d 152-153
+  s_1e114e823b9048::t_790ad0eb6697a2 177,182-186
+e2e/smoke/crash-retrace.spec.ts
+  s_1e114e823b9048::t_1e4cd9b784ff6f 29,39
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_a58446868a1a0f 1853,2031-2130
+  s_1e114e823b9048::t_e42769e37e0158 1980-1982
+  s_1e114e823b9048::t_7d6b120446fe26 1765-1771,1777-1780,1786,1789,1792-1793,1798-1852
+  s_1e114e823b9048::t_b57bf007c983c8 1919
+  s_1e114e823b9048::t_f496f8b3428a4c 1854
+src/components/logcat/LogEntryDetailPanel.tsx
+  s_1e114e823b9048::t_0c21e71fc65a48 219
+src-tauri/src/services/retrace_match.rs
+  s_1e114e823b9048::t_0311e08f67eb7a 569,588
+  s_1e114e823b9048::t_71fa67ab26bd63 1-419,424-431,437-467,472-568,570-587,589-595
+  s_1e114e823b9048::t_71037e36644fdd 420-423,432-436,468-471
+src-tauri/src/services/mod.rs
+  s_1e114e823b9048::t_ed0e1324423c51 31
+src-tauri/src/commands/logcat.rs
+  s_1e114e823b9048::t_aff3561111f992 179-180
+src/lib/tauri-api.ts
+  s_1e114e823b9048::t_a9da81a3f9f589 516-517
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "42b87b6393e6e447ad798a96f7e8394c74139f00",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
