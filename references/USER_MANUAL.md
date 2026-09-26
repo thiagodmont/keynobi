@@ -155,7 +155,7 @@ Select a past build (click it, or Tab to the list, move with Up/Down, and press 
 
 ### Debug sessions
 
-Every install Keynobi does, from **Run App** or from an AI client's `install_apk`, opens a debug session: that build of the app on that device, until the next install of the app there. Keynobi records what happens to it: the build and the install, each launch with its launch time, crashes and ANRs Logcat showed (with the log lines around the first 10), the process exits Android recorded, Logcat reconnects, stops, and clears, the device going offline and coming back, and your bookmarks. A crash of an app Keynobi did not install, or that was reinstalled outside Keynobi, goes to a session marked **Unattributed**, never to a guessed build.
+Every install Keynobi does, from **Run App** or from an AI client's `install_apk`, opens a debug session: that build of the app on that device, until the next install of the app there. Keynobi records what happens to it: the build and the install, each launch with its launch time, crashes and ANRs Logcat showed (with the log lines around the first 10), the process exits Android recorded, Logcat reconnects, stops, and clears, the device going offline and coming back, your bookmarks, and what an AI client did on the device (**Agent** rows: the tool, the client, how long it took, and whether it failed; never its arguments). A crash of an app Keynobi did not install, or that was reinstalled outside Keynobi, goes to a session marked **Unattributed**, never to a guessed build.
 
 Open **Show Debug Sessions** from the Command Palette, or click **Session: …** in a past build's bar.
 
@@ -167,6 +167,8 @@ Open **Show Debug Sessions** from the Command Palette, or click **Session: …**
 - **Add bookmark** adds a note (up to 500 characters) to an open session's timeline, for example what you did just before a crash.
 
 Keynobi keeps at most 50 sessions and removes them after the retention period and folder limit set under **Settings → Advanced → Build**; kept sessions are not removed by age.
+
+AI clients read sessions too: `list_debug_sessions`, `get_debug_session` (the timeline, and each crash with how it was matched to the installed build), and `compare_debug_sessions`, which compares two sessions, by default the last run that launched without crashing and the first crashing one after it.
 
 ---
 
@@ -378,6 +380,7 @@ AI clients can:
 - Read logcat and crash logs.
 - Read why the app's processes exited (`get_exit_reasons`, Android 11+), including crashes and ANRs that never reached logcat.
 - Inspect devices and app runtime state.
+- List, read, and compare debug sessions (`list_debug_sessions`, `get_debug_session`, `compare_debug_sessions`).
 - Install, launch, stop, and restart apps.
 - Inspect the UI hierarchy and drive the device UI: tap, type, swipe, scroll, press keys, open deep links, rotate, toggle network, and grant or revoke permissions.
 - Run health checks and query project information.

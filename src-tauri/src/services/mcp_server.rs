@@ -15,6 +15,8 @@
  *
  * Setup: `claude mcp add --scope user --transport stdio keynobi -- "/path/to/keynobi" --mcp`
  */
+use crate::models::debug_session::{DebugSessionAgentAction, DebugSessionToolKind};
+use crate::models::device::DeviceConnectionState;
 use crate::services::adb_manager::{self, DeviceState};
 use crate::services::agent_skill;
 use crate::services::android_cli;
@@ -559,6 +561,79 @@ pub struct GetExitReasonsParams {
 
 /// Exits `get_exit_reasons` lists when the call gives no `limit`.
 const DEFAULT_EXIT_REASONS: usize = 20;
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ListDebugSessionsParams {
+    #[schemars(description = "Most sessions to list, newest first (default 10, max 50).")]
+    pub limit: Option<u32>,
+    #[schemars(description = "Only sessions of this package, e.g. com.example.app.debug.")]
+    pub package: Option<String>,
+    #[schemars(
+        description = "Only sessions on this device: its ADB serial, or an emulator's AVD name."
+    )]
+    pub device_serial: Option<String>,
+    #[schemars(
+        description = "Only sessions in this state: open, closed, superseded, ended, or idle."
+    )]
+    pub state: Option<String>,
+    #[schemars(description = "Only sessions with a crash or an ANR (default false).")]
+    pub only_crashing: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct GetDebugSessionParams {
+    #[schemars(
+        description = "The session id from list_debug_sessions, e.g. s-20260925T103200Z-4f2a9c01b2d3."
+    )]
+    pub session_id: String,
+    #[schemars(
+        description = "Most timeline events to return, the newest (default 100, max 500; 0 for none)."
+    )]
+    pub max_events: Option<u32>,
+    #[schemars(
+        description = "Cursor: return events older than this seq (the next_before_seq of the previous call)."
+    )]
+    pub before_seq: Option<u32>,
+    #[schemars(
+        description = "Also return the log lines kept with this crash or ANR event (its seq in crashes)."
+    )]
+    pub capture_seq: Option<u32>,
+    #[schemars(
+        description = "Most log lines of capture_seq to return, those ending with the crash (default 100, max 1000)."
+    )]
+    pub log_lines: Option<u32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CompareDebugSessionsParams {
+    #[schemars(
+        description = "The earlier session id. Omit both from and to to compare the last passing session with the first crashing one after it."
+    )]
+    pub from: Option<String>,
+    #[schemars(description = "The later session id.")]
+    pub to: Option<String>,
+}
+
+fn validate_session_id(id: &str) -> Result<(), McpError> {
+    crate::utils::validation::validate_debug_session_id(id)
+        .map_err(|e| McpError::invalid_params(e, None))
+}
+
+/// A debug session service error: bad input is `invalid_params`, anything
+/// else (a pruned session) a tool error the model can read.
+fn session_result(
+    result: Result<CallToolResult, crate::models::error::AppError>,
+) -> Result<CallToolResult, McpError> {
+    match result {
+        Ok(result) => Ok(result),
+        Err(crate::models::error::AppError::InvalidInput(e)) => {
+            Err(McpError::invalid_params(e, None))
+        }
+        Err(e) => Ok(CallToolResult::error(vec![ContentBlock::text(
+            e.to_string(),
+        )])),
+    }
+}
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetBuildConfigParams {
@@ -2917,6 +2992,115 @@ impl AndroidMcpServer {
         }
     }
 
+    /// Debug sessions, newest first, one line each.
+    #[tool(
+        description = "List debug sessions, newest first, one line each: a session is one install of the app on a device (by Keynobi or install_apk) and what happened until the next install. Each line has the session id, state, package and device, the build (#id, module, variant) and APK hash, when it opened or closed, and its crash, ANR, exit, and launch counts. Filter by package, device_serial, state, or only_crashing.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn list_debug_sessions(
+        &self,
+        Parameters(p): Parameters<ListDebugSessionsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(ref pkg) = p.package {
+            validate_package_name(pkg)?;
+        }
+        if let Some(ref device) = p.device_serial {
+            validate_device_serial(device)?;
+        }
+        let state = p
+            .state
+            .as_deref()
+            .map(debug_sessions::StateFilter::parse)
+            .transpose()
+            .map_err(|e| McpError::invalid_params(e, None))?;
+        let filter = debug_sessions::SessionFilter {
+            package: p.package,
+            device: p.device_serial,
+            state,
+            only_crashing: p.only_crashing.unwrap_or(false),
+        };
+        let limit = p
+            .limit
+            .map_or(debug_sessions::DEFAULT_AGENT_SESSIONS, |l| l as usize);
+        let (sessions, total) =
+            tokio::task::spawn_blocking(move || debug_sessions::list_for_agent(&filter, limit))
+                .await
+                .map_err(|e| McpError::internal_error(format!("Listing failed: {e}"), None))?;
+        if sessions.is_empty() {
+            return Ok(CallToolResult::success(vec![ContentBlock::text(
+                "No debug sessions match. A session opens when Keynobi or install_apk installs \
+                 the app on a device.",
+            )]));
+        }
+        let lines: Vec<String> = sessions.iter().map(debug_sessions::agent_line).collect();
+        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
+            "{} of {total} debug sessions, newest first:\n{}\nUse get_debug_session with a \
+             session_id for its timeline and crashes, or compare_debug_sessions to compare two.",
+            sessions.len(),
+            lines.join("\n")
+        ))]))
+    }
+
+    /// One debug session: summary, a page of its timeline, and its crashes.
+    #[tool(
+        description = "One debug session: what was installed where (build, APK hash, R8 map ids), its timeline (builds, installs, launches with launch times, logcat and device changes, bookmarks, crashes, ANRs, process exits, and agent actions), newest max_events with a before_seq cursor for older ones, and its newest crashes and ANRs with how each was attributed to the installed build (install_record, verified by the device or not, or unattributed). capture_seq adds the log lines kept with that crash.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn get_debug_session(
+        &self,
+        Parameters(p): Parameters<GetDebugSessionParams>,
+    ) -> Result<CallToolResult, McpError> {
+        validate_session_id(&p.session_id)?;
+        let request = debug_sessions::AgentSessionRequest {
+            id: p.session_id,
+            before_seq: p.before_seq,
+            max_events: p
+                .max_events
+                .map_or(debug_sessions::DEFAULT_AGENT_EVENTS, |n| n as usize),
+            capture_seq: p.capture_seq,
+            log_lines: p
+                .log_lines
+                .map_or(debug_sessions::DEFAULT_AGENT_LOG_LINES, |n| n as usize),
+        };
+        let result =
+            tokio::task::spawn_blocking(move || debug_sessions::session_for_agent(&request))
+                .await
+                .map_err(|e| McpError::internal_error(format!("Reading failed: {e}"), None))?;
+        session_result(result.map(CallToolResult::structured))
+    }
+
+    /// Compare two debug sessions.
+    #[tool(
+        description = "Compare two debug sessions: build, task, module, variant, version code, APK and R8 mapping hashes, device, and who installed; the latest launch times (compared only on the same device and launch state); crash and ANR signatures, with those new in `to`; and process exit reasons. Without from and to, compares the newest session that launched without crashing with the first later crashing session of the same app and variant. Source commits and build files are not recorded yet; not_recorded lists what the comparison cannot say.",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn compare_debug_sessions(
+        &self,
+        Parameters(p): Parameters<CompareDebugSessionsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        for id in [&p.from, &p.to].into_iter().flatten() {
+            validate_session_id(id)?;
+        }
+        let result = tokio::task::spawn_blocking(move || {
+            debug_sessions::compare_sessions(p.from.as_deref(), p.to.as_deref())
+        })
+        .await
+        .map_err(|e| McpError::internal_error(format!("Comparing failed: {e}"), None))?;
+        session_result(result.map(|c| CallToolResult::structured(json!(c))))
+    }
+
     /// Install an APK on a connected device.
     #[tool(
         description = "Install an APK file on a connected device or emulator. APK must be within the project's build output directory.",
@@ -3416,7 +3600,8 @@ impl ServerHandler for AndroidMcpServer {
              Tools: build (run_gradle_task, get_build_errors, get_build_log, get_build_config, find_apk_path, run_tests), \
              logcat (start_logcat, get_logcat_entries, get_crash_logs, get_crash_stack_trace), \
              devices (list_devices, get_ui_hierarchy, find_ui_elements, list_clickable_elements, find_ui_parent, ui_tap, ui_tap_element, ui_fill_input, ui_type_text, hide_soft_keyboard, ui_swipe, ui_scroll_until_element, ui_wait_for_idle, ui_assert_element, send_ui_key, open_deep_link, open_app_settings, set_device_orientation, set_network_state, grant_runtime_permission, revoke_runtime_permission, screenshot, get_device_info, install_apk, launch_app, restart_app, dump_app_info, get_memory_info, get_app_runtime_state, get_exit_reasons), \
-             project (get_project_info, run_health_check). \
+             project (get_project_info, run_health_check), \
+             debug sessions, one per install of the app on a device with its launches, crashes, and exits (list_debug_sessions, get_debug_session, compare_debug_sessions). \
              Prompts: diagnose-crash, full-deploy, build-and-fix. \
              Start with get_project_info and run_health_check to verify the environment.",
             self.mode_instructions()
@@ -3578,6 +3763,70 @@ impl AndroidMcpServer {
             Some(toolsets) => format!("{mode} {toolsets}"),
             None => mode,
         }
+    }
+
+    /// The device (and package, when named) a tool call that changes state
+    /// acts on, and its kind, to record on the device's debug sessions. Only
+    /// the validated serial and package are read from the arguments. `None`
+    /// for read-only tools, tools without a device parameter, and calls that
+    /// name no device when this process does not know exactly one online
+    /// device.
+    async fn agent_action_target(
+        &self,
+        request: &CallToolRequestParams,
+    ) -> Option<(String, Option<String>, DebugSessionToolKind)> {
+        let tool = self.get_tool(&request.name)?;
+        let hints = tool.annotations.as_ref()?;
+        let kind = match (
+            hints.read_only_hint,
+            hints.destructive_hint,
+            hints.open_world_hint,
+        ) {
+            (Some(true), ..) => return None,
+            (_, _, Some(true)) => DebugSessionToolKind::OpenWorld,
+            (_, Some(true), _) => DebugSessionToolKind::Destructive,
+            _ => DebugSessionToolKind::Write,
+        };
+        let device_key = ["device_serial", "deviceSerial", "serial"]
+            .into_iter()
+            .find(|key| {
+                tool.input_schema
+                    .get("properties")
+                    .and_then(|p| p.get(*key))
+                    .is_some()
+            })?;
+        let text = |key: &str| {
+            request
+                .arguments
+                .as_ref()
+                .and_then(|a| a.get(key))
+                .and_then(|v| v.as_str())
+        };
+        let serial = match text(device_key) {
+            Some(serial) => {
+                validate_device_serial(serial).ok()?;
+                serial.to_string()
+            }
+            None => {
+                let state = self.device_state.0.lock().await;
+                let mut online = state
+                    .devices
+                    .iter()
+                    .filter(|d| d.connection_state == DeviceConnectionState::Online);
+                match (online.next(), online.next()) {
+                    (Some(only), None) => only.serial.clone(),
+                    _ => return None,
+                }
+            }
+        };
+        let package = match text("package") {
+            Some(package) => {
+                validate_package_name(package).ok()?;
+                Some(package.to_string())
+            }
+            None => None,
+        };
+        Some((serial, package, kind))
     }
 
     /// Deobfuscate a crash from the logcat buffer through the shared service,
@@ -4153,15 +4402,42 @@ impl ServerHandler for LoggingMcpServer {
     ) -> Result<CallToolResponse, McpError> {
         let start = std::time::Instant::now();
         let name = request.name.clone();
+        let mut acted_on = None;
         let result = if let Some(hidden) = self.server.toolsets.refusal(&name) {
             Err(McpError::invalid_params(hidden, None))
         } else {
             match self.server.check_session_project(&name).await {
                 Some(refused) => Ok(CallToolResponse::Complete(refused)),
-                None => self.server.call_tool(request, context).await,
+                None => {
+                    acted_on = self
+                        .server
+                        .agent_action_target(&request)
+                        .await
+                        .map(|target| (target, self.server.agent(&context.peer)));
+                    self.server.call_tool(request, context).await
+                }
             }
         };
         let ms = start.elapsed().as_millis() as u64;
+        if let Some(((serial, package, kind), agent)) = acted_on {
+            let ok = match &result {
+                Ok(CallToolResponse::Complete(r)) => r.is_error != Some(true),
+                Ok(_) => true,
+                Err(_) => false,
+            };
+            debug_sessions::record_agent_action(
+                &serial,
+                package.as_deref(),
+                DebugSessionAgentAction {
+                    tool: name.to_string(),
+                    kind,
+                    ok,
+                    duration_ms: u32::try_from(ms).unwrap_or(u32::MAX),
+                    serial: serial.clone(),
+                },
+                agent,
+            );
+        }
         let (status, summary) = match &result {
             // rmcp 3 wraps tool results in the MRTR envelope. Every tool here is
             // synchronous, so only `Complete` carries a payload worth logging; the

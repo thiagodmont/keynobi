@@ -1230,6 +1230,7 @@ export const typeFixtures = {
       "closeReason": null,
       "closedAt": null,
       "counts": {
+        "agentActions": 2,
         "anrs": 0,
         "bookmarks": 1,
         "captures": 1,
@@ -1267,6 +1268,7 @@ export const typeFixtures = {
       "closeReason": "superseded",
       "closedAt": "2026-04-23T10:00:00Z",
       "counts": {
+        "agentActions": 0,
         "anrs": 0,
         "bookmarks": 0,
         "captures": 0,
@@ -1310,6 +1312,7 @@ export const typeFixtures = {
       "closeReason": null,
       "closedAt": null,
       "counts": {
+        "agentActions": 2,
         "anrs": 0,
         "bookmarks": 1,
         "captures": 1,
@@ -1345,6 +1348,7 @@ export const typeFixtures = {
       "closeReason": "superseded",
       "closedAt": "2026-04-23T10:00:00Z",
       "counts": {
+        "agentActions": 0,
         "anrs": 0,
         "bookmarks": 0,
         "captures": 0,
@@ -1677,6 +1681,47 @@ export const typeFixtures = {
       },
       "kind": "exit",
       "seq": 17
+    },
+    {
+      "actor": null,
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "durationMs": 412,
+        "kind": "write",
+        "ok": true,
+        "serial": "emulator-5554",
+        "tool": "ui_tap"
+      },
+      "kind": "agentAction",
+      "seq": 18
+    },
+    {
+      "actor": {
+        "kind": "app"
+      },
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "durationMs": 30021,
+        "kind": "destructive",
+        "ok": false,
+        "serial": "emulator-5554",
+        "tool": "install_apk"
+      },
+      "kind": "agentAction",
+      "seq": 19
+    },
+    {
+      "actor": null,
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "durationMs": 95000,
+        "kind": "openWorld",
+        "ok": true,
+        "serial": "emulator-5554",
+        "tool": "run_tests"
+      },
+      "kind": "agentAction",
+      "seq": 20
     }
   ] satisfies Wire<DebugSessionEvent>[],
   DebugSessionDetail: [
@@ -2036,6 +2081,47 @@ export const typeFixtures = {
           },
           "kind": "exit",
           "seq": 17
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "durationMs": 412,
+            "kind": "write",
+            "ok": true,
+            "serial": "emulator-5554",
+            "tool": "ui_tap"
+          },
+          "kind": "agentAction",
+          "seq": 18
+        },
+        {
+          "actor": {
+            "kind": "app"
+          },
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "durationMs": 30021,
+            "kind": "destructive",
+            "ok": false,
+            "serial": "emulator-5554",
+            "tool": "install_apk"
+          },
+          "kind": "agentAction",
+          "seq": 19
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "durationMs": 95000,
+            "kind": "openWorld",
+            "ok": true,
+            "serial": "emulator-5554",
+            "tool": "run_tests"
+          },
+          "kind": "agentAction",
+          "seq": 20
         }
       ],
       "eventsTruncated": true,
@@ -2064,6 +2150,7 @@ export const typeFixtures = {
         "closeReason": null,
         "closedAt": null,
         "counts": {
+          "agentActions": 2,
           "anrs": 0,
           "bookmarks": 1,
           "captures": 1,
@@ -2106,6 +2193,7 @@ export const typeFixtures = {
         "closeReason": "superseded",
         "closedAt": "2026-04-23T10:00:00Z",
         "counts": {
+          "agentActions": 0,
           "anrs": 0,
           "bookmarks": 0,
           "captures": 0,

@@ -1,6 +1,6 @@
 ---
 name: keynobi
-description: Use for Android work that needs state kept between calls - Gradle builds with their errors and history, logcat streaming and filtering, crashes and deobfuscated stack traces, app exit reasons, launch times, and UI automation on the running app - through the Keynobi MCP server. Use Android CLI (`android`) instead for stateless tasks such as SDK packages, creating and starting emulators, one-off screenshots, Android docs, and Compose previews.
+description: Use for Android work that needs state kept between calls - Gradle builds with their errors and history, logcat streaming and filtering, crashes and deobfuscated stack traces, app exit reasons, launch times, debug sessions that record each install and what followed, and UI automation on the running app - through the Keynobi MCP server. Use Android CLI (`android`) instead for stateless tasks such as SDK packages, creating and starting emulators, one-off screenshots, Android docs, and Compose previews.
 ---
 
 # Keynobi and Android CLI
@@ -19,6 +19,7 @@ When the Keynobi app is open, the MCP server attaches to it and shares its build
 - **Logcat**: `start_logcat`, then `get_logcat_entries` (filter by package, tag, level, or text), `get_logcat_stats`, `clear_logcat`, `stop_logcat`. The buffer keeps what happened before you asked.
 - **Crashes**: `get_crash_logs` and `get_crash_stack_trace`. Pass `retrace: true` to deobfuscate with the R8 mapping of the build Keynobi installed on that device. `get_exit_reasons` lists why the app's processes exited (Android 11 and later), including ANRs and kills that never reached logcat.
 - **Install and launch**: `install_apk` (records which build is on the device, which deobfuscation needs), `launch_app` and `restart_app` (both report the launch time), `stop_app`, `dump_app_info`, `get_memory_info`, `get_app_runtime_state`.
+- **Debug sessions**: each install of the app on a device opens a session that records its launches, crashes, exits, bookmarks, and the tool calls you make on that device. `list_debug_sessions` finds them, `get_debug_session` gives one's timeline and crashes with how each was attributed to the installed build, and `compare_debug_sessions` compares two, by default the last run without a crash and the first crashing one after it.
 - **UI automation on the running app**: `get_ui_hierarchy`, `find_ui_elements`, or `list_clickable_elements`, then `ui_tap_element` or `ui_fill_input` with the element's tree path. Check results with `wait_for_element`, `ui_assert_element`, and `compare_ui_state`. Tap elements, not coordinates.
 - **Package scope**: `stop_app`, `restart_app`, `grant_runtime_permission`, and `revoke_runtime_permission` act only on the project's own app. Pass `allow_foreign_package: true` only when the user asked for another package.
 

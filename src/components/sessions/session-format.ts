@@ -232,6 +232,20 @@ export function describeEvent(event: DebugSessionEvent): EventView {
         text: parts.join(" · "),
       };
     }
+    case "agentAction": {
+      const { tool, ok, durationMs } = event.data;
+      const by = actorLabel(event.actor);
+      const parts = [
+        `${tool}${by ? ` by ${by}` : ""}`,
+        `${durationMs} ms`,
+        ok ? null : "failed",
+      ].filter((p): p is string => Boolean(p));
+      return {
+        label: "Agent",
+        variant: ok ? "default" : "warning",
+        text: parts.join(" · "),
+      };
+    }
   }
 }
 

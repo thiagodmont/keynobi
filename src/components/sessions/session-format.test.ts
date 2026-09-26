@@ -173,6 +173,34 @@ describe("describeEvent", () => {
       "Exit",
       "Exit: Crash · com.example.app · pid 4242 · matched by pid",
     ],
+    [
+      makeSessionEvent(
+        1,
+        {
+          kind: "agentAction",
+          data: {
+            tool: "ui_tap",
+            kind: "write",
+            ok: false,
+            durationMs: 412,
+            serial: "emulator-5554",
+          },
+        },
+        {
+          actor: { kind: "agent", sessionId: null, clientName: "Claude Code", standalone: false },
+        }
+      ),
+      "Agent",
+      "ui_tap by an agent (Claude Code) · 412 ms · failed",
+    ],
+    [
+      makeSessionEvent(1, {
+        kind: "agentAction",
+        data: { tool: "launch_app", kind: "write", ok: true, durationMs: 90, serial: "e" },
+      }),
+      "Agent",
+      "launch_app · 90 ms",
+    ],
   ];
 
   it.each(cases)("describes %#", (event, label, text) => {

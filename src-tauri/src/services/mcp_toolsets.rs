@@ -40,6 +40,9 @@ const CORE_TOOLS: &[&str] = &[
     "get_memory_info",
     "get_app_runtime_state",
     "get_exit_reasons",
+    "list_debug_sessions",
+    "get_debug_session",
+    "compare_debug_sessions",
     "list_avds",
 ];
 
