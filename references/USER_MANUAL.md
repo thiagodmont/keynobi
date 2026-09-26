@@ -321,7 +321,7 @@ Open Settings with `Cmd+,` or the gear icon. Use the search box to find a settin
 | Tools | Java / JDK | JAVA_HOME (with Auto-detect) |
 | Tools | Logcat | Auto-start on Connect, Auto-scroll Logcat to end, Logcat Output Font Size, Ring buffer size, Max lines in Logcat |
 | Tools | MCP | Build Timeout (seconds), Default Logcat Count, Default Build Log Lines, Allow unrestricted Gradle tasks (off by default: AI clients cannot run publish, upload, or uninstall tasks) |
-| Advanced | Build | Auto Install on Build, Auto-scroll build log to end, Build log retention (days), Build log folder limit (MB) |
+| Advanced | Build | Auto Install on Build, Auto-scroll build log to end, Build log retention (days), Build log folder limit (MB), Debug session retention (days, default 14), Debug session folder limit (MB, default 200) |
 | Advanced | Logging | Log retention, Max log folder size (MB) |
 | Advanced | Privacy | Anonymous crash reporting |
 
@@ -501,6 +501,7 @@ Anonymous crash reporting is off by default. Turn it on under **Settings → Adv
 | `~/.keynobi/build-history.json`, `~/.keynobi/build-logs/` | Build history and build logs |
 | `~/.keynobi/mappings/` | Copies of the R8 mappings of builds in the history and of builds installed on devices |
 | `~/.keynobi/installed-builds.json` | Which build Keynobi last installed on each device, per app |
+| `~/.keynobi/sessions/` | Debug sessions: one per install on a device, with its launches, logcat and device connection changes, and bookmarks (not shown in the app yet). Removed after the debug session retention period or when the folder passes its size limit, oldest first, and at most 50 are kept |
 | `~/.keynobi/retrace/` | The crash stack being deobfuscated, only while `retrace` reads it |
 | `~/.keynobi/mcp-activity.jsonl` | Recent AI client activity |
 | `~/.keynobi/mcp.sock`, `~/.keynobi/mcp-sessions/` | The socket AI clients attach through while Keynobi is open, and a record per standalone MCP server |

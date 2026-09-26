@@ -13,6 +13,7 @@ import type {
   RunApk,
 } from "@/bindings";
 import { triggerEvent } from "./events";
+import { openMockSession } from "./sessions";
 
 let buildStatus: BuildStatus = { state: "idle" };
 let nextBuildId = 1;
@@ -187,6 +188,7 @@ export function recordMockInstall(serial: string, device: Device | undefined, ap
   };
   installs = installs.filter((i) => !(i.package === entry.package && sameDevice(i, entry)));
   installs = [...installs, entry].slice(-MAX_MOCK_INSTALLS);
+  openMockSession(entry, match?.record);
 }
 
 /** Like the backend: a launch time is recorded only on a successful build. */

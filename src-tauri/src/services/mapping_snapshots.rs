@@ -10,6 +10,7 @@
 //! never prunes a snapshot its history names.
 
 use crate::models::build::{BuildRecord, InstalledBuild, MappingSnapshot};
+use crate::models::debug_session::DebugSessionSummary;
 use crate::models::error::AppError;
 use crate::services::gradle_modules;
 use crate::services::settings_manager::unique_tmp_path;
@@ -359,16 +360,18 @@ pub struct KeptMappings {
     /// Named by the kept build history.
     pub referenced: HashSet<String>,
     /// Named by what Keynobi installed on a device (`installed_builds`),
-    /// whether or not the build is still in the history. Never removed.
+    /// whether or not the build is still in the history, or by a debug
+    /// session marked Keep. Never removed.
     pub pinned: HashSet<String>,
 }
 
 /// The snapshots retention keeps: those the kept build history references,
-/// and those pinned by the APKs installed on devices. Anything else that must
-/// outlive its build record is added here.
+/// those pinned by the APKs installed on devices, and those of debug sessions
+/// marked Keep. Anything else that must outlive its build record is added here.
 pub fn mappings_to_keep<'a>(
     history: impl IntoIterator<Item = &'a BuildRecord>,
     installed: &[InstalledBuild],
+    sessions: &[DebugSessionSummary],
 ) -> KeptMappings {
     KeptMappings {
         referenced: history
@@ -378,6 +381,12 @@ pub fn mappings_to_keep<'a>(
         pinned: installed
             .iter()
             .flat_map(|install| install.mappings.iter().map(|m| m.sha256.clone()))
+            .chain(
+                sessions
+                    .iter()
+                    .filter(|s| s.kept)
+                    .flat_map(|s| s.mapping_sha256s.iter().cloned()),
+            )
             .collect(),
     }
 }
@@ -809,7 +818,7 @@ mod tests {
         let dropped = put_snapshot(data.path(), 2);
         let history = [record_with(1, &[&kept])];
 
-        let removed = prune_snapshots(data.path(), &mappings_to_keep(&history, &[]));
+        let removed = prune_snapshots(data.path(), &mappings_to_keep(&history, &[], &[]));
 
         assert_eq!(removed, 1);
         assert_eq!(saved_files(data.path()), vec![format!("{kept}.txt")]);
@@ -848,7 +857,7 @@ mod tests {
         let refs: Vec<&str> = shas.iter().map(String::as_str).collect();
         let history = [record_with(1, &refs)];
 
-        let removed = prune_snapshots(data.path(), &mappings_to_keep(&history, &[]));
+        let removed = prune_snapshots(data.path(), &mappings_to_keep(&history, &[], &[]));
 
         assert_eq!(removed, 2);
         assert_eq!(saved_files(data.path()).len(), MAX_MAPPING_SNAPSHOTS);
@@ -879,7 +888,7 @@ mod tests {
 
         let removed = prune_snapshots(
             data.path(),
-            &mappings_to_keep(&[], &[installed_with(&pinned)]),
+            &mappings_to_keep(&[], &[installed_with(&pinned)], &[]),
         );
 
         assert_eq!(removed, 1);
@@ -902,7 +911,7 @@ mod tests {
         // The least recently saved, which the backstop would remove first.
         let installed = [installed_with(&shas[0])];
 
-        let removed = prune_snapshots(data.path(), &mappings_to_keep(&history, &installed));
+        let removed = prune_snapshots(data.path(), &mappings_to_keep(&history, &installed, &[]));
 
         assert_eq!(removed, 1);
         assert!(snapshot_path(data.path(), &shas[0]).unwrap().exists());

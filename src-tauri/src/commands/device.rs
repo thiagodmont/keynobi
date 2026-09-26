@@ -1,5 +1,5 @@
 use crate::models::app_exit::AppExitReasons;
-use crate::models::build::{InstalledBuild, LaunchResult, LaunchTiming};
+use crate::models::build::{BuildActor, InstalledBuild, LaunchResult, LaunchTiming};
 use crate::models::device::{
     AvailableSystemImage, AvdInfo, Device, DeviceConnectionState, DeviceDefinition, DeviceKind,
     SdkDownloadProgress, SystemImageInfo,
@@ -14,6 +14,7 @@ use crate::services::adb_manager::{
 };
 use crate::services::app_exit_info;
 use crate::services::build_runner::{attach_launch_timing, BuildState};
+use crate::services::debug_sessions::{self, LaunchRecord};
 use crate::services::installed_builds;
 use crate::services::launch_display::{self, LaunchWatch};
 use crate::services::logcat::LogcatState;
@@ -132,7 +133,8 @@ pub async fn install_apk_on_device(
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     let aapt2 = find_aapt2(&settings);
-    installed_builds::install_and_record(&adb, aapt2.as_deref(), &serial, &apk, &device_state)
+    let by = BuildActor::App;
+    installed_builds::install_and_record(&adb, aapt2.as_deref(), &serial, &apk, &device_state, by)
         .await
         .map(|outcome| outcome.output)
         .map_err(AppError::Io)
@@ -213,7 +215,7 @@ pub async fn launch_app_on_device(
         if let Err(e) = attach_launch_timing(&build_state, id, timing.clone()).await {
             tracing::warn!("Launch time not recorded on build #{id}: {e}");
         } else if let Some(watch) = watch.filter(|_| timing.fully_drawn_ms.is_none()) {
-            tokio::spawn(launch_display::record_late_display_times(
+            let late = launch_display::record_late_display_times(
                 build_state.inner().clone(),
                 logcat_state.inner().clone(),
                 Some(app),
@@ -221,13 +223,31 @@ pub async fn launch_app_on_device(
                 timing.clone(),
                 watch,
                 started,
-            ));
+            );
+            let package = package.clone();
+            tokio::spawn(async move {
+                if let Some(timing) = late.await {
+                    debug_sessions::record_late_launch_timing(&package, timing, BuildActor::App);
+                }
+            });
         }
     }
+    let launch = launch_record(&serial, &package, &timing);
+    debug_sessions::record_launch(adb, device_state.inner().clone(), launch);
     Ok(LaunchResult {
         output: outcome.description,
         timing,
     })
+}
+
+fn launch_record(serial: &str, package: &str, timing: &Option<LaunchTiming>) -> LaunchRecord {
+    LaunchRecord {
+        serial: serial.to_string(),
+        package: package.to_string(),
+        timing: timing.clone(),
+        restart: false,
+        by: BuildActor::App,
+    }
 }
 
 fn launch_timing(measured: AmStartTiming, serial: &str, device: Option<&Device>) -> LaunchTiming {
@@ -332,12 +352,14 @@ pub async fn start_device_polling(
     app_handle: AppHandle,
     device_state: State<'_, DeviceState>,
 ) -> Result<(), String> {
+    let presence = debug_sessions::DevicePresence::default();
     start_polling_loop(
         &device_state.0,
         DEVICE_POLL_INTERVAL,
         // Resolved on every tick so an Android SDK path change takes effect.
         || get_adb_path(&settings_manager::load_settings().0),
         move |event| {
+            presence.observe(&event.devices);
             let _ = app_handle.emit("device:list_changed", event);
         },
     )

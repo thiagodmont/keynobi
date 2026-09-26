@@ -609,6 +609,39 @@ function AdvancedSettings(props: {
         </SettingRow>
       </Show>
 
+      <Show when={props.matchesSearch("Debug session retention", "Days to keep debug sessions")}>
+        <SettingRow
+          label="Debug session retention (days)"
+          description="Days to keep a debug session (one per install on a device) in ~/.keynobi/sessions/ after its last event. Kept sessions are exempt."
+        >
+          <SettingNumberInput
+            value={settingsState.sessions.retentionDays}
+            min={1}
+            max={365}
+            onChange={(v) => updateSetting("sessions", "retentionDays", v)}
+          />
+        </SettingRow>
+      </Show>
+
+      <Show
+        when={props.matchesSearch(
+          "Debug session folder limit",
+          "Max size of debug sessions folder"
+        )}
+      >
+        <SettingRow
+          label="Debug session folder limit (MB)"
+          description="Max total size of ~/.keynobi/sessions/ before the oldest sessions are deleted"
+        >
+          <SettingNumberInput
+            value={settingsState.sessions.maxFolderMb}
+            min={10}
+            max={2048}
+            onChange={(v) => updateSetting("sessions", "maxFolderMb", v)}
+          />
+        </SettingRow>
+      </Show>
+
       <SectionHeader title="Logging" />
       <Show when={props.matchesSearch("Log retention", "Days to keep log files")}>
         <SettingRow label="Log retention" description="Days to keep log files in ~/.keynobi/logs/">

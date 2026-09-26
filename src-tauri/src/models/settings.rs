@@ -75,6 +75,7 @@ pub struct AppSettings {
     pub logcat: LogcatSettings,
     pub mcp: McpSettings,
     pub telemetry: TelemetrySettings,
+    pub sessions: SessionSettings,
     /// When true, the first-run setup wizard has been completed (or dismissed).
     #[serde(default)]
     pub onboarding_completed: bool,
@@ -158,6 +159,33 @@ pub struct BuildSettings {
     pub build_log_retention_days: u32,
     /// Max total size of ~/.keynobi/build-logs/ in MB before size-based rotation (default: 100).
     pub build_log_max_folder_mb: u32,
+}
+
+/// Debug session retention (`~/.keynobi/sessions/`).
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, TS)]
+#[serde(rename_all = "camelCase", default)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct SessionSettings {
+    /// Days to keep a session after its last event (default: 14; 0 disables).
+    /// Kept sessions are exempt.
+    pub retention_days: u32,
+    /// Max total size of ~/.keynobi/sessions/ in MB before the oldest
+    /// sessions are removed (default: 200).
+    pub max_folder_mb: u32,
+}
+
+/// Longest `SessionSettings.retention_days`.
+pub const SESSION_RETENTION_DAYS_MAX: u32 = 365;
+/// Range of `SessionSettings.max_folder_mb`.
+pub const SESSION_FOLDER_MB_MIN: u32 = 10;
+pub const SESSION_FOLDER_MB_MAX: u32 = 2048;
+
+/// Clamp the session retention settings to their ranges.
+pub fn normalize_sessions_section(sessions: &mut SessionSettings) {
+    sessions.retention_days = sessions.retention_days.min(SESSION_RETENTION_DAYS_MAX);
+    sessions.max_folder_mb = sessions
+        .max_folder_mb
+        .clamp(SESSION_FOLDER_MB_MIN, SESSION_FOLDER_MB_MAX);
 }
 
 fn default_true() -> bool {
@@ -317,6 +345,15 @@ impl Default for BuildSettings {
             auto_scroll_build_log: true,
             build_log_retention_days: 7,
             build_log_max_folder_mb: 100,
+        }
+    }
+}
+
+impl Default for SessionSettings {
+    fn default() -> Self {
+        Self {
+            retention_days: 14,
+            max_folder_mb: 200,
         }
     }
 }
@@ -490,6 +527,34 @@ mod tests {
         assert_eq!(parsed.build.build_log_retention_days, 14);
         assert_eq!(parsed.build.build_log_max_folder_mb, 200);
         assert!(parsed.build.auto_scroll_build_log);
+    }
+
+    #[test]
+    fn session_settings_default_and_older_files_load() {
+        let d = SessionSettings::default();
+        assert_eq!((d.retention_days, d.max_folder_mb), (14, 200));
+        // A settings file written before the section existed.
+        let old = r#"{"build":{"buildLogRetentionDays":7},"logcat":{"autoStart":true}}"#;
+        let parsed: AppSettings = serde_json::from_str(old).unwrap();
+        assert_eq!(parsed.sessions, SessionSettings::default());
+        let json = r#"{"sessions":{"retentionDays":3}}"#;
+        let parsed: AppSettings = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.sessions.retention_days, 3);
+        assert_eq!(parsed.sessions.max_folder_mb, 200);
+    }
+
+    #[test]
+    fn normalize_sessions_clamps_to_the_ranges() {
+        let mut s = SessionSettings {
+            retention_days: 9_999,
+            max_folder_mb: 1,
+        };
+        normalize_sessions_section(&mut s);
+        assert_eq!(s.retention_days, SESSION_RETENTION_DAYS_MAX);
+        assert_eq!(s.max_folder_mb, SESSION_FOLDER_MB_MIN);
+        s.max_folder_mb = 1_000_000;
+        normalize_sessions_section(&mut s);
+        assert_eq!(s.max_folder_mb, SESSION_FOLDER_MB_MAX);
     }
 
     #[test]

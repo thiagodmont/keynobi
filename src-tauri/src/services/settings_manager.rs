@@ -13,6 +13,7 @@ const KNOWN_SETTINGS_FIELDS: &[&str] = &[
     "logcat",
     "mcp",
     "telemetry",
+    "sessions",
     "onboardingCompleted",
     "recentProjects",
     "lastActiveProject",
@@ -210,6 +211,7 @@ fn load_settings_from_path(path: &std::path::Path) -> (AppSettings, bool) {
             match serde_json::from_str::<AppSettings>(&content) {
                 Ok(mut settings) => {
                     crate::models::settings::normalize_logcat_section(&mut settings.logcat);
+                    crate::models::settings::normalize_sessions_section(&mut settings.sessions);
                     (settings, false)
                 }
                 Err(e) => {
@@ -736,6 +738,7 @@ mod tests {
             "logcat",
             "mcp",
             "telemetry",
+            "sessions",
             "onboardingCompleted",
             "recentProjects",
             "lastActiveProject",

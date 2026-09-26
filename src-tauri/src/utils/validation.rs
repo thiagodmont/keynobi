@@ -113,6 +113,27 @@ pub fn validate_activity_name(activity: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate a debug session id, which names a folder in the data directory:
+/// `s-<yyyymmdd>T<hhmmss>Z-<12 lowercase hex digits>`.
+pub fn validate_debug_session_id(id: &str) -> Result<(), String> {
+    let invalid = || format!("Invalid debug session id '{id}'");
+    let rest = id.strip_prefix("s-").ok_or_else(invalid)?;
+    let (stamp, suffix) = rest.split_once('-').ok_or_else(invalid)?;
+    let stamp_ok = stamp.len() == 16
+        && stamp.char_indices().all(|(i, c)| match i {
+            8 => c == 'T',
+            15 => c == 'Z',
+            _ => c.is_ascii_digit(),
+        });
+    let suffix_ok =
+        suffix.len() == 12 && suffix.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'));
+    if stamp_ok && suffix_ok {
+        Ok(())
+    } else {
+        Err(invalid())
+    }
+}
+
 /// Task-name patterns MCP clients may not run unless the user enables
 /// unrestricted Gradle tasks in the app. Each pattern is a sequence of
 /// camelCase words; `Prefix` patterns match at the start of the task name,
@@ -309,6 +330,25 @@ pub fn check_agent_package_scope(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ── Debug session id ─────────────────────────────────────────────────────
+
+    #[test]
+    fn debug_session_id_accepts_only_the_generated_shape() {
+        assert!(validate_debug_session_id("s-20260925T103200Z-4f2a9c00b1de").is_ok());
+        for id in [
+            "",
+            "s-20260925T103200Z-4f2a9c",
+            "s-20260925T103200Z-4F2A9C00B1DE",
+            "s-20260925X103200Z-4f2a9c00b1de",
+            "s-20260925T103200Z-4f2a9c00b1de/..",
+            "../s-20260925T103200Z-4f2a9c00b1d",
+            "s-20260925T103200Z-..2a9c00b1de",
+            "x-20260925T103200Z-4f2a9c00b1de",
+        ] {
+            assert!(validate_debug_session_id(id).is_err(), "{id}");
+        }
+    }
 
     // ── Gradle task ──────────────────────────────────────────────────────────
 

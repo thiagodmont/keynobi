@@ -102,13 +102,14 @@ fn persist_build_record_in(
     })?
 }
 
-/// Remove the mapping snapshots neither `history` nor an installed build names.
-/// Callers hold the data lock.
-fn prune_mappings(dir: &Path, history: &VecDeque<BuildRecord>) {
+/// Remove the mapping snapshots neither `history`, an installed build, nor a
+/// kept debug session names. Callers hold the data lock.
+pub(crate) fn prune_mappings(dir: &Path, history: &VecDeque<BuildRecord>) {
     let installed = installed_builds::load_installed_builds_from(dir);
+    let sessions = crate::services::debug_sessions::load_index_from(dir);
     mapping_snapshots::prune_snapshots(
         dir,
-        &mapping_snapshots::mappings_to_keep(history, &installed),
+        &mapping_snapshots::mappings_to_keep(history, &installed, &sessions),
     );
 }
 

@@ -16,6 +16,7 @@ import { inferShape, shapeMismatches } from "@/test/ipc-fixtures/shape";
 import { handleInvoke } from "@/test/mock-backend";
 import { handleListen } from "@/test/mock-backend/events";
 import { addMockPastBuild, startMockBuild } from "@/test/mock-backend/build";
+import { mockSessionId } from "@/test/mock-backend/sessions";
 import { sampleEntries } from "@/test/mock-backend/logcat";
 
 // vitest runs with the repo root as cwd (see vite.config.ts `test.include`).
@@ -309,7 +310,8 @@ describe("the mock backend matches the real payloads", () => {
     // Commands that look something up need something to find. A release
     // build's record carries a saved mapping, so its shape is compared too.
     const releaseBuild = addMockPastBuild({ task: "assembleRelease", state: "success" });
-    // One install matched to that build, one of an APK no build wrote.
+    // One install matched to that build, one of an APK no build wrote; each
+    // opens a debug session.
     await handleInvoke("install_apk_on_device", {
       serial: "emulator-5554",
       apkPath: "/mock/app-release.apk",
@@ -340,6 +342,7 @@ describe("the mock backend matches the real payloads", () => {
       },
       delete_run_configuration: { name: "Wear deep link" },
       set_active_run_configuration: { name: "Default" },
+      get_debug_session: { id: mockSessionId(1) },
     };
     for (const [command, type] of invokedTypes()) {
       if (!isNamedType(type)) continue;

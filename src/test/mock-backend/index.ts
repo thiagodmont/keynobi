@@ -4,6 +4,7 @@ import { projectHandlers } from "./projects";
 import { devicesHandlers } from "./devices";
 import { addMockPastBuild, buildHandlers, setMockAppBuildLineDelay, startMockBuild } from "./build";
 import { logcatHandlers } from "./logcat";
+import { sessionHandlers } from "./sessions";
 import { triggerEvent } from "./events";
 export { MockChannel } from "./channel";
 
@@ -30,6 +31,7 @@ const handlers: Map<string, Handler> = new Map(
     ...devicesHandlers(),
     ...buildHandlers(),
     ...logcatHandlers(),
+    ...sessionHandlers(),
     get_mcp_setup_status: () => ({
       exePath: "/mock/keynobi",
       setupCommand: "'/mock/keynobi' --mcp",

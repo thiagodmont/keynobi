@@ -43,6 +43,25 @@ export type { BuiltApk } from "./BuiltApk";
 export type { RunApk } from "./RunApk";
 export type { InstalledBuild } from "./InstalledBuild";
 
+// Debug sessions
+export type { DebugSession } from "./DebugSession";
+export type { DebugSessionApk } from "./DebugSessionApk";
+export type { DebugSessionBookmark } from "./DebugSessionBookmark";
+export type { DebugSessionBuild } from "./DebugSessionBuild";
+export type { DebugSessionCloseReason } from "./DebugSessionCloseReason";
+export type { DebugSessionCounts } from "./DebugSessionCounts";
+export type { DebugSessionDetail } from "./DebugSessionDetail";
+export type { DebugSessionDevice } from "./DebugSessionDevice";
+export type { DebugSessionDeviceChange } from "./DebugSessionDeviceChange";
+export type { DebugSessionEvent } from "./DebugSessionEvent";
+export type { DebugSessionEventData } from "./DebugSessionEventData";
+export type { DebugSessionInstall } from "./DebugSessionInstall";
+export type { DebugSessionLaunch } from "./DebugSessionLaunch";
+export type { DebugSessionLogcatChange } from "./DebugSessionLogcatChange";
+export type { DebugSessionMapping } from "./DebugSessionMapping";
+export type { DebugSessionRecorder } from "./DebugSessionRecorder";
+export type { DebugSessionSummary } from "./DebugSessionSummary";
+
 // Devices & variants
 export type { Device } from "./Device";
 export type { DeviceKind } from "./DeviceKind";

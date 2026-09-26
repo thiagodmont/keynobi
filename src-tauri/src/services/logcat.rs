@@ -1,4 +1,5 @@
 use crate::models::logcat::{LogcatFilterSpec, LogcatLevel, ProcessedEntry};
+use crate::services::debug_sessions;
 use crate::services::log_pipeline::{
     parse_logcat_line, DrainBudget, IdAllocator, LogPipeline, PipelineContext, RawLogLine,
     MAX_TRACKED_PACKAGES,
@@ -439,12 +440,16 @@ async fn give_up(
     reason: &str,
 ) {
     error!("{reason}");
-    {
+    let serial = {
         let mut state = logcat_state.lock().await;
-        if state.stream_generation == generation {
+        let owned = state.stream_generation == generation;
+        if owned {
             state.streaming = false;
         }
-    }
+        owned.then(|| state.device_serial.clone()).flatten()
+    };
+    let stopped = debug_sessions::LogcatChange::Stopped(reason.to_string());
+    debug_sessions::record_logcat(serial.as_deref(), stopped);
     if let Some(handle) = app_handle {
         let _ = handle.emit("logcat:stopped", reason.to_string());
     }
@@ -827,6 +832,10 @@ pub async fn start_logcat_stream(
         if let Some(ref handle) = app_handle {
             let _ = handle.emit("logcat:reconnecting", ());
         }
+        debug_sessions::record_logcat(
+            device_serial.as_deref(),
+            debug_sessions::LogcatChange::Reconnect,
+        );
         tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
     }
 
@@ -917,7 +926,7 @@ pub async fn request_stop(logcat_state: &LogcatState) {
 /// Entry IDs are deliberately not reset (see `IdAllocator`): the frontend may
 /// still hold, or be about to receive, entries from before the clear.
 pub async fn request_clear(logcat_state: &LogcatState, app_handle: Option<&tauri::AppHandle>) {
-    {
+    let serial = {
         let mut state = logcat_state.lock().await;
         state.store.clear();
         state.known_packages.clear();
@@ -929,7 +938,9 @@ pub async fn request_clear(logcat_state: &LogcatState, app_handle: Option<&tauri
         state
             .dropped_lines
             .store(0, std::sync::atomic::Ordering::Relaxed);
-    }
+        state.device_serial.clone()
+    };
+    debug_sessions::record_logcat(serial.as_deref(), debug_sessions::LogcatChange::Cleared);
     if let Some(handle) = app_handle {
         let _ = handle.emit("logcat:cleared", ());
     }
