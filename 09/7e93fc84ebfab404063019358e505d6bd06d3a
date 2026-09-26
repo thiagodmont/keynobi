@@ -1,0 +1,53 @@
+skills/keynobi/SKILL.md
+  s_1e114e823b9048::t_2ffb69293eda05 19
+src-tauri/src/services/run_plan.rs
+  s_1e114e823b9048::t_96485a31dab438 1078-1090,1095-1160
+  s_1e114e823b9048::t_e230bbaee72f13 816
+  s_1e114e823b9048::t_0fce92280da434 26-28,94,170,254-255,260,275-286,300-309
+  s_1e114e823b9048::t_2eebc38d3d433e 292-297,1091-1094
+  s_1e114e823b9048::t_f068e70c151380 287-291,298-299
+src-tauri/src/commands/run_configuration.rs
+  s_1e114e823b9048::t_fc2bdd096925a7 106,166
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_a1ea0b586fc575 3262-3271,3276-3277,3280
+  s_1e114e823b9048::t_460f8b673ce741 3278
+  s_1e114e823b9048::t_2722172a61abdc 2843-3011,3013-3219,3224-3228
+  s_1e114e823b9048::t_2eebc38d3d433e 3012,3220-3223,3252-3255,3272-3275
+  s_1e114e823b9048::t_c79e00ca771ad8 3229-3251,3256-3261,3279,3281-3285
+src-tauri/src/services/mcp_toolsets.rs
+  s_1e114e823b9048::t_52ba9d565391d6 13-14
+  s_1e114e823b9048::t_4fb49da52da8cd 74
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_d4617706383a69 45,51,209,219,599
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_2e96016f4862b0 426-427
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_3af48d6117d7f3 221
+  s_1e114e823b9048::t_9465393a09c722 46,92,109,137,230,301,360
+  s_1e114e823b9048::t_2eebc38d3d433e 342
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_fc2bdd096925a7 1018
+  s_1e114e823b9048::t_2eebc38d3d433e 1118-1120,4297
+  s_1e114e823b9048::t_45de4d409aaaa8 20-21,32,483-492,1101-1117,1121-1172,1175-1178,4215-4296,4298-4306,4308-4379
+  s_1e114e823b9048::t_8af90beeafef75 3601-3608,3664,5801-5805
+  s_1e114e823b9048::t_4e58199dae979f 1173-1174,4307
+  s_1e114e823b9048::t_3b414d37f16022 1179,4380
+src-tauri/tests/deploy.rs
+  s_1e114e823b9048::t_fc2bdd096925a7 169
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "097e93fc84ebfab404063019358e505d6bd06d3a",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
