@@ -21,6 +21,7 @@ import type {
   LaunchResult,
   LaunchState,
   LaunchTiming,
+  LaunchTimingEvent,
   LogStats,
   MappingMatch,
   MappingSnapshot,
@@ -505,6 +506,8 @@ export const typeFixtures = {
       "id": 20,
       "launch": {
         "avdName": "Pixel_7_API_34",
+        "displayedMs": 790,
+        "fullyDrawnMs": 1400,
         "launchState": "cold",
         "measuredAt": "2026-04-23T10:00:00Z",
         "model": "sdk_gphone64_arm64",
@@ -568,6 +571,8 @@ export const typeFixtures = {
       "id": 20,
       "launch": {
         "avdName": null,
+        "displayedMs": null,
+        "fullyDrawnMs": null,
         "launchState": null,
         "measuredAt": "2026-04-23T10:00:00Z",
         "model": null,
@@ -683,6 +688,8 @@ export const typeFixtures = {
   LaunchTiming: [
     {
       "avdName": "Pixel_7_API_34",
+      "displayedMs": 790,
+      "fullyDrawnMs": 1400,
       "launchState": "cold",
       "measuredAt": "2026-04-23T10:00:00Z",
       "model": "sdk_gphone64_arm64",
@@ -692,6 +699,8 @@ export const typeFixtures = {
     },
     {
       "avdName": null,
+      "displayedMs": null,
+      "fullyDrawnMs": null,
       "launchState": null,
       "measuredAt": "2026-04-23T10:00:00Z",
       "model": null,
@@ -700,11 +709,57 @@ export const typeFixtures = {
       "waitMs": null
     }
   ] satisfies Wire<LaunchTiming>[],
+  LaunchTimingEvent: [
+    {
+      "launch": {
+        "avdName": "Pixel_7_API_34",
+        "displayedMs": 790,
+        "fullyDrawnMs": 1400,
+        "launchState": "cold",
+        "measuredAt": "2026-04-23T10:00:00Z",
+        "model": "sdk_gphone64_arm64",
+        "serial": "emulator-5554",
+        "totalMs": 812,
+        "waitMs": 815
+      },
+      "recordId": 12
+    },
+    {
+      "launch": {
+        "avdName": null,
+        "displayedMs": null,
+        "fullyDrawnMs": null,
+        "launchState": null,
+        "measuredAt": "2026-04-23T10:00:00Z",
+        "model": null,
+        "serial": "28151FDH2000Q4",
+        "totalMs": 640,
+        "waitMs": null
+      },
+      "recordId": 12
+    }
+  ] satisfies Wire<LaunchTimingEvent>[],
   LaunchResult: [
     {
       "output": "am start OK: Status: ok",
       "timing": {
         "avdName": "Pixel_7_API_34",
+        "displayedMs": 790,
+        "fullyDrawnMs": 1400,
+        "launchState": "cold",
+        "measuredAt": "2026-04-23T10:00:00Z",
+        "model": "sdk_gphone64_arm64",
+        "serial": "emulator-5554",
+        "totalMs": 812,
+        "waitMs": 815
+      }
+    },
+    {
+      "output": "am start OK: Status: ok",
+      "timing": {
+        "avdName": "Pixel_7_API_34",
+        "displayedMs": 790,
+        "fullyDrawnMs": null,
         "launchState": "cold",
         "measuredAt": "2026-04-23T10:00:00Z",
         "model": "sdk_gphone64_arm64",
@@ -1591,6 +1646,39 @@ export const eventFixtures = {
         "warningCount": 1
       }
     ] satisfies Wire<BuildCompleteEvent>[],
+  },
+  "build:launch_timing": {
+    type: "LaunchTimingEvent",
+    samples: [
+      {
+        "launch": {
+          "avdName": "Pixel_7_API_34",
+          "displayedMs": 790,
+          "fullyDrawnMs": 1400,
+          "launchState": "cold",
+          "measuredAt": "2026-04-23T10:00:00Z",
+          "model": "sdk_gphone64_arm64",
+          "serial": "emulator-5554",
+          "totalMs": 812,
+          "waitMs": 815
+        },
+        "recordId": 12
+      },
+      {
+        "launch": {
+          "avdName": null,
+          "displayedMs": null,
+          "fullyDrawnMs": null,
+          "launchState": null,
+          "measuredAt": "2026-04-23T10:00:00Z",
+          "model": null,
+          "serial": "28151FDH2000Q4",
+          "totalMs": 640,
+          "waitMs": null
+        },
+        "recordId": 12
+      }
+    ] satisfies Wire<LaunchTimingEvent>[],
   },
   "device:list_changed": {
     type: "DeviceListChangedEvent",

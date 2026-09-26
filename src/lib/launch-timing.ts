@@ -6,6 +6,26 @@ export function formatLaunchTime(timing: LaunchTiming): string {
   return `${timing.totalMs} ms${state}`;
 }
 
+/** "790 ms" under a second, else "1.4 s". */
+export function formatDisplayDuration(ms: number): string {
+  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
+}
+
+/**
+ * The display times the launch's logcat lines reported, when the logcat
+ * stream was reading the device: ["displayed 790 ms", "fully drawn 1.4 s"].
+ */
+export function describeDisplayTimes(timing: LaunchTiming): string[] {
+  const parts: string[] = [];
+  if (timing.displayedMs !== null) {
+    parts.push(`displayed ${formatDisplayDuration(timing.displayedMs)}`);
+  }
+  if (timing.fullyDrawnMs !== null) {
+    parts.push(`fully drawn ${formatDisplayDuration(timing.fullyDrawnMs)}`);
+  }
+  return parts;
+}
+
 /**
  * Whether two launches ran on the same device. An emulator is identified by
  * its AVD name, since emulator serials are reused by other AVDs; a device

@@ -33,6 +33,31 @@ describe("LaunchTimingSummary", () => {
     expect(screen.getByTitle("54 ms slower than build #41").textContent).toBe("+54 ms vs #41");
   });
 
+  it("shows the display times the logcat stream reported, and compares the launch time", () => {
+    const displayed = makeBuildRecord({
+      id: 42,
+      task: "assembleDebug",
+      launch: makeLaunchTiming({ totalMs: 812, displayedMs: 790, fullyDrawnMs: 1412 }),
+    });
+    render(() => <LaunchTimingSummary record={displayed} history={[earlier, displayed]} />);
+
+    expect(screen.getByTestId("launch-timing").textContent).toBe(
+      "Launch 812 ms (cold) · displayed 790 ms · fully drawn 1.4 s · +54 ms vs #41"
+    );
+  });
+
+  it("shows only the display time that arrived", () => {
+    const record = makeBuildRecord({
+      id: 42,
+      launch: makeLaunchTiming({ totalMs: 812, displayedMs: 790 }),
+    });
+    render(() => <LaunchTimingSummary record={record} history={[record]} />);
+
+    expect(screen.getByTestId("launch-timing").textContent).toBe(
+      "Launch 812 ms (cold) · displayed 790 ms"
+    );
+  });
+
   it("shows no comparison when no earlier build qualifies", () => {
     render(() => <LaunchTimingSummary record={current} history={[current]} />);
 

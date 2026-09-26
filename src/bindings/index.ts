@@ -36,6 +36,7 @@ export type { BuildLinesEvent } from "./BuildLinesEvent";
 export type { BuildCompleteEvent } from "./BuildCompleteEvent";
 export type { LaunchState } from "./LaunchState";
 export type { LaunchTiming } from "./LaunchTiming";
+export type { LaunchTimingEvent } from "./LaunchTimingEvent";
 export type { LaunchResult } from "./LaunchResult";
 export type { MappingSnapshot } from "./MappingSnapshot";
 export type { BuiltApk } from "./BuiltApk";

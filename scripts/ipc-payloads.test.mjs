@@ -348,6 +348,12 @@ describe("the mock backend matches the real payloads", () => {
     await handleInvoke("__e2e_append_logcat_entries", { entries: sampleEntries });
     await handleInvoke("clear_logcat");
     await handleInvoke("run_gradle_task", { task: "assembleDebug" });
+    // A launch recorded on a build: its fully drawn time arrives later.
+    await handleInvoke("launch_app_on_device", {
+      serial: "emulator-5554",
+      package: "com.example.mockapp",
+      buildId: addMockPastBuild({ task: "assembleDebug", state: "success" }),
+    });
     await vi.runAllTimersAsync();
     startMockBuild("assembleRelease", {
       kind: "agent",

@@ -17,6 +17,7 @@ use keynobi_lib::services::agent_skill::{AgentSkillState, AgentSkillStatus};
 use keynobi_lib::services::build_runner::{
     BUILD_COMPLETE_EVENT, BUILD_LINES_EVENT, BUILD_STARTED_EVENT,
 };
+use keynobi_lib::services::launch_display::BUILD_LAUNCH_TIMING_EVENT;
 use keynobi_lib::services::mcp_activity::McpActivityEntry;
 use keynobi_lib::services::mcp_sessions::{
     McpAttachedSession, McpServerStatus, McpStandaloneServer, SESSIONS_CHANGED_EVENT,
@@ -212,6 +213,8 @@ fn launch_timings() -> Vec<LaunchTiming> {
             serial: "emulator-5554".into(),
             avd_name: Some("Pixel_7_API_34".into()),
             model: Some("sdk_gphone64_arm64".into()),
+            displayed_ms: Some(790),
+            fully_drawn_ms: Some(1_400),
         },
         LaunchTiming {
             total_ms: 640,
@@ -221,6 +224,8 @@ fn launch_timings() -> Vec<LaunchTiming> {
             serial: "28151FDH2000Q4".into(),
             avd_name: None,
             model: None,
+            displayed_ms: None,
+            fully_drawn_ms: None,
         },
     ]
 }
@@ -672,12 +677,28 @@ fn fixtures() -> Fixtures {
         ],
     );
     f.add("LaunchTiming", &launch_timings());
+    let launch_events: Vec<LaunchTimingEvent> = launch_timings()
+        .into_iter()
+        .map(|launch| LaunchTimingEvent {
+            record_id: 12,
+            launch,
+        })
+        .collect();
+    f.add("LaunchTimingEvent", &launch_events);
     f.add(
         "LaunchResult",
         &[
             LaunchResult {
                 output: "am start OK: Status: ok".into(),
                 timing: launch_timings().into_iter().next(),
+            },
+            // Returned before the app reported it was fully drawn.
+            LaunchResult {
+                output: "am start OK: Status: ok".into(),
+                timing: launch_timings().into_iter().next().map(|t| LaunchTiming {
+                    fully_drawn_ms: None,
+                    ..t
+                }),
             },
             LaunchResult {
                 output: "monkey OK: Events injected: 1".into(),
@@ -1046,6 +1067,11 @@ fn fixtures() -> Fixtures {
     f.event(BUILD_STARTED_EVENT, "BuildStartedEvent", &started);
     f.event(BUILD_LINES_EVENT, "BuildLinesEvent", &lines);
     f.event(BUILD_COMPLETE_EVENT, "BuildCompleteEvent", &complete);
+    f.event(
+        BUILD_LAUNCH_TIMING_EVENT,
+        "LaunchTimingEvent",
+        &launch_events,
+    );
     f.event(
         "device:list_changed",
         "DeviceListChangedEvent",

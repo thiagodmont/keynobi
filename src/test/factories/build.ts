@@ -102,6 +102,8 @@ export function makeLaunchTiming(overrides: Partial<LaunchTiming> = {}): LaunchT
     serial: "emulator-5554",
     avdName: "Pixel_7_API_34",
     model: "sdk_gphone64_arm64",
+    displayedMs: null,
+    fullyDrawnMs: null,
     ...overrides,
   };
 }

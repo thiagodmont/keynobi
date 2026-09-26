@@ -1,5 +1,6 @@
 use crate::models::build::LaunchState;
 use crate::services::adb_manager::{am_start_failure, parse_am_start_timing};
+use crate::services::launch_display::displayed_time_in_logcat;
 use crate::utils::device_shell::quote_device_shell_arg;
 use crate::utils::process::{
     describe_failure, output_with_timeout, ADB_LAUNCH_TIMEOUT, ADB_QUERY_TIMEOUT,
@@ -259,57 +260,23 @@ async fn wait_for_displayed(
         let output = adb_cmd(
             adb,
             Some(device_serial),
-            &["logcat", "-d", "-T", anchor, "-s", "ActivityManager:I"],
+            &[
+                "logcat",
+                "-d",
+                "-T",
+                anchor,
+                "-s",
+                "ActivityTaskManager:I",
+                "ActivityManager:I",
+            ],
         )
         .await
         .unwrap_or_default();
 
-        if let Some(ms) = parse_displayed_time(&output, package) {
+        if let Some(ms) = displayed_time_in_logcat(&output, package) {
             return Some(ms);
         }
     }
-}
-
-fn parse_displayed_time(logcat_output: &str, package: &str) -> Option<u64> {
-    for line in logcat_output.lines().rev() {
-        if line.contains("Displayed") && line.contains(package) {
-            if let Some(ms) = extract_display_ms(line) {
-                return Some(ms);
-            }
-        }
-    }
-    None
-}
-
-fn extract_display_ms(line: &str) -> Option<u64> {
-    let plus_pos = line.rfind('+')?;
-    let rest = &line[plus_pos + 1..];
-    // Trim any trailing punctuation/whitespace (e.g. closing paren) but keep alphanumeric
-    let rest = rest.trim_end_matches(|c: char| !c.is_alphanumeric());
-
-    // Try "Xs" or "XsYms" (seconds with optional milliseconds)
-    // Look for a bare 's' that is preceded only by digits (not part of "ms")
-    if let Some(s_pos) = rest.find("s") {
-        let before_s = &rest[..s_pos];
-        if before_s.chars().all(|c| c.is_ascii_digit()) && !before_s.is_empty() {
-            let secs: u64 = before_s.parse().ok()?;
-            let after_s = &rest[s_pos + 1..];
-            // after_s may be empty or "YYYms"
-            let ms: u64 = if after_s.is_empty() {
-                0
-            } else {
-                after_s.trim_end_matches("ms").parse().unwrap_or(0)
-            };
-            return Some(secs * 1000 + ms);
-        }
-    }
-
-    // Pure milliseconds: "YYYms"
-    if let Some(ms_str) = rest.strip_suffix("ms") {
-        return ms_str.parse().ok();
-    }
-
-    None
 }
 
 async fn adb_cmd(
@@ -464,18 +431,18 @@ mod tests {
     fn parse_displayed_time_ms_format() {
         let log =
             "I ActivityManager: Displayed com.example.app/.MainActivity: +850ms (total +1s200ms)";
-        assert_eq!(parse_displayed_time(log, "com.example.app"), Some(1200));
+        assert_eq!(displayed_time_in_logcat(log, "com.example.app"), Some(1200));
     }
 
     #[test]
     fn parse_displayed_time_simple_ms() {
         let log = "01-01 00:00:00 I ActivityManager: Displayed com.example.app/.Main: +450ms";
-        assert_eq!(parse_displayed_time(log, "com.example.app"), Some(450));
+        assert_eq!(displayed_time_in_logcat(log, "com.example.app"), Some(450));
     }
 
     #[test]
     fn parse_displayed_time_returns_none_when_absent() {
         let log = "01-01 00:00:00 I ActivityManager: Starting com.example.app";
-        assert!(parse_displayed_time(log, "com.example.app").is_none());
+        assert!(displayed_time_in_logcat(log, "com.example.app").is_none());
     }
 }

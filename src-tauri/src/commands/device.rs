@@ -15,6 +15,8 @@ use crate::services::adb_manager::{
 use crate::services::app_exit_info;
 use crate::services::build_runner::{attach_launch_timing, BuildState};
 use crate::services::installed_builds;
+use crate::services::launch_display::{self, LaunchWatch};
+use crate::services::logcat::LogcatState;
 use crate::services::settings_manager;
 use crate::FsState;
 use serde::Serialize;
@@ -147,7 +149,13 @@ pub async fn list_installed_builds() -> Result<Vec<InstalledBuild>, AppError> {
 
 /// Launch an app on the given device. With `build_id`, the launch time is
 /// recorded on that build's history entry: the build whose APK was installed.
+///
+/// While this process's logcat stream reads the device, the times to initial
+/// and full display are read from it too: what arrived shortly after the
+/// launch is returned, and what arrives later is added to the record and sent
+/// as `build:launch_timing`.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn launch_app_on_device(
     serial: String,
     package: String,
@@ -155,6 +163,8 @@ pub async fn launch_app_on_device(
     build_id: Option<u32>,
     device_state: State<'_, DeviceState>,
     build_state: State<'_, BuildState>,
+    logcat_state: State<'_, LogcatState>,
+    app: AppHandle,
 ) -> Result<LaunchResult, AppError> {
     validate_device_serial(&serial)?;
     validate_package_name(&package)?;
@@ -163,11 +173,25 @@ pub async fn launch_app_on_device(
     }
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
+    let only_online_device = {
+        let devices = &device_state.0.lock().await.devices;
+        let mut online = devices
+            .iter()
+            .filter(|d| matches!(d.connection_state, DeviceConnectionState::Online));
+        online.next().is_some_and(|d| d.serial == serial) && online.next().is_none()
+    };
+    let watch = LaunchWatch::start(
+        &*logcat_state.lock().await,
+        &serial,
+        &package,
+        only_online_device,
+    );
+    let started = tokio::time::Instant::now();
     let outcome = launch_app(&adb, &serial, &package, activity.as_deref())
         .await
         .map_err(AppError::ProcessFailed)?;
 
-    let timing = match outcome.timing {
+    let mut timing = match outcome.timing {
         Some(measured) => {
             let device = device_state
                 .0
@@ -181,10 +205,23 @@ pub async fn launch_app_on_device(
         }
         None => None,
     };
+    if let (Some(timing), Some(watch)) = (&mut timing, &watch) {
+        launch_display::add_display_times(timing, watch, &logcat_state).await;
+    }
     if let (Some(id), Some(timing)) = (build_id, &timing) {
         // The app launched; failing to record its time must not fail the launch.
         if let Err(e) = attach_launch_timing(&build_state, id, timing.clone()).await {
             tracing::warn!("Launch time not recorded on build #{id}: {e}");
+        } else if let Some(watch) = watch.filter(|_| timing.fully_drawn_ms.is_none()) {
+            tokio::spawn(launch_display::record_late_display_times(
+                build_state.inner().clone(),
+                logcat_state.inner().clone(),
+                Some(app),
+                id,
+                timing.clone(),
+                watch,
+                started,
+            ));
         }
     }
     Ok(LaunchResult {
@@ -202,6 +239,8 @@ fn launch_timing(measured: AmStartTiming, serial: &str, device: Option<&Device>)
         serial: serial.to_string(),
         avd_name: device.and_then(|d| d.avd_name.clone()),
         model: device.and_then(|d| d.model.clone()),
+        displayed_ms: None,
+        fully_drawn_ms: None,
     }
 }
 

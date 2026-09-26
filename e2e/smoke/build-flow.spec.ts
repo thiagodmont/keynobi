@@ -57,8 +57,14 @@ deployTest("Run App records the launch time on the build it installed", async ({
     .first()
     .click();
 
-  await expect(page.getByText("▶ Launch time: 812 ms (cold)")).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId("launch-timing").first()).toHaveText("Launch 812 ms (cold)");
+  await expect(page.getByText("▶ Launch time: 812 ms (cold) · displayed 790 ms")).toBeVisible({
+    timeout: 10_000,
+  });
+  // The fully drawn time arrives after the launch returned (build:launch_timing).
+  await expect(page.getByTestId("launch-timing").first()).toHaveText(
+    "Launch 812 ms (cold) · displayed 790 ms · fully drawn 1.4 s",
+    { timeout: 10_000 }
+  );
 });
 
 deployTest("a past build says which device Run App installed it on", async ({ page }) => {

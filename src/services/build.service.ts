@@ -9,6 +9,7 @@ import {
   listenBuildStarted,
   listenBuildLines,
   listenBuildComplete,
+  listenBuildLaunchTiming,
   formatError,
   type BuildActor,
   type BuildCompleteEvent,
@@ -35,7 +36,7 @@ import { projectState, currentProjectGeneration } from "@/stores/project.store";
 import { settingsState } from "@/stores/settings.store";
 import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { buildRunningLabel } from "@/lib/build-actor";
-import { formatLaunchTime } from "@/lib/launch-timing";
+import { describeDisplayTimes, formatLaunchTime } from "@/lib/launch-timing";
 import type { BuildError } from "@/bindings";
 
 let buildUnlisteners: Array<() => void> | null = null;
@@ -81,6 +82,7 @@ async function registerBuildListeners(): Promise<void> {
     listenBuildStarted(onBuildStarted),
     listenBuildLines(onBuildLines),
     listenBuildComplete(onBuildComplete),
+    listenBuildLaunchTiming(onLaunchTiming),
   ]);
   const unlisteners = registrations.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
   const failed = registrations.find((r) => r.status === "rejected");
@@ -183,6 +185,15 @@ function onBuildLines(e: BuildLinesEvent): void {
       run.hiddenLines.splice(0, run.hiddenLines.length - MAX_HIDDEN_LINES);
     }
   }
+}
+
+/** Display times arrived after a launch returned: the build's record has them now. */
+function onLaunchTiming(): void {
+  getBuildHistory()
+    .then(setBuildHistory)
+    .catch((err) => {
+      console.error("[build] Failed to reload build history:", err);
+    });
 }
 
 function onBuildComplete(e: BuildCompleteEvent): void {
@@ -556,7 +567,7 @@ export async function runAndDeploy(): Promise<void> {
       setLastLaunchedAt(Date.now(), packageName);
       logStep(
         launch.timing
-          ? `Launch time: ${formatLaunchTime(launch.timing)}`
+          ? `Launch time: ${[formatLaunchTime(launch.timing), ...describeDisplayTimes(launch.timing)].join(" · ")}`
           : "Launch time: not reported by this launch method"
       );
       if (launch.timing && buildId !== null) {

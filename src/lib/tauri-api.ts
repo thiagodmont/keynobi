@@ -181,6 +181,7 @@ import type {
   BuildStartedEvent,
   BuildLinesEvent,
   BuildCompleteEvent,
+  LaunchTimingEvent,
 } from "@/bindings";
 import { Channel } from "@tauri-apps/api/core";
 
@@ -193,6 +194,7 @@ export type {
   BuildStartedEvent,
   BuildLinesEvent,
   BuildCompleteEvent,
+  LaunchTimingEvent,
 };
 
 /** Start a Gradle task. Resolves with its run ID once Gradle runs; its output
@@ -252,6 +254,11 @@ export function listenBuildLines(cb: (e: BuildLinesEvent) => void): Promise<Unli
 
 export function listenBuildComplete(cb: (e: BuildCompleteEvent) => void): Promise<UnlistenFn> {
   return listen<BuildCompleteEvent>("build:complete", (event) => cb(event.payload));
+}
+
+/** Display times of a launch arrived after the launch returned; the build's record has them. */
+export function listenBuildLaunchTiming(cb: (e: LaunchTimingEvent) => void): Promise<UnlistenFn> {
+  return listen<LaunchTimingEvent>("build:launch_timing", (event) => cb(event.payload));
 }
 
 // ── Variants ──────────────────────────────────────────────────────────────────

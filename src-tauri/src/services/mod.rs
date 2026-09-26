@@ -15,6 +15,7 @@ pub mod gradle_modules;
 pub mod health_inspector;
 pub mod installed_builds;
 pub mod jdk;
+pub mod launch_display;
 pub mod log_pipeline;
 pub mod log_store;
 pub mod log_stream;

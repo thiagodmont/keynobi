@@ -265,6 +265,25 @@ pub struct LaunchTiming {
     pub avd_name: Option<String>,
     /// Device model, for display.
     pub model: Option<String>,
+    /// Time to initial display, from the logcat `Displayed` line; `None`
+    /// when this process's logcat stream did not show it for this launch.
+    #[serde(default)]
+    pub displayed_ms: Option<u32>,
+    /// Time to full display, from the logcat `Fully drawn` line the app's
+    /// `reportFullyDrawn` produces; `None` when none arrived in time.
+    #[serde(default)]
+    pub fully_drawn_ms: Option<u32>,
+}
+
+/// Payload of `build:launch_timing`: display times that arrived after
+/// `launch_app_on_device` returned, now recorded on the build.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct LaunchTimingEvent {
+    /// The build history record the launch belongs to.
+    pub record_id: u32,
+    pub launch: LaunchTiming,
 }
 
 /// Result of `launch_app_on_device`.
