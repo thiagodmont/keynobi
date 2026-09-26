@@ -1,0 +1,43 @@
+references/BEST_PRACTICES.md
+  s_1e114e823b9048::t_6d68bae99dc7fb 57,76
+src-tauri/src/services/ui_automator_lock.rs
+  s_1e114e823b9048::t_9553707a7e1473 74-83,89-90,95-109,121-127,129,131-166
+  s_1e114e823b9048::t_8f7023a9b2b01e 11-14,16-17,19-20,23,31-35
+  s_1e114e823b9048::t_8791d15309dd1f 52-54
+  s_1e114e823b9048::t_80344865b7e5e4 130
+  s_1e114e823b9048::t_0bb5b9dadc4a89 376-498,500-507,509-550
+  s_1e114e823b9048::t_d74c737fcf19c3 499,508
+  s_1e114e823b9048::t_dde841be08a25a 36
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_077603ae8fab9c 568-627
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_6d68bae99dc7fb 16,344,511
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_6d68bae99dc7fb 431
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_6d68bae99dc7fb 172,344
+src-tauri/src/services/build_lock.rs
+  s_1e114e823b9048::t_4663dc0b6de3dd 9-11
+  s_1e114e823b9048::t_053b81f6accc4a 98-114
+  s_1e114e823b9048::t_9a339011751f8d 135-136
+  s_1e114e823b9048::t_bf7c6928c06a9c 94
+  s_1e114e823b9048::t_8073e961666420 42-49,51,56-62,95
+  s_1e114e823b9048::t_e26b9a06cb46be 72
+  s_1e114e823b9048::t_6cc98da4400dd0 96-97
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3b8d3eac37b604e7aa4a2b8a5bcfeb58fe24480d",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
