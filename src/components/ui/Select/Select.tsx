@@ -10,6 +10,11 @@ export interface SelectProps {
   placeholder?: string;
   disabled?: boolean;
   class?: string;
+  /** Pairs the select with a `FormField` label (`for`). */
+  id?: string;
+  /** Accessible name when no visible label names the select. */
+  ariaLabel?: string;
+  title?: string;
 }
 
 function getLabel(opt: SelectOption): string {
@@ -23,6 +28,9 @@ function getValue(opt: SelectOption): string {
 export function Select(props: SelectProps): JSX.Element {
   return (
     <select
+      id={props.id}
+      aria-label={props.ariaLabel}
+      title={props.title}
       value={props.value}
       disabled={props.disabled}
       onChange={(e) => props.onChange(e.currentTarget.value)}
@@ -34,7 +42,12 @@ export function Select(props: SelectProps): JSX.Element {
         </option>
       </Show>
       <For each={props.options}>
-        {(opt) => <option value={getValue(opt)}>{getLabel(opt)}</option>}
+        {(opt) => (
+          // Marked here too: a re-created option would otherwise lose the selection.
+          <option value={getValue(opt)} selected={getValue(opt) === props.value}>
+            {getLabel(opt)}
+          </option>
+        )}
       </For>
     </select>
   );

@@ -1,8 +1,10 @@
 use crate::models::error::AppError;
-use crate::models::run_configuration::{ProjectRunConfigurations, ResolvedRun, RunConfiguration};
+use crate::models::run_configuration::{
+    ProjectRunConfigurations, ResolvedRun, RunConfiguration, TargetPreference,
+};
 use crate::services::adb_manager::{get_adb_path, DeviceState};
 use crate::services::run_plan::{self, Devices, RunProject, RunRequest};
-use crate::services::{run_configurations, settings_manager, ui_automation};
+use crate::services::{gradle_modules, run_configurations, settings_manager, ui_automation};
 use crate::FsState;
 use tauri::State;
 
@@ -130,6 +132,40 @@ pub async fn resolve_run_configuration(
         )
     })
     .await
+}
+
+/// The open project's application modules (Gradle paths), which a run
+/// configuration can build.
+#[tauri::command]
+pub async fn list_application_modules(
+    fs_state: State<'_, FsState>,
+) -> Result<Vec<String>, AppError> {
+    let gradle_root = {
+        let fs = fs_state.0.lock().await;
+        fs.gradle_root
+            .as_ref()
+            .or(fs.project_root.as_ref())
+            .cloned()
+            .ok_or_else(|| AppError::NotFound("No project is open".into()))?
+    };
+    blocking(move || {
+        Ok(gradle_modules::application_modules(&gradle_root)
+            .into_iter()
+            .map(|m| m.path)
+            .collect())
+    })
+    .await
+}
+
+/// Set which device the configuration named `name` runs on.
+#[tauri::command]
+pub async fn set_run_configuration_target(
+    name: String,
+    target: TargetPreference,
+    fs_state: State<'_, FsState>,
+) -> Result<ProjectRunConfigurations, AppError> {
+    let project_root = open_project_root(&fs_state).await?;
+    blocking(move || run_configurations::set_target(&project_root, &name, target)).await
 }
 
 /// Remember the device a run of the configuration named `name` installed on.

@@ -20,6 +20,10 @@ import { BuildPanel } from "@/components/build/BuildPanel";
 import { LogcatPanel } from "@/components/logcat/LogcatPanel";
 import { LayoutViewerPanel } from "@/components/ui-hierarchy/LayoutViewerPanel";
 import { ProjectInfoEditor, openProjectInfoEditor } from "@/components/projects/ProjectInfoEditor";
+import { RunConfigurationsDialog } from "@/components/build/RunConfigurationsDialog";
+import { focusRunConfigurationPicker } from "@/components/build/RunConfigurationPicker";
+import { openRunConfigurationsEditor } from "@/services/run-configurations.service";
+import { runConfigState } from "@/stores/run-configurations.store";
 import { ProjectSidebar } from "@/components/projects/ProjectSidebar";
 import { DeviceSidebar } from "@/components/device/DeviceSidebar";
 import { DevicePickerDialog } from "@/components/device/DevicePickerDialog";
@@ -371,6 +375,25 @@ export function App(): JSX.Element {
       action: () => openVariantPicker(),
     });
     registerAction({
+      id: "build.selectRunConfiguration",
+      label: "Select Run Configuration…",
+      category: "Build" as ActionCategory,
+      // After the palette closes and gives focus back.
+      action: () => void setTimeout(focusRunConfigurationPicker, 0),
+    });
+    registerAction({
+      id: "build.editRunConfigurations",
+      label: "Edit Run Configurations…",
+      category: "Build" as ActionCategory,
+      action: () => {
+        if (!projectState.projectRoot) {
+          showToast("No project is open.", "error");
+          return;
+        }
+        openRunConfigurationsEditor();
+      },
+    });
+    registerAction({
       id: "device.manage",
       label: "Manage Virtual Devices",
       category: "Build" as ActionCategory,
@@ -610,6 +633,9 @@ export function App(): JSX.Element {
       <HealthPanel />
       <McpPanel />
       <ProjectInfoEditor />
+      <Show when={runConfigState.editorOpen && projectState.projectRoot}>
+        <RunConfigurationsDialog />
+      </Show>
       <DevicePickerDialog />
       <ExitReasonsDialog />
       <SessionsDialog />

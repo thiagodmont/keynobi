@@ -78,7 +78,7 @@ Sidebars and bars:
 
 - **Projects sidebar** on the left: saved Android projects.
 - **Devices sidebar** on the right: physical devices and emulators.
-- **Title bar**: **Run App** (becomes **Cancel build** while Gradle builds; install and launch cannot be cancelled), **Log Mode** to focus the window on Logcat, and **Keep window on top** to keep Keynobi above other apps. Keep on top resets when you relaunch.
+- **Title bar**: the run configuration picker (see [Run configurations](#run-configurations)), **Run App** (becomes **Cancel build** while Gradle builds; install and launch cannot be cancelled), **Log Mode** to focus the window on Logcat, and **Keep window on top** to keep Keynobi above other apps. Keep on top resets when you relaunch.
 - **Status bar** at the bottom: settings, project, health, build status, MCP status, update (when available), active variant, app memory, and log folder size.
 
 ---
@@ -129,11 +129,27 @@ Common actions:
 
 Builds need a trusted project; in Safe Mode every build action is disabled (see [Project trust and Safe Mode](#project-trust-and-safe-mode)).
 
-- `Cmd+R` or **Run App**: build, install, and launch the app, as the project's active run configuration says. A project starts with a configuration named **Default** for its application module, whatever the module's name, with the variant you choose, the device you last ran on (else the selected one), and the app's launcher activity; a configuration can instead build another task of the module, run on a given device or AVD, launch an activity or open a deep link (or not launch at all), and apply its own Logcat filter. The first line of the build log is the plan, for example **Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine**. Run App builds only that module (`:mobile:assembleDebug`, or `assembleDebug` when the app is the root project). In a project with several application modules (for example a phone and a watch app), there is one configuration per module and none is active until you choose one; until then Run App stops with the list of configurations. When no device is online for the run, Keynobi asks you to pick one; when the configuration runs on an AVD that is not running, Run App stops and says so. It installs the APK that build wrote for the configuration's variant, and the log names the build: **APK (build #12)**. When Gradle found the APK up to date and did not rewrite it, the log says **APK unchanged since build #9** (the build that wrote it); an APK of another variant or module is never installed. The build log ends with the launch time Android measured (`am start -W`), for example **Launch time: 812 ms (cold) · displayed 790 ms**; the display times appear when Logcat is streaming that device (see below). When Keynobi had to fall back to another way of starting the app, or opened a deep link, the log says no launch time was reported. After the launch, the Logcat filter becomes the configuration's filter, or `package:mine` is added to it.
+- `Cmd+R` or **Run App**: build, install, and launch the app, as the project's active run configuration says. A project starts with a configuration named **Default** for its application module, whatever the module's name, with the variant you choose, the device you last ran on (else the selected one), and the app's launcher activity; a configuration can instead build another task of the module, run on a given device or AVD, launch an activity or open a deep link (or not launch at all), and apply its own Logcat filter. The first line of the build log is the plan, for example **Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine**. Run App builds only that module (`:mobile:assembleDebug`, or `assembleDebug` when the app is the root project). In a project with several application modules (for example a phone and a watch app), there is one configuration per module and none is active until you choose one in the title bar; until then Run App stops with the list of configurations. When no device is online for the run, Keynobi asks you to pick one; when the configuration runs on an AVD that is not running, Run App offers **Launch AVD** and stops, so run again once it is online (Keynobi never starts an emulator on its own). It installs the APK that build wrote for the configuration's variant, and the log names the build: **APK (build #12)**. When Gradle found the APK up to date and did not rewrite it, the log says **APK unchanged since build #9** (the build that wrote it); an APK of another variant or module is never installed. The build log ends with the launch time Android measured (`am start -W`), for example **Launch time: 812 ms (cold) · displayed 790 ms**; the display times appear when Logcat is streaming that device (see below). When Keynobi had to fall back to another way of starting the app, or opened a deep link, the log says no launch time was reported. After the launch, the Logcat filter becomes the configuration's filter, or `package:mine` is added to it.
 - `Cmd+Shift+R` or **Build Only**: build the active run configuration's task, without installing.
-- `Cmd+Shift+V`, or click the variant pill in the status bar: choose the build variant of the active run configuration.
+- `Cmd+Shift+V`, or click the variant pill in the status bar: choose the build variant of the active run configuration. The pill shows the configuration's module and variant, for example **:app · debug**.
 - **Clean Project** from the Command Palette: run the Gradle `clean` task.
 - **Cancel Build** from the Command Palette or the title bar: stop the running Gradle task, including one an AI client started.
+
+### Run configurations
+
+A run configuration says what **Run App** and **Build Only** do: the application module and variant, the Gradle task, the device, what to launch, and the Logcat filter to apply after the launch. Configurations belong to the project and are kept on this Mac.
+
+- **Choose one**: the picker left of **Run App** in the title bar lists the project's configurations and shows the active one. Choosing one makes it active; the variant pill follows its module and variant. From the Command Palette, **Select Run Configuration…** moves focus to the picker.
+- **Edit them**: choose **Edit Configurations…** at the bottom of the picker, or **Edit Run Configurations…** in the Command Palette. The editor lists the configurations (the active one is marked **Active**) with **Add**, **Duplicate**, and **Delete**, and edits the selected one:
+  - **Name**, **Module** (an application module of the project), and **Variant** (a variant of that module).
+  - **Gradle task**: the module's assemble task (`:app:assembleDebug`) until you change it; it must be a task of the module.
+  - **Target device**: **Ask each time**, **Last used device** (the device it last ran on, else the selected one), an online device, or an AVD.
+  - **Launch**: the default activity, an activity (`.SettingsActivity`), a deep link (`myapp://home`), or nothing (install only).
+  - **Logcat filter**: a query in the Logcat query bar's syntax, checked as you type. Empty keeps the current filter and adds `package:mine`.
+  - **Resolved plan**: what Run App would do with the saved configuration now, for example **Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine**, or why it cannot run. When it runs on an AVD that is not running, **Launch AVD** starts it.
+
+  **Save** checks the configuration against the project and shows any problem next to the form, saving nothing. Closing the editor, or selecting another configuration, with unsaved changes asks before discarding them.
+- **Run one without choosing it**: the Command Palette has **Run: <name>** and **Build: <name>** for each configuration of the open project.
 
 Builds an attached AI client starts show in the Build tab like your own, labelled **Started by an agent (client name)**, with their output, errors, and result. Keynobi never installs or launches an AI client's build. While it runs, **Build** is disabled and its tooltip says which agent is building; you can still cancel it.
 
@@ -464,7 +480,7 @@ Exact tools, prompts, and resources are discoverable from the MCP client.
 | `Cmd+Shift+W` | Open Setup Wizard |
 | `Cmd+,` | Open Settings |
 | `Cmd+O` | Open Folder (add project) |
-| `Cmd+R` | Run App: build, install, and launch the active run configuration |
+| `Cmd+R` | Run App: build, install, and launch the active run configuration (the title bar picker's) |
 | `Cmd+Shift+R` | Build Only: build the active run configuration (no deploy) |
 | `Cmd+Shift+V` | Select Build Variant |
 | `Cmd+1` | Build tab |
@@ -481,6 +497,9 @@ Command Palette actions without a shortcut:
 - Project App Info
 - Cancel Build
 - Clean Project
+- Select Run Configuration… (focuses the title bar picker)
+- Edit Run Configurations…
+- Run: <name> and Build: <name>, for each run configuration of the open project
 - Manage Virtual Devices (toggles the Devices sidebar, same as `Cmd+3`)
 - Show App Exit Reasons
 - Show Debug Sessions

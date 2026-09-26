@@ -7,7 +7,10 @@ import type {
   InstalledBuild,
   LaunchTiming,
   MappingSnapshot,
+  ProjectRunConfigurations,
   ResolvedRun,
+  RunConfiguration,
+  TargetPreference,
 } from "@/bindings";
 
 export function makeBuildLine(overrides: Partial<BuildLine> = {}): BuildLine {
@@ -121,5 +124,38 @@ export function makeResolvedRun(overrides: Partial<ResolvedRun> = {}): ResolvedR
     device: { serial: "emulator-5554", label: "Pixel_7" },
     plan: "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
     ...overrides,
+  };
+}
+
+export function makeRunConfiguration(overrides: Partial<RunConfiguration> = {}): RunConfiguration {
+  return {
+    name: "Default",
+    module: ":app",
+    variant: "debug",
+    task: null,
+    launch: { kind: "default" },
+    logcatFilter: "package:mine",
+    ...overrides,
+  };
+}
+
+/** A project's configurations as `list_run_configurations` returns them; the first is active. */
+export function makeProjectRunConfigurations(
+  configurations: RunConfiguration[] = [makeRunConfiguration()],
+  targets: Record<string, TargetPreference> = {}
+): ProjectRunConfigurations {
+  return {
+    configurations,
+    active: configurations[0]?.name ?? null,
+    local: Object.fromEntries(
+      configurations.map((c) => [
+        c.name,
+        {
+          target: targets[c.name] ?? { kind: "lastUsed" },
+          lastDevice: null,
+          approvedProjectFileSha256: null,
+        },
+      ])
+    ),
   };
 }

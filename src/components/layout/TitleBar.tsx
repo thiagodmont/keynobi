@@ -9,6 +9,8 @@ import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { formatError } from "@/lib/tauri-api";
 import { cancelBuildTitle } from "@/lib/build-actor";
 import { Badge, Icon, showToast } from "@/components/ui";
+import { RunConfigurationPicker } from "@/components/build/RunConfigurationPicker";
+import { runConfigState } from "@/stores/run-configurations.store";
 
 async function startDrag(e: MouseEvent) {
   if (e.button !== 0) return;
@@ -199,6 +201,11 @@ export function TitleBar(): JSX.Element {
         <Icon name="pin" size={13} color={alwaysOnTop() ? "var(--accent)" : "currentColor"} />
         On Top
       </button>
+      <Show
+        when={projectState.projectRoot && runConfigState.projectRoot === projectState.projectRoot}
+      >
+        <RunConfigurationPicker disabled={runInFlight()} />
+      </Show>
       <button
         type="button"
         onClick={() => void handleBuildButtonClick()}

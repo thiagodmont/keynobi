@@ -348,6 +348,7 @@ describe("the mock backend matches the real payloads", () => {
       get_session_capture: { id: mockSessionId(1), seq: detail.crashes[0]?.seq },
       refresh_session_exit_reasons: { id: mockSessionId(1) },
       record_run_device: { name: "Default", serial: "emulator-5554" },
+      set_run_configuration_target: { name: "Default", target: { kind: "lastUsed" } },
       resolve_run_configuration: { selectedSerial: "emulator-5554" },
     };
     for (const [command, type] of invokedTypes()) {

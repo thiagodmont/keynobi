@@ -1,0 +1,11 @@
+.root {
+  flex-shrink: 0;
+  width: 180px;
+  min-width: 0;
+}
+
+.select {
+  width: 100%;
+  height: 28px;
+  text-overflow: ellipsis;
+}

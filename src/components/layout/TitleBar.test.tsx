@@ -6,6 +6,11 @@ import { resetUIStateForTests, uiState } from "@/stores/ui.store";
 import { resetBuildState, setDeployPhase, startBuild } from "@/stores/build.store";
 import { setProject, setProjectState } from "@/stores/project.store";
 import { setProjects } from "@/stores/projects.store";
+import {
+  resetRunConfigurationsForTests,
+  setRunConfigurations,
+} from "@/stores/run-configurations.store";
+import { makeProjectRunConfigurations, makeRunConfiguration } from "@/test/factories/build";
 import type { ProjectEntry } from "@/bindings";
 import { TitleBar } from "./TitleBar";
 
@@ -180,6 +185,25 @@ describe("TitleBar", () => {
       const run = screen.getByTitle("Safe Mode — trust this project to build") as HTMLButtonElement;
       expect(run.disabled).toBe(true);
       expect(screen.getByRole("button", { name: "Safe Mode" })).not.toBeNull();
+    });
+
+    it("shows the run configuration picker left of Run once the project's configurations load", () => {
+      openProject(true);
+      render(() => <TitleBar />);
+      expect(screen.queryByRole("combobox", { name: "Run configuration" })).toBeNull();
+
+      setRunConfigurations(
+        "/projects/app",
+        makeProjectRunConfigurations([makeRunConfiguration({ name: "Wear" })])
+      );
+
+      const picker = screen.getByRole("combobox", { name: "Run configuration" });
+      const run = screen.getByTitle(/Run App/);
+      expect((picker as HTMLSelectElement).value).toBe("Wear");
+      expect(
+        picker.compareDocumentPosition(run) & globalThis.Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+      resetRunConfigurationsForTests();
     });
 
     it("enables Run without a badge for a trusted project", () => {

@@ -161,6 +161,78 @@ test("Build Only builds the active run configuration's task", async ({ page }) =
   expect(history.map((record) => record.task)).toEqual([":app:assembleRelease"]);
 });
 
+deployTest(
+  "a configuration made in the editor is picked in the title bar and run",
+  async ({ page }) => {
+    await selectMockProject(page);
+    const picker = page.getByRole("combobox", { name: "Run configuration" });
+    await expect(picker).toHaveValue("Default", { timeout: 5_000 });
+
+    await picker.selectOption({ label: "Edit Configurations…" });
+    const editor = page.getByRole("dialog", { name: "Run Configurations" });
+    await expect(editor).toBeVisible();
+    await expect(picker).toHaveValue("Default");
+    await editor.getByRole("button", { name: "Add" }).click();
+    await editor.getByLabel("Name", { exact: true }).fill("Release run");
+    await editor.getByLabel("Variant", { exact: true }).selectOption("release");
+    await expect(editor.getByLabel("Gradle task", { exact: true })).toHaveValue(
+      ":app:assembleRelease"
+    );
+    await editor.getByLabel("Launch", { exact: true }).selectOption("activity");
+    await editor.getByLabel("Activity", { exact: true }).fill(".SettingsActivity");
+    await editor.getByLabel("Logcat filter", { exact: true }).fill("package:mine level:warn");
+    await editor.getByRole("button", { name: "Save" }).click();
+
+    await expect(editor.getByTestId("run-config-plan")).toContainText(
+      "Run 'Release run': build :app:assembleRelease"
+    );
+    await editor.getByRole("button", { name: "Close" }).click();
+    await expect(editor).toBeHidden();
+
+    await picker.selectOption("Release run");
+    await expect(picker).toHaveValue("Release run");
+    await page.getByRole("tab", { name: "Build" }).click();
+    await page
+      .getByTitle(/^Run App/)
+      .first()
+      .click();
+
+    await expect(
+      page.getByText(
+        "Run 'Release run': build :app:assembleRelease → install this build's APK → launch .SettingsActivity on Pixel_6_API_34 → filter package:mine level:warn"
+      )
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(
+      page.getByText("▶ adb shell am start -W (com.example.mockapp.debug/.SettingsActivity)")
+    ).toBeVisible({ timeout: 10_000 });
+  }
+);
+
+test("the command palette runs, builds, and edits run configurations", async ({ page }) => {
+  await selectMockProject(page);
+  await expect(page.getByRole("combobox", { name: "Run configuration" })).toHaveValue("Default", {
+    timeout: 5_000,
+  });
+
+  const palette = page.getByRole("dialog", { name: "Command Palette" });
+  await page.keyboard.press("Meta+Shift+P");
+  await page.keyboard.type("Build: Default");
+  await expect(page.getByRole("option", { name: /Run: Default/ })).toBeHidden();
+  await expect(page.getByRole("option", { name: /Build: Default/ })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(palette).toBeHidden();
+  await page.getByRole("tab", { name: "Build" }).click();
+  await expect(page.getByText("Build 'Default': build :app:assembleDebug")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  await page.keyboard.press("Meta+Shift+P");
+  await page.keyboard.type("Edit Run Configurations");
+  await expect(page.getByRole("option", { name: /Edit Run Configurations…/ })).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Run Configurations" })).toBeVisible();
+});
+
 deployTest("a past build says which device Run App installed it on", async ({ page }) => {
   await selectMockProject(page);
   await page.getByRole("tab", { name: "Build" }).click();

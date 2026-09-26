@@ -7,6 +7,8 @@ export type InputSize = "xs" | "sm" | "md";
 
 export interface InputProps {
   type?: InputType;
+  /** Pairs the input with a `FormField` label (`for`). */
+  id?: string;
   value?: string | number;
   placeholder?: string;
   state?: InputState;
@@ -59,6 +61,7 @@ export function Input(props: InputProps): JSX.Element {
       </Show>
       <input
         ref={props.inputRef}
+        id={props.id}
         type={props.type ?? "text"}
         value={props.value ?? ""}
         placeholder={props.placeholder}

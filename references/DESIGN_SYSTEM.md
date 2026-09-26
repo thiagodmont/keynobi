@@ -44,7 +44,8 @@ Use this map before adding local markup or styles in a feature folder. **Status*
 | Toggle filter pill | `FilterChip` | Always sets `aria-pressed` true/false. | Stable |
 | Search or inline edit | `Input size="xs" \| "sm"` | Use `mono` for queries, package names, paths, and tags. | Stable |
 | Longer text input | `Textarea` | Use `mono` for logs, command output, or code-like text. | Stable |
-| Settings field | `FormField` + form control | Owns label, description, required marker, and error text (`role="alert"`). | Stable |
+| Settings field | `FormField` + form control | Owns label, description, required marker, and error text (`role="alert"`). Give `FormField` and its `Input` or `Select` the same `id` so the label names the control. | Stable |
+| Choice without a visible label (title bar pickers) | `Select` with `ariaLabel` and `title` | The accessible name comes from `ariaLabel`; `title` says what is chosen. An option that performs an action instead of choosing (**Edit Configurations…**) goes last, and the handler puts the value back. | Stable |
 | Binary setting | `Toggle` or `Checkbox` | `Toggle` (`role="switch"`) for on/off modes, `Checkbox` for inclusion choices. | Stable |
 | Semantic label | `Badge` | Use `size="xs"` and `mono` for dense developer tokens. | Stable |
 | Health/state marker | `StatusDot` | Pair with nearby text unless the status is already named. | Stable |

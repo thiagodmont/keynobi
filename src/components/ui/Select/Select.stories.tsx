@@ -19,6 +19,7 @@ export const Basic: Story = {
     return (
       <div style={{ width: "260px" }}>
         <Select
+          ariaLabel="Build variant"
           value={value()}
           onChange={setValue}
           options={[
