@@ -16,6 +16,7 @@ references/USER_MANUAL.md
   s_1e114e823b9048::t_6d68bae99dc7fb 431
 references/MCP_SERVER.md
   s_1e114e823b9048::t_6d68bae99dc7fb 172,344
+  s_1e114e823b9048::t_06408e1550d8fb 318
 src-tauri/src/services/build_lock.rs
   s_1e114e823b9048::t_4663dc0b6de3dd 9-11
   s_1e114e823b9048::t_053b81f6accc4a 98-114
