@@ -205,10 +205,10 @@ describe("LogEntryDetailPanel deobfuscation", () => {
       bytes: 100,
       pgMapId: "6b1c2f0",
     },
-    matchedBy: "installRecord",
+    matchedBy: "mapId",
     device: "Pixel_7",
     summary:
-      "Deobfuscated with the R8 mapping of build #12 (:app release, map id 6b1c2f0), matched by Keynobi's install on Pixel_7.",
+      "Deobfuscated with the R8 mapping of build #12 (:app release, map id 6b1c2f0), matched by map id.",
   });
 
   function stubRetrace(respond: () => Promise<RetraceOutcome>) {
@@ -249,6 +249,31 @@ describe("LogEntryDetailPanel deobfuscation", () => {
     ).not.toBeNull();
     expect(screen.getByLabelText("Deobfuscated stack").textContent).toBe(RETRACED.trace);
     expect(screen.getByRole("button", { name: /Copy stack/ })).not.toBeNull();
+  });
+
+  it.each([
+    ["mapId", RETRACED.summary, /\), matched by map id\.$/],
+    [
+      "deviceHash",
+      "Deobfuscated with the R8 mapping of build #12 (:app release, map id 6b1c2f0), matched by " +
+        "the SHA-256 of the APK on Pixel_7 (a1a1a1a1a1a1…), which build #12 wrote.",
+      /matched by the SHA-256 of the APK on Pixel_7 \(a1a1a1a1a1a1…\), which build #12 wrote\.$/,
+    ],
+    [
+      "installRecord",
+      "Deobfuscated with the R8 mapping of build #12 (:app release, map id 6b1c2f0), matched by " +
+        "Keynobi's install on Pixel_7 at 2026-04-23T09:58:00Z and confirmed by the device " +
+        "(versionCode 42, last updated 2026-04-23 09:58:00); the device could not hash its APK " +
+        "(adb shell sha256sum failed: sha256sum: not found).",
+      /the device could not hash its APK \(adb shell sha256sum failed/,
+    ],
+  ] as const)("says the mapping was matched by %s", async (matchedBy, summary, shown) => {
+    stubRetrace(() => Promise.resolve({ ...RETRACED, matchedBy, summary }));
+    render(() => <LogEntryDetailPanel entry={CRASH} onClose={() => {}} />);
+
+    fireEvent.click(deobfuscateButton()!);
+
+    expect(await screen.findByText(shown)).not.toBeNull();
   });
 
   it("says why nothing was deobfuscated and shows no stack", async () => {

@@ -513,8 +513,8 @@ export async function getLogcatStats(): Promise<LogStats> {
 }
 
 /**
- * Deobfuscate a crash from the logcat buffer with the R8 mapping of the build
- * Keynobi installed on its device. Refusals and a missing tool are outcomes;
+ * Deobfuscate a crash from the logcat buffer with the saved R8 mapping of the
+ * build that produced it. Refusals and a missing tool are outcomes;
  * a crash that left the buffer rejects with `NotFound`.
  */
 export async function retraceCrash(crashGroupId: number): Promise<RetraceOutcome> {

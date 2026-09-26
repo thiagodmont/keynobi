@@ -304,14 +304,28 @@ fn retrace_outcomes() -> Vec<RetraceOutcome> {
                 .into(),
             build_id: Some(20),
             mapping: mapping_snapshots().into_iter().next(),
-            matched_by: Some(MappingMatch::InstallRecord),
+            matched_by: Some(MappingMatch::DeviceHash),
             device: Some("Pixel_7".into()),
             package: Some("com.example.app".into()),
             reason: None,
             summary: "Deobfuscated with the R8 mapping of build #20 (:app release, map id \
-                      6b1c2f0), matched by Keynobi's install on Pixel_7 at 2026-04-23T10:00:00Z \
-                      and confirmed by the device (versionCode 42, last updated 2026-04-23 \
-                      10:00:00)."
+                      6b1c2f0), matched by the SHA-256 of the APK on Pixel_7 (a1a1a1a1a1a1…), \
+                      which build #20 wrote."
+                .into(),
+        },
+        RetraceOutcome {
+            status: RetraceStatus::Retraced,
+            trace: "java.lang.RuntimeException: boom\n\
+                    \tat com.example.app.MainActivity.onCreate(MainActivity.kt:24)\n"
+                .into(),
+            build_id: Some(20),
+            mapping: mapping_snapshots().into_iter().next(),
+            matched_by: Some(MappingMatch::MapId),
+            device: Some("R5CT1234ABC".into()),
+            package: None,
+            reason: None,
+            summary: "Deobfuscated with the R8 mapping of build #20 (:app release, map id \
+                      6b1c2f0), matched by map id."
                 .into(),
         },
         RetraceOutcome {
@@ -738,7 +752,14 @@ fn fixtures() -> Fixtures {
             RetraceStatus::Failed,
         ],
     );
-    f.add("MappingMatch", &[MappingMatch::InstallRecord]);
+    f.add(
+        "MappingMatch",
+        &[
+            MappingMatch::MapId,
+            MappingMatch::DeviceHash,
+            MappingMatch::InstallRecord,
+        ],
+    );
     let device_list = [DeviceListChangedEvent { devices: devices() }];
     f.add("DeviceListChangedEvent", &device_list);
     f.add(

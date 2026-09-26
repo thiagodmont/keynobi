@@ -501,9 +501,13 @@ pub fn record_install_in(
 }
 
 /// The build's saved mappings of `apk`'s module and variant, when the saved
-/// copy still exists. Called under the data lock, so pruning cannot remove
-/// one before the install that names it is saved.
-fn mappings_of(dir: &Path, mappings: &[MappingSnapshot], apk: &BuiltApk) -> Vec<MappingSnapshot> {
+/// copy still exists. Recording calls it under the data lock, so pruning
+/// cannot remove one before the install that names it is saved.
+pub(crate) fn mappings_of(
+    dir: &Path,
+    mappings: &[MappingSnapshot],
+    apk: &BuiltApk,
+) -> Vec<MappingSnapshot> {
     mappings
         .iter()
         .filter(|m| m.module == apk.module && m.variant.eq_ignore_ascii_case(&apk.variant))

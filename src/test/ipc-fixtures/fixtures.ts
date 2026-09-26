@@ -936,11 +936,28 @@ export const typeFixtures = {
         "sha256": "6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a",
         "variant": "release"
       },
-      "matchedBy": "installRecord",
+      "matchedBy": "deviceHash",
       "package": "com.example.app",
       "reason": null,
       "status": "retraced",
-      "summary": "Deobfuscated with the R8 mapping of build #20 (:app release, map id 6b1c2f0), matched by Keynobi's install on Pixel_7 at 2026-04-23T10:00:00Z and confirmed by the device (versionCode 42, last updated 2026-04-23 10:00:00).",
+      "summary": "Deobfuscated with the R8 mapping of build #20 (:app release, map id 6b1c2f0), matched by the SHA-256 of the APK on Pixel_7 (a1a1a1a1a1a1…), which build #20 wrote.",
+      "trace": "java.lang.RuntimeException: boom\n\tat com.example.app.MainActivity.onCreate(MainActivity.kt:24)\n"
+    },
+    {
+      "buildId": 20,
+      "device": "R5CT1234ABC",
+      "mapping": {
+        "bytes": 48213771,
+        "module": ":app",
+        "pgMapId": "6b1c2f0",
+        "sha256": "6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a6b1c2f0a",
+        "variant": "release"
+      },
+      "matchedBy": "mapId",
+      "package": null,
+      "reason": null,
+      "status": "retraced",
+      "summary": "Deobfuscated with the R8 mapping of build #20 (:app release, map id 6b1c2f0), matched by map id.",
       "trace": "java.lang.RuntimeException: boom\n\tat com.example.app.MainActivity.onCreate(MainActivity.kt:24)\n"
     },
     {
@@ -962,6 +979,8 @@ export const typeFixtures = {
     "failed"
   ] satisfies Wire<RetraceStatus>[],
   MappingMatch: [
+    "mapId",
+    "deviceHash",
     "installRecord"
   ] satisfies Wire<MappingMatch>[],
   DeviceListChangedEvent: [

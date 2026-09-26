@@ -1,10 +1,12 @@
 //! Deobfuscating crash stack traces with the Android SDK's R8 `retrace`.
 //!
-//! A trace is deobfuscated only with the mapping of the build Keynobi
-//! installed on the device the crash came from, and only after the device
-//! reports the same install. A wrong mapping gives plausible but wrong
-//! stacks, so anything uncertain is refused: the trace is returned as logcat
-//! printed it, with the reason. The Tauri command and the MCP tools call
+//! A trace is deobfuscated only with a saved mapping matched to it, strongest
+//! first: the map id R8 wrote into the trace's frames; else the SHA-256 of
+//! the APK installed on the device the crash came from; else, when the device
+//! cannot hash its APK, Keynobi's install record checked against what the
+//! device reports. A wrong mapping gives plausible but wrong stacks, so
+//! anything uncertain is refused: the trace is returned as logcat printed it,
+//! with the reason. The Tauri command and the MCP tools call
 //! [`retrace_crash_group`].
 
 use crate::models::build::{InstalledBuild, MappingSnapshot};
@@ -17,11 +19,12 @@ use crate::services::installed_builds::{self, InstallTarget};
 use crate::services::jdk::{self, JdkSearchRoots, MIN_GRADLE_JDK_MAJOR};
 use crate::services::logcat::{EntryDevice, LogcatState};
 use crate::services::mapping_snapshots;
+use crate::services::retrace_match::{self, ApkOwner, MapIdMatch};
 use crate::services::settings_manager::{data_dir, unique_tmp_path};
 use crate::utils::device_shell::quote_device_shell_arg;
 use crate::utils::process::{
-    describe_failure, output_with_timeout, ADB_QUERY_TIMEOUT, ADB_UNRESPONSIVE_HINT, RETRACE_HINT,
-    RETRACE_TIMEOUT,
+    describe_failure, output_with_timeout, ADB_APK_HASH_TIMEOUT, ADB_QUERY_TIMEOUT,
+    ADB_UNRESPONSIVE_HINT, RETRACE_HINT, RETRACE_TIMEOUT,
 };
 use crate::utils::validation::{validate_device_serial, validate_package_name};
 use chrono::{DateTime, FixedOffset, NaiveDateTime, TimeDelta, TimeZone, Utc};
@@ -356,8 +359,23 @@ fn build_name(build_id: Option<u32>) -> String {
 
 fn describe_mapping(mapping: &MappingSnapshot) -> String {
     match &mapping.pg_map_id {
-        Some(id) => format!("{} {}, map id {id}", mapping.module, mapping.variant),
+        Some(id) => format!(
+            "{} {}, map id {}",
+            mapping.module,
+            mapping.variant,
+            abbreviate(id, 7)
+        ),
         None => format!("{} {}", mapping.module, mapping.variant),
+    }
+}
+
+/// The first `keep` characters of a long id or hash, then `…`; short ones
+/// whole. R8's map id and an APK's SHA-256 are 64 characters.
+fn abbreviate(id: &str, keep: usize) -> String {
+    if id.chars().count() <= keep + 5 {
+        id.to_string()
+    } else {
+        format!("{}…", id.chars().take(keep).collect::<String>())
     }
 }
 
@@ -516,12 +534,21 @@ fn updated_after_install(
 }
 
 async fn adb_shell(adb: &Path, serial: &str, args: &[&str]) -> Result<String, String> {
+    adb_shell_within(adb, serial, args, ADB_QUERY_TIMEOUT).await
+}
+
+async fn adb_shell_within(
+    adb: &Path,
+    serial: &str,
+    args: &[&str],
+    timeout: Duration,
+) -> Result<String, String> {
     let output = output_with_timeout(
         Command::new(adb)
             .args(["-s", serial, "shell"])
             .args(args)
             .stdin(Stdio::null()),
-        ADB_QUERY_TIMEOUT,
+        timeout,
     )
     .await
     .map_err(|e| describe_failure(&format!("adb shell {}", args[0]), &e, ADB_UNRESPONSIVE_HINT))?;
@@ -607,6 +634,61 @@ async fn check_device(
         None => Err(unchecked(format!(
             "cannot compare lastUpdateTime {last_update:?} with the install time"
         ))),
+    }
+}
+
+/// What the device says about the APK it runs for a package.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DeviceApk {
+    /// The SHA-256 of its one APK, lowercase hex.
+    Hashed(String),
+    /// Installed as this many split APKs (an app bundle).
+    Split(usize),
+    /// Not hashed, and why.
+    Unhashed(String),
+}
+
+/// Hash the APK `package` (validated) runs from: `pm path`, then, for a
+/// single APK, `sha256sum` of it on the device. Both are quoted for the
+/// device shell.
+async fn device_apk(adb: &Path, serial: &str, package: &str) -> DeviceApk {
+    let listed = match adb_shell(
+        adb,
+        serial,
+        &["pm", "path", &quote_device_shell_arg(package)],
+    )
+    .await
+    {
+        Ok(text) => text,
+        Err(why) => return DeviceApk::Unhashed(why),
+    };
+    let path = match retrace_match::parse_pm_path(&listed).as_slice() {
+        [] => return DeviceApk::Unhashed(format!("pm path listed no APK for {package}")),
+        [one] if retrace_match::is_device_apk_path(one) => one.clone(),
+        [one] => {
+            return DeviceApk::Unhashed(format!(
+                "pm path listed {:?}, not an APK path",
+                one.chars().take(200).collect::<String>()
+            ))
+        }
+        several => return DeviceApk::Split(several.len()),
+    };
+    match adb_shell_within(
+        adb,
+        serial,
+        &["sha256sum", &quote_device_shell_arg(&path)],
+        ADB_APK_HASH_TIMEOUT,
+    )
+    .await
+    {
+        Ok(text) => match retrace_match::parse_sha256sum(&text) {
+            Some(sha256) => DeviceApk::Hashed(sha256),
+            None => DeviceApk::Unhashed(format!(
+                "sha256sum printed {:?}",
+                first_line(text.as_bytes()).unwrap_or_default()
+            )),
+        },
+        Err(why) => DeviceApk::Unhashed(why),
     }
 }
 
@@ -753,6 +835,38 @@ async fn retrace_into(
             MAX_RETRACE_INPUT_BYTES / 1024
         )));
     }
+    // The map id R8 wrote into the frames names the mapping exactly.
+    match retrace_match::trace_map_ids(trace).as_slice() {
+        [] => {}
+        [id] => {
+            if let EntryDevice::Serial(serial) = device {
+                outcome.device = Some(serial.clone());
+            }
+            let (saved, how) =
+                match retrace_match::find_by_map_id(&env.data_dir, id).map_err(refused)? {
+                    MapIdMatch::Exact(saved) => (saved, "matched by map id".to_string()),
+                    MapIdMatch::Prefix(saved) => (saved, format!("matched by map id prefix {id}")),
+                };
+            outcome.build_id = saved.build_id;
+            outcome.mapping = Some(saved.mapping.clone());
+            outcome.matched_by = Some(MappingMatch::MapId);
+            let summary = format!(
+                "Deobfuscated with the R8 mapping of {} ({}), {how}.",
+                build_name(saved.build_id),
+                describe_mapping(&saved.mapping)
+            );
+            return run_with_mapping(env, &saved.mapping, trace, summary).await;
+        }
+        several => {
+            return Err(refused(format!(
+                "the trace's frames name {} different map ids ({}), so no one R8 mapping fits \
+                 them",
+                several.len(),
+                several.join(", ")
+            )))
+        }
+    }
+
     let package = package.ok_or_else(|| {
         refused("logcat did not attribute the crash to a package, so its build is unknown".into())
     })?;
@@ -784,28 +898,147 @@ async fn retrace_into(
     let device_name = target.avd_name.clone().unwrap_or_else(|| serial.clone());
     outcome.device = Some(device_name.clone());
 
-    let installed = installed_for(&env.data_dir, &target, package).ok_or_else(|| {
-        refused(format!(
-            "Keynobi has no record of installing {package} on {device_name}; only apps it \
-             installed (Run App, MCP install_apk) can be deobfuscated"
-        ))
-    })?;
-    outcome.build_id = installed.build_id;
-    let mapping = choose_mapping(&env.data_dir, &installed).map_err(refused)?;
+    let recorded = installed_for(&env.data_dir, &target, package);
+    let (mapping, summary) = match device_apk(&adb, &serial, package).await {
+        DeviceApk::Hashed(sha256) => match_device_hash(
+            &env.data_dir,
+            &device_name,
+            &sha256,
+            recorded.as_ref(),
+            outcome,
+        )
+        .map_err(refused)?,
+        DeviceApk::Split(count) => {
+            return Err(refused(format!(
+                "{package} is installed on {device_name} as {count} split APKs (an app bundle), \
+                 and Keynobi can only verify an app installed as a single APK"
+            )))
+        }
+        DeviceApk::Unhashed(why) => {
+            let fallback = |reason: String| {
+                refused(format!(
+                    "{reason} (the device could not hash its APK: {why})"
+                ))
+            };
+            let installed = recorded.ok_or_else(|| {
+                fallback(format!(
+                    "Keynobi has no record of installing {package} on {device_name}"
+                ))
+            })?;
+            outcome.build_id = installed.build_id;
+            let mapping = choose_mapping(&env.data_dir, &installed).map_err(fallback)?;
+            outcome.mapping = Some(mapping.clone());
+            outcome.matched_by = Some(MappingMatch::InstallRecord);
+            let confirmed = check_device(&adb, &serial, &device_name, &installed)
+                .await
+                .map_err(fallback)?;
+            let summary = format!(
+                "Deobfuscated with the R8 mapping of {} ({}), matched by Keynobi's install on \
+                 {device_name} at {} and confirmed by the device ({confirmed}); the device could \
+                 not hash its APK ({why}).",
+                build_name(installed.build_id),
+                describe_mapping(&mapping),
+                installed.installed_at
+            );
+            (mapping, summary)
+        }
+    };
+    run_with_mapping(env, &mapping, trace, summary).await
+}
+
+/// The mapping of the APK whose SHA-256 the device reported, and the summary
+/// line naming it; or why there is none to trust. Fills in `outcome` as the
+/// match is found.
+fn match_device_hash(
+    dir: &Path,
+    device_name: &str,
+    sha256: &str,
+    recorded: Option<&InstalledBuild>,
+    outcome: &mut RetraceOutcome,
+) -> Result<(MappingSnapshot, String), String> {
+    let short = abbreviate(sha256, 12);
+    let (mapping, build_id, whose) = match retrace_match::find_apk_owner(dir, sha256, recorded) {
+        Some(ApkOwner::Recorded(entry)) => {
+            outcome.build_id = entry.build_id;
+            let mapping = choose_mapping(dir, &entry)?;
+            let whose = format!("the one Keynobi installed at {}", entry.installed_at);
+            (mapping, entry.build_id, whose)
+        }
+        Some(ApkOwner::Built {
+            build_id,
+            apk,
+            mappings,
+        }) => {
+            outcome.build_id = Some(build_id);
+            let mapping = match mappings.as_slice() {
+                [only] => only.clone(),
+                [] => {
+                    return Err(format!(
+                        "the APK on {device_name} (SHA-256 {short}) is build #{build_id}'s {} {}, \
+                         and no R8 mapping was saved for it (the variant is not minified, or the \
+                         build did not rewrite its mapping)",
+                        apk.module, apk.variant
+                    ))
+                }
+                several => {
+                    return Err(format!(
+                        "build #{build_id} saved {} R8 mappings for {} {}, so none can be chosen",
+                        several.len(),
+                        apk.module,
+                        apk.variant
+                    ))
+                }
+            };
+            (
+                mapping,
+                Some(build_id),
+                format!("which build #{build_id} wrote"),
+            )
+        }
+        Some(ApkOwner::OtherInstall(entry)) => {
+            outcome.build_id = entry.build_id;
+            let mapping = choose_mapping(dir, &entry)?;
+            let whose = format!(
+                "the one Keynobi installed on {} at {}",
+                entry.avd_name.as_deref().unwrap_or(&entry.serial),
+                entry.installed_at
+            );
+            (mapping, entry.build_id, whose)
+        }
+        None => {
+            return Err(match recorded {
+                Some(recorded) => format!(
+                    "the APK on {device_name} (SHA-256 {short}) is not the one Keynobi installed \
+                     ({}, SHA-256 {}), and no build Keynobi kept wrote it: the app was \
+                     reinstalled outside Keynobi",
+                    build_name(recorded.build_id),
+                    abbreviate(&recorded.apk_sha256, 12)
+                ),
+                None => format!(
+                    "the APK on {device_name} (SHA-256 {short}) was not written by a build \
+                     Keynobi kept or installed, so no R8 mapping is known for it"
+                ),
+            })
+        }
+    };
     outcome.mapping = Some(mapping.clone());
-    outcome.matched_by = Some(MappingMatch::InstallRecord);
-
-    let confirmed = check_device(&adb, &serial, &device_name, &installed)
-        .await
-        .map_err(refused)?;
+    outcome.matched_by = Some(MappingMatch::DeviceHash);
     let summary = format!(
-        "Deobfuscated with the R8 mapping of {} ({}), matched by Keynobi's install on \
-         {device_name} at {} and confirmed by the device ({confirmed}).",
-        build_name(installed.build_id),
-        describe_mapping(&mapping),
-        installed.installed_at
+        "Deobfuscated with the R8 mapping of {} ({}), matched by the SHA-256 of the APK on \
+         {device_name} ({short}), {whose}.",
+        build_name(build_id),
+        describe_mapping(&mapping)
     );
+    Ok((mapping, summary))
+}
 
+/// Deobfuscate `trace` with `mapping`, from the cache when it was done before.
+async fn run_with_mapping(
+    env: &RetraceEnv,
+    mapping: &MappingSnapshot,
+    trace: &str,
+    summary: String,
+) -> Result<Retraced, NotRetraced> {
     let key = (mapping.sha256.clone(), sha256_hex(trace.as_bytes()));
     if let Some(trace) = env.cache.get(&key) {
         return Ok(Retraced { trace, summary });
@@ -883,7 +1116,11 @@ pub fn outcome_json(outcome: &RetraceOutcome) -> Value {
         "variant": mapping.map(|m| &m.variant),
         "map_id": mapping.and_then(|m| m.pg_map_id.as_ref()),
         "mapping_sha256": mapping.map(|m| &m.sha256),
-        "matched_by": outcome.matched_by.map(|_| "install_record"),
+        "matched_by": outcome.matched_by.map(|matched| match matched {
+            MappingMatch::MapId => "map_id",
+            MappingMatch::DeviceHash => "device_hash",
+            MappingMatch::InstallRecord => "install_record",
+        }),
         "device": outcome.device,
         "reason": outcome.reason,
     })
@@ -907,6 +1144,21 @@ mod tests {
     const MAPPING: &[u8] = b"# pg_map_id: 6b1c2f0\n\
         com.example.app.MainActivity -> a.a:\n\
         \x20   1:1:void onCreate(android.os.Bundle):24 -> onCreate\n";
+    /// The map id recent R8 writes: the mapping's full SHA-256.
+    const MAP_ID: &str = "9d2c4e6f8a0b1c3d5e7f9a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d9e1f3a5b7c9d";
+    const DEVICE_APK: &str = "/data/app/~~Xy1==/com.example.app-Ab2==/base.apk";
+
+    /// [`TRACE`] as recent R8 prints it: the map id as the source file.
+    fn trace_with_map_ids(first: &str, second: &str) -> String {
+        format!(
+            "FATAL EXCEPTION: main\n\
+             Process: com.example.app, PID: 1234\n\
+             java.lang.RuntimeException: boom\n\
+             \tat a.a.onCreate(r8-map-id-{first}:1)\n\
+             \tat a.b.c(r8-map-id-{second}:7)\n\
+             \tat android.app.Activity.performCreate(Activity.java:8595)\n"
+        )
+    }
 
     fn write_script(path: &Path, body: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -934,7 +1186,7 @@ mod tests {
                 "printf '%s\\0' \"$@\" > '{rec}.argv'\n\
                  cat \"$2\" > '{rec}.input'\n\
                  echo run >> '{rec}.runs'\n\
-                 sed 's/a\\.a\\.onCreate(SourceFile:1)/com.example.app.MainActivity.onCreate(MainActivity.kt:24)/' \"$2\"",
+                 sed 's/a\\.a\\.onCreate([^)]*)/com.example.app.MainActivity.onCreate(MainActivity.kt:24)/' \"$2\"",
                 rec = record.display()
             ),
         )
@@ -993,19 +1245,51 @@ mod tests {
                 .unwrap_or(0)
         }
 
-        /// A fake adb answering `dumpsys package` with `dumpsys` and `date`
-        /// with the host clock in UTC.
+        /// A fake adb answering `dumpsys package` with `dumpsys`, `date` with
+        /// the host clock in UTC, `pm path` with one `base.apk` (or the
+        /// paths [`Fixture::set_pm_path`] saved), and `sha256sum` with the
+        /// hash [`Fixture::set_device_hash`] saved, else as a device without
+        /// the command. Every call is appended to [`Fixture::adb_calls`].
         fn write_adb(&self, dumpsys: &str) {
             let answer = self.root.join("dumpsys.txt");
             std::fs::write(&answer, dumpsys).unwrap();
+            let pm_path = self.root.join("pm-path.txt");
+            std::fs::write(&pm_path, format!("package:{DEVICE_APK}\n")).unwrap();
             self.write_adb_script(&format!(
-                "case \"$*\" in\n\
-                 *'dumpsys package'*) cat '{}' ;;\n\
+                "echo \"$*\" >> '{calls}'\n\
+                 case \"$*\" in\n\
+                 *'dumpsys package'*) cat '{dumpsys}' ;;\n\
                  *date*) echo \"$(date -u +%s):+0000\" ;;\n\
+                 *'pm path'*) cat '{pm_path}' ;;\n\
+                 *sha256sum*) if [ -f '{hash}' ]; then echo \"$(cat '{hash}')  $5\"; \
+                   else echo '/system/bin/sh: sha256sum: inaccessible or not found' >&2; exit 127; fi ;;\n\
                  *devices*) printf 'List of devices attached\\n{SERIAL} device product:p model:Pixel_8 device:d\\n' ;;\n\
                  esac",
-                answer.display()
+                calls = self.root.join("adb-calls.txt").display(),
+                dumpsys = answer.display(),
+                pm_path = pm_path.display(),
+                hash = self.root.join("device-sha256.txt").display(),
             ));
+            // Forget the argument-less run that primed the script.
+            let _ = std::fs::remove_file(self.root.join("adb-calls.txt"));
+        }
+
+        /// What `sha256sum` answers for the installed APK.
+        fn set_device_hash(&self, sha256: &str) {
+            std::fs::write(self.root.join("device-sha256.txt"), sha256).unwrap();
+        }
+
+        fn set_pm_path(&self, answer: &str) {
+            std::fs::write(self.root.join("pm-path.txt"), answer).unwrap();
+        }
+
+        /// The adb calls, one line each.
+        fn adb_calls(&self) -> Vec<String> {
+            std::fs::read_to_string(self.root.join("adb-calls.txt"))
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect()
         }
 
         fn write_adb_script(&self, body: &str) {
@@ -1527,6 +1811,396 @@ mod tests {
         let calls = crate::utils::device_shell::test_support::recorded_calls(&record);
         assert_eq!(calls[0], ["dumpsys", "package", "com.example;reboot $(id)"]);
         assert_eq!(calls[1], ["date", "+%s:%z"]);
+    }
+
+    #[tokio::test]
+    async fn without_sha256sum_the_install_record_is_checked_and_says_so() {
+        let fx = Fixture::new();
+        fx.install_with_mapping();
+        transforming_retrace(&fx.sdk, &fx.record());
+
+        let outcome = fx.retrace(TRACE).await;
+
+        assert_eq!(outcome.status, RetraceStatus::Retraced, "{outcome:?}");
+        assert_eq!(outcome.matched_by, Some(MappingMatch::InstallRecord));
+        assert!(
+            outcome
+                .summary
+                .contains("matched by Keynobi's install on R5CT1234ABC")
+                && outcome.summary.contains(
+                    "the device could not hash its APK (adb shell sha256sum failed: \
+                               /system/bin/sh: sha256sum: inaccessible or not found)"
+                ),
+            "{}",
+            outcome.summary
+        );
+
+        // A refusal on this path says the APK was not hashed, too.
+        let installed_at = Utc::now() - TimeDelta::minutes(10);
+        fx.write_adb(&dumpsys(43, installed_at));
+        let outcome = fx.retrace(TRACE).await;
+        assert_refused(&outcome, "runs versionCode 43");
+        assert_refused(&outcome, "(the device could not hash its APK: ");
+    }
+
+    // ── The device's APK hash ────────────────────────────────────────────────
+
+    /// Build #12 wrote the APK with SHA-256 `apk_sha256`, of `:app release`,
+    /// and saved `mapping` for it.
+    fn save_history_with_apk(fx: &Fixture, apk_sha256: &str, mapping: &MappingSnapshot) {
+        let mut record = record_with_apk(
+            12,
+            BuiltApk {
+                module: ":app".into(),
+                variant: "release".into(),
+                application_id: Some(PACKAGE.into()),
+                version_code: Some(42),
+                sha256: apk_sha256.into(),
+                bytes: 1,
+                path: "app/build/outputs/apk/release/app-release.apk".into(),
+            },
+        );
+        record.mappings = vec![mapping.clone()];
+        std::fs::write(
+            fx.data.join("build-history.json"),
+            serde_json::to_string(&vec![record]).unwrap(),
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn the_device_hash_of_keynobis_install_is_enough() {
+        let fx = Fixture::new();
+        let installed = fx.install_with_mapping();
+        transforming_retrace(&fx.sdk, &fx.record());
+        // The install record's check would refuse this; it is not made.
+        fx.write_adb(&dumpsys(43, Utc::now()));
+        fx.set_device_hash(&installed.apk_sha256);
+
+        let outcome = fx.retrace(TRACE).await;
+
+        assert_eq!(outcome.status, RetraceStatus::Retraced, "{outcome:?}");
+        assert_eq!(outcome.matched_by, Some(MappingMatch::DeviceHash));
+        assert_eq!(outcome.build_id, Some(12));
+        assert_eq!(outcome.mapping.as_ref(), installed.mappings.first());
+        assert!(
+            outcome.summary.contains(
+                "Deobfuscated with the R8 mapping of build #12 (:app release, map id 6b1c2f0), \
+                 matched by the SHA-256 of the APK on R5CT1234ABC (a1a1a1a1a1a1…), the one \
+                 Keynobi installed at"
+            ),
+            "{}",
+            outcome.summary
+        );
+        let calls = fx.adb_calls();
+        assert!(
+            calls.contains(&format!("-s {SERIAL} shell pm path {PACKAGE}"))
+                && calls.contains(&format!("-s {SERIAL} shell sha256sum '{DEVICE_APK}'")),
+            "{calls:?}"
+        );
+        assert!(!calls.iter().any(|c| c.contains("dumpsys")), "{calls:?}");
+    }
+
+    #[tokio::test]
+    async fn an_apk_keynobi_built_and_another_tool_installed_is_matched_by_its_hash() {
+        let fx = Fixture::new();
+        transforming_retrace(&fx.sdk, &fx.record());
+        let mapping = fx.save_mapping(MAPPING);
+        let apk_sha256 = "b2".repeat(32);
+        save_history_with_apk(&fx, &apk_sha256, &mapping);
+        fx.set_device_hash(&apk_sha256);
+
+        let outcome = fx.retrace(TRACE).await;
+
+        assert_eq!(outcome.status, RetraceStatus::Retraced, "{outcome:?}");
+        assert_eq!(outcome.matched_by, Some(MappingMatch::DeviceHash));
+        assert_eq!(outcome.build_id, Some(12));
+        assert_eq!(outcome.mapping, Some(mapping));
+        assert!(
+            outcome
+                .summary
+                .ends_with("(b2b2b2b2b2b2…), which build #12 wrote."),
+            "{}",
+            outcome.summary
+        );
+    }
+
+    #[tokio::test]
+    async fn an_apk_whose_hash_nothing_kept_matches_is_refused() {
+        let fx = Fixture::new();
+        fx.install_with_mapping();
+        transforming_retrace(&fx.sdk, &fx.record());
+        fx.set_device_hash(&"c3".repeat(32));
+
+        let outcome = fx.retrace(TRACE).await;
+
+        assert_refused(
+            &outcome,
+            "the APK on R5CT1234ABC (SHA-256 c3c3c3c3c3c3…) is not the one Keynobi installed \
+             (build #12, SHA-256 a1a1a1a1a1a1…), and no build Keynobi kept wrote it",
+        );
+        assert_eq!(outcome.matched_by, None);
+        assert!(!fx.adb_calls().iter().any(|c| c.contains("dumpsys")));
+        assert_eq!(fx.runs(), 0);
+
+        std::fs::remove_file(fx.data.join("installed-builds.json")).unwrap();
+        assert_refused(
+            &fx.retrace(TRACE).await,
+            "was not written by a build Keynobi kept or installed",
+        );
+    }
+
+    #[tokio::test]
+    async fn split_apks_are_refused() {
+        let fx = Fixture::new();
+        let installed = fx.install_with_mapping();
+        transforming_retrace(&fx.sdk, &fx.record());
+        fx.set_device_hash(&installed.apk_sha256);
+        fx.set_pm_path(
+            "package:/data/app/x/base.apk\npackage:/data/app/x/split_config.arm64_v8a.apk\n",
+        );
+
+        let outcome = fx.retrace(TRACE).await;
+
+        assert_refused(
+            &outcome,
+            "com.example.app is installed on R5CT1234ABC as 2 split APKs",
+        );
+        assert!(!fx.adb_calls().iter().any(|c| c.contains("sha256sum")));
+        assert_eq!(fx.runs(), 0);
+    }
+
+    #[tokio::test]
+    async fn an_invalid_package_is_refused_before_any_adb_call() {
+        let fx = Fixture::new();
+        fx.install_with_mapping();
+        let outcome = retrace_trace(
+            &fx.env,
+            &EntryDevice::Serial(SERIAL.into()),
+            Some("com.example;reboot"),
+            TRACE,
+        )
+        .await;
+        assert_refused(&outcome, "is not a valid package name");
+        assert!(fx.adb_calls().is_empty(), "{:?}", fx.adb_calls());
+    }
+
+    #[tokio::test]
+    async fn the_package_and_the_apk_path_are_quoted_for_the_device_shell() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().canonicalize().unwrap();
+        let record = dir.join("device-argv");
+        let marker = dir.join("injected");
+        let adb = dir.join("adb");
+        // Parses its arguments as the device shell would, and lists an APK
+        // path that runs a command if it reaches a shell unquoted.
+        write_script(
+            &adb,
+            &format!(
+                "shift 3\nsh -c \"printf '%s\\0' $*\" >> '{rec}'\necho >> '{rec}'\n\
+                 case \"$1\" in pm) echo \"package:/data/app/a b;\\$(touch {m})'/base.apk\" ;; esac",
+                rec = record.display(),
+                m = marker.display()
+            ),
+        );
+        run_once(&adb);
+        let _ = std::fs::remove_file(&record);
+
+        let apk = device_apk(&adb, SERIAL, "com.example;reboot $(id)").await;
+
+        let calls = crate::utils::device_shell::test_support::recorded_calls(&record);
+        assert_eq!(calls[0], ["pm", "path", "com.example;reboot $(id)"]);
+        assert_eq!(
+            calls[1],
+            [
+                "sha256sum".to_string(),
+                format!("/data/app/a b;$(touch {})'/base.apk", marker.display())
+            ]
+        );
+        assert!(!marker.exists(), "the APK path reached a shell");
+        assert!(matches!(apk, DeviceApk::Unhashed(_)), "{apk:?}");
+    }
+
+    // ── Map ids in the trace ─────────────────────────────────────────────────
+
+    /// A history record #13 with `mapping`, whose map id is [`MAP_ID`].
+    fn save_mapping_with_map_id(fx: &Fixture, bytes: &[u8], map_id: &str) -> MappingSnapshot {
+        let mapping = MappingSnapshot {
+            pg_map_id: Some(map_id.into()),
+            ..fx.save_mapping(bytes)
+        };
+        let mut record = record_with_apk(
+            13,
+            BuiltApk {
+                module: ":app".into(),
+                variant: "release".into(),
+                application_id: Some(PACKAGE.into()),
+                version_code: Some(43),
+                sha256: "e5".repeat(32),
+                bytes: 1,
+                path: "app/build/outputs/apk/release/app-release.apk".into(),
+            },
+        );
+        record.mappings.push(mapping.clone());
+        let mut history = build_runner::load_build_history_from(&fx.data);
+        history.push_back(record);
+        let newest_first: Vec<&BuildRecord> = history.iter().rev().collect();
+        std::fs::write(
+            fx.data.join("build-history.json"),
+            serde_json::to_string(&newest_first).unwrap(),
+        )
+        .unwrap();
+        mapping
+    }
+
+    #[tokio::test]
+    async fn a_map_id_in_the_trace_picks_the_mapping_without_asking_the_device() {
+        let fx = Fixture::new();
+        transforming_retrace(&fx.sdk, &fx.record());
+        let mapping = save_mapping_with_map_id(&fx, b"map id mapping", MAP_ID);
+        let trace = trace_with_map_ids(MAP_ID, MAP_ID);
+
+        // No install record, and logcat did not even name the package.
+        let outcome =
+            retrace_trace(&fx.env, &EntryDevice::Serial(SERIAL.into()), None, &trace).await;
+
+        assert_eq!(outcome.status, RetraceStatus::Retraced, "{outcome:?}");
+        assert_eq!(outcome.matched_by, Some(MappingMatch::MapId));
+        assert_eq!(outcome.build_id, Some(13));
+        assert_eq!(outcome.mapping, Some(mapping.clone()));
+        assert_eq!(outcome.device.as_deref(), Some(SERIAL));
+        assert_eq!(
+            outcome.summary,
+            "Deobfuscated with the R8 mapping of build #13 (:app release, map id 9d2c4e6…), \
+             matched by map id."
+        );
+        assert!(outcome
+            .trace
+            .contains("at com.example.app.MainActivity.onCreate(MainActivity.kt:24)"));
+        assert!(fx.adb_calls().is_empty(), "{:?}", fx.adb_calls());
+        let argv = std::fs::read_to_string(fx.record().with_extension("argv")).unwrap();
+        let mapping_path = mapping_snapshots::snapshot_path(&fx.data, &mapping.sha256).unwrap();
+        assert!(argv.starts_with(&*mapping_path.to_string_lossy()), "{argv}");
+    }
+
+    #[tokio::test]
+    async fn a_map_id_beats_the_install_record_and_the_device_hash() {
+        let fx = Fixture::new();
+        let installed = fx.install_with_mapping();
+        fx.set_device_hash(&installed.apk_sha256);
+        transforming_retrace(&fx.sdk, &fx.record());
+        let mapping = save_mapping_with_map_id(&fx, b"the build in the trace", MAP_ID);
+
+        let outcome = fx.retrace(&trace_with_map_ids(MAP_ID, MAP_ID)).await;
+
+        assert_eq!(outcome.status, RetraceStatus::Retraced, "{outcome:?}");
+        assert_eq!(outcome.matched_by, Some(MappingMatch::MapId));
+        assert_eq!(outcome.mapping, Some(mapping));
+        assert_ne!(outcome.mapping.as_ref(), installed.mappings.first());
+        assert!(fx.adb_calls().is_empty(), "{:?}", fx.adb_calls());
+    }
+
+    #[tokio::test]
+    async fn an_unknown_map_id_is_refused_without_trying_another_mapping() {
+        let fx = Fixture::new();
+        let installed = fx.install_with_mapping();
+        fx.set_device_hash(&installed.apk_sha256);
+        transforming_retrace(&fx.sdk, &fx.record());
+        save_mapping_with_map_id(&fx, b"another build", MAP_ID);
+        let unknown = "0".repeat(64);
+        let trace = trace_with_map_ids(&unknown, &unknown);
+
+        let outcome = fx.retrace(&trace).await;
+
+        assert_eq!(outcome.status, RetraceStatus::Refused, "{outcome:?}");
+        assert!(
+            outcome
+                .reason
+                .as_deref()
+                .unwrap()
+                .starts_with(&format!("no saved mapping for map id {unknown}")),
+            "{outcome:?}"
+        );
+        assert_eq!(outcome.trace, trace);
+        assert_eq!(outcome.mapping, None);
+        assert_eq!(fx.runs(), 0);
+        assert!(fx.adb_calls().is_empty(), "{:?}", fx.adb_calls());
+    }
+
+    #[tokio::test]
+    async fn frames_naming_different_map_ids_are_refused() {
+        let fx = Fixture::new();
+        transforming_retrace(&fx.sdk, &fx.record());
+        save_mapping_with_map_id(&fx, b"map id mapping", MAP_ID);
+        let other = "1".repeat(64);
+
+        let outcome = fx.retrace(&trace_with_map_ids(MAP_ID, &other)).await;
+
+        assert_eq!(outcome.status, RetraceStatus::Refused, "{outcome:?}");
+        assert!(
+            outcome
+                .reason
+                .as_deref()
+                .unwrap()
+                .contains(&format!("name 2 different map ids ({MAP_ID}, {other})")),
+            "{outcome:?}"
+        );
+        assert_eq!(fx.runs(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_truncated_map_id_matches_a_unique_prefix_only() {
+        let fx = Fixture::new();
+        transforming_retrace(&fx.sdk, &fx.record());
+        save_mapping_with_map_id(&fx, b"map id mapping", MAP_ID);
+        let prefix = &MAP_ID[..10];
+
+        let outcome = fx.retrace(&trace_with_map_ids(prefix, prefix)).await;
+        assert_eq!(outcome.status, RetraceStatus::Retraced, "{outcome:?}");
+        assert!(
+            outcome
+                .summary
+                .ends_with(&format!("matched by map id prefix {prefix}.")),
+            "{}",
+            outcome.summary
+        );
+
+        // Another saved mapping whose id starts the same way.
+        save_mapping_with_map_id(
+            &fx,
+            b"a second mapping",
+            &format!("{prefix}{}", "f".repeat(54)),
+        );
+        let outcome = fx.retrace(&trace_with_map_ids(prefix, prefix)).await;
+        assert_eq!(outcome.status, RetraceStatus::Refused, "{outcome:?}");
+        assert!(
+            outcome
+                .reason
+                .as_deref()
+                .unwrap()
+                .contains("is the start of 2"),
+            "{outcome:?}"
+        );
+    }
+
+    #[test]
+    fn mcp_names_how_the_mapping_was_matched() {
+        let outcome = |matched_by| RetraceOutcome {
+            status: RetraceStatus::Retraced,
+            trace: String::new(),
+            build_id: None,
+            mapping: None,
+            matched_by,
+            device: None,
+            package: None,
+            reason: None,
+            summary: String::new(),
+        };
+        let json = |m| outcome_json(&outcome(m))["matched_by"].clone();
+        assert_eq!(json(Some(MappingMatch::MapId)), "map_id");
+        assert_eq!(json(Some(MappingMatch::DeviceHash)), "device_hash");
+        assert_eq!(json(Some(MappingMatch::InstallRecord)), "install_record");
+        assert_eq!(json(None), Value::Null);
     }
 
     #[test]
