@@ -257,7 +257,7 @@ function mockRunPlan(config: RunConfiguration, task: string, device: RunDevice |
   return `${device ? "Run" : "Build"} '${config.name}': ${steps.join(" → ")}`;
 }
 
-function mockResolveRun(args: unknown): ResolvedRun {
+export function mockResolveRun(args: unknown): ResolvedRun {
   const { name, selectedSerial, buildOnly } = (args ?? {}) as {
     name?: string | null;
     selectedSerial?: string | null;
@@ -311,6 +311,15 @@ function mockResolveRun(args: unknown): ResolvedRun {
     logcatFilter: config.logcatFilter,
     device,
     plan: mockRunPlan(config, task, device),
+  };
+}
+
+/** Like the backend: a run remembers the device it installed on (its last device). */
+export function recordMockRunDevice(name: string, serial: string): void {
+  requireRunConfiguration(name);
+  mockProject.runLocal = {
+    ...mockProject.runLocal,
+    [name]: { ...localStateOf(name), lastDevice: serial },
   };
 }
 
@@ -412,17 +421,6 @@ export function projectHandlers(): Record<string, (args: unknown) => unknown> {
         approvedProjectFileSha256: null,
       };
       mockProject.runLocal = { ...mockProject.runLocal, [name]: { ...local, target } };
-      return mockRunConfigurations();
-    },
-    record_run_device: (args) => {
-      const { name, serial } = args as { name: string; serial: string };
-      requireRunConfiguration(name);
-      const local = mockProject.runLocal?.[name] ?? {
-        target: { kind: "lastUsed" },
-        lastDevice: null,
-        approvedProjectFileSha256: null,
-      };
-      mockProject.runLocal = { ...mockProject.runLocal, [name]: { ...local, lastDevice: serial } };
       return mockRunConfigurations();
     },
     set_active_run_configuration: (args) => {

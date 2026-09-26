@@ -7,6 +7,7 @@ import {
 } from "./projects";
 import { devicesHandlers } from "./devices";
 import { addMockPastBuild, buildHandlers, setMockAppBuildLineDelay, startMockBuild } from "./build";
+import { deployHandlers, failNextMockInstall } from "./deploy";
 import { logcatHandlers } from "./logcat";
 import { sessionHandlers } from "./sessions";
 import { triggerEvent } from "./events";
@@ -34,6 +35,7 @@ const handlers: Map<string, Handler> = new Map(
     ...projectHandlers(),
     ...devicesHandlers(),
     ...buildHandlers(),
+    ...deployHandlers(),
     ...logcatHandlers(),
     ...sessionHandlers(),
     get_mcp_setup_status: () => ({
@@ -100,5 +102,7 @@ if (import.meta.env.VITE_E2E === "true") {
     sharedRunConfigurationsFile: mockSharedRunConfigurationsFile,
     /** Replace the shared file, as a pulled commit would. */
     setSharedRunConfigurationsFile: setMockSharedRunConfigurationsFile,
+    /** Make the next install of a run fail with `reason`, as adb would. */
+    failNextInstall: failNextMockInstall,
   };
 }

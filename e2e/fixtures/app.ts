@@ -14,6 +14,8 @@ export interface E2EBridge {
   sharedRunConfigurationsFile: () => string | null;
   /** Replace the shared file, as a pulled commit would. */
   setSharedRunConfigurationsFile: (text: string | null) => void;
+  /** Make the next install of a run fail with `reason`, as adb would. */
+  failNextInstall: (reason: string | null) => void;
 }
 
 declare global {

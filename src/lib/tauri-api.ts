@@ -95,6 +95,8 @@ export async function renameProject(id: string, newName: string): Promise<void> 
 // ── Run configurations ────────────────────────────────────────────────────────
 
 import type {
+  DeployPhaseEvent,
+  DeployResult,
   LocalRunState,
   ProjectRunConfigurations,
   ResolvedRun,
@@ -103,6 +105,8 @@ import type {
   TargetPreference,
 } from "@/bindings";
 export type {
+  DeployPhaseEvent,
+  DeployResult,
   LocalRunState,
   ProjectRunConfigurations,
   ResolvedRun,
@@ -191,21 +195,30 @@ export async function resolveRunConfiguration(
   });
 }
 
-/** Remember the device a run of the configuration installed on (its last device). */
-export async function recordRunDevice(
-  name: string,
-  serial: string
-): Promise<ProjectRunConfigurations> {
-  return invoke<ProjectRunConfigurations>("record_run_device", { name, serial });
+/**
+ * Run a configuration (default: the active one): resolve it as
+ * `resolveRunConfiguration` does, build its task, install the APK that build
+ * wrote, record the device, and launch it. Resolves once it is done, with
+ * what it did; a build that fails or is cancelled resolves with that outcome.
+ * Progress arrives as `build:*` events and `deploy:phase`
+ * (`listenDeployPhase`). `projectRoot` is the project the run was resolved
+ * for; the backend refuses the run when another one is open. Rejects like
+ * `resolveRunConfiguration`, and when the APK, the install, or the launch
+ * fails.
+ */
+export async function runRunConfiguration(
+  opts: { name?: string | null; selectedSerial?: string | null; projectRoot?: string | null } = {}
+): Promise<DeployResult> {
+  return invoke<DeployResult>("run_run_configuration", {
+    name: opts.name ?? null,
+    selectedSerial: opts.selectedSerial ?? null,
+    projectRoot: opts.projectRoot ?? null,
+  });
 }
 
-/** Open a deep link in `pkg` on the device. Android reports no launch time for it. */
-export async function openDeepLinkOnDevice(
-  serial: string,
-  uri: string,
-  pkg: string
-): Promise<string> {
-  return invoke<string>("open_deep_link_on_device", { serial, uri, package: pkg });
+/** The app's run of a configuration moved to another phase. */
+export function listenDeployPhase(cb: (e: DeployPhaseEvent) => void): Promise<UnlistenFn> {
+  return listen<DeployPhaseEvent>("deploy:phase", (event) => cb(event.payload));
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────────
@@ -304,7 +317,6 @@ import type {
   BuildLinesEvent,
   BuildCompleteEvent,
   LaunchTimingEvent,
-  RunApk,
 } from "@/bindings";
 import { Channel } from "@tauri-apps/api/core";
 
@@ -358,32 +370,6 @@ export async function getBuildLogEntries(id: number): Promise<BuildLine[]> {
  */
 export async function getApplicationModule(module: string | null = null): Promise<string> {
   return invoke<string>("get_application_module", { module });
-}
-
-/**
- * The APK to install after build `buildId` of `variant` in `module`: the one
- * that build recorded, else (Gradle found it up to date) the variant's APK in
- * the module's build outputs. Rejects with the reason (and the variants that
- * have outputs) when no APK matches; another variant's is never returned.
- */
-export async function findApkPath(
-  variant: string,
-  opts: { module?: string | null; buildId?: number | null } = {}
-): Promise<RunApk> {
-  return invoke<RunApk>("find_apk_path", {
-    variant,
-    module: opts.module ?? null,
-    buildId: opts.buildId ?? null,
-  });
-}
-
-/**
- * Extract the package name directly from an APK binary using `aapt2`.
- * Returns the exact installed package name including any `applicationIdSuffix`
- * (e.g. `com.example.app.debug` for a debug build).
- */
-export async function getPackageNameFromApk(apkPath: string): Promise<string> {
-  return invoke<string>("get_package_name_from_apk", { apkPath });
 }
 
 /** A build started, whoever started it (the app or an agent). */
@@ -443,7 +429,6 @@ import type {
   SdkDownloadProgress,
   UiHierarchySnapshot,
   DeviceListChangedEvent,
-  LaunchResult,
   AppExitReasons,
   InstalledBuild,
 } from "@/bindings";
@@ -455,7 +440,6 @@ export type {
   AvailableSystemImage,
   SdkDownloadProgress,
   UiHierarchySnapshot,
-  LaunchResult,
   AppExitReasons,
   InstalledBuild,
 };
@@ -483,31 +467,9 @@ export async function dumpUiHierarchy(deviceSerial?: string | null): Promise<UiH
   });
 }
 
-/** Install an APK. The backend records which build produced it (see `listInstalledBuilds`). */
-export async function installApkOnDevice(serial: string, apkPath: string): Promise<string> {
-  return invoke<string>("install_apk_on_device", { serial, apkPath });
-}
-
 /** What Keynobi last installed on each device, per package, oldest first. */
 export async function listInstalledBuilds(): Promise<InstalledBuild[]> {
   return invoke<InstalledBuild[]>("list_installed_builds");
-}
-
-/**
- * Launch an app. With `buildId`, the backend records the launch time on that
- * build's history entry (the build whose APK was installed).
- */
-export async function launchAppOnDevice(
-  serial: string,
-  pkg: string,
-  opts: { activity?: string; buildId?: number | null } = {}
-): Promise<LaunchResult> {
-  return invoke<LaunchResult>("launch_app_on_device", {
-    serial,
-    package: pkg,
-    activity: opts.activity ?? null,
-    buildId: opts.buildId ?? null,
-  });
 }
 
 export async function stopAppOnDevice(serial: string, pkg: string): Promise<void> {

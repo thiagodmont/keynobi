@@ -4,16 +4,15 @@ pub mod services;
 pub mod utils;
 
 use commands::build::{
-    cancel_build, clear_build_history, find_apk_path, get_application_module, get_build_errors,
-    get_build_history, get_build_log_entries, get_build_status, get_package_name_from_apk,
-    run_gradle_task,
+    cancel_build, clear_build_history, get_application_module, get_build_errors, get_build_history,
+    get_build_log_entries, get_build_status, run_gradle_task,
 };
 use commands::device::{
     create_avd_device, delete_avd_device, download_system_image_cmd, get_exit_reasons,
-    get_selected_device, install_apk_on_device, launch_app_on_device, launch_avd, list_adb_devices,
-    list_available_system_images_cmd, list_avd_devices, list_device_definitions_cmd,
-    list_installed_builds, list_system_images_cmd, refresh_devices, select_device,
-    start_device_polling, stop_app_on_device, stop_avd, stop_device_polling, wipe_avd_data_cmd,
+    get_selected_device, launch_avd, list_adb_devices, list_available_system_images_cmd,
+    list_avd_devices, list_device_definitions_cmd, list_installed_builds, list_system_images_cmd,
+    refresh_devices, select_device, start_device_polling, stop_app_on_device, stop_avd,
+    stop_device_polling, wipe_avd_data_cmd,
 };
 use commands::file_system::{
     get_application_id, get_gradle_root, get_last_active_project, get_project_app_info,
@@ -32,9 +31,8 @@ use commands::mcp::{
 };
 use commands::run_configuration::{
     approve_shared_run_configuration, delete_run_configuration, list_application_modules,
-    list_run_configurations, open_deep_link_on_device, record_run_device,
-    resolve_run_configuration, save_run_configuration, set_active_run_configuration,
-    set_run_configuration_target,
+    list_run_configurations, resolve_run_configuration, run_run_configuration,
+    save_run_configuration, set_active_run_configuration, set_run_configuration_target,
 };
 use commands::sessions::{
     add_session_bookmark, end_debug_session, export_debug_session, get_debug_session,
@@ -364,9 +362,7 @@ pub fn run() {
             get_build_history,
             clear_build_history,
             get_build_log_entries,
-            find_apk_path,
             get_application_module,
-            get_package_name_from_apk,
             // Variants
             get_variants_preview,
             get_variants_from_gradle,
@@ -380,16 +376,13 @@ pub fn run() {
             set_run_configuration_target,
             approve_shared_run_configuration,
             list_application_modules,
-            record_run_device,
-            open_deep_link_on_device,
+            run_run_configuration,
             // Devices
             list_adb_devices,
             refresh_devices,
             select_device,
             get_selected_device,
-            install_apk_on_device,
             list_installed_builds,
-            launch_app_on_device,
             stop_app_on_device,
             get_exit_reasons,
             list_avd_devices,

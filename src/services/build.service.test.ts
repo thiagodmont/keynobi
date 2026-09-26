@@ -20,19 +20,21 @@ import { resetDeviceState } from "@/stores/device.store";
 import { setProjects } from "@/stores/projects.store";
 import { resetVariantState } from "@/stores/variant.store";
 import { updateSetting } from "@/stores/settings.store";
+import { beginProjectOpen, clearProject, setProject } from "@/stores/project.store";
 import {
-  beginProjectOpen,
-  clearProject,
-  setApplicationId,
-  setProject,
-} from "@/stores/project.store";
-import {
+  makeDeployResult,
   makeLaunchTiming,
   makeProjectRunConfigurations,
   makeResolvedRun,
   makeRunConfiguration,
 } from "@/test/factories/build";
-import type { TargetPreference } from "@/bindings";
+import type {
+  DeployPhase,
+  DeployPhaseEvent,
+  DeployResult,
+  ResolvedRun,
+  TargetPreference,
+} from "@/bindings";
 import type * as UiModule from "@/components/ui";
 
 const devicePickerMock = vi.hoisted(() => ({
@@ -445,17 +447,29 @@ describe("late cancelled completion event after a timeout", () => {
   });
 });
 
-describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
-  /** The event listeners the current deploy registered. */
-  let deployHandlers = new Map<string, (e: { payload: unknown }) => void>();
+describe("runAndDeploy runs the configuration in the backend", () => {
+  /** The event listeners the build service registered. */
+  let handlers = new Map<string, (e: { payload: unknown }) => void>();
 
-  beforeEach(() => {
+  beforeEach(async () => {
     resetBuildState();
     resetDeviceState();
     resetVariantState();
+    clearProject();
+    setProjects([]);
     mockInvoke.mockResolvedValue(undefined);
     devicePickerMock.showDevicePicker.mockReset();
     vi.clearAllMocks();
+    handlers = new Map();
+    vi.mocked(listen).mockImplementation(async (event, cb) => {
+      handlers.set(String(event), cb as unknown as (e: { payload: unknown }) => void);
+      return () => {};
+    });
+    await initBuildService();
+    // Fail loudly if a listener was never registered — otherwise the
+    // dispatches below would no-op and the tests would pass vacuously.
+    expect(handlers.has("build:complete")).toBe(true);
+    expect(handlers.has("deploy:phase")).toBe(true);
   });
 
   afterEach(() => {
@@ -464,106 +478,12 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     vi.useRealTimers();
   });
 
+  function emit(event: string, payload: unknown): void {
+    handlers.get(event)!({ payload });
+  }
+
   function callsTo(command: string) {
     return mockInvoke.mock.calls.filter(([cmd]) => cmd === command);
-  }
-
-  /**
-   * Start a deploy and complete its build phase with a success event.
-   * `overrides` replace individual IPC replies. Resolves to the error the
-   * deploy failed with, or null.
-   */
-  async function deployThroughSuccessfulBuild(
-    overrides: Record<string, () => Promise<unknown>> = {},
-    completion: Record<string, unknown> = {}
-  ): Promise<unknown> {
-    const handlers = new Map<string, (e: { payload: unknown }) => void>();
-    deployHandlers = handlers;
-    vi.mocked(listen).mockImplementation(async (event, cb) => {
-      handlers.set(String(event), cb as unknown as (e: { payload: unknown }) => void);
-      return () => {};
-    });
-
-    await initBuildService();
-    // Fail loudly if the listener was never registered — otherwise the
-    // dispatch below would no-op and the test would pass vacuously.
-    expect(handlers.has("build:complete")).toBe(true);
-
-    mockInvoke.mockImplementation((cmd) => {
-      if (overrides[cmd]) return overrides[cmd]();
-      if (cmd === "run_gradle_task") return Promise.resolve(1);
-      if (cmd === "get_build_history") return Promise.resolve([]);
-      if (cmd === "resolve_run_configuration") return Promise.resolve(makeResolvedRun());
-      if (cmd === "record_run_device") return Promise.resolve(undefined);
-      if (cmd === "find_apk_path") {
-        return Promise.resolve({ path: "/tmp/app-debug.apk", buildId: 7, fromThisBuild: true });
-      }
-      if (cmd === "get_package_name_from_apk") return Promise.resolve("com.example.app");
-      if (cmd === "install_apk_on_device") return Promise.resolve("Success");
-      if (cmd === "launch_app_on_device") {
-        return Promise.resolve({ output: "Status: ok", timing: makeLaunchTiming() });
-      }
-      return Promise.resolve(undefined);
-    });
-
-    const deploy = runAndDeploy();
-    await vi.waitFor(() => expect(buildState.phase).toBe("running"));
-
-    handlers.get("build:complete")!({
-      payload: {
-        runId: 1,
-        recordId: 7,
-        success: true,
-        cancelled: false,
-        durationMs: 1_000,
-        errorCount: 0,
-        warningCount: 0,
-        task: "assembleDebug",
-        ...completion,
-      },
-    });
-    return deploy.then(
-      () => null,
-      (e: unknown) => e
-    );
-  }
-
-  it("skips device resolution, install, and launch when autoInstallOnBuild is off", async () => {
-    updateSetting("build", "autoInstallOnBuild", false);
-    await deployThroughSuccessfulBuild({
-      resolve_run_configuration: () =>
-        Promise.resolve(
-          makeResolvedRun({ device: null, plan: "Build 'Default': build :app:assembleDebug" })
-        ),
-    });
-
-    expect(buildState.phase).toBe("success");
-    // The plan is asked for without a device.
-    expect(callsTo("resolve_run_configuration")[0]?.[1]).toMatchObject({ buildOnly: true });
-    // Build-only run: the device picker must not even open.
-    expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
-    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "find_apk_path")).toHaveLength(0);
-    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "install_apk_on_device")).toHaveLength(
-      0
-    );
-    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "launch_app_on_device")).toHaveLength(0);
-  });
-
-  it("still installs and launches when autoInstallOnBuild is on (default)", async () => {
-    updateSetting("build", "autoInstallOnBuild", true);
-    await deployThroughSuccessfulBuild();
-
-    expect(buildState.phase).toBe("success");
-    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "install_apk_on_device")).toEqual([
-      ["install_apk_on_device", { serial: "emulator-5554", apkPath: "/tmp/app-debug.apk" }],
-    ]);
-    expect(
-      mockInvoke.mock.calls.filter(([cmd]) => cmd === "launch_app_on_device")[0]?.[1]
-    ).toMatchObject({ serial: "emulator-5554", package: "com.example.app" });
-  });
-
-  function launchCalls() {
-    return mockInvoke.mock.calls.filter(([cmd]) => cmd === "launch_app_on_device");
   }
 
   function buildLog(): string[] {
@@ -571,202 +491,399 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     return buildLogStore.entries.map((entry) => entry.message);
   }
 
-  it("records the launch time on the build this deploy ran", async () => {
-    const error = await deployThroughSuccessfulBuild();
+  function phaseEvent(
+    phase: DeployPhase,
+    steps: string[] = [],
+    run: ResolvedRun = makeResolvedRun()
+  ): DeployPhaseEvent {
+    return {
+      phase,
+      name: run.name,
+      plan: run.plan,
+      device: run.device ?? { serial: "emulator-5554", label: "Pixel_7" },
+      buildId: phase === "building" ? null : 7,
+      steps,
+      error: null,
+    };
+  }
 
-    expect(error).toBeNull();
-    expect(launchCalls()[0]?.[1]).toMatchObject({ buildId: 7 });
-    expect(buildLog()).toContain("▶ Launch time: 812 ms (cold)");
-  });
+  /** What the backend's build of a run sends: started, its output, and complete. */
+  function backendBuild(
+    task = ":app:assembleDebug",
+    completion: Record<string, unknown> = {}
+  ): void {
+    const origin = { kind: "app" };
+    emit("build:started", {
+      runId: 1,
+      task,
+      origin,
+      startedAt: new Date().toISOString(),
+      projectRoot: "/p",
+    });
+    emit("build:lines", {
+      runId: 1,
+      lines: [
+        { kind: "output", content: "> Task :app:assembleDebug", file: null, line: null, col: null },
+      ],
+    });
+    emit("build:complete", {
+      runId: 1,
+      recordId: 7,
+      success: true,
+      cancelled: false,
+      durationMs: 1_000,
+      errorCount: 0,
+      warningCount: 0,
+      task,
+      origin,
+      cancelledBy: null,
+      ...completion,
+    });
+  }
 
-  it("names its own build even when another build finished before the launch", async () => {
-    const error = await deployThroughSuccessfulBuild({
-      install_apk_on_device: () => {
-        // An agent's build finishes (and is recorded) while the APK installs.
-        deployHandlers.get("build:complete")!({
-          payload: {
-            runId: 2,
-            recordId: 8,
-            success: true,
-            cancelled: false,
-            durationMs: 900,
-            errorCount: 0,
-            warningCount: 0,
-            task: "assembleRelease",
-            origin: { kind: "agent", sessionId: 1, clientName: "Codex", standalone: false },
-            cancelledBy: null,
-          },
-        });
-        return Promise.resolve("Success");
-      },
+  /**
+   * IPC replies for a run: `resolve_run_configuration` answers `run`, and
+   * `run_run_configuration` plays the backend (`backend`, by default a run
+   * whose build succeeds, then installs and launches) and answers `result`.
+   */
+  function replies(
+    opts: {
+      run?: ResolvedRun;
+      result?: DeployResult;
+      backend?: () => Promise<DeployResult>;
+      overrides?: Record<string, (args: unknown) => Promise<unknown>>;
+    } = {}
+  ): void {
+    const run = opts.run ?? makeResolvedRun();
+    const result = opts.result ?? makeDeployResult({}, run);
+    const backend =
+      opts.backend ??
+      (async () => {
+        emit("deploy:phase", phaseEvent("building", [], run));
+        backendBuild(run.task);
+        emit("deploy:phase", phaseEvent("installing", ["APK (build #7): /tmp/app-debug.apk"], run));
+        emit("deploy:phase", phaseEvent("launching", ["Install: Success (1.2s)"], run));
+        emit("deploy:phase", phaseEvent("done", [], run));
+        return result;
+      });
+    mockInvoke.mockImplementation((cmd, args) => {
+      const override = opts.overrides?.[cmd];
+      if (override) return override(args);
+      if (cmd === "resolve_run_configuration") return Promise.resolve(run);
+      if (cmd === "run_run_configuration") return backend();
+      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+  }
+
+  it("skips device resolution, install, and launch when autoInstallOnBuild is off", async () => {
+    updateSetting("build", "autoInstallOnBuild", false);
+    replies({
+      run: makeResolvedRun({ device: null, plan: "Build 'Default': build :app:assembleDebug" }),
     });
 
-    expect(error).toBeNull();
-    expect(launchCalls()).toHaveLength(1);
-    expect(launchCalls()[0]?.[1]).toMatchObject({ buildId: 7 });
-  });
+    const deploy = runAndDeploy();
+    await vi.waitFor(() => expect(buildState.phase).toBe("running"));
+    backendBuild();
+    await deploy;
 
-  it("does not launch, so records no launch time, after a failed build", async () => {
-    await deployThroughSuccessfulBuild({}, { success: false, errorCount: 1 });
-
-    expect(buildState.phase).toBe("failed");
-    expect(launchCalls()).toHaveLength(0);
-  });
-
-  it("does not launch, so records no launch time, after a cancelled build", async () => {
-    await deployThroughSuccessfulBuild({}, { success: false, cancelled: true });
-
-    expect(buildState.phase).toBe("cancelled");
-    expect(launchCalls()).toHaveLength(0);
-  });
-
-  it("says when the launch method reported no launch time", async () => {
-    const error = await deployThroughSuccessfulBuild({
-      launch_app_on_device: () =>
-        Promise.resolve({ output: "monkey OK: Events injected: 1", timing: null }),
-    });
-
-    expect(error).toBeNull();
-    expect(buildLog()).toContain("▶ Launch time: not reported by this launch method");
-  });
-
-  it("builds the active configuration's task and heads the log with its plan", async () => {
-    const error = await deployThroughSuccessfulBuild();
-
-    expect(error).toBeNull();
-    expect(callsTo("resolve_run_configuration")[0]?.[1]).toMatchObject({ buildOnly: false });
+    expect(buildState.phase).toBe("success");
+    // The plan is asked for without a device.
+    expect(callsTo("resolve_run_configuration")[0]?.[1]).toMatchObject({ buildOnly: true });
+    // Build-only run: the device picker must not even open.
+    expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
     expect(callsTo("run_gradle_task")[0]?.[1]).toEqual({ task: ":app:assembleDebug" });
-    expect(buildLog()[0]).toBe(
-      "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine"
+    expect(callsTo("run_run_configuration")).toHaveLength(0);
+    expect(buildLog()).toContain(
+      "▶ Auto Install on Build is disabled — skipping install and launch."
     );
   });
 
-  it("builds a configuration's own task and installs on its resolved device", async () => {
-    const error = await deployThroughSuccessfulBuild({
-      resolve_run_configuration: () =>
-        Promise.resolve(
-          makeResolvedRun({
-            name: "Staging",
-            variant: "staging",
-            task: ":app:bundleStaging",
-            device: { serial: "28151FDH2000Q4", label: "Pixel 7" },
-            plan: "Run 'Staging': build :app:bundleStaging → …",
-          })
-        ),
+  it("runs the resolved configuration on its device, for the open project", async () => {
+    setProject("/projects/app", "app");
+    setProjects([
+      {
+        id: "app",
+        path: "/projects/app",
+        name: "app",
+        gradleRoot: "/projects/app",
+        lastOpened: "2026-01-01T00:00:00Z",
+        pinned: false,
+        lastBuildVariant: null,
+        lastDevice: null,
+        trusted: true,
+      },
+    ]);
+    replies({
+      run: makeResolvedRun({
+        name: "Staging",
+        device: { serial: "28151FDH2000Q4", label: "Pixel 7" },
+      }),
     });
 
-    expect(error).toBeNull();
-    expect(callsTo("run_gradle_task")[0]?.[1]).toEqual({ task: ":app:bundleStaging" });
-    expect(callsTo("find_apk_path")[0]?.[1]).toEqual({
-      variant: "staging",
-      module: ":app",
-      buildId: 7,
+    await runAndDeploy("Staging");
+
+    expect(callsTo("resolve_run_configuration")[0]?.[1]).toMatchObject({
+      name: "Staging",
+      buildOnly: false,
     });
-    expect(callsTo("install_apk_on_device")[0]?.[1]).toMatchObject({ serial: "28151FDH2000Q4" });
+    expect(callsTo("run_run_configuration")).toEqual([
+      [
+        "run_run_configuration",
+        { name: "Staging", selectedSerial: "28151FDH2000Q4", projectRoot: "/projects/app" },
+      ],
+    ]);
+    // The backend builds, installs, and launches: no step runs from here.
+    for (const command of ["run_gradle_task", "install_apk_on_device", "launch_app_on_device"]) {
+      expect(callsTo(command)).toHaveLength(0);
+    }
     // The picker is for Ask and Last used targets that found no device.
     expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
   });
 
-  it("records the device on the configuration after installing", async () => {
-    const error = await deployThroughSuccessfulBuild();
+  it("heads the log with the plan and shows the backend's build", async () => {
+    replies();
 
-    expect(error).toBeNull();
-    expect(callsTo("record_run_device")).toEqual([
-      ["record_run_device", { name: "Default", serial: "emulator-5554" }],
-    ]);
+    await runAndDeploy();
+
+    const log = buildLog();
+    expect(log[0]).toBe(
+      "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine"
+    );
+    expect(log).toContain("▶ Build started: :app:assembleDebug");
+    expect(log).toContain("> Task :app:assembleDebug");
+    expect(buildState.phase).toBe("success");
+    expect(buildState.deployPhase).toBeNull();
   });
 
-  it("launches the configuration's activity", async () => {
-    const error = await deployThroughSuccessfulBuild({
-      resolve_run_configuration: () =>
-        Promise.resolve(makeResolvedRun({ launch: { kind: "activity", name: ".Settings" } })),
+  it("logs each phase's steps and shows the phase while it runs", async () => {
+    let seen: unknown[] = [];
+    replies({
+      backend: async () => {
+        emit("deploy:phase", phaseEvent("building"));
+        backendBuild();
+        emit("deploy:phase", phaseEvent("installing", ["APK (build #7): /tmp/app-debug.apk"]));
+        seen = [buildState.deployPhase];
+        emit("deploy:phase", phaseEvent("launching", ["Package (from APK): com.example.app"]));
+        seen.push(buildState.deployPhase);
+        emit("deploy:phase", phaseEvent("done"));
+        return makeDeployResult();
+      },
     });
 
-    expect(error).toBeNull();
-    expect(launchCalls()[0]?.[1]).toMatchObject({
-      serial: "emulator-5554",
-      package: "com.example.app",
-      activity: ".Settings",
-      buildId: 7,
-    });
+    await runAndDeploy();
+
+    expect(seen).toEqual(["installing", "launching"]);
+    expect(buildLog()).toEqual(
+      expect.arrayContaining([
+        "▶ APK (build #7): /tmp/app-debug.apk",
+        "▶ Package (from APK): com.example.app",
+      ])
+    );
+    expect(buildState.deployPhase).toBeNull();
   });
 
-  it("opens the configuration's deep link in the installed package", async () => {
-    const error = await deployThroughSuccessfulBuild({
-      resolve_run_configuration: () =>
-        Promise.resolve(makeResolvedRun({ launch: { kind: "deepLink", uri: "myapp://home" } })),
-      open_deep_link_on_device: () => Promise.resolve("Starting: Intent { … }"),
+  it("logs steps that arrive after the run answered", async () => {
+    replies({
+      backend: async () => {
+        backendBuild();
+        // The last phase's event is still on its way when the answer arrives.
+        setTimeout(() =>
+          emit(
+            "deploy:phase",
+            phaseEvent("done", ["Run configuration 'Default' installs only — not launching."])
+          )
+        );
+        return makeDeployResult({ launch: null });
+      },
     });
 
-    expect(error).toBeNull();
-    expect(launchCalls()).toHaveLength(0);
-    expect(callsTo("open_deep_link_on_device")).toEqual([
-      [
-        "open_deep_link_on_device",
-        { serial: "emulator-5554", uri: "myapp://home", package: "com.example.app" },
-      ],
-    ]);
+    await runAndDeploy();
+
+    await vi.waitFor(() =>
+      expect(buildLog()).toContain("▶ Run configuration 'Default' installs only — not launching.")
+    );
+    expect(buildState.deployPhase).toBeNull();
+  });
+
+  it("logs the launch and its time, and records nothing itself", async () => {
+    replies({
+      result: makeDeployResult({
+        launch: { output: "Status: ok", timing: makeLaunchTiming({ displayedMs: 790 }) },
+      }),
+    });
+
+    await runAndDeploy();
+
+    expect(buildLog()).toEqual(
+      expect.arrayContaining([
+        "▶ Launch: Status: ok",
+        "▶ Launch time: 812 ms (cold) · displayed 790 ms",
+      ])
+    );
+    // The launch time is on the run's build record: the history is reloaded.
+    expect(callsTo("get_build_history").length).toBeGreaterThan(0);
+  });
+
+  it("says when the launch method reported no launch time", async () => {
+    replies({
+      result: makeDeployResult({
+        launch: { output: "monkey OK: Events injected: 1", timing: null },
+      }),
+    });
+
+    await runAndDeploy();
+
+    expect(buildLog()).toContain("▶ Launch time: not reported by this launch method");
+  });
+
+  it("says a deep link reports no launch time", async () => {
+    const run = makeResolvedRun({ launch: { kind: "deepLink", uri: "myapp://home" } });
+    replies({
+      run,
+      result: makeDeployResult({ launch: { output: "Starting: Intent { … }", timing: null } }, run),
+    });
+
+    await runAndDeploy();
+
     expect(buildLog()).toContain("▶ Launch time: not reported for a deep link");
     expect(buildState.lastLaunchedPackage).toBe("com.example.app");
   });
 
-  it("installs but does not launch a configuration whose launch is None", async () => {
-    const error = await deployThroughSuccessfulBuild({
-      resolve_run_configuration: () =>
-        Promise.resolve(makeResolvedRun({ launch: { kind: "none" } })),
-    });
-
-    expect(error).toBeNull();
-    expect(callsTo("install_apk_on_device")).toHaveLength(1);
-    expect(callsTo("get_package_name_from_apk")).toHaveLength(0);
-    expect(launchCalls()).toHaveLength(0);
-    expect(buildState.lastLaunchedAt).toBeNull();
-    expect(buildLog()).toContain("▶ Run configuration 'Default' installs only — not launching.");
-  });
-
   it("applies the configuration's logcat filter after the launch", async () => {
-    const error = await deployThroughSuccessfulBuild({
-      resolve_run_configuration: () =>
-        Promise.resolve(makeResolvedRun({ logcatFilter: "package:mine level:warn" })),
-    });
+    const run = makeResolvedRun({ logcatFilter: "package:mine level:warn" });
+    replies({ run });
 
-    expect(error).toBeNull();
+    await runAndDeploy();
+
     expect(buildState.lastLaunchedAt).not.toBeNull();
     expect(buildState.lastLaunchedPackage).toBe("com.example.app");
     expect(buildState.lastLaunchedFilter).toBe("package:mine level:warn");
   });
 
   it("merges package:mine after the launch when the configuration has no filter", async () => {
-    const error = await deployThroughSuccessfulBuild();
+    replies();
 
-    expect(error).toBeNull();
+    await runAndDeploy();
+
     expect(buildState.lastLaunchedAt).not.toBeNull();
     expect(buildState.lastLaunchedFilter).toBeNull();
   });
 
-  it("installs the APK this build recorded for the module and variant", async () => {
-    const error = await deployThroughSuccessfulBuild();
+  it("applies no filter when the run did not launch", async () => {
+    const run = makeResolvedRun({ launch: { kind: "none" } });
+    replies({ run, result: makeDeployResult({ launch: null }, run) });
 
-    expect(error).toBeNull();
-    expect(callsTo("find_apk_path")[0]?.[1]).toEqual({
-      variant: "debug",
-      module: ":app",
-      buildId: 7,
-    });
-    expect(buildLog()).toContain("▶ APK (build #7): /tmp/app-debug.apk");
+    await runAndDeploy();
+
+    expect(buildState.lastLaunchedAt).toBeNull();
   });
 
-  it("says which earlier build wrote an APK Gradle found up to date", async () => {
-    const error = await deployThroughSuccessfulBuild({
-      find_apk_path: () =>
-        Promise.resolve({ path: "/tmp/app-debug.apk", buildId: 3, fromThisBuild: false }),
+  it("stops after a failed build, without launching or failing the call", async () => {
+    replies({
+      backend: async () => {
+        backendBuild(":app:assembleDebug", { success: false, errorCount: 1 });
+        return makeDeployResult({ outcome: "buildFailed", apk: null, package: null, launch: null });
+      },
     });
 
-    expect(error).toBeNull();
-    expect(buildLog()).toContain("▶ APK unchanged since build #3: /tmp/app-debug.apk");
-    expect(callsTo("install_apk_on_device")[0]?.[1]).toMatchObject({
-      apkPath: "/tmp/app-debug.apk",
+    await runAndDeploy();
+
+    expect(buildState.phase).toBe("failed");
+    expect(buildState.lastLaunchedAt).toBeNull();
+    expect(buildLog().join("\n")).toContain('Build phase is "failed" — skipping install.');
+  });
+
+  it("cancels the backend's build from the Cancel button", async () => {
+    let finish: (result: DeployResult) => void = () => {};
+    replies({
+      backend: () => {
+        emit("build:started", {
+          runId: 1,
+          task: ":app:assembleDebug",
+          origin: { kind: "app" },
+          startedAt: new Date().toISOString(),
+          projectRoot: "/p",
+        });
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      },
+      overrides: {
+        cancel_build: async () => {
+          emit("build:complete", {
+            runId: 1,
+            recordId: 7,
+            success: false,
+            cancelled: true,
+            durationMs: 500,
+            errorCount: 0,
+            warningCount: 0,
+            task: ":app:assembleDebug",
+            origin: { kind: "app" },
+            cancelledBy: { kind: "app" },
+          });
+          finish(makeDeployResult({ outcome: "cancelled", launch: null, package: null }));
+        },
+      },
     });
+
+    const deploy = runAndDeploy();
+    await vi.waitFor(() => expect(callsTo("run_run_configuration")).toHaveLength(1));
+    await cancelBuild();
+    await deploy;
+
+    expect(callsTo("cancel_build")).toHaveLength(1);
+    expect(buildState.phase).toBe("cancelled");
+    expect(buildState.lastLaunchedAt).toBeNull();
+  });
+
+  it("fails with the backend's reason when the install fails", async () => {
+    const reason = { kind: "processFailed", message: "adb: failed to install: INSTALL_FAILED" };
+    replies({
+      backend: async () => {
+        backendBuild();
+        emit("deploy:phase", phaseEvent("installing", ["adb install /tmp/app-debug.apk"]));
+        throw reason;
+      },
+    });
+
+    await expect(runAndDeploy()).rejects.toBe(reason);
+
+    expect(buildState.phase).toBe("success");
+    expect(buildState.deployPhase).toBeNull();
+    expect(buildLog()).toContain("▶ adb install /tmp/app-debug.apk");
+    expect(buildLog().join("\n")).toContain("adb: failed to install: INSTALL_FAILED");
+  });
+
+  it("ends the build in the panel when the run stops before its build starts", async () => {
+    const reason = {
+      kind: "invalidInput",
+      message: "The project changed before the run started. Nothing was built.",
+    };
+    replies({ backend: () => Promise.reject(reason) });
+
+    await expect(runAndDeploy()).rejects.toBe(reason);
+
+    expect(buildState.phase).toBe("failed");
+    expect(buildState.deployPhase).toBeNull();
+  });
+
+  it("does not run once the project changed while the configuration resolved", async () => {
+    replies({
+      overrides: {
+        resolve_run_configuration: async () => {
+          // The user opens another project meanwhile.
+          beginProjectOpen();
+          return makeResolvedRun();
+        },
+      },
+    });
+
+    await expect(runAndDeploy()).rejects.toThrow("The project changed during deploy");
+
+    expect(callsTo("run_run_configuration")).toHaveLength(0);
   });
 
   it("stops before building when several modules have no active configuration", async () => {
@@ -787,7 +904,7 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
       selectedSerial: null,
       buildOnly: false,
     });
-    expect(callsTo("run_gradle_task")).toHaveLength(0);
+    expect(callsTo("run_run_configuration")).toHaveLength(0);
     expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
     expect(buildLog().join("\n")).toContain("mobile (:mobile debug), wear (:wear debug)");
   });
@@ -813,7 +930,10 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
           },
         });
       }
-      if (cmd === "run_gradle_task") return Promise.resolve(1);
+      if (cmd === "run_run_configuration") {
+        backendBuild();
+        return Promise.resolve(makeDeployResult({ launch: null }));
+      }
       return Promise.resolve(undefined);
     });
     return noDevice;
@@ -824,13 +944,13 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
       noDeviceFor({ kind });
       devicePickerMock.showDevicePicker.mockResolvedValue("28151FDH2000Q4");
 
-      const deploy = runAndDeploy();
-      await vi.waitFor(() => expect(buildState.phase).toBe("running"));
-      await cancelBuild();
-      await deploy;
+      await runAndDeploy();
 
       expect(devicePickerMock.showDevicePicker).toHaveBeenCalledTimes(1);
       expect(callsTo("resolve_run_configuration")[1]?.[1]).toMatchObject({
+        selectedSerial: "28151FDH2000Q4",
+      });
+      expect(callsTo("run_run_configuration")[0]?.[1]).toMatchObject({
         selectedSerial: "28151FDH2000Q4",
       });
     });
@@ -842,7 +962,7 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
 
     await runAndDeploy();
 
-    expect(callsTo("run_gradle_task")).toHaveLength(0);
+    expect(callsTo("run_run_configuration")).toHaveLength(0);
     expect(buildLog()).toContain("▶ No device selected — run cancelled.");
   });
 
@@ -857,7 +977,7 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
     );
     expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
     expect(callsTo("launch_avd")).toHaveLength(0);
-    expect(callsTo("run_gradle_task")).toHaveLength(0);
+    expect(callsTo("run_run_configuration")).toHaveLength(0);
   });
 
   it("launches the preferred AVD when asked, and runs nothing until it is online", async () => {
@@ -868,55 +988,8 @@ describe("runAndDeploy honors the autoInstallOnBuild setting", () => {
 
     await vi.waitFor(() => expect(callsTo("launch_avd")).toHaveLength(1));
     expect(callsTo("launch_avd")[0][1]).toEqual({ avdName: "Pixel_7" });
-    expect(callsTo("run_gradle_task")).toHaveLength(0);
+    expect(callsTo("run_run_configuration")).toHaveLength(0);
     expect(buildLog()).toContain("▶ Launching Pixel_7 — run again once it is online.");
-  });
-
-  it("stops before installing when the variant has no APK, with the backend's reason", async () => {
-    const reason =
-      "No APK for variant 'debug'. Found outputs for: freerelease. Build that variant first.";
-    const error = await deployThroughSuccessfulBuild({
-      find_apk_path: () => Promise.reject(reason),
-    });
-
-    expect(String(error)).toContain("Found outputs for: freerelease");
-    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "install_apk_on_device")).toHaveLength(
-      0
-    );
-  });
-
-  it("installs but does not launch a guessed package when the APK's package is unknown", async () => {
-    // The base applicationId ignores applicationIdSuffix, so launching it
-    // could start a different app than the one just installed.
-    setApplicationId("com.example.app");
-    const error = await deployThroughSuccessfulBuild({
-      get_package_name_from_apk: () => Promise.reject("aapt2 not found"),
-    });
-
-    expect(error).toBeNull();
-    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "install_apk_on_device")).toHaveLength(
-      1
-    );
-    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "launch_app_on_device")).toHaveLength(0);
-    setApplicationId(null);
-  });
-  it("stops before installing when the project changes while the APK is looked up", async () => {
-    const error = await deployThroughSuccessfulBuild({
-      find_apk_path: () => {
-        // The user opens another project; the backend now answers for it.
-        beginProjectOpen();
-        return Promise.resolve({
-          path: "/other-project/app/build/outputs/apk/debug/app-debug.apk",
-          buildId: 7,
-          fromThisBuild: true,
-        });
-      },
-    });
-
-    expect(String(error)).toContain("The project changed during deploy");
-    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd === "install_apk_on_device")).toHaveLength(
-      0
-    );
   });
 });
 
@@ -1277,6 +1350,7 @@ describe("Build Only builds the active run configuration", () => {
       await runAndDeploy();
 
       expect(callsTo("run_gradle_task")).toHaveLength(0);
+      expect(callsTo("run_run_configuration")).toHaveLength(0);
       flushPendingLines();
       expect(buildLogStore.entries.map((e) => e.message).join("\n")).toContain(
         "The shared run configuration was not approved — run cancelled."

@@ -15,7 +15,8 @@ import { eventFixtures, typeFixtures } from "@/test/ipc-fixtures/fixtures";
 import { inferShape, shapeMismatches } from "@/test/ipc-fixtures/shape";
 import { handleInvoke } from "@/test/mock-backend";
 import { handleListen } from "@/test/mock-backend/events";
-import { addMockPastBuild, startMockBuild } from "@/test/mock-backend/build";
+import { addMockPastBuild, recordMockInstall, startMockBuild } from "@/test/mock-backend/build";
+import { mockDevice } from "@/test/mock-backend/devices";
 import { mockSessionId } from "@/test/mock-backend/sessions";
 import { sampleEntries } from "@/test/mock-backend/logcat";
 
@@ -309,17 +310,11 @@ describe("the mock backend matches the real payloads", () => {
     let checked = 0;
     // Commands that look something up need something to find. A release
     // build's record carries a saved mapping, so its shape is compared too.
-    const releaseBuild = addMockPastBuild({ task: "assembleRelease", state: "success" });
+    addMockPastBuild({ task: "assembleRelease", state: "success" });
     // One install matched to that build, one of an APK no build wrote; each
     // opens a debug session.
-    await handleInvoke("install_apk_on_device", {
-      serial: "emulator-5554",
-      apkPath: "/mock/app-release.apk",
-    });
-    await handleInvoke("install_apk_on_device", {
-      serial: "28151FDH2000Q4",
-      apkPath: "/mock/other.apk",
-    });
+    recordMockInstall("emulator-5554", mockDevice("emulator-5554"), "/mock/app-release.apk");
+    recordMockInstall("28151FDH2000Q4", mockDevice("28151FDH2000Q4"), "/mock/other.apk");
     // A crash in the logcat buffer to deobfuscate.
     const crash = { ...sampleEntries[2], id: 90, isCrash: true, crashGroupId: 90 };
     await handleInvoke("__e2e_append_logcat_entries", {
@@ -341,9 +336,7 @@ describe("the mock backend matches the real payloads", () => {
     });
     const args = {
       get_build_log_entries: { id: addMockPastBuild({ task: "assembleDebug", state: "success" }) },
-      launch_app_on_device: { serial: "emulator-5554", package: "com.example.mockapp" },
       retrace_crash: { crashGroupId: 90 },
-      find_apk_path: { variant: "release", module: ":app", buildId: releaseBuild },
       save_run_configuration: {
         config: {
           name: "Wear deep link",
@@ -359,9 +352,9 @@ describe("the mock backend matches the real payloads", () => {
       get_debug_session: { id: mockSessionId(1) },
       get_session_capture: { id: mockSessionId(1), seq: detail.crashes[0]?.seq },
       refresh_session_exit_reasons: { id: mockSessionId(1) },
-      record_run_device: { name: "Default", serial: "emulator-5554" },
       set_run_configuration_target: { name: "Default", target: { kind: "lastUsed" } },
       resolve_run_configuration: { selectedSerial: "emulator-5554" },
+      run_run_configuration: { selectedSerial: "emulator-5554" },
       // The file's hash as it is when approving.
       approve_shared_run_configuration: async () => ({
         name: "Wear deep link",
@@ -384,10 +377,10 @@ describe("the mock backend matches the real payloads", () => {
     for (const [command, type] of invokedTypes()) {
       if (!isNamedType(type)) continue;
       const arg = args[command];
-      const response = await handleInvoke(
-        command,
-        (typeof arg === "function" ? await arg() : arg) ?? {}
-      );
+      const pending = handleInvoke(command, (typeof arg === "function" ? await arg() : arg) ?? {});
+      // A run of a configuration answers once its mock build finished.
+      if (command === "run_run_configuration") await vi.runAllTimersAsync();
+      const response = await pending;
       checked++;
       for (const problem of mismatchesAgainst(response, type)) {
         problems.push(`${command} (${type}) ${problem}`);
@@ -405,13 +398,12 @@ describe("the mock backend matches the real payloads", () => {
     await handleInvoke("__e2e_append_logcat_entries", { entries: sampleEntries });
     await handleInvoke("clear_logcat");
     await handleInvoke("run_gradle_task", { task: "assembleDebug" });
-    // A launch recorded on a build: its fully drawn time arrives later.
-    await handleInvoke("launch_app_on_device", {
-      serial: "emulator-5554",
-      package: "com.example.mockapp",
-      buildId: addMockPastBuild({ task: "assembleDebug", state: "success" }),
-    });
     await vi.runAllTimersAsync();
+    // A run of a configuration: its phases, and a launch recorded on its build
+    // whose fully drawn time arrives later.
+    const run = handleInvoke("run_run_configuration", { selectedSerial: "emulator-5554" });
+    await vi.runAllTimersAsync();
+    await run;
     startMockBuild("assembleRelease", {
       kind: "agent",
       sessionId: 1,

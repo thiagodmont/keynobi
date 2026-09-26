@@ -25,6 +25,15 @@ interface MockRun {
   origin: BuildActor;
   startedAt: string;
   timers: ReturnType<typeof setTimeout>[];
+  /** Called once the run is recorded, with how it ended. */
+  onFinish?: (outcome: MockBuildOutcome) => void;
+}
+
+/** How a mock build ended, as `BuildOutcome` tells the backend's own callers. */
+export interface MockBuildOutcome {
+  recordId: number;
+  success: boolean;
+  cancelled: boolean;
 }
 
 let activeRun: MockRun | null = null;
@@ -156,7 +165,7 @@ function mockApks(state: "success" | "failed" | "cancelled", task: string, id: n
  * else (up to date) the variant's APK in the outputs, matched to the newest
  * build that wrote it.
  */
-function mockRunApk(variant: string, buildId: number | null): RunApk {
+export function mockRunApk(variant: string, buildId: number | null): RunApk {
   const matches = (apk: BuiltApk) =>
     apk.module === MOCK_APP_MODULE && apk.variant.toLowerCase() === variant.toLowerCase();
   const own = history.find((e) => e.record.id === buildId)?.record.apks.find(matches);
@@ -250,10 +259,15 @@ export function addMockPastBuild(build: MockPastBuild): number {
  * then build:lines, then build:complete. `lineDelayMs` slows it down so a
  * test can act while it runs.
  */
-export function startMockBuild(task: string, origin: BuildActor, lineDelayMs = 80): number {
+export function startMockBuild(
+  task: string,
+  origin: BuildActor,
+  lineDelayMs = 80,
+  onFinish?: (outcome: MockBuildOutcome) => void
+): number {
   if (activeRun) throw new Error("A build is already running");
   const startedAt = new Date().toISOString();
-  const run: MockRun = { id: nextBuildId++, task, origin, startedAt, timers: [] };
+  const run: MockRun = { id: nextBuildId++, task, origin, startedAt, timers: [], onFinish };
   activeRun = run;
   buildStatus = { state: "running", task, started_at: startedAt };
   triggerEvent("build:started", {
@@ -308,13 +322,22 @@ function finish(
     origin: run.origin,
     ...outcome,
   });
+  run.onFinish?.({ recordId, success: outcome.success, cancelled: outcome.cancelled });
+}
+
+/** A build the app starts, as `run_gradle_task` and a run of a configuration start one. */
+export function startMockAppBuild(
+  task: string,
+  onFinish?: (outcome: MockBuildOutcome) => void
+): number {
+  return startMockBuild(task, { kind: "app" }, appBuildLineDelayMs, onFinish);
 }
 
 export function buildHandlers(): Record<string, (args: unknown) => unknown> {
   return {
     run_gradle_task: (args: unknown) => {
       const { task } = args as { task: string };
-      return startMockBuild(task, { kind: "app" }, appBuildLineDelayMs);
+      return startMockAppBuild(task);
     },
     cancel_build: () => {
       const run = activeRun;
@@ -332,10 +355,6 @@ export function buildHandlers(): Record<string, (args: unknown) => unknown> {
         throw error;
       }
       return MOCK_APP_MODULE;
-    },
-    find_apk_path: (args: unknown) => {
-      const { variant, buildId } = args as { variant: string; buildId?: number | null };
-      return mockRunApk(variant, buildId ?? null);
     },
     get_build_status: () => ({ ...buildStatus }),
     get_build_errors: () => [],

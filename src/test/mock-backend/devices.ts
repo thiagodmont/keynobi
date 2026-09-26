@@ -7,7 +7,7 @@ import type {
   LaunchResult,
   LaunchTiming,
 } from "@/bindings";
-import { attachMockLaunch, recordMockInstall } from "./build";
+import { attachMockLaunch } from "./build";
 import { recordMockLaunch } from "./sessions";
 import { triggerEvent } from "./events";
 
@@ -44,6 +44,42 @@ export const mockAvd: AvdInfo = {
 };
 
 let selectedDevice: string | null = null;
+
+/** The connected device with `serial`, if any. */
+export function mockDevice(serial: string): Device | undefined {
+  return mockDevices.find((d) => d.serial === serial);
+}
+
+/**
+ * Like the backend's launch: `am start -W` reports a cold launch, recorded
+ * on build `buildId`; the app's reportFullyDrawn arrives after the launch
+ * returned (`build:launch_timing`). The launch goes to the debug session.
+ */
+export function mockLaunchApp(serial: string, pkg: string, buildId: number | null): LaunchResult {
+  const device = mockDevice(serial);
+  const timing: LaunchTiming = {
+    totalMs: 812,
+    waitMs: 815,
+    launchState: "cold",
+    measuredAt: new Date().toISOString(),
+    serial,
+    avdName: device?.avdName ?? null,
+    model: device?.model ?? null,
+    displayedMs: 790,
+    fullyDrawnMs: null,
+  };
+  if (buildId !== null) {
+    attachMockLaunch(buildId, timing);
+    setTimeout(() => {
+      const launch: LaunchTiming = { ...timing, fullyDrawnMs: 1400 };
+      attachMockLaunch(buildId, launch);
+      triggerEvent("build:launch_timing", { recordId: buildId, launch });
+      recordMockLaunch(pkg, launch, true);
+    }, 1000);
+  }
+  recordMockLaunch(pkg, timing);
+  return { output: "Status: ok\nLaunchState: COLD\nTotalTime: 812\nWaitTime: 815", timing };
+}
 
 /** The connected devices and the backend's selection, for run resolution. */
 export function mockDeviceSelection(): { devices: Device[]; selected: string | null } {
@@ -150,51 +186,7 @@ export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
     stop_avd: () => undefined,
     start_device_polling: () => undefined,
     stop_device_polling: () => undefined,
-    install_apk_on_device: (args: unknown) => {
-      const { serial, apkPath } = args as { serial: string; apkPath: string };
-      recordMockInstall(
-        serial,
-        mockDevices.find((d) => d.serial === serial),
-        apkPath
-      );
-      return "Success";
-    },
-    launch_app_on_device: (args: unknown): LaunchResult => {
-      const {
-        serial,
-        package: pkg,
-        buildId,
-      } = args as { serial: string; package?: string; buildId?: number | null };
-      const device = mockDevices.find((d) => d.serial === serial);
-      const timing: LaunchTiming = {
-        totalMs: 812,
-        waitMs: 815,
-        launchState: "cold",
-        measuredAt: new Date().toISOString(),
-        serial,
-        avdName: device?.avdName ?? null,
-        model: device?.model ?? null,
-        displayedMs: 790,
-        fullyDrawnMs: null,
-      };
-      if (typeof buildId === "number") {
-        attachMockLaunch(buildId, timing);
-        // Like the backend: the app's reportFullyDrawn arrives after the launch returned.
-        setTimeout(() => {
-          const launch: LaunchTiming = { ...timing, fullyDrawnMs: 1400 };
-          attachMockLaunch(buildId, launch);
-          triggerEvent("build:launch_timing", { recordId: buildId, launch });
-          if (typeof pkg === "string") recordMockLaunch(pkg, launch, true);
-        }, 1000);
-      }
-      if (typeof pkg === "string") recordMockLaunch(pkg, timing);
-      return { output: "Status: ok\nLaunchState: COLD\nTotalTime: 812\nWaitTime: 815", timing };
-    },
     stop_app_on_device: () => undefined,
-    open_deep_link_on_device: (args: unknown) => {
-      const { uri, package: pkg } = args as { uri: string; package: string };
-      return `Starting: Intent { act=android.intent.action.VIEW dat=${uri} pkg=${pkg} }`;
-    },
     get_exit_reasons: (args: unknown) => {
       const { serial, package: pkg } = (args ?? {}) as { serial?: string; package?: string | null };
       return mockExitReasons(serial ?? mockEmulator.serial, pkg ?? null);
@@ -237,6 +229,5 @@ export function devicesHandlers(): Record<string, (args: unknown) => unknown> {
       layoutContext: {},
       commandLog: [],
     }),
-    get_package_name_from_apk: () => "com.example.mockapp.debug",
   };
 }

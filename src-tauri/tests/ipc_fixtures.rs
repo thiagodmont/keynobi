@@ -17,6 +17,7 @@ use keynobi_lib::services::agent_skill::{AgentSkillState, AgentSkillStatus};
 use keynobi_lib::services::build_runner::{
     BUILD_COMPLETE_EVENT, BUILD_LINES_EVENT, BUILD_STARTED_EVENT,
 };
+use keynobi_lib::services::deploy::DEPLOY_PHASE_EVENT;
 use keynobi_lib::services::launch_display::BUILD_LAUNCH_TIMING_EVENT;
 use keynobi_lib::services::mcp_activity::McpActivityEntry;
 use keynobi_lib::services::mcp_sessions::{
@@ -903,6 +904,126 @@ fn resolved_runs() -> Vec<ResolvedRun> {
     ]
 }
 
+fn deploy_phase_events() -> Vec<DeployPhaseEvent> {
+    let run = resolved_runs().remove(0);
+    let device = run.device.clone().expect("the sample run has a device");
+    let event = |phase, build_id, steps: &[&str], error: Option<&str>| DeployPhaseEvent {
+        phase,
+        name: run.name.clone(),
+        plan: run.plan.clone(),
+        device: device.clone(),
+        build_id,
+        steps: steps.iter().map(|s| s.to_string()).collect(),
+        error: error.map(str::to_string),
+    };
+    vec![
+        event(DeployPhase::Building, None, &[], None),
+        event(
+            DeployPhase::Installing,
+            Some(21),
+            &[
+                "APK (build #21): /work/app/build/outputs/apk/debug/app-debug.apk",
+                "Installing on: sdk_gphone64_arm64 (API 35) [emulator-5554]",
+                "adb install /work/app/build/outputs/apk/debug/app-debug.apk",
+            ],
+            None,
+        ),
+        event(
+            DeployPhase::Launching,
+            Some(21),
+            &[
+                "Install: Success (1.2s)",
+                "Package (from APK): com.example.app.debug",
+                "adb shell am start -W (package: com.example.app.debug)",
+            ],
+            None,
+        ),
+        event(DeployPhase::Done, Some(21), &[], None),
+        event(
+            DeployPhase::Failed,
+            Some(22),
+            &[],
+            Some("The build failed; nothing was installed."),
+        ),
+        event(DeployPhase::Cancelled, Some(23), &[], None),
+    ]
+}
+
+fn deploy_results() -> Vec<DeployResult> {
+    let [run, deep_link, _] = <[ResolvedRun; 3]>::try_from(resolved_runs())
+        .unwrap_or_else(|_| panic!("three sample runs"));
+    let device = |run: &ResolvedRun| run.device.clone().expect("the sample run has a device");
+    let apk = RunApk {
+        path: "/work/app/build/outputs/apk/debug/app-debug.apk".into(),
+        build_id: Some(21),
+        from_this_build: true,
+    };
+    vec![
+        DeployResult {
+            run: run.clone(),
+            outcome: DeployOutcome::Done,
+            build_id: Some(21),
+            device: device(&run),
+            apk: Some(apk.clone()),
+            apk_sha256: Some("a".repeat(64)),
+            package: Some("com.example.app.debug".into()),
+            launch: Some(LaunchResult {
+                output: "am start OK: Status: ok".into(),
+                timing: launch_timings().into_iter().next(),
+            }),
+            logcat_filter: None,
+        },
+        // Answered before the app reported it was fully drawn.
+        DeployResult {
+            run: run.clone(),
+            outcome: DeployOutcome::Done,
+            build_id: Some(21),
+            device: device(&run),
+            apk: Some(apk.clone()),
+            apk_sha256: None,
+            package: Some("com.example.app.debug".into()),
+            launch: Some(LaunchResult {
+                output: "am start OK: Status: ok".into(),
+                timing: launch_timings().into_iter().next().map(|t| LaunchTiming {
+                    fully_drawn_ms: None,
+                    ..t
+                }),
+            }),
+            logcat_filter: Some("package:mine level:warn".into()),
+        },
+        DeployResult {
+            outcome: DeployOutcome::Done,
+            build_id: Some(22),
+            device: device(&deep_link),
+            apk: Some(RunApk {
+                build_id: Some(9),
+                from_this_build: false,
+                ..apk
+            }),
+            apk_sha256: Some("b".repeat(64)),
+            package: Some("com.example.wear".into()),
+            launch: Some(LaunchResult {
+                output: "Starting: Intent { act=android.intent.action.VIEW dat=myapp://home }"
+                    .into(),
+                timing: None,
+            }),
+            logcat_filter: deep_link.logcat_filter.clone(),
+            run: deep_link,
+        },
+        DeployResult {
+            run: run.clone(),
+            outcome: DeployOutcome::BuildFailed,
+            build_id: Some(23),
+            device: device(&run),
+            apk: None,
+            apk_sha256: None,
+            package: None,
+            launch: None,
+            logcat_filter: None,
+        },
+    ]
+}
+
 fn target_preferences() -> Vec<TargetPreference> {
     vec![
         TargetPreference::Ask,
@@ -1112,6 +1233,8 @@ fn fixtures() -> Fixtures {
             .collect::<Vec<_>>(),
     );
     f.add("ResolvedRun", &resolved_runs());
+    f.add("DeployResult", &deploy_results());
+    f.add("DeployPhaseEvent", &deploy_phase_events());
     f.add(
         "RunDevice",
         &resolved_runs()
@@ -1781,6 +1904,11 @@ fn fixtures() -> Fixtures {
         BUILD_LAUNCH_TIMING_EVENT,
         "LaunchTimingEvent",
         &launch_events,
+    );
+    f.event(
+        DEPLOY_PHASE_EVENT,
+        "DeployPhaseEvent",
+        &deploy_phase_events(),
     );
     f.event(
         "device:list_changed",
