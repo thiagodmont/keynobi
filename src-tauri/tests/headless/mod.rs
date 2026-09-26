@@ -155,8 +155,18 @@ impl Sandbox {
 
     /// Launch `keynobi --mcp [--project <project>]` in `working_dir`.
     pub fn start_in(&self, working_dir: &Path, project: Option<&Path>) -> McpClient {
+        self.start_with(working_dir, project, &[])
+    }
+
+    /// Launch `keynobi --mcp --project <project> <args>`.
+    pub fn start_args(&self, args: &[&str]) -> McpClient {
+        self.start_with(&self.project, Some(&self.project), args)
+    }
+
+    fn start_with(&self, working_dir: &Path, project: Option<&Path>, args: &[&str]) -> McpClient {
         let mut child = self
             .command(working_dir, project)
+            .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())

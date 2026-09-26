@@ -11,6 +11,7 @@ use crate::services::mcp_activity::{self, McpActivityEntry};
 use crate::services::mcp_relay::{write_all_flush, LineReader, Relay, RelayEnd, SessionTracker};
 use crate::services::mcp_server::{AndroidMcpServer, LoggingMcpServer, ProjectSelection};
 use crate::services::mcp_sessions::{McpSessionRegistry, SessionGuard};
+use crate::services::mcp_toolsets::Toolsets;
 use crate::services::settings_manager;
 use crate::FsState;
 use rmcp::ServiceExt;
@@ -68,6 +69,9 @@ pub struct AttachRequest {
     /// How the client chose `project`.
     #[serde(default)]
     pub selected_by: Option<ProjectSelection>,
+    /// The only toolsets the session may serve (`--toolsets`); absent for all.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toolsets: Option<Vec<String>>,
 }
 
 impl AttachRequest {
@@ -78,7 +82,14 @@ impl AttachRequest {
             project,
             pid: Some(std::process::id()),
             selected_by,
+            toolsets: None,
         }
+    }
+
+    /// Ask for a session that serves only `toolsets`.
+    pub fn with_toolsets(mut self, toolsets: &Toolsets) -> Self {
+        self.toolsets = (!toolsets.is_all()).then(|| toolsets.names());
+        self
     }
 }
 
@@ -94,15 +105,21 @@ pub struct AttachReply {
     pub reason: Option<String>,
     /// The app's version.
     pub version: String,
+    /// The toolsets the app serves the session, echoing the request's. An
+    /// app that does not know toolsets leaves it out, and the client then
+    /// does not attach, so a hidden tool is never reachable through the app.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub toolsets: Option<Vec<String>>,
 }
 
 impl AttachReply {
-    fn accept(project: Option<PathBuf>) -> Self {
+    fn accept(project: Option<PathBuf>, toolsets: &Toolsets) -> Self {
         Self {
             accepted: true,
             project,
             reason: None,
             version: APP_VERSION.to_string(),
+            toolsets: (!toolsets.is_all()).then(|| toolsets.names()),
         }
     }
 
@@ -112,6 +129,7 @@ impl AttachReply {
             project: None,
             reason: Some(reason.into()),
             version: APP_VERSION.to_string(),
+            toolsets: None,
         }
     }
 }
@@ -326,8 +344,15 @@ async fn serve_connection(
         return;
     }
     let app = AppProject::of(&fs_state).await;
-    let pinned = match decide_attach(&request, &app) {
-        Ok(pinned) => pinned,
+    let decided = decide_attach(&request, &app).and_then(|pinned| {
+        let toolsets = match &request.toolsets {
+            Some(names) => Toolsets::from_names(names)?,
+            None => Toolsets::all(),
+        };
+        Ok((pinned, toolsets))
+    });
+    let (pinned, toolsets) = match decided {
+        Ok(decided) => decided,
         Err(reason) => {
             info!("MCP attach refused: {reason}");
             let _ = write_json_line(&mut write_half, &AttachReply::reject(reason)).await;
@@ -346,7 +371,7 @@ async fn serve_connection(
         return;
     };
     let _guard = SessionGuard::new(registry.clone(), id);
-    let reply = AttachReply::accept(app.display_path().map(Path::to_path_buf));
+    let reply = AttachReply::accept(app.display_path().map(Path::to_path_buf), &toolsets);
     if write_json_line(&mut write_half, &reply).await.is_err() {
         return;
     }
@@ -370,7 +395,8 @@ async fn serve_connection(
     };
     let server = make_server()
         .attached(pinned, selection)
-        .with_session_id(id);
+        .with_session_id(id)
+        .with_toolsets(toolsets);
     let logging = LoggingMcpServer::new(server).with_session(registry.clone(), id);
     // The session is served through a relay that tracks the client's requests,
     // so that when the app quits every one still in flight gets an answer.
@@ -554,6 +580,13 @@ async fn handshake(path: &Path, request: &AttachRequest) -> Result<Attached, Str
             ));
         }
         return Err(reason);
+    }
+    if reply.toolsets != request.toolsets {
+        return Err(format!(
+            "the Keynobi app (version {}) cannot limit a session to --toolsets; update the app \
+             to attach",
+            reply.version
+        ));
     }
     Ok(Attached {
         reader,
@@ -759,10 +792,108 @@ mod tests {
             project: None,
             pid: None,
             selected_by: None,
+            toolsets: None,
         };
         let reason = decide_attach(&request, &app_with(None)).unwrap_err();
         assert!(reason.contains("9.9.9"), "{reason}");
         assert!(reason.contains(APP_VERSION), "{reason}");
+    }
+
+    /// Answers one attach request with `reply`, as an app at `path` would.
+    fn app_replying(path: &Path, reply: serde_json::Value) -> tokio::task::JoinHandle<()> {
+        let listener = UnixListener::bind(path).unwrap();
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (read_half, mut write_half) = stream.into_split();
+            let _ = read_line(&mut BufReader::new(read_half)).await;
+            write_half
+                .write_all(format!("{reply}\n").as_bytes())
+                .await
+                .unwrap();
+            // Keep the connection open until the client drops it.
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        })
+    }
+
+    /// An app that does not know toolsets would serve every tool, so the
+    /// client refuses to attach to it and runs standalone instead.
+    #[tokio::test]
+    async fn a_session_with_toolsets_does_not_attach_to_an_app_that_ignores_them() {
+        let dir = short_dir();
+        let path = dir.path().join(SOCKET_FILE);
+        let app = app_replying(
+            &path,
+            serde_json::json!({ "accepted": true, "project": null, "version": "0.1.0" }),
+        );
+        let core = Toolsets::parse("core").unwrap();
+        let err = try_attach(
+            &path,
+            &AttachRequest::new(None, None).with_toolsets(&core),
+            ATTACH_TIMEOUT,
+        )
+        .await
+        .err()
+        .expect("attaching must fail");
+        assert!(
+            err.contains("version 0.1.0") && err.contains("--toolsets"),
+            "{err}"
+        );
+        app.abort();
+
+        // Without toolsets, the same reply attaches.
+        let dir = short_dir();
+        let path = dir.path().join(SOCKET_FILE);
+        let app = app_replying(
+            &path,
+            serde_json::json!({ "accepted": true, "project": null, "version": "0.1.0" }),
+        );
+        assert!(
+            try_attach(&path, &AttachRequest::new(None, None), ATTACH_TIMEOUT)
+                .await
+                .is_ok()
+        );
+        app.abort();
+    }
+
+    #[tokio::test]
+    async fn the_app_refuses_unknown_toolsets_and_echoes_the_ones_it_serves() {
+        let dir = short_dir();
+        let path = dir.path().join(SOCKET_FILE);
+        let listener = bind_app_socket(&path).unwrap().unwrap();
+        let fs_state = FsState::new();
+        tokio::spawn(serve_mcp_socket(
+            listener,
+            fs_state,
+            McpSessionRegistry::new(),
+            || {
+                AndroidMcpServer::new_headless(
+                    crate::services::build_runner::BuildState::new(),
+                    crate::services::adb_manager::DeviceState::new(),
+                    crate::commands::logcat::new_logcat_state(),
+                    FsState::new(),
+                    crate::services::process_manager::ProcessManager::new(),
+                    None,
+                )
+            },
+        ));
+
+        let mut request = AttachRequest::new(None, None);
+        request.toolsets = Some(vec!["core".into(), "admin".into()]);
+        let err = try_attach(&path, &request, ATTACH_TIMEOUT)
+            .await
+            .err()
+            .expect("an unknown toolset is refused");
+        assert!(err.contains("unknown toolset \"admin\""), "{err}");
+
+        let ui = Toolsets::parse("ui").unwrap();
+        let attached = try_attach(
+            &path,
+            &AttachRequest::new(None, None).with_toolsets(&ui),
+            ATTACH_TIMEOUT,
+        )
+        .await
+        .expect("attached");
+        assert_eq!(attached.reply.toolsets, Some(vec!["ui".to_string()]));
     }
 
     #[test]
@@ -866,7 +997,7 @@ mod tests {
         let attached = Attached {
             reader: BufReader::new(read_half),
             writer,
-            reply: AttachReply::accept(None),
+            reply: AttachReply::accept(None, &Toolsets::all()),
         };
         // stdin that never ends, like an idle MCP client.
         let (_stdin_keepalive, stdin) = tokio::io::duplex(64);
@@ -901,7 +1032,7 @@ mod tests {
         let attached = Attached {
             reader: BufReader::new(read_half),
             writer,
-            reply: AttachReply::accept(None),
+            reply: AttachReply::accept(None, &Toolsets::all()),
         };
         let (mut client, stdin) = tokio::io::duplex(4096);
         let (mut stdout, mut stdout_reader) = tokio::io::duplex(4096);
