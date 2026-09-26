@@ -10,7 +10,8 @@ pub enum Toolset {
     Core,
     /// Reading the UI hierarchy and driving the UI.
     Ui,
-    /// Installing, launching, stopping, and changing apps and devices.
+    /// Running configurations, installing, launching, stopping, and changing
+    /// apps and devices.
     DeviceAdmin,
 }
 
@@ -73,6 +74,7 @@ const UI_TOOLS: &[&str] = &[
 const DEVICE_ADMIN_TOOLS: &[&str] = &[
     "install_apk",
     "launch_app",
+    "run_run_configuration",
     "stop_app",
     "restart_app",
     "grant_runtime_permission",

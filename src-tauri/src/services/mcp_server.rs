@@ -19,7 +19,8 @@ use crate::models::debug_session::{DebugSessionAgentAction, DebugSessionToolKind
 use crate::models::device::DeviceConnectionState;
 use crate::models::error::AppError;
 use crate::models::run_configuration::{
-    LocalRunState, ResolvedRun, RunConfiguration, TargetPreference,
+    DeployOutcome, DeployPhase, DeployPhaseEvent, DeployResult, LocalRunState, ResolvedRun,
+    RunConfiguration, RunLaunch, TargetPreference,
 };
 use crate::services::adb_manager::{self, DeviceState};
 use crate::services::agent_skill;
@@ -30,6 +31,7 @@ use crate::services::build_inspector;
 use crate::services::build_runner::{self, AgentActor, BuildActor, BuildState};
 use crate::services::crash_inspector;
 use crate::services::debug_sessions;
+use crate::services::deploy::{self, DeployHooks};
 use crate::services::device_inspector;
 use crate::services::gradle_modules;
 use crate::services::health_inspector;
@@ -478,6 +480,16 @@ pub struct RunTestsParams {
 pub struct BuildRunConfigurationParams {
     #[schemars(description = "Run configuration name, from list_run_configurations")]
     pub name: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RunRunConfigurationParams {
+    #[schemars(description = "Run configuration name, from list_run_configurations")]
+    pub name: String,
+    #[schemars(
+        description = "ADB device serial (from list_devices) to run on (optional). Chooses the device when the configuration's target is ask or lastUsed; with a device or AVD target it must be that device."
+    )]
+    pub device_serial: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -1078,6 +1090,7 @@ impl AndroidMcpServer {
         let request = run_plan::RunRequest {
             name: Some(p.name),
             build_only: true,
+            device: None,
         };
         let resolved = tokio::task::spawn_blocking(move || {
             run_plan::resolve(
@@ -1158,6 +1171,85 @@ impl AndroidMcpServer {
         } else {
             CallToolResult::structured(body)
         })
+    }
+
+    /// Run a run configuration as Run App does.
+    #[tool(
+        description = "Run a run configuration (from list_run_configurations) as Run App does: build its task like run_gradle_task (trust, task policy, progress, cancellation while it builds), install the APK that build wrote on the configuration's device, and launch it the configuration's way (launcher activity, an activity, a deep link, or none). device_serial chooses the device for a target of ask or lastUsed; with a device or AVD target it must be that device. Keynobi never starts an emulator: for an AVD that is not running, start it with launch_avd first. A shared configuration that needs approval runs only once the user approved it in Keynobi. Returns the device, the package, the APK and its SHA-256, the build id, the launch time, and the logcat filter for the app's logs.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            open_world_hint = true
+        )
+    )]
+    async fn run_run_configuration(
+        &self,
+        Parameters(p): Parameters<RunRunConfigurationParams>,
+        ctx: RequestContext<RoleServer>,
+    ) -> Result<CallToolResult, McpError> {
+        if let Some(serial) = &p.device_serial {
+            validate_device_serial(serial)?;
+        }
+        let project = deploy::OpenProject::of(&self.fs_state).await.map_err(|_| {
+            McpError::invalid_params("No project open. Open an Android project first.", None)
+        })?;
+        let devices = self.fresh_devices().await;
+        let selected = self.device_state.0.lock().await.selected_serial.clone();
+        let resolving = project.clone();
+        let resolved = tokio::task::spawn_blocking(move || {
+            let request = run_plan::RunRequest {
+                name: Some(p.name.clone()),
+                build_only: false,
+                device: p.device_serial,
+            };
+            let devices = run_plan::Devices {
+                list: &devices,
+                selected: selected.as_deref(),
+            };
+            run_plan::resolve(resolving.run_project(), &request, devices)
+                .map_err(|e| (e, run_target(&resolving, &p.name)))
+        })
+        .await
+        .map_err(|e| McpError::internal_error(e.to_string(), None))?;
+        let run = match resolved {
+            Ok(run) => run,
+            Err((e, target)) => return run_refusal(e, target),
+        };
+
+        let (settings, _) = settings_manager::load_settings();
+        let env = deploy::DeployEnv {
+            fs_state: self.fs_state.clone(),
+            build_state: self.build_state.clone(),
+            device_state: self.device_state.clone(),
+            logcat_state: self.logcat_state.clone(),
+            app: self.app_handle.clone(),
+            adb: adb_manager::get_adb_path(&settings),
+            aapt2: adb_manager::find_aapt2(&settings),
+        };
+        let by = self.agent(&ctx.peer);
+        let mut hooks = AgentRun {
+            server: self,
+            request: &ctx,
+            origin: by.clone(),
+            started_at: tokio::time::Instant::now(),
+            build_result: None,
+            refused: None,
+        };
+        let ran = deploy::run_configuration(&env, &project, run, by, &mut hooks).await;
+        match (ran, hooks.refused) {
+            (Ok(result), _) => {
+                let body = deploy_result_json(&result, hooks.build_result.as_deref());
+                Ok(if result.outcome == DeployOutcome::Done {
+                    CallToolResult::structured(body)
+                } else {
+                    CallToolResult::structured_error(body)
+                })
+            }
+            (Err(_), Some(refused)) => Err(refused),
+            (Err(e), None) => Ok(CallToolResult::error(vec![ContentBlock::text(
+                app_error_message(&e),
+            )])),
+        }
     }
 
     /// Get a parsed crash stack trace from the in-memory logcat buffer.
@@ -3690,11 +3782,14 @@ fn full_deploy_text(args: &FullDeployArgs) -> String {
     format!(
         "Deploy the {variant} build to device '{device}'. \
          Step 1: Call list_run_configurations. If one builds the {variant} variant of the app, \
-         call build_run_configuration with its name: it returns the apk_path. \
-         Otherwise call run_gradle_task with task={task} to build. \
-         Step 2: Unless you have the apk_path, call find_apk_path with variant={variant} to locate the APK. \
-         Step 3: Call install_apk with device_serial={device} and the APK path. \
-         Step 4: {launch} \
+         call run_run_configuration with its name and device_serial={device}: it builds, installs, \
+         and launches the app as Run App does, and returns the package, the launch time, and the \
+         logcat filter. Report its result and stop. If it says the configuration's AVD is not \
+         running, call launch_avd and run it again; if it runs on another device, tell the user. \
+         Otherwise: Step 2: Call run_gradle_task with task={task} to build. \
+         Step 3: Call find_apk_path with variant={variant} to locate the APK. \
+         Step 4: Call install_apk with device_serial={device} and the APK path. \
+         Step 5: {launch} \
          Report the result of each step.",
         task = task,
         variant = variant,
@@ -3750,7 +3845,7 @@ impl ServerHandler for AndroidMcpServer {
              Keynobi MCP Server — AI-first companion for Android development. \
              Keynobi covers stateful work (logs, crashes, and builds) and pairs with Android CLI (`android`) for stateless device and SDK tasks; the keynobi://skill resource says which to use when. \
              Tools: build (run_gradle_task, get_build_errors, get_build_log, get_build_config, find_apk_path, run_tests), \
-             run configurations, what Run App builds and launches (list_run_configurations, build_run_configuration: prefer them to build the module and variant the user runs), \
+             run configurations, what Run App builds and launches (list_run_configurations, build_run_configuration, run_run_configuration: prefer them to build or run the module and variant the user runs), \
              logcat (start_logcat, get_logcat_entries, get_crash_logs, get_crash_stack_trace), \
              devices (list_devices, get_ui_hierarchy, find_ui_elements, list_clickable_elements, find_ui_parent, ui_tap, ui_tap_element, ui_fill_input, ui_type_text, hide_soft_keyboard, ui_swipe, ui_scroll_until_element, ui_wait_for_idle, ui_assert_element, send_ui_key, open_deep_link, open_app_settings, set_device_orientation, set_network_state, grant_runtime_permission, revoke_runtime_permission, screenshot, get_device_info, install_apk, launch_app, restart_app, dump_app_info, get_memory_info, get_app_runtime_state, get_exit_reasons), \
              project (get_project_info, run_health_check), \
@@ -4364,6 +4459,172 @@ impl AndroidMcpServer {
         crate::utils::path::validate_apk_within_build_outputs(&gradle_root, apk_path)
             .map_err(|e| McpError::invalid_params(e.to_string(), None))
     }
+}
+
+/// An agent's run of a configuration: its build runs like run_gradle_task's
+/// (task policy, timeout, progress, and the request's cancellation), and each
+/// phase is reported as progress.
+struct AgentRun<'a> {
+    server: &'a AndroidMcpServer,
+    request: &'a RequestContext<RoleServer>,
+    origin: BuildActor,
+    started_at: tokio::time::Instant,
+    /// What the build answered, for the result.
+    build_result: Option<String>,
+    /// Why the build was refused (the task policy), the call's error.
+    refused: Option<McpError>,
+}
+
+impl DeployHooks for AgentRun<'_> {
+    async fn build(&mut self, task: &str) -> Result<build_runner::BuildOutcome, AppError> {
+        let built = self
+            .server
+            .run_build_outcome(task.to_string(), self.origin.clone(), Some(self.request))
+            .await;
+        match built {
+            Ok((result, outcome)) => {
+                let text = result
+                    .content
+                    .first()
+                    .and_then(|c| c.as_text())
+                    .map(|t| t.text.clone())
+                    .unwrap_or_default();
+                self.build_result = Some(text.clone());
+                outcome.ok_or(AppError::ProcessFailed(text))
+            }
+            Err(e) => {
+                let message = e.message.to_string();
+                self.refused = Some(e);
+                Err(AppError::InvalidInput(message))
+            }
+        }
+    }
+
+    async fn phase(&mut self, event: DeployPhaseEvent) {
+        let Some(token) = self.request.meta.get_progress_token() else {
+            return;
+        };
+        if self.request.peer.is_transport_closed() {
+            return;
+        }
+        let (name, on) = (&event.name, &event.device.label);
+        let message = match event.phase {
+            DeployPhase::Building => format!("Run '{name}': building"),
+            DeployPhase::Installing => format!("Run '{name}': installing on {on}"),
+            DeployPhase::Launching => format!("Run '{name}': launching on {on}"),
+            DeployPhase::Done => format!("Run '{name}': done"),
+            DeployPhase::Cancelled => format!("Run '{name}': the build was cancelled"),
+            DeployPhase::Failed => format!(
+                "Run '{name}' failed: {}",
+                event.error.as_deref().unwrap_or("see the result")
+            ),
+        };
+        let _ = self
+            .request
+            .peer
+            .notify_progress(
+                ProgressNotificationParam::new(token, self.started_at.elapsed().as_secs_f64())
+                    .with_message(message),
+            )
+            .await;
+    }
+}
+
+/// The target of the configuration named `name` in `project`; `None` when
+/// there is no such configuration.
+fn run_target(project: &deploy::OpenProject, name: &str) -> Option<TargetPreference> {
+    let listed = crate::services::run_configurations::list(&project.registry_root).ok()?;
+    listed
+        .configurations
+        .iter()
+        .any(|c| c.name == name)
+        .then(|| listed.local.get(name).cloned().unwrap_or_default().target)
+}
+
+/// `run_run_configuration`'s answer when the configuration cannot run on
+/// its `target` (`None`: there is no such configuration).
+fn run_refusal(e: AppError, target: Option<TargetPreference>) -> Result<CallToolResult, McpError> {
+    let message = app_error_message(&e);
+    let text = match (&e, target) {
+        // Safe Mode and an unknown name are refused like run_gradle_task's arguments.
+        (AppError::PermissionDenied(_), _) | (AppError::NotFound(_), None) => {
+            return Err(McpError::invalid_params(message, None))
+        }
+        (AppError::ApprovalRequired(_), _) => format!(
+            "{message} Only the user can approve it, in Keynobi's run configuration editor."
+        ),
+        (AppError::NotFound(_), Some(TargetPreference::Avd { name })) => format!(
+            "{message} Start the AVD with launch_avd (name: {name}), then run again. Keynobi \
+             never starts an emulator on its own."
+        ),
+        (AppError::NotFound(_), Some(TargetPreference::Ask | TargetPreference::LastUsed)) => {
+            format!("{message} Choose an online device with device_serial (from list_devices).")
+        }
+        _ => message,
+    };
+    Ok(CallToolResult::error(vec![ContentBlock::text(text)]))
+}
+
+/// `run_run_configuration`'s result.
+fn deploy_result_json(result: &DeployResult, build_result: Option<&str>) -> serde_json::Value {
+    let run = &result.run;
+    let device = &result.device;
+    let timing = result.launch.as_ref().and_then(|l| l.timing.as_ref());
+    let installed = format!("Run '{}': installed on {}", run.name, device.label);
+    let summary = match (result.outcome, &result.launch, &result.package) {
+        (DeployOutcome::BuildFailed, _, _) => format!(
+            "Run '{}': the build failed; nothing was installed. See get_build_errors.",
+            run.name
+        ),
+        (DeployOutcome::Cancelled, _, _) => format!(
+            "Run '{}': the build was cancelled; nothing was installed.",
+            run.name
+        ),
+        (DeployOutcome::Done, Some(_), Some(package)) => format!(
+            "{installed} and launched {package}. {}",
+            match timing {
+                Some(t) => format!("Launch time: {} ms.", t.total_ms),
+                None => "Launch time: not reported by this launch method.".to_string(),
+            }
+        ),
+        (DeployOutcome::Done, _, _) if run.launch == RunLaunch::None => {
+            format!("{installed}; the configuration does not launch.")
+        }
+        (DeployOutcome::Done, _, _) => format!(
+            "{installed}; the APK's package could not be read, so the app was not launched."
+        ),
+    };
+    json!({
+        "configuration": run.name,
+        "plan": run.plan,
+        "task": run.task,
+        "outcome": match result.outcome {
+            DeployOutcome::Done => "done",
+            DeployOutcome::BuildFailed => "build_failed",
+            DeployOutcome::Cancelled => "cancelled",
+        },
+        "result": summary,
+        "build_result": build_result,
+        "build_id": result.build_id,
+        "device": { "serial": device.serial, "label": device.label },
+        "package": result.package,
+        "apk_path": result.apk.as_ref().map(|a| &a.path),
+        "apk_sha256": result.apk_sha256,
+        "apk_written_by_this_build": result.apk.as_ref().map(|a| a.from_this_build),
+        "launch": run.launch,
+        "launch_output": result.launch.as_ref().map(|l| l.output.trim()),
+        "launch_timing": timing.map(|t| json!({
+            "total_ms": t.total_ms,
+            "wait_ms": t.wait_ms,
+            "launch_state": t.launch_state,
+            "displayed_ms": t.displayed_ms,
+            "fully_drawn_ms": t.fully_drawn_ms,
+        })),
+        "logcat_filter": result
+            .logcat_filter
+            .as_deref()
+            .unwrap_or(run_plan::DEFAULT_LOGCAT_FILTER),
+    })
 }
 
 /// The roots a run configuration resolves against.
@@ -5813,6 +6074,11 @@ mod tests {
             assert!(diagnose.contains(tool), "diagnose-crash must use {tool}");
         }
         assert!(diagnose.contains("retrace: true"), "{diagnose}");
+        assert!(
+            prompts[2].contains("call run_run_configuration with its name and device_serial"),
+            "full-deploy must prefer run_run_configuration: {}",
+            prompts[2]
+        );
         let stack_trace = tools
             .iter()
             .find(|t| t.name == "get_crash_stack_trace")

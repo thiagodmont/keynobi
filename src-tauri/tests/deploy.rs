@@ -166,7 +166,7 @@ esac"#,
             self.open.run_project(),
             &RunRequest {
                 name: Some(name.into()),
-                build_only: false,
+                ..RunRequest::default()
             },
             Devices {
                 list: &devices,
