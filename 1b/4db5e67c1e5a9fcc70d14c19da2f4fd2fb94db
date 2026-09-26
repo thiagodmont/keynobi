@@ -1,0 +1,25 @@
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_20ed114fbf8243 3245-3246,3249,3260-3261
+  s_1e114e823b9048::t_d48b7f46db170d 3299-3300,3307-3357
+  s_1e114e823b9048::t_b4b337cc0cd575 3281-3282
+  s_1e114e823b9048::t_001b3398afed7a 5119-5169,5171-5186
+  s_1e114e823b9048::t_599eb4afbc43d3 3262-3267,3283-3285,3301-3303,3358,5170
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_53ecb2975d8fc2 207-213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1b4db5e67c1e5a9fcc70d14c19da2f4fd2fb94db",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
