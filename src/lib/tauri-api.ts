@@ -94,8 +94,22 @@ export async function renameProject(id: string, newName: string): Promise<void> 
 
 // ── Run configurations ────────────────────────────────────────────────────────
 
-import type { ProjectRunConfigurations, ResolvedRun, RunConfiguration } from "@/bindings";
-export type { ProjectRunConfigurations, ResolvedRun, RunConfiguration };
+import type {
+  LocalRunState,
+  ProjectRunConfigurations,
+  ResolvedRun,
+  RunConfiguration,
+  RunLaunch,
+  TargetPreference,
+} from "@/bindings";
+export type {
+  LocalRunState,
+  ProjectRunConfigurations,
+  ResolvedRun,
+  RunConfiguration,
+  RunLaunch,
+  TargetPreference,
+};
 
 /**
  * The run configurations of a registered project (default: the open one).
@@ -125,6 +139,19 @@ export async function deleteRunConfiguration(name: string): Promise<ProjectRunCo
 /** Make a run configuration of the open project the active one. */
 export async function setActiveRunConfiguration(name: string): Promise<ProjectRunConfigurations> {
   return invoke<ProjectRunConfigurations>("set_active_run_configuration", { name });
+}
+
+/** The open project's application modules (`:app`; `:` for the root project). */
+export async function listApplicationModules(): Promise<string[]> {
+  return invoke<string[]>("list_application_modules");
+}
+
+/** Set which device a run configuration of the open project runs on. */
+export async function setRunConfigurationTarget(
+  name: string,
+  target: TargetPreference
+): Promise<ProjectRunConfigurations> {
+  return invoke<ProjectRunConfigurations>("set_run_configuration_target", { name, target });
 }
 
 /**
@@ -234,6 +261,12 @@ export function formatError(err: unknown): string {
     }
   }
   return String(err);
+}
+
+/** A failure's message for a person to read: an `AppError` without its kind. */
+export function errorMessage(err: unknown): string {
+  const message = err && typeof err === "object" ? (err as { message?: unknown }).message : null;
+  return typeof message === "string" && message.length > 0 ? message : formatError(err);
 }
 
 /** The command failed with this `AppError` kind (`{ kind, message }`). */

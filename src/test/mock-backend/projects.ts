@@ -7,6 +7,7 @@ import type {
   ResolvedRun,
   RunConfiguration,
   RunDevice,
+  TargetPreference,
 } from "@/bindings";
 import { mockDeviceSelection } from "./devices";
 
@@ -187,6 +188,15 @@ export function projectHandlers(): Record<string, (args: unknown) => unknown> {
           `'${config.module}' is not an application module of this project. Application modules: :app.`
         );
       }
+      if (!config.name.trim()) {
+        throw appError("invalidInput", "A run configuration needs a name.");
+      }
+      if (config.task && !config.task.startsWith(`${config.module}:`)) {
+        throw appError(
+          "invalidInput",
+          `The task '${config.task}' is not a task of ${config.module}: name it in the module (for example ${config.module}:assembleDebug).`
+        );
+      }
       const index = configurations.findIndex((c) => c.name === config.name);
       if (index < 0 && configurations.length >= MAX_MOCK_RUN_CONFIGURATIONS) {
         throw appError(
@@ -218,6 +228,18 @@ export function projectHandlers(): Record<string, (args: unknown) => unknown> {
       return mockRunConfigurations();
     },
     resolve_run_configuration: (args) => mockResolveRun(args),
+    list_application_modules: () => [":app"],
+    set_run_configuration_target: (args) => {
+      const { name, target } = args as { name: string; target: TargetPreference };
+      requireRunConfiguration(name);
+      const local = mockProject.runLocal?.[name] ?? {
+        target: { kind: "lastUsed" },
+        lastDevice: null,
+        approvedProjectFileSha256: null,
+      };
+      mockProject.runLocal = { ...mockProject.runLocal, [name]: { ...local, target } };
+      return mockRunConfigurations();
+    },
     record_run_device: (args) => {
       const { name, serial } = args as { name: string; serial: string };
       requireRunConfiguration(name);

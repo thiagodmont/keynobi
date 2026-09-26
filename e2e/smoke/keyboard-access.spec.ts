@@ -237,7 +237,7 @@ const deployTest = base.extend({
 deployTest("with no device online, start an emulator from the Run App dialog", async ({ page }) => {
   await openProjectWithKeyboard(page);
   const project = projectOption(page);
-  await expect(page.getByTitle(/^Active build variant: debug/)).toBeVisible();
+  await expect(page.getByTitle(/^Active build variant: :app · debug/)).toBeVisible();
   await page.evaluate(() =>
     window.__e2e__.triggerEvent("device:list_changed", {
       devices: [

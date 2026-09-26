@@ -15,6 +15,7 @@ import {
   listenBuildLines,
   listenBuildComplete,
   listenBuildLaunchTiming,
+  errorMessage,
   formatError,
   type BuildActor,
   type BuildCompleteEvent,
@@ -42,7 +43,8 @@ import { settingsState } from "@/stores/settings.store";
 import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { buildRunningLabel } from "@/lib/build-actor";
 import { describeDisplayTimes, formatLaunchTime } from "@/lib/launch-timing";
-import type { BuildError, ResolvedRun, RunApk } from "@/bindings";
+import type { BuildError, ResolvedRun, RunApk, TargetPreference } from "@/bindings";
+import { launchRunAvd, setRunConfigurationRunner } from "@/services/run-configurations.service";
 
 let buildUnlisteners: Array<() => void> | null = null;
 // Held so concurrent callers await the SAME registration. A plain
@@ -464,7 +466,7 @@ async function runBuildInternal(
  * off (build-only run). After a successful build the APK is installed and
  * the app launched the way the configuration says.
  */
-export async function runAndDeploy(): Promise<void> {
+export async function runAndDeploy(name: string | null = null): Promise<void> {
   assertProjectTrusted();
   if (
     deployInFlight ||
@@ -487,11 +489,8 @@ export async function runAndDeploy(): Promise<void> {
   try {
     // Logged BEFORE startBuild clears the log; the plan then heads it.
     logStep("Resolving the run configuration…");
-    const plan = await resolveRunPlan(!autoInstall);
-    if (!plan) {
-      logStep("No device selected — run cancelled.");
-      return;
-    }
+    const plan = await resolveRunPlan(!autoInstall, name);
+    if (!plan) return;
     assertSameProject(projectGeneration);
     const serial = plan.device?.serial ?? null;
 
@@ -579,15 +578,15 @@ export async function runAndDeploy(): Promise<void> {
 }
 
 /**
- * Build Only: build the active run configuration's task, with no device,
- * install, or launch.
+ * Build Only: build the task of the run configuration named `name` (default:
+ * the active one), with no device, install, or launch.
  */
-export async function runBuildOnly(): Promise<void> {
+export async function runBuildOnly(name: string | null = null): Promise<void> {
   assertProjectTrusted();
   if (deployInFlight) throw new Error("A build or deploy is already running.");
   let plan: ResolvedRun;
   try {
-    plan = await resolveRunConfiguration({ buildOnly: true });
+    plan = await resolveRunConfiguration({ name, buildOnly: true });
   } catch (e) {
     logError(`Build failed: ${formatError(e)}`);
     throw e;
@@ -596,32 +595,75 @@ export async function runBuildOnly(): Promise<void> {
 }
 
 /**
- * Resolve the active run configuration. When its target is Ask or Last used
- * and no device is online for it, ask for one with the device picker; null
- * when the user cancels.
+ * Resolve the run configuration named `name` (default: the active one). When
+ * its target is Ask or Last used and no device is online for it, ask for one
+ * with the device picker; when it runs on an AVD that is not running, offer
+ * to launch it. Null when the run stops there.
  */
-async function resolveRunPlan(buildOnly: boolean): Promise<ResolvedRun | null> {
+async function resolveRunPlan(
+  buildOnly: boolean,
+  name: string | null
+): Promise<ResolvedRun | null> {
+  let failure: unknown;
   try {
     // The app's selection may be one the device list chose, not yet the backend's.
-    return await resolveRunConfiguration({ buildOnly, selectedSerial: deviceState.selectedSerial });
+    return await resolveRunConfiguration({
+      name,
+      buildOnly,
+      selectedSerial: deviceState.selectedSerial,
+    });
   } catch (e) {
-    if (buildOnly || !(await targetCanBePicked(e))) throw e;
+    failure = e;
   }
+  const target = buildOnly ? null : await targetWithoutDevice(failure, name);
+  if (target?.kind === "avd") {
+    if (await offerToLaunchAvd(target.name, errorMessage(failure))) {
+      logStep(`Launching ${target.name} — run again once it is online.`);
+      return null;
+    }
+    throw failure;
+  }
+  if (target?.kind !== "ask" && target?.kind !== "lastUsed") throw failure;
   // Import lazily to avoid circular deps.
   const { showDevicePicker } = await import("@/components/device/DevicePickerDialog");
   const serial = await showDevicePicker();
-  if (!serial) return null;
-  return resolveRunConfiguration({ selectedSerial: serial });
+  if (!serial) {
+    logStep("No device selected — run cancelled.");
+    return null;
+  }
+  return resolveRunConfiguration({ name, selectedSerial: serial });
 }
 
-/** The run found no device, and its target lets the user pick one. */
-async function targetCanBePicked(error: unknown): Promise<boolean> {
-  if (!isAppErrorKind(error, "notFound")) return false;
+/** The target of a run that found no device for it; null for any other failure. */
+async function targetWithoutDevice(
+  error: unknown,
+  name: string | null
+): Promise<TargetPreference | null> {
+  if (!isAppErrorKind(error, "notFound")) return null;
   const { active, local } = await listRunConfigurations();
-  if (!active) return false;
+  const chosen = name ?? active;
+  if (!chosen) return null;
   // A configuration without local state targets the last used device.
-  const kind = local[active]?.target.kind ?? "lastUsed";
-  return kind === "ask" || kind === "lastUsed";
+  return local[chosen]?.target ?? { kind: "lastUsed" };
+}
+
+/**
+ * Ask whether to launch the AVD a run needs. Launching is the user's choice;
+ * Keynobi never starts an emulator on its own.
+ */
+async function offerToLaunchAvd(avdName: string, reason: string): Promise<boolean> {
+  const { showDialog } = await import("@/components/ui");
+  const choice = await showDialog({
+    title: "AVD not running",
+    message: reason,
+    buttons: [
+      { label: "Launch AVD", value: "launch", style: "primary" },
+      { label: "Cancel", value: "cancel", style: "secondary" },
+    ],
+  });
+  if (choice !== "launch") return false;
+  void launchRunAvd(avdName);
+  return true;
 }
 
 /** Launch the installed app the way the run configuration says. */
@@ -794,3 +836,6 @@ function capitalize(s: string): string {
   if (!s) return s;
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+// Palette actions run and build a configuration by name.
+setRunConfigurationRunner({ run: runAndDeploy, build: runBuildOnly });
