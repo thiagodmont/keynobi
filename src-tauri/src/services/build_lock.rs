@@ -6,6 +6,9 @@
 //! `build-locks/<hash>.lock` from before Gradle spawns until it is recorded.
 //! The file names the PID holding it, for the refusal message.
 //!
+//! The per-device UI Automator lock (`ui_automator_lock`) uses the same
+//! file lock.
+//!
 //! This lock is separate from the data lock (`with_data_lock`), which guards
 //! short file writes; never take one while waiting on the other.
 use sha2::{Digest, Sha256};
@@ -36,14 +39,27 @@ pub fn lock_path(data_dir: &Path, gradle_root: &Path) -> PathBuf {
     let root = gradle_root
         .canonicalize()
         .unwrap_or_else(|_| gradle_root.to_path_buf());
-    let digest = Sha256::digest(root.to_string_lossy().as_bytes());
+    data_dir
+        .join(BUILD_LOCKS_DIR)
+        .join(lock_file_name(&root.to_string_lossy()))
+}
+
+/// `<hash of key>.lock`, a file name for a key whatever characters it holds.
+pub fn lock_file_name(key: &str) -> String {
+    let digest = Sha256::digest(key.as_bytes());
     let name: String = digest[..16].iter().map(|b| format!("{b:02x}")).collect();
-    data_dir.join(BUILD_LOCKS_DIR).join(format!("{name}.lock"))
+    format!("{name}.lock")
 }
 
 /// Take the lock for `gradle_root` without waiting.
 pub fn try_acquire(data_dir: &Path, gradle_root: &Path) -> Result<BuildLock, LockError> {
-    let path = lock_path(data_dir, gradle_root);
+    try_lock_file(&lock_path(data_dir, gradle_root)).map(|file| BuildLock { _file: file })
+}
+
+/// Take an exclusive advisory lock on `path` without waiting, creating the
+/// file and its folder, and write this process's PID into it. The lock is
+/// held while the returned file is open, and dies with the process.
+pub fn try_lock_file(path: &Path) -> Result<File, LockError> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)
             .map_err(|e| LockError::Io(format!("Failed to create {}: {e}", dir.display())))?;
@@ -53,7 +69,7 @@ pub fn try_acquire(data_dir: &Path, gradle_root: &Path) -> Result<BuildLock, Loc
         .truncate(false)
         .read(true)
         .write(true)
-        .open(&path)
+        .open(path)
         .map_err(|e| LockError::Io(format!("Failed to open {}: {e}", path.display())))?;
     match file.try_lock() {
         Ok(()) => {}
@@ -75,7 +91,27 @@ pub fn try_acquire(data_dir: &Path, gradle_root: &Path) -> Result<BuildLock, Loc
     let _ = file.set_len(0);
     let _ = file.seek(SeekFrom::Start(0));
     let _ = write!(file, "{}", std::process::id());
-    Ok(BuildLock { _file: file })
+    Ok(file)
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+
+    /// Lock `path` once nothing holds it. A child that another test thread
+    /// forks inherits the lock until it execs, so a released lock can stay
+    /// taken for a moment.
+    pub fn lock_once_free(path: &Path) -> Result<File, LockError> {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            match try_lock_file(path) {
+                Err(LockError::Held { .. }) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                result => return result,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -96,7 +132,8 @@ mod tests {
         );
 
         drop(first);
-        try_acquire(data.path(), project.path()).expect("released on drop");
+        test_support::lock_once_free(&lock_path(data.path(), project.path()))
+            .expect("released on drop");
     }
 
     #[test]
