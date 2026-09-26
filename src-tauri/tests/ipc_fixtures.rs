@@ -13,6 +13,7 @@ use keynobi_lib::commands::device::DeviceListChangedEvent;
 use keynobi_lib::commands::mcp::{McpClientSetupStatus, McpSetupStatus};
 use keynobi_lib::models::ui_hierarchy::UiLayoutContext;
 use keynobi_lib::models::*;
+use keynobi_lib::services::agent_skill::{AgentSkillState, AgentSkillStatus};
 use keynobi_lib::services::build_runner::{
     BUILD_COMPLETE_EVENT, BUILD_LINES_EVENT, BUILD_STARTED_EVENT,
 };
@@ -563,6 +564,8 @@ fn fixtures() -> Fixtures {
                 studio_command_found: false,
                 app_location_problem: None,
                 retrace_version: Some("22.0".into()),
+                android_cli_path: Some("/opt/homebrew/Cellar/android-cli/1.0/bin/android".into()),
+                android_cli_version: Some("1.0.16406183".into()),
             },
             SystemHealthReport {
                 java_executable_found: false,
@@ -580,6 +583,8 @@ fn fixtures() -> Fixtures {
                 studio_command_found: false,
                 app_location_problem: Some("Keynobi is running from a disk image.".into()),
                 retrace_version: None,
+                android_cli_path: None,
+                android_cli_version: None,
             },
         ],
     );
@@ -983,6 +988,29 @@ fn fixtures() -> Fixtures {
                 location_problem: Some("Keynobi is running from a disk image.".into()),
                 claude: client_setup(false),
                 codex: client_setup(false),
+            },
+        ],
+    );
+    f.add(
+        "AgentSkillStatus",
+        &[
+            AgentSkillStatus {
+                path: "/Users/me/.claude/skills/keynobi/SKILL.md".into(),
+                state: AgentSkillState::NotInstalled,
+                content: "---\nname: keynobi\ndescription: When to use Keynobi.\n---\n".into(),
+                resource_uri: "keynobi://skill".into(),
+            },
+            AgentSkillStatus {
+                path: "/Users/me/.claude/skills/keynobi/SKILL.md".into(),
+                state: AgentSkillState::Installed,
+                content: "---\nname: keynobi\ndescription: When to use Keynobi.\n---\n".into(),
+                resource_uri: "keynobi://skill".into(),
+            },
+            AgentSkillStatus {
+                path: "/Users/me/.claude/skills/keynobi/SKILL.md".into(),
+                state: AgentSkillState::Different,
+                content: "---\nname: keynobi\ndescription: When to use Keynobi.\n---\n".into(),
+                resource_uri: "keynobi://skill".into(),
             },
         ],
     );

@@ -28,8 +28,11 @@ pub const AAPT2_TIMEOUT: Duration = Duration::from_secs(30);
 pub const AVDMANAGER_TIMEOUT: Duration = Duration::from_secs(60);
 /// `sdkmanager --list`, which downloads the remote repository index.
 pub const SDKMANAGER_LIST_TIMEOUT: Duration = Duration::from_secs(120);
-/// Health-check probes: `java -version`, `adb version`, `which studio`.
+/// Health-check probes: `java -version`, `adb version`, `which studio`,
+/// `android --version`.
 pub const TOOL_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+/// A login shell asked where a command-line tool is (`command -v`).
+pub const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(4);
 /// The SDK's R8 `retrace`: two JVM starts plus parsing the mapping, which
 /// for a large app is 50–150 MB.
 pub const RETRACE_TIMEOUT: Duration = Duration::from_secs(120);

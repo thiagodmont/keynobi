@@ -1,11 +1,14 @@
 use crate::models::error::AppError;
+use crate::services::agent_skill;
+pub use crate::services::agent_skill::AgentSkillStatus;
 use crate::services::app_location;
 use crate::services::mcp_activity;
 pub use crate::services::mcp_activity::McpActivityEntry;
 pub use crate::services::mcp_sessions::McpServerStatus;
 use crate::services::mcp_sessions::{self, McpSessionRegistry};
+use crate::utils::cli_lookup::CliSearch;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use ts_rs::TS;
 
 /// Registration checks run here, so that a client's registrations for a
@@ -171,61 +174,20 @@ fn shell_quote_arg(value: &str) -> String {
 
 /// Find an MCP client binary, trying PATH, common install paths, then the login shell.
 async fn find_client_binary(name: &str) -> Option<String> {
-    // Fast path: the CLI is on the process PATH (works when launched from terminal).
-    if let Some(path) = find_on_path(name, &std::env::var("PATH").unwrap_or_default()) {
-        return Some(path.to_string_lossy().to_string());
-    }
-
-    // Check common installation locations directly.
-    for path in common_client_paths(name) {
-        if path.is_file() {
-            return Some(path.to_string_lossy().to_string());
-        }
-    }
-
-    // Slow path: spawn a login shell to inherit the user's full environment.
-    #[cfg(unix)]
-    {
-        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-        let result = tokio::time::timeout(
-            std::time::Duration::from_secs(4),
-            tokio::process::Command::new(&shell)
-                .args(["-l", "-c", &format!("command -v {name}")])
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null())
-                .output(),
-        )
-        .await;
-
-        if let Ok(Ok(out)) = result {
-            let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-            if !path.is_empty() && std::path::Path::new(&path).is_file() {
-                return Some(path);
-            }
-        }
-    }
-
-    None
-}
-
-fn common_client_paths(name: &str) -> Vec<std::path::PathBuf> {
-    let mut paths = Vec::new();
+    let mut extra = Vec::new();
     if let Some(home) = dirs::home_dir() {
-        paths.push(home.join(".local").join("bin").join(name));
         if name == "claude" {
-            paths.push(home.join(".claude").join("local").join("claude"));
+            extra.push(home.join(".claude").join("local").join("claude"));
         }
         if name == "codex" {
-            paths.push(home.join(".codex").join("bin").join("codex"));
-            paths.push(home.join(".codex").join("local").join("codex"));
+            extra.push(home.join(".codex").join("bin").join("codex"));
+            extra.push(home.join(".codex").join("local").join("codex"));
         }
     }
-    paths.push(std::path::PathBuf::from(format!("/usr/local/bin/{name}")));
-    paths.push(std::path::PathBuf::from(format!(
-        "/opt/homebrew/bin/{name}"
-    )));
-    paths.push(std::path::PathBuf::from(format!("/usr/bin/{name}")));
-    paths
+    CliSearch::system(name, extra)
+        .find()
+        .await
+        .map(|path| path.to_string_lossy().to_string())
 }
 
 /// Run a client's registration query from [`REGISTRATION_CHECK_DIR`];
@@ -330,18 +292,11 @@ fn extract_configured_command(stdout: &str) -> Option<String> {
         })
 }
 
-/// The first file named `name` in the directories of `path_var`.
-fn find_on_path(name: &str, path_var: &str) -> Option<PathBuf> {
-    path_var
-        .split(':')
-        .filter(|dir| !dir.is_empty())
-        .map(|dir| Path::new(dir).join(name))
-        .find(|p| p.is_file())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::utils::cli_lookup::find_on_path;
+    use std::path::Path;
 
     const INSTALLED_EXE: &str = "/Applications/Keynobi.app/Contents/MacOS/keynobi";
 
@@ -618,6 +573,32 @@ pub async fn get_mcp_server_status(
         attached: registry.sessions(),
         standalone,
     })
+}
+
+// ── Agent skill ───────────────────────────────────────────────────────────────
+
+fn home_dir() -> Result<PathBuf, AppError> {
+    dirs::home_dir().ok_or_else(|| AppError::NotFound("Home folder not found".into()))
+}
+
+/// The Keynobi agent skill and whether it is installed for Claude Code.
+/// Reads only.
+#[tauri::command]
+pub async fn get_agent_skill_status() -> Result<AgentSkillStatus, AppError> {
+    let home = home_dir()?;
+    tokio::task::spawn_blocking(move || agent_skill::status(&home))
+        .await
+        .map_err(|e| AppError::Other(format!("Failed to read the agent skill: {e}")))
+}
+
+/// Install the Keynobi agent skill for Claude Code. An existing different
+/// `SKILL.md` is replaced only when `replace` is true.
+#[tauri::command]
+pub async fn install_agent_skill(replace: bool) -> Result<AgentSkillStatus, AppError> {
+    let home = home_dir()?;
+    tokio::task::spawn_blocking(move || agent_skill::install(&home, replace))
+        .await
+        .map_err(|e| AppError::Other(format!("Failed to install the agent skill: {e}")))?
 }
 
 /// Clear the MCP activity log.

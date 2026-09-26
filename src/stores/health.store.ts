@@ -15,6 +15,7 @@ import { settingsState } from "@/stores/settings.store";
 import { runHealthChecks } from "@/lib/tauri-api";
 import type { JdkSource, SystemHealthReport } from "@/bindings";
 import { showToast } from "@/components/ui";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 /** The oldest JDK the Android Gradle Plugin 8 runs on. */
 const MIN_GRADLE_JDK_MAJOR = 17;
@@ -89,6 +90,14 @@ export async function refreshHealthChecks(): Promise<void> {
 
 function openSettingsAction(): void {
   import("@/components/settings/SettingsPanel").then(({ openSettings }) => openSettings());
+}
+
+export const ANDROID_CLI_DOCS_URL = "https://developer.android.com/tools/agents/android-cli";
+
+function openAndroidCliDocs(): void {
+  openUrl(ANDROID_CLI_DOCS_URL).catch((err: unknown) => {
+    showToast(`Could not open ${ANDROID_CLI_DOCS_URL}: ${String(err)}`, "error");
+  });
 }
 
 export function healthChecks(): HealthCheck[] {
@@ -201,6 +210,24 @@ export function healthChecks(): HealthCheck[] {
           : !sdkPath
             ? "No SDK configured"
             : 'Not found — install "Android SDK Command-line Tools" in the SDK Manager to deobfuscate crash stacks',
+  });
+
+  // ── 3d. Android CLI ─────────────────────────────────────────────────────────
+  // Informational: Android CLI is optional, so a missing one is "skip" and never
+  // lowers the overall health.
+  const androidCliPath = report ? report.androidCliPath : undefined;
+  checks.push({
+    id: "android-cli",
+    category: "environment",
+    name: "Android CLI (android)",
+    status: androidCliPath === undefined ? "loading" : androidCliPath !== null ? "ok" : "skip",
+    detail:
+      androidCliPath === undefined
+        ? "Checking…"
+        : androidCliPath !== null
+          ? `${report?.androidCliVersion ?? "Version unknown"} — ${androidCliPath}`
+          : "Not installed (optional) — Google's command-line tool for SDK packages, emulators, screenshots, and docs. Keynobi works without it",
+    fix: report ? { label: "About Android CLI", action: openAndroidCliDocs } : undefined,
   });
 
   // ── 4. Java / JDK ──────────────────────────────────────────────────────────

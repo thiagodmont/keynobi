@@ -15,7 +15,8 @@ Update this file when a tool, prompt, resource, limit, or security rule changes.
 | `services/mcp_sessions.rs` | Live sessions: the app's registry of attached sessions and the standalone server records. |
 | `utils/validation.rs`, `utils/path.rs` | Shared validators used by both MCP tools and Tauri commands. |
 | `services/mcp_activity.rs` | Appends activity entries to the JSONL log and rotates it. |
-| `commands/mcp.rs` | Tauri commands for setup commands and registration detection, activity reads (default 200, max 2,000 entries), live sessions (`get_mcp_server_status`), and clearing activity. |
+| `commands/mcp.rs` | Tauri commands for setup commands and registration detection, activity reads (default 200, max 2,000 entries), live sessions (`get_mcp_server_status`), clearing activity, and the agent skill (`get_agent_skill_status`, `install_agent_skill`). |
+| `services/agent_skill.rs` | The Keynobi agent skill (`skills/keynobi/SKILL.md`, built into the binary): the `keynobi://skill` resource and its Claude Code installer. |
 | `services/app_location.rs` | Tells whether the app runs from a temporary path (a mounted disk image or App Translocation) that must not be registered with MCP clients. |
 | `src/stores/mcp.store.ts` | Frontend MCP state: attached sessions (live through `mcp:sessions_changed`), standalone servers, and recent activity (polled every 3 s while the MCP panel is open). |
 
@@ -33,7 +34,7 @@ Every MCP client runs `keynobi --mcp`. That process first picks the project it w
 - The app listens on `<data dir>/mcp.sock` (`mcp_attach::start_app_listener`, started at app launch). The data directory is made `0700` and the socket `0600`; connections from another user are dropped. On start, a socket file that answers belongs to another app instance and is left alone (this instance does not serve MCP); one that does not answer is stale and is replaced. The socket is removed when the app exits. Paths over 103 bytes (the macOS `sun_path` limit) are an error, not a panic.
 - Handshake, one JSON line each way before any MCP bytes: `{"attach":1,"version":"<binary version>","project":"/gradle/root"|null,"pid":123,"selected_by":"argument"|"working_directory"|null}`, answered with `{"accepted":true,"project":"/app/project","version":"<app version>"}` or `{"accepted":false,"reason":"…","version":"<app version>"}`. The app waits `REQUEST_TIMEOUT` (5 s) for the request; lines are capped at `MAX_HANDSHAKE_BYTES` (4 KiB).
 - Rules (`mcp_attach::decide_attach`): an unknown `attach` version is refused, naming both versions. `project: null` is accepted and the session follows the app's project (`selected_by: app`). A project is accepted only when the app has that project open (canonical path equal to the app's Gradle root or project root); the session is then pinned to it. Otherwise the reason names the app's project or says none is open. The app never changes its open project for an agent. At most `MAX_ATTACHED_SESSIONS` (16) sessions are served.
-- A pinned session whose project the app has since closed returns a tool error for every tool not in `PROJECT_INDEPENDENT_TOOLS` ("Keynobi now has B open; this session is for A …"); project resources are refused the same way. Device, UI, logcat, `get_project_info`, and `run_health_check` keep working.
+- A pinned session whose project the app has since closed returns a tool error for every tool not in `PROJECT_INDEPENDENT_TOOLS` ("Keynobi now has B open; this session is for A …"); project resources are refused the same way (`android://project-info` and `keynobi://skill` are still served). Device, UI, logcat, `get_project_info`, and `run_health_check` keep working.
 - `--attach-only`: if attaching fails, print the reason to stderr and exit with status 2 instead of running standalone.
 - When the app quits (`mcp_attach::quit_sessions`), it first cancels a running build, recorded as cancelled because Keynobi quit, and waits up to `QUIT_BUILD_TIMEOUT` (1.5 s) for it to be recorded. Then it answers every request still in flight with a JSON-RPC error (`-32603`, saying whether the build was cancelled) and closes the sessions.
 - `keynobi --mcp` then continues as a standalone server in the same process, with reason "the Keynobi app quit". It replays the client's `initialize` and `initialized` to the new server and drops the second `initialize` response, so the client keeps its session. If the app goes away without answering (for example, it crashed), the relay answers the requests left open itself ("The Keynobi app closed the MCP session before answering …") and falls back the same way. With `--attach-only` it exits with status 1 instead.
@@ -71,14 +72,20 @@ Append `--project /path/to/project` to pin a project, or `--attach-only` to refu
 
 - **Stable path.** A path under `/Volumes/` (a mounted disk image or removable volume) or containing an `AppTranslocation` component (macOS runs a quarantined app from a randomized read-only copy) stops working after eject or reboot. `app_location::temporary_location_reason` detects both. `get_mcp_setup_status` then returns `locationProblem` and no commands (`setupCommand: null` at every level), the UI shows the reason instead of commands, and the health report's `appLocationProblem` adds an **App Location** warning to Health Center and the setup wizard's summary.
 - **Scope, per client.** Claude Code registers in the `local` scope (one folder) by default, so the command passes `--scope user`. Codex has no scopes: `codex mcp add` always writes the user's `~/.codex/config.toml`, so its command is unchanged.
-- **Detection.** `claude mcp get keynobi` and `codex mcp get keynobi --json` run with `/` as the working directory (5 s timeout; exit code 0 means registered), so registrations bound to some other folder do not count. Claude Code prints the entry's `Scope:`; a `local` or `project` entry is reported with `configuredScope` but `isConfigured: false`, since it only works in one folder. Any other scope (or none printed) counts as configured. The command shown is read from the `Command:` and `Args:` lines (Claude Code) or the JSON (Codex). The CLI is found through `PATH`, known install locations, then a login shell's `command -v`.
+- **Detection.** `claude mcp get keynobi` and `codex mcp get keynobi --json` run with `/` as the working directory (5 s timeout; exit code 0 means registered), so registrations bound to some other folder do not count. Claude Code prints the entry's `Scope:`; a `local` or `project` entry is reported with `configuredScope` but `isConfigured: false`, since it only works in one folder. Any other scope (or none printed) counts as configured. The command shown is read from the `Command:` and `Args:` lines (Claude Code) or the JSON (Codex). The CLI is found through `PATH`, known install locations, then a login shell's `command -v` (`utils/cli_lookup.rs`, `LOGIN_SHELL_TIMEOUT` 4 s).
+
+### Agent skill
+
+`skills/keynobi/SKILL.md` is an agent skill (name and description frontmatter, then Markdown) that tells an agent when to use Keynobi (builds, logcat, crashes and deobfuscation, exit reasons, launch times, UI automation on the running app, package scope) and when to use Google's Android CLI (SDK packages, creating and starting emulators, one-off screenshots, docs, Compose previews). It is built into the binary (`agent_skill::SKILL_MARKDOWN`), so every client can read it as the `keynobi://skill` resource. Every `snake_case` name it puts in backticks must be a tool (`every_tool_the_skill_names_exists`); write parameters as `name: value`.
+
+The MCP panel installs it for Claude Code only when the user clicks **Install for Claude Code**: `install_agent_skill` writes `~/.claude/skills/keynobi/SKILL.md` (Claude Code's user skills folder) through a unique temporary file renamed over the target. It refuses a `keynobi` folder that resolves outside `~/.claude/skills`, and a `SKILL.md` that differs from the shipped one (including a symlink) unless the call passes `replace: true`, which the panel sends only after the user confirms. `get_agent_skill_status` only reads. For other clients the panel copies the file.
 
 ## Server Identity and Capabilities
 
 - Built on `rmcp` 3.1 (protocol `2025-11-25`).
 - `serverInfo` is `keynobi` with the crate version; its title and the start of `instructions` state the mode (see [Reporting the mode](#reporting-the-mode)).
 - Capabilities: tools, prompts, resources. No logging, completions, subscriptions, or `listChanged`.
-- `instructions` summarizes the tool surface for the model. Update it when adding or removing tools.
+- `instructions` summarizes the tool surface for the model, and says that Keynobi covers stateful work (logs, crashes, builds) and pairs with Android CLI for stateless device and SDK tasks, pointing to `keynobi://skill`. Update it when adding or removing tools.
 
 ## Tools
 
@@ -185,6 +192,8 @@ A package outside the scope, or any package when no application id can be found,
 
 `run_health_check` also returns `checks.retrace`: `ok`, `path`, and `version` of the SDK's `retrace` (from the settings SDK only), and a `hint` to install Android SDK Command-line Tools when it is missing. It does not affect `all_ok`.
 
+It also returns `checks.android_cli`, for information only (it never affects `all_ok`): `installed`, `path` (canonical), `version` (the first line of `android --no-metrics --version`, `null` when it fails or exceeds `TOOL_PROBE_TIMEOUT`), `docs`, and a `hint` when it is not installed. `android` is looked up like the MCP clients (see [Setup](#setup)); the documented install locations `~/.local/bin`, `/usr/local/bin`, and `/opt/homebrew/bin` are among the known locations. Keynobi runs Android CLI only for this version probe (`services/android_cli.rs`, shared with Health Center).
+
 Both return the same `java` object from `services/jdk.rs`, the JDK Gradle builds use: `ok`, `java_home`, `source` (`userGradleProperties`, `projectGradleProperties`, `settings`, `androidStudio`, `installedJdk`, or `null` when `java` on `PATH` was probed), `major_version`, `version`, `bin`, `warning` (JDK below 17), and `hint`. In `run_health_check` it is `checks.java`. For an untrusted project the project's `gradle.properties` is ignored, so `source` is never `projectGradleProperties` and the project cannot choose the `java` that is probed; `run_health_check` also ignores its `local.properties` `sdk.dir`. See `DOMAIN_PATTERNS.md` § Settings → JDK Resolution and Health.
 
 ### Project Trust
@@ -206,6 +215,7 @@ Resources (no templates or subscriptions; unknown URIs return `resource_not_foun
 | URI | Listed when |
 |-----|-------------|
 | `android://project-info`, `android://health` | Always |
+| `keynobi://skill` | Always. The Keynobi agent skill (`text/markdown`); see [Agent skill](#agent-skill). Served in a pinned session whose project the app closed. |
 | `android://manifest` | The project has one application module and its `src/main/AndroidManifest.xml` exists |
 | `android://app-build-gradle` | The project has one application module and its `build.gradle.kts` exists |
 | `android://build-gradle` | Root `build.gradle.kts` exists |
@@ -257,6 +267,8 @@ Tool errors are for the model to read and recover from, so make the message acti
 | Service | MCP role | Brief description |
 |---------|----------|-------------------|
 | `adb_manager.rs` | Direct | Resolves Android SDK tools and runs device, emulator, install, launch, and AVD operations. |
+| `agent_skill.rs` | Direct | The built-in Keynobi agent skill: serves `keynobi://skill` and installs it for Claude Code on request. |
+| `android_cli.rs` | Direct | Finds Android CLI and reads its version for `run_health_check` and Health Center. |
 | `app_exit_info.rs` | Direct | Reads and parses the device's process exit history (`dumpsys activity exit-info`) for `get_exit_reasons` and the app's App Exit Reasons dialog. |
 | `app_inspector.rs` | Direct | Reads app runtime state and performs app restart flows with launch timing. |
 | `build_inspector.rs` | Direct | Parses Gradle files for SDK levels, application id, build types, and product flavors without running Gradle. |
@@ -303,7 +315,7 @@ Tool errors are for the model to read and recover from, so make the message acti
 
 ## Testing and Debugging
 
-- Unit tests live in `mcp_server.rs` (validators, build slot, logcat state, session modes), `mcp_attach.rs` (handshake rules, socket binding, relay, standalone fallback), `mcp_relay.rs` (request tracking, replay), `mcp_sessions.rs`, `mcp_activity.rs`, `commands/mcp.rs`, `utils/validation.rs`, and `ui_automation.rs`. `tests/mcp_headless.rs` covers standalone and attached sessions end to end, including builds that outlive their client, two standalone servers sharing a project, the app cancelling an agent's build, build progress notifications, request cancellation, the app quitting mid-request, and the project boundary for `install_apk` and resources (symlinked build directories and files, oversized files), and `install_apk` recording the build it installed (also from two standalone servers at once), and the crash tools deobfuscating with the installed build's mapping, refusing after a reinstall, and leaving their output unchanged without `retrace`. `src/stores/mcp.store.test.ts`, `src/components/layout/StatusBar.test.tsx`, and `src/components/mcp/McpPanel.test.tsx` cover the frontend; `services/app_location.rs` covers the install-path rules.
+- Unit tests live in `mcp_server.rs` (validators, build slot, logcat state, session modes), `mcp_attach.rs` (handshake rules, socket binding, relay, standalone fallback), `mcp_relay.rs` (request tracking, replay), `mcp_sessions.rs`, `mcp_activity.rs`, `commands/mcp.rs`, `utils/validation.rs`, and `ui_automation.rs`. `tests/mcp_headless.rs` covers standalone and attached sessions end to end, including builds that outlive their client, two standalone servers sharing a project, the app cancelling an agent's build, build progress notifications, request cancellation, the app quitting mid-request, and the project boundary for `install_apk` and resources (symlinked build directories and files, oversized files), and `install_apk` recording the build it installed (also from two standalone servers at once), and the crash tools deobfuscating with the installed build's mapping, refusing after a reinstall, and leaving their output unchanged without `retrace`, and the agent skill resource. `src/stores/mcp.store.test.ts`, `src/components/layout/StatusBar.test.tsx`, `src/components/mcp/McpPanel.test.tsx`, and `src/components/mcp/AgentSkillSection.test.tsx` cover the frontend; `services/app_location.rs` covers the install-path rules.
 - Try tools interactively with the MCP Inspector:
 
   ```bash
@@ -334,3 +346,5 @@ Places where the code does not yet meet the rules above. Remove an entry when it
 - **Registration checks start the server.** `claude mcp get` health-checks the server it finds, so opening the setup UI briefly starts a `keynobi --mcp` that attaches and detaches (visible in the activity log).
 - **Stale registered paths.** Only the running app's path is checked. A registration that already points at a disk image, a translocated copy, or a deleted app is reported as configured.
 - **External volumes.** Any app under `/Volumes/` counts as temporary, including one installed on an external disk.
+- **Android CLI name clash.** Any `android` executable found is reported as Android CLI, including the retired SDK Tools `tools/android` script if it is still on the user's `PATH`.
+- **Skill installer is Claude Code only.** Other clients get the resource and a copy button; the panel does not know their skill folders.

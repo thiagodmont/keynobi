@@ -10,6 +10,7 @@ import {
 } from "@/stores/mcp.store";
 import { getMcpSetupStatus, clearMcpActivity, type McpSetupStatus } from "@/lib/tauri-api";
 import { Alert, StatusDot, modalFocus, type DotStatus } from "@/components/ui";
+import { AgentSkillSection } from "./AgentSkillSection";
 
 // ── Panel visibility signal ───────────────────────────────────────────────────
 
@@ -428,6 +429,8 @@ export function McpPanel(): JSX.Element {
             </ul>
           </Show>
         </div>
+
+        <AgentSkillSection />
 
         {/* ── Activity log ────────────────────────────────────────────────── */}
         <div

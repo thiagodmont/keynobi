@@ -1,3 +1,4 @@
+import type { AgentSkillStatus } from "@/bindings";
 import { settingsHandlers } from "./settings";
 import { projectHandlers } from "./projects";
 import { devicesHandlers } from "./devices";
@@ -7,6 +8,17 @@ import { triggerEvent } from "./events";
 export { MockChannel } from "./channel";
 
 type Handler = (args: unknown) => unknown;
+
+let agentSkillInstalled = false;
+
+function mockAgentSkill(): AgentSkillStatus {
+  return {
+    path: "/Users/mock/.claude/skills/keynobi/SKILL.md",
+    state: agentSkillInstalled ? "installed" : "notInstalled",
+    content: "---\nname: keynobi\ndescription: When to use Keynobi.\n---\n",
+    resourceUri: "keynobi://skill",
+  };
+}
 
 /** The app version the mock backend reports for MCP sessions. */
 export const MOCK_APP_VERSION = "1.0.0-mock";
@@ -46,6 +58,11 @@ const handlers: Map<string, Handler> = new Map(
       standalone: [],
     }),
     clear_mcp_activity: () => undefined,
+    get_agent_skill_status: () => mockAgentSkill(),
+    install_agent_skill: () => {
+      agentSkillInstalled = true;
+      return mockAgentSkill();
+    },
   })
 );
 

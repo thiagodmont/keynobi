@@ -85,6 +85,8 @@ export function settingsHandlers(): Record<string, (args: unknown) => unknown> {
       studioCommandFound: false,
       appLocationProblem: null,
       retraceVersion: "22.0",
+      androidCliPath: null,
+      androidCliVersion: null,
     }),
     send_native_sentry_test_event: () => undefined,
   };

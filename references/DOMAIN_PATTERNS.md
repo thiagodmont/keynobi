@@ -449,6 +449,12 @@ Live sessions come from `services/mcp_sessions.rs`: the app's in-memory registry
 
 The probe runs `<home>/bin/java -version` through `output_with_timeout` (`TOOL_PROBE_TIMEOUT`). Java counts as found only when it exits 0 **and** prints a version, so the macOS `/usr/bin/java` stub ("Unable to locate a Java Runtime", non-zero exit) is reported missing. Missing Java is an error; a JDK below 17 is a warning (GUI) or a `warning` field (MCP). Search roots are injected through `JdkSearchRoots`; under `cfg(test)`, `JdkSearchRoots::system()` searches nothing.
 
+### Finding Command-line Tools
+
+A GUI app on macOS does not inherit the `PATH` the user sets in `.zprofile` or `.zshrc`. Find a user-installed tool (MCP clients `claude` and `codex`, Android CLI `android`) with `utils/cli_lookup.rs::CliSearch`: the process `PATH`, then known install locations (`~/.local/bin`, tool-specific ones, `/usr/local/bin`, `/opt/homebrew/bin`, `/usr/bin`), then `$SHELL -l -c 'command -v <name>'` under `LOGIN_SHELL_TIMEOUT` (4 s), accepting only an absolute path to a file on its last line. Canonicalize the result before reporting it when symlinks (Homebrew) matter, and read versions through `output_with_timeout` with `TOOL_PROBE_TIMEOUT`. Tests pass their own `CliSearch` (a temp `PATH`, no login shell) instead of touching the user's environment.
+
+Android CLI (`services/android_cli.rs`) is informational in Health and `run_health_check`: it never fails a check, and Keynobi runs it only as `android --no-metrics --version`.
+
 ## Projects
 
 - Saved projects and `last_active_project` live in settings; `MAX_RECENT_PROJECTS` (20) caps the list.

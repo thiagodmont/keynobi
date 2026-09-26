@@ -31,7 +31,7 @@ Backend:
 - `src-tauri/src/commands/` - thin Tauri command handlers.
 - `src-tauri/src/services/` - Rust business logic.
 - `src-tauri/src/models/` - Rust IPC models exported with `ts-rs`, plus `AppError`.
-- `src-tauri/src/utils/` - shared helpers: `path.rs` (filesystem boundaries), `validation.rs` (identifiers), `line_reader.rs` (bounded process-output lines), `process.rs` (deadlines for one-shot commands), and `device_shell.rs` (`adb shell` quoting).
+- `src-tauri/src/utils/` - shared helpers: `path.rs` (filesystem boundaries), `validation.rs` (identifiers), `line_reader.rs` (bounded process-output lines), `process.rs` (deadlines for one-shot commands), `device_shell.rs` (`adb shell` quoting), and `cli_lookup.rs` (finding user-installed command-line tools).
 - `src-tauri/tests/` - integration tests (`build_integration.rs`, `ipc/`, `fixtures/mock_gradlew`), `ipc_fixtures.rs` (writes `src/test/ipc-fixtures/`), and `mcp_headless.rs`, which drives the real `keynobi --mcp` binary through `headless/`, standalone and attached to a test listener.
 - `src-tauri/benches/` - Criterion benchmarks.
 - `src-tauri/capabilities/` - Tauri permission grants.
@@ -41,6 +41,7 @@ Tooling:
 - `.storybook/` - Storybook configuration for the design system.
 - `e2e/` - Playwright web-mode tests: `smoke/`, `ipc/`, `fixtures/`, plus separately configured `storybook/` and `visual/` suites.
 - `vite-plugin-tauri-mock.ts` - replaces Tauri APIs with `src/test/mock-backend` when `VITE_E2E` is set.
+- `skills/keynobi/SKILL.md` - the Keynobi agent skill, built into the binary and served as `keynobi://skill` (see `MCP_SERVER.md` § Agent skill).
 - `scripts/` - release, versioning, metrics, packaging, the IPC contract and payload tests, and the MCP smoke test (`mcp-smoke.mjs`).
 
 ---
@@ -345,7 +346,7 @@ Run the checks that match your change before handoff:
 
 Places where the code does not yet meet the rules above. Remove an entry when it is fixed.
 
-- **One-shot commands without the timeout helper.** `logcat::seed_pid_map_from_ps` has no deadline. The login-shell probes in `settings_manager.rs` and `commands/mcp.rs` wrap `.output()` in `tokio::time::timeout` without `kill_on_drop`, so a timed-out child keeps running. `commands/variant.rs` has its own equivalent of the helper.
+- **One-shot commands without the timeout helper.** `logcat::seed_pid_map_from_ps` has no deadline. The login-shell probes in `settings_manager.rs` wrap `.output()` in `tokio::time::timeout` without `kill_on_drop`, so a timed-out child keeps running. `commands/variant.rs` has its own equivalent of the helper.
 - **`String` errors.** Most commands still return `Result<_, String>`; only about 16 return `AppError`.
 - **Effective-root resolution is repeated.** The `gradle_root`-or-`project_root` lookup is copied inline in `commands/variant.rs`, `build.rs`, `device.rs`, and `health.rs` instead of one shared helper.
 - **Data directory rebuilt by hand.** `lib.rs` joins `~/.keynobi/logs` itself instead of calling `settings_manager::data_dir()`.

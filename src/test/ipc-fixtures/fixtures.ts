@@ -1,5 +1,6 @@
 // Generated from the Rust IPC types by `npm run generate:ipc-fixtures`. Do not edit.
 import type {
+  AgentSkillStatus,
   AppError,
   AppExitReasons,
   AppSettings,
@@ -260,6 +261,8 @@ export const typeFixtures = {
     {
       "adbFound": true,
       "adbVersion": "Android Debug Bridge version 1.0.41",
+      "androidCliPath": "/opt/homebrew/Cellar/android-cli/1.0/bin/android",
+      "androidCliVersion": "1.0.16406183",
       "androidSdkValid": true,
       "appLocationProblem": null,
       "emulatorFound": true,
@@ -277,6 +280,8 @@ export const typeFixtures = {
     {
       "adbFound": false,
       "adbVersion": null,
+      "androidCliPath": null,
+      "androidCliVersion": null,
       "androidSdkValid": false,
       "appLocationProblem": "Keynobi is running from a disk image.",
       "emulatorFound": false,
@@ -1373,6 +1378,26 @@ export const typeFixtures = {
       "setupCommand": null
     }
   ] satisfies Wire<McpSetupStatus>[],
+  AgentSkillStatus: [
+    {
+      "content": "---\nname: keynobi\ndescription: When to use Keynobi.\n---\n",
+      "path": "/Users/me/.claude/skills/keynobi/SKILL.md",
+      "resourceUri": "keynobi://skill",
+      "state": "notInstalled"
+    },
+    {
+      "content": "---\nname: keynobi\ndescription: When to use Keynobi.\n---\n",
+      "path": "/Users/me/.claude/skills/keynobi/SKILL.md",
+      "resourceUri": "keynobi://skill",
+      "state": "installed"
+    },
+    {
+      "content": "---\nname: keynobi\ndescription: When to use Keynobi.\n---\n",
+      "path": "/Users/me/.claude/skills/keynobi/SKILL.md",
+      "resourceUri": "keynobi://skill",
+      "state": "different"
+    }
+  ] satisfies Wire<AgentSkillStatus>[],
   MonitorStats: [
     {
       "appMemoryBytes": 123456789,

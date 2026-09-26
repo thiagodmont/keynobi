@@ -55,6 +55,8 @@ claude mcp add --scope user --transport stdio keynobi -- '/Applications/Keynobi.
 codex mcp add keynobi -- '/Applications/Keynobi.app/Contents/MacOS/keynobi' --mcp
 ```
 
+Keynobi pairs with Google's [Android CLI](https://developer.android.com/tools/agents/android-cli): Keynobi keeps state (builds, logcat, crashes), Android CLI handles stateless device and SDK tasks, and the Keynobi agent skill (install it from the **MCP Activity** panel) tells your agent which to use when.
+
 The agent starts a small Keynobi process in the background. When Keynobi is open on the same project, the agent works through the app: its builds appear in the Build tab and it shares the app's devices and logcat. Otherwise it runs on its own, so the window does not need to be open. See [AI Client MCP](references/USER_MANUAL.md#ai-client-mcp) for details.
 
 ## Get Started

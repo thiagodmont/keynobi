@@ -551,6 +551,7 @@ export function listenLogcatStopped(cb: (reason: string) => void): Promise<Unlis
 // ── MCP Server ─────────────────────────────────────────────────────────────────
 
 import type {
+  AgentSkillStatus,
   McpSetupStatus,
   McpClientSetupStatus,
   McpActivityEntry,
@@ -588,6 +589,19 @@ export async function getMcpServerStatus(): Promise<McpServerStatus> {
 /** Truncate the MCP activity log. */
 export async function clearMcpActivity(): Promise<void> {
   return invoke<void>("clear_mcp_activity");
+}
+
+/** The Keynobi agent skill and whether it is installed for Claude Code. Reads only. */
+export async function getAgentSkillStatus(): Promise<AgentSkillStatus> {
+  return invoke<AgentSkillStatus>("get_agent_skill_status");
+}
+
+/**
+ * Install the Keynobi agent skill for Claude Code (`~/.claude/skills/keynobi/SKILL.md`).
+ * An existing different file is replaced only with `replace: true`.
+ */
+export async function installAgentSkill(replace: boolean): Promise<AgentSkillStatus> {
+  return invoke<AgentSkillStatus>("install_agent_skill", { replace });
 }
 
 /** Listen for MCP clients attaching to or leaving the app. */
