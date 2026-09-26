@@ -24,6 +24,7 @@ import { ProjectSidebar } from "@/components/projects/ProjectSidebar";
 import { DeviceSidebar } from "@/components/device/DeviceSidebar";
 import { DevicePickerDialog } from "@/components/device/DevicePickerDialog";
 import { ExitReasonsDialog, openExitReasonsDialog } from "@/components/device/ExitReasonsDialog";
+import { SessionsDialog, openSessionsDialog } from "@/components/sessions/SessionsDialog";
 import { registerKeybinding, initKeybindings } from "@/lib/keybindings";
 import { registerAction, type ActionCategory } from "@/lib/action-registry";
 import {
@@ -381,6 +382,12 @@ export function App(): JSX.Element {
       category: "Debug",
       action: openExitReasonsDialog,
     });
+    registerAction({
+      id: "sessions.show",
+      label: "Show Debug Sessions",
+      category: "Debug",
+      action: () => openSessionsDialog(),
+    });
 
     // ── Project ───────────────────────────────────────────────────────────────
     registerAction({
@@ -605,6 +612,7 @@ export function App(): JSX.Element {
       <ProjectInfoEditor />
       <DevicePickerDialog />
       <ExitReasonsDialog />
+      <SessionsDialog />
       <DialogHost />
       <OnboardingWizard />
     </div>
