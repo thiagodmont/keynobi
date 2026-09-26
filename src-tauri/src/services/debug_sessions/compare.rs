@@ -1,10 +1,10 @@
 //! Comparing two debug sessions (MCP `compare_debug_sessions`): what differs
-//! between the build that ran cleanly and the one that crashed. Only what
-//! sessions record today is compared; the build's provenance (source commit,
-//! build files) is not recorded yet and is listed as such.
+//! between the build that ran cleanly and the one that crashed, including
+//! the builds' provenance (source commit and build files). What sessions do
+//! not record is listed as such.
 
 use super::*;
-use crate::models::build::LaunchState;
+use crate::models::build::{BuildProvenance, LaunchState};
 use std::collections::BTreeMap;
 
 /// Most crash signatures listed per session.
@@ -12,12 +12,13 @@ pub const MAX_COMPARED_SIGNATURES: usize = 20;
 
 /// What a comparison cannot say, so a reader does not over-read the diff.
 pub const NOT_RECORDED: &[&str] = &[
-    "source commit and branch",
-    "hashes of the dependency and build files",
     "resolved dependency versions",
     "Android Gradle Plugin version",
-    "uncommitted changes",
+    "the content of uncommitted changes (only whether there were any)",
 ];
+/// Listed too when neither build recorded its provenance.
+pub const PROVENANCE_NOT_RECORDED: &str =
+    "source commit, branch, and build-file hashes (neither build recorded them)";
 
 /// One session, as the comparison describes it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -106,6 +107,44 @@ pub struct ExitComparison {
     pub to: BTreeMap<String, u32>,
 }
 
+/// One build's provenance, as the comparison shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProvenanceSide {
+    pub commit: Option<String>,
+    pub branch: Option<String>,
+    pub dirty: Option<bool>,
+    pub changed_files: Option<u32>,
+    /// Why no commit was recorded.
+    pub git_unavailable: Option<String>,
+    pub gradle_version: Option<String>,
+    pub jdk_version: Option<String>,
+    pub build_files: usize,
+}
+
+/// A build file whose content differs between the builds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BuildFileChange {
+    /// Relative to the Gradle root.
+    pub path: String,
+    /// `changed`, `added` (only `to` has it), or `removed` (only `from` has it).
+    pub change: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ProvenanceComparison {
+    /// `None` when that session's build recorded no provenance.
+    pub from: Option<ProvenanceSide>,
+    pub to: Option<ProvenanceSide>,
+    /// Whether both builds are of the same commit; `None` unless both name one.
+    pub same_commit: Option<bool>,
+    /// Commit, branch, uncommitted changes, Gradle and JDK versions that differ.
+    pub differences: Vec<FieldChange>,
+    /// Build files whose SHA-256 differs, or that only one build has.
+    pub changed_build_files: Vec<BuildFileChange>,
+    /// What to keep in mind reading this.
+    pub notes: Vec<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SessionComparison {
     /// `given`, or `last passing vs first crashing`.
@@ -116,8 +155,8 @@ pub struct SessionComparison {
     pub launch: LaunchComparison,
     pub crashes: CrashComparison,
     pub exits: ExitComparison,
-    /// The builds' provenance; not recorded yet, so always `None`.
-    pub provenance: Option<serde_json::Value>,
+    /// The builds' provenance; `None` when neither recorded it.
+    pub provenance: Option<ProvenanceComparison>,
     pub not_recorded: Vec<&'static str>,
 }
 
@@ -357,6 +396,117 @@ fn exit_reasons(events: &[DebugSessionEvent]) -> BTreeMap<String, u32> {
     reasons
 }
 
+fn provenance_of(session: &DebugSession) -> Option<&BuildProvenance> {
+    session.build.as_ref()?.provenance.as_ref()
+}
+
+fn provenance_side(p: &BuildProvenance) -> ProvenanceSide {
+    ProvenanceSide {
+        commit: p.commit.clone(),
+        branch: p.branch.clone(),
+        dirty: p.dirty,
+        changed_files: p.changed_files,
+        git_unavailable: p.git_unavailable.clone(),
+        gradle_version: p.gradle_version.clone(),
+        jdk_version: p.jdk_version.clone(),
+        build_files: p.build_files.len(),
+    }
+}
+
+fn changed_build_files(from: &BuildProvenance, to: &BuildProvenance) -> Vec<BuildFileChange> {
+    let hashes = |p: &BuildProvenance| -> BTreeMap<String, String> {
+        p.build_files
+            .iter()
+            .map(|f| (f.path.clone(), f.sha256.clone()))
+            .collect()
+    };
+    let (a, b) = (hashes(from), hashes(to));
+    let mut paths: Vec<&String> = a.keys().chain(b.keys()).collect();
+    paths.sort();
+    paths.dedup();
+    paths
+        .into_iter()
+        .filter_map(|path| {
+            let change = match (a.get(path), b.get(path)) {
+                (Some(x), Some(y)) if x == y => return None,
+                (Some(_), Some(_)) => "changed",
+                (None, Some(_)) => "added",
+                (Some(_), None) => "removed",
+                (None, None) => return None,
+            };
+            Some(BuildFileChange {
+                path: path.clone(),
+                change,
+            })
+        })
+        .collect()
+}
+
+fn dirty_text(p: &BuildProvenance) -> Option<String> {
+    p.dirty.map(|dirty| match (dirty, p.changed_files) {
+        (false, _) => "none".to_string(),
+        (true, Some(n)) => format!("{n} files"),
+        (true, None) => "some".to_string(),
+    })
+}
+
+/// Compare the provenance of the two sessions' builds; `None` when neither
+/// recorded one.
+fn compare_provenance(from: &DebugSession, to: &DebugSession) -> Option<ProvenanceComparison> {
+    let (a, b) = (provenance_of(from), provenance_of(to));
+    if a.is_none() && b.is_none() {
+        return None;
+    }
+    let mut notes = Vec::new();
+    for (name, side) in [("from", a), ("to", b)] {
+        match side.map(|p| &p.git_unavailable) {
+            None => notes.push(format!(
+                "`{name}`'s build recorded no provenance (no build record, or built before \
+                 Keynobi recorded it)."
+            )),
+            Some(Some(reason)) => notes.push(format!("`{name}` has no commit: {reason}.")),
+            Some(None) => {}
+        }
+    }
+    let (mut same_commit, mut differences, mut files) = (None, Vec::new(), Vec::new());
+    if let (Some(a), Some(b)) = (a, b) {
+        if let (Some(x), Some(y)) = (&a.commit, &b.commit) {
+            same_commit = Some(x == y);
+            if x == y && (a.dirty == Some(true) || b.dirty == Some(true)) {
+                notes.push(
+                    "Same commit, but built with uncommitted changes: the sources may differ."
+                        .into(),
+                );
+            }
+        }
+        let fields: [(&'static str, Option<String>, Option<String>); 5] = [
+            ("commit", a.commit.clone(), b.commit.clone()),
+            ("branch", a.branch.clone(), b.branch.clone()),
+            ("uncommitted_changes", dirty_text(a), dirty_text(b)),
+            (
+                "gradle_version",
+                a.gradle_version.clone(),
+                b.gradle_version.clone(),
+            ),
+            ("jdk_version", a.jdk_version.clone(), b.jdk_version.clone()),
+        ];
+        differences = fields
+            .into_iter()
+            .filter(|(_, x, y)| x != y)
+            .map(|(field, from, to)| FieldChange { field, from, to })
+            .collect();
+        files = changed_build_files(a, b);
+    }
+    Some(ProvenanceComparison {
+        from: a.map(provenance_side),
+        to: b.map(provenance_side),
+        same_commit,
+        differences,
+        changed_build_files: files,
+        notes,
+    })
+}
+
 /// Compare two sessions as read with `get_session`.
 pub fn compare_details(
     from: &DebugSessionDetail,
@@ -365,6 +515,12 @@ pub fn compare_details(
 ) -> SessionComparison {
     let a = compared(&from.session);
     let b = compared(&to.session);
+    let provenance = compare_provenance(&from.session, &to.session);
+    let mut not_recorded = Vec::new();
+    if provenance.is_none() {
+        not_recorded.push(PROVENANCE_NOT_RECORDED);
+    }
+    not_recorded.extend_from_slice(NOT_RECORDED);
     let from_signatures = signatures(&from.crashes);
     let to_signatures = signatures(&to.crashes);
     let only_in = |these: &[CrashSignature], those: &[CrashSignature]| -> Vec<String> {
@@ -390,8 +546,8 @@ pub fn compare_details(
         },
         from: a,
         to: b,
-        provenance: None,
-        not_recorded: NOT_RECORDED.to_vec(),
+        provenance,
+        not_recorded,
     }
 }
 
@@ -506,6 +662,7 @@ mod tests {
                     sha256: format!("{build:064x}"),
                     pg_map_id: Some(format!("map{build}")),
                 }],
+                provenance: None,
             }),
             install: Some(DebugSessionInstall {
                 apk_sha256: apk.into(),
@@ -638,8 +795,134 @@ mod tests {
         assert_eq!(c.differences[0].from.as_deref(), Some("11"));
         assert_eq!(c.differences[0].to.as_deref(), Some("12"));
         assert_eq!(c.provenance, None);
-        assert!(c.not_recorded.contains(&"source commit and branch"));
+        assert!(c.not_recorded.contains(&PROVENANCE_NOT_RECORDED));
         assert_eq!(c.chosen_by, "given");
+    }
+
+    fn provenance(commit: &str, dirty: bool, files: &[(&str, &str)]) -> BuildProvenance {
+        BuildProvenance {
+            commit: Some(commit.repeat(40)),
+            branch: Some("main".into()),
+            dirty: Some(dirty),
+            changed_files: Some(u32::from(dirty) * 2),
+            git_unavailable: None,
+            build_files: files
+                .iter()
+                .map(|(path, sha)| crate::models::build::BuildFileHash {
+                    path: path.to_string(),
+                    sha256: sha.repeat(64),
+                })
+                .collect(),
+            gradle_version: Some("8.7".into()),
+            jdk_version: Some("17.0.9".into()),
+        }
+    }
+
+    fn with_provenance(mut session: DebugSession, p: Option<BuildProvenance>) -> DebugSession {
+        if let Some(build) = &mut session.build {
+            build.provenance = p;
+        }
+        session
+    }
+
+    #[test]
+    fn compares_the_builds_commits_and_build_files() {
+        let from = detail(
+            with_provenance(
+                session("s-a", 11, "a", "Pixel_7"),
+                Some(provenance(
+                    "a",
+                    false,
+                    &[
+                        ("app/build.gradle.kts", "1"),
+                        ("gradle/libs.versions.toml", "2"),
+                        ("gradle.properties", "3"),
+                    ],
+                )),
+            ),
+            vec![],
+        );
+        let mut to_provenance = provenance(
+            "b",
+            true,
+            &[
+                ("app/build.gradle.kts", "1"),
+                ("gradle/libs.versions.toml", "9"),
+                ("settings.gradle.kts", "4"),
+            ],
+        );
+        to_provenance.gradle_version = Some("8.9".into());
+        let to = detail(
+            with_provenance(session("s-b", 12, "b", "Pixel_7"), Some(to_provenance)),
+            vec![],
+        );
+        let c = compare_details(&from, &to, "given");
+        let p = c.provenance.expect("provenance compared");
+        assert_eq!(p.same_commit, Some(false));
+        let fields: Vec<&str> = p.differences.iter().map(|d| d.field).collect();
+        assert_eq!(fields, ["commit", "uncommitted_changes", "gradle_version"]);
+        assert_eq!(p.differences[1].from.as_deref(), Some("none"));
+        assert_eq!(p.differences[1].to.as_deref(), Some("2 files"));
+        let files: Vec<(&str, &str)> = p
+            .changed_build_files
+            .iter()
+            .map(|f| (f.path.as_str(), f.change))
+            .collect();
+        assert_eq!(
+            files,
+            [
+                ("gradle.properties", "removed"),
+                ("gradle/libs.versions.toml", "changed"),
+                ("settings.gradle.kts", "added"),
+            ]
+        );
+        assert_eq!(p.to.as_ref().and_then(|s| s.dirty), Some(true));
+        assert!(p.notes.is_empty(), "{:?}", p.notes);
+        assert!(!c.not_recorded.contains(&PROVENANCE_NOT_RECORDED));
+        assert!(!c.not_recorded.iter().any(|n| n.contains("source commit")));
+    }
+
+    #[test]
+    fn the_same_commit_with_uncommitted_changes_is_flagged() {
+        let files = [("gradle/libs.versions.toml", "2")];
+        let from = detail(
+            with_provenance(
+                session("s-a", 11, "a", "Pixel_7"),
+                Some(provenance("a", false, &files)),
+            ),
+            vec![],
+        );
+        let to = detail(
+            with_provenance(
+                session("s-b", 12, "b", "Pixel_7"),
+                Some(provenance("a", true, &files)),
+            ),
+            vec![],
+        );
+        let p = compare_details(&from, &to, "given").provenance.unwrap();
+        assert_eq!(p.same_commit, Some(true));
+        assert!(p.changed_build_files.is_empty());
+        assert!(p.notes[0].contains("uncommitted changes"), "{:?}", p.notes);
+    }
+
+    #[test]
+    fn a_build_without_provenance_or_git_is_noted() {
+        let mut no_git = provenance("a", false, &[]);
+        no_git.commit = None;
+        no_git.dirty = None;
+        no_git.git_unavailable = Some("not a git repository".into());
+        let from = detail(session("s-a", 11, "a", "Pixel_7"), vec![]);
+        let to = detail(
+            with_provenance(session("s-b", 12, "b", "Pixel_7"), Some(no_git)),
+            vec![],
+        );
+        let p = compare_details(&from, &to, "given").provenance.unwrap();
+        assert_eq!(p.from, None);
+        assert_eq!(p.same_commit, None);
+        assert!(p.differences.is_empty());
+        assert_eq!(p.notes.len(), 2, "{:?}", p.notes);
+        assert!(p.notes[0].contains("`from`'s build recorded no provenance"));
+        assert!(p.notes[1].contains("not a git repository"));
     }
 
     #[test]

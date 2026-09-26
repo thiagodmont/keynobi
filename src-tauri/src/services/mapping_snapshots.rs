@@ -801,6 +801,7 @@ mod tests {
                 })
                 .collect(),
             apks: Vec::new(),
+            provenance: None,
         }
     }
 

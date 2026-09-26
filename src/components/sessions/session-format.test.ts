@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AppExitRecord, DebugSessionEvent } from "@/bindings";
 import { makeLaunchTiming } from "@/test/factories/build";
 import {
+  makeBuildProvenance,
   makeSession,
   makeSessionCrash,
   makeSessionDetail,
@@ -16,6 +17,7 @@ import {
   isUnattributed,
   sessionBuildLabel,
   sessionDeviceLabel,
+  sessionSourceLabel,
   sessionState,
 } from "./session-format";
 import { timelineEvents } from "./SessionDetail";
@@ -231,5 +233,27 @@ describe("timelineEvents", () => {
     expect(timelineEvents(detail).map((e) => e.seq)).toEqual([2, 700, 701]);
     const plain = makeSessionDetail(makeSession(), recent);
     expect(timelineEvents(plain)).toBe(plain.events);
+  });
+});
+
+describe("sessionSourceLabel", () => {
+  it("names the short commit, the branch, and uncommitted changes", () => {
+    expect(sessionSourceLabel(makeBuildProvenance())).toBe("3f9c2e1 · main");
+    expect(sessionSourceLabel(makeBuildProvenance({ dirty: true, changedFiles: 2 }))).toBe(
+      "3f9c2e1 · main · 2 uncommitted changes"
+    );
+    expect(
+      sessionSourceLabel(makeBuildProvenance({ branch: null, dirty: true, changedFiles: 1 }))
+    ).toBe("3f9c2e1 · 1 uncommitted change");
+  });
+
+  it("says why there is no commit, or that nothing was recorded", () => {
+    expect(
+      sessionSourceLabel(
+        makeBuildProvenance({ commit: null, branch: null, gitUnavailable: "not a git repository" })
+      )
+    ).toBe("No commit (not a git repository)");
+    expect(sessionSourceLabel(undefined)).toBe("Not recorded");
+    expect(sessionSourceLabel(null)).toBe("Not recorded");
   });
 });

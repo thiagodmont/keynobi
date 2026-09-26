@@ -5,6 +5,7 @@ use crate::models::build::{
 use crate::models::error::AppError;
 use crate::services::build_lock::{self, BuildLock};
 use crate::services::build_parser;
+use crate::services::build_provenance;
 use crate::services::gradle_modules::{self, GradleModule};
 use crate::services::installed_builds;
 use crate::services::mapping_snapshots::{self, MappingSource, PreparedMapping};
@@ -943,6 +944,7 @@ pub async fn finalize_completed_build(
             launch: None,
             mappings: Vec::new(),
             apks: Vec::new(),
+            provenance: None,
         },
         mapping_source,
     )
@@ -1146,6 +1148,7 @@ pub async fn record_build_result(
             launch: None,
             mappings: Vec::new(),
             apks: Vec::new(),
+            provenance: None,
         },
         None,
     )
@@ -1186,18 +1189,37 @@ async fn record_run(
     // Disk I/O runs off the async runtime and outside the build-state lock.
     // Mappings are copied and APKs hashed before the data lock is taken: they
     // can be large, and other processes wait on that lock for settings and history.
+    // The provenance (git, build files) is read meanwhile, with its own deadline.
     let mut record_for_io = record.clone();
-    let persisted = tokio::task::spawn_blocking(move || {
-        let (settings, _) = crate::services::settings_manager::load_settings();
+    let provenance_root = mapping_source.as_ref().map(|s| s.gradle_root.clone());
+    let provenance = async move {
+        match provenance_root {
+            Some(root) => Some(build_provenance::collect(root).await),
+            None => None,
+        }
+    };
+    let prepare = tokio::task::spawn_blocking(move || {
         let dir = data_dir();
         let mappings = mapping_source
             .as_ref()
             .map(|source| mapping_snapshots::prepare_snapshots(&dir, source).mappings)
             .unwrap_or_default();
-        record_for_io.apks = mapping_source
+        let apks = mapping_source
             .as_ref()
             .map(installed_builds::hash_build_apks)
             .unwrap_or_default();
+        (mappings, apks)
+    });
+    let (prepared, provenance) = tokio::join!(prepare, provenance);
+    let (mappings, apks) = prepared.unwrap_or_else(|e| {
+        tracing::warn!("Build outputs not recorded: {e}");
+        (Vec::new(), Vec::new())
+    });
+    record_for_io.apks = apks;
+    record_for_io.provenance = provenance;
+    let persisted = tokio::task::spawn_blocking(move || {
+        let (settings, _) = crate::services::settings_manager::load_settings();
+        let dir = data_dir();
         persist_build_record_in(
             &dir,
             record_for_io,
@@ -2788,6 +2810,7 @@ mod tests {
             launch: None,
             mappings: Vec::new(),
             apks: Vec::new(),
+            provenance: None,
         };
         let json = serde_json::to_string(&record).unwrap();
         let parsed: BuildRecord = serde_json::from_str(&json).unwrap();
@@ -2811,6 +2834,7 @@ mod tests {
                 launch: None,
                 mappings: Vec::new(),
                 apks: Vec::new(),
+                provenance: None,
             })
             .collect();
         // This is the formula that BuildStateInner::new() must use.
@@ -2845,6 +2869,7 @@ mod tests {
                     launch: None,
                     mappings: Vec::new(),
                     apks: Vec::new(),
+                    provenance: None,
                 });
             }
         }
@@ -2875,6 +2900,7 @@ mod tests {
                 launch: None,
                 mappings: Vec::new(),
                 apks: Vec::new(),
+                provenance: None,
             })
             .collect();
 
@@ -2963,6 +2989,7 @@ mod tests {
             launch: None,
             mappings: Vec::new(),
             apks: Vec::new(),
+            provenance: None,
         }
     }
 
@@ -3375,6 +3402,13 @@ mod tests {
                 Some((saved, saved)),
                 "success {success}, cancelled {cancelled}"
             );
+            // The project is no repository, which the provenance says.
+            let provenance = record.and_then(|r| r.provenance.clone());
+            assert_eq!(provenance.is_some(), success, "{provenance:?}");
+            if let Some(p) = provenance {
+                assert!(p.commit.is_none());
+                assert!(p.git_unavailable.is_some());
+            }
         }
     }
 
@@ -3469,6 +3503,7 @@ mod tests {
             launch: None,
             mappings: Vec::new(),
             apks: Vec::new(),
+            provenance: None,
         });
 
         rotate_build_logs(dir_path, 365, 1000, &history);

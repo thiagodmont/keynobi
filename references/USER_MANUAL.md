@@ -176,6 +176,7 @@ Every install Keynobi does, from **Run App** or from an AI client's `install_apk
 Open **Show Debug Sessions** from the Command Palette, or click **Session: …** in a past build's bar.
 
 - The list on the left shows each session, newest first: its build (**#12 · :app debug**), device, app, state, and how many crashes, ANRs, and launches it has. **Open** is the current install; **Superseded** means the app was installed again on that device; **Ended** means you ended it; **Idle** means nothing happened for 24 hours. **Kept** marks a session you keep, and **Standalone** one an AI client recorded while Keynobi was not open (it appears within a few seconds while the dialog is open).
+- Above the timeline, **Source** shows the git commit the build came from (**3f9c2e1 · main · 2 uncommitted changes**); hover it for the full commit and the Gradle and JDK versions. Keynobi records it when a build succeeds, by running `git status` once in the project (never `/usr/bin/git`, which would ask to install Xcode's tools), and hashes the project's settings, build, version-catalog, `gradle.properties`, and wrapper files. **No commit** says why (git not found, not a git repository); **Not recorded** means the build has no record, or was built before Keynobi recorded this.
 - The timeline on the right lists the session's events, oldest first. Select one (click it, or Tab to the timeline and use Up/Down, Home, and End) to see it in full below. For a crash or ANR, it says whether the device confirmed that the crashing app was Keynobi's install; **Show log lines** (or Enter on the crash) shows the lines Keynobi kept with it, the newest 200 first; **Load older lines** adds 200 more.
 - **Keep** keeps the session and the R8 mapping of its build when retention would remove them. At most 5 sessions can be kept; stop keeping one to keep another.
 - **End session** closes an open session; the next install opens a new one.
@@ -184,7 +185,7 @@ Open **Show Debug Sessions** from the Command Palette, or click **Session: …**
 
 Keynobi keeps at most 50 sessions and removes them after the retention period and folder limit set under **Settings → Advanced → Build**; kept sessions are not removed by age.
 
-AI clients read sessions too: `list_debug_sessions`, `get_debug_session` (the timeline, and each crash with how it was matched to the installed build), and `compare_debug_sessions`, which compares two sessions, by default the last run that launched without crashing and the first crashing one after it.
+AI clients read sessions too: `list_debug_sessions`, `get_debug_session` (the timeline, and each crash with how it was matched to the installed build), and `compare_debug_sessions`, which compares two sessions, by default the last run that launched without crashing and the first crashing one after it, including whether their builds came from the same commit and which build files changed.
 
 ---
 

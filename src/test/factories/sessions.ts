@@ -1,4 +1,5 @@
 import type {
+  BuildProvenance,
   DebugSession,
   DebugSessionCrash,
   DebugSessionDetail,
@@ -48,6 +49,20 @@ export function makeSession(overrides: Partial<DebugSession> = {}): DebugSession
     eventCount: 2,
     droppedEvents: 0,
     bytes: 512,
+    ...overrides,
+  };
+}
+
+export function makeBuildProvenance(overrides: Partial<BuildProvenance> = {}): BuildProvenance {
+  return {
+    commit: "3f9c2e1d".repeat(5),
+    branch: "main",
+    dirty: false,
+    changedFiles: 0,
+    gitUnavailable: null,
+    buildFiles: [{ path: "gradle/libs.versions.toml", sha256: "d4".repeat(32) }],
+    gradleVersion: "8.7",
+    jdkVersion: "17.0.9",
     ...overrides,
   };
 }

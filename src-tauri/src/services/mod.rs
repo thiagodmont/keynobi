@@ -7,6 +7,7 @@ pub mod app_location;
 pub mod build_inspector;
 pub mod build_lock;
 pub mod build_parser;
+pub mod build_provenance;
 pub mod build_runner;
 pub mod crash_inspector;
 pub mod debug_sessions;

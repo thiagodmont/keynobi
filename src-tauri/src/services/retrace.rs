@@ -1480,6 +1480,7 @@ mod tests {
             launch: None,
             mappings: vec![],
             apks: vec![apk],
+            provenance: None,
         }
     }
 

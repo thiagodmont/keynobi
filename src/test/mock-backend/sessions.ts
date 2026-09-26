@@ -130,6 +130,7 @@ export function openMockSession(entry: InstalledBuild, record: BuildRecord | und
             versionCode: apk.versionCode,
           },
           mappings: entry.mappings.map((m) => ({ sha256: m.sha256, pgMapId: m.pgMapId })),
+          ...(record.provenance ? { provenance: record.provenance } : {}),
         }
       : null;
   const install = {

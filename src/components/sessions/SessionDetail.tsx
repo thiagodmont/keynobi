@@ -12,7 +12,12 @@ import {
   createSignal,
   on,
 } from "solid-js";
-import type { DebugSessionDetail, DebugSessionEvent, DebugSessionSummary } from "@/bindings";
+import type {
+  BuildProvenance,
+  DebugSessionDetail,
+  DebugSessionEvent,
+  DebugSessionSummary,
+} from "@/bindings";
 import {
   addSessionBookmark,
   endDebugSession,
@@ -31,6 +36,7 @@ import {
   sessionBuildLabel,
   sessionCountsLabel,
   sessionDeviceLabel,
+  sessionSourceLabel,
   sessionState,
   stateVariant,
 } from "./session-format";
@@ -61,6 +67,18 @@ export function timelineEvents(detail: DebugSessionDetail): DebugSessionEvent[] 
   const older = detail.crashes.filter((c) => !seen.has(c.seq));
   if (older.length === 0) return detail.events;
   return [...older, ...detail.events].sort((a, b) => a.seq - b.seq);
+}
+
+/** The whole commit and the toolchain, for the Source tooltip. */
+function sourceTitle(provenance: BuildProvenance | null | undefined): string | undefined {
+  if (!provenance) return undefined;
+  return [
+    provenance.commit,
+    provenance.gradleVersion && `Gradle ${provenance.gradleVersion}`,
+    provenance.jdkVersion && `JDK ${provenance.jdkVersion}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 function exitRefreshNote(added: number, message: string | null): string {
@@ -235,6 +253,11 @@ export function SessionDetail(props: {
                     ? `${sessionBuildLabel(s())} · ${detail()?.session.build?.task}`
                     : sessionBuildLabel(s())
                 }
+              />
+              <MetadataCell
+                label="Source"
+                value={sessionSourceLabel(detail()?.session.build?.provenance)}
+                title={sourceTitle(detail()?.session.build?.provenance)}
               />
               <MetadataCell
                 label="APK"

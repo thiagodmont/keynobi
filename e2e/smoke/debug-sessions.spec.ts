@@ -52,6 +52,8 @@ test("Run App opens a debug session that shows the install and launch, and can b
     timeline.getByRole("option").filter({ hasText: "Launched · Launch 812 ms (cold)" })
   ).toHaveCount(1);
 
+  await expect(dialog.getByText("3f9c2e1 · main", { exact: true })).toBeVisible();
+
   const keep = dialog.getByRole("button", { name: "Keep" });
   await expect(keep).toHaveAttribute("aria-pressed", "false");
   await keep.click();

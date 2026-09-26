@@ -33,6 +33,9 @@ pub const SDKMANAGER_LIST_TIMEOUT: Duration = Duration::from_secs(120);
 /// Health-check probes: `java -version`, `adb version`, `which studio`,
 /// `android --version`.
 pub const TOOL_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+/// `git status` of a project when its build finishes. Kept short: the build
+/// is not reported until it returns, and a slow answer only loses the commit.
+pub const GIT_STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 /// A login shell asked where a command-line tool is (`command -v`).
 pub const LOGIN_SHELL_TIMEOUT: Duration = Duration::from_secs(4);
 /// The SDK's R8 `retrace`: two JVM starts plus parsing the mapping, which
