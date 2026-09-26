@@ -1,0 +1,47 @@
+skills/keynobi/SKILL.md
+  s_1e114e823b9048::t_43c062c17b1802 19
+src-tauri/src/services/mcp_server.rs
+  s_1e114e823b9048::t_336dabef2b3dba 18-21,43,475-480,937-975,978-1021,1023-1024,1030-1053,1059-1062,1065-1087,1492,3757-3817,4120-4142,4144-4153,4155-4172,4174-4192
+  s_1e114e823b9048::t_6567dfb11036a6 1022
+  s_1e114e823b9048::t_eab054f36e96b8 3509,3512
+  s_1e114e823b9048::t_ea338a643a015f 1054-1058,1063-1064
+  s_1e114e823b9048::t_514be14cbe3327 3839-3851,3913-3919,3922-3927,4015-4020,4030-4035,4055-4058,4070-4073
+  s_1e114e823b9048::t_19178e24a20928 3508,3510-3511,3569
+  s_1e114e823b9048::t_9f332cd75b12e1 3818,4193
+src-tauri/src/services/mcp_toolsets.rs
+  s_1e114e823b9048::t_6567dfb11036a6 28
+  s_1e114e823b9048::t_e428ee9e560d43 27
+src-tauri/src/services/build_runner.rs
+  s_1e114e823b9048::t_f95c9a462bacd5 1893
+  s_1e114e823b9048::t_1d6287f36b819a 1467
+  s_1e114e823b9048::t_40f88e4432a7f6 1427-1428,1865
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_314ef14a2f6742 340
+  s_1e114e823b9048::t_552467603e5917 90,109,229
+src-tauri/src/services/run_plan.rs
+  s_1e114e823b9048::t_fd8a81c633c845 146-174
+  s_1e114e823b9048::t_f11294f11f4527 690-725
+src-tauri/tests/mcp_headless.rs
+  s_1e114e823b9048::t_97c0bce1b1578b 2497-2769,2823-2842
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_56d5ff2c842014 426
+  s_1e114e823b9048::t_778cf83ab69d1c 427
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_637d481a43b312 209,591
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "59c120dc6add7729d783483c9ca532c46f253df7",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
