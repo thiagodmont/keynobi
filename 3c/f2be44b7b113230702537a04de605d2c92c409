@@ -1,0 +1,211 @@
+src-tauri/src/services/mod.rs
+  s_1e114e823b9048::t_96b04ac23dfd27 38
+src/bindings/RunDevice.ts
+  s_1e114e823b9048::t_fb0dc7859ee867 1-10
+src/lib/tauri-api.ts
+  s_1e114e823b9048::t_9747424273991d 157-159,165-166,168-170,172-191
+  s_1e114e823b9048::t_3592a62408c350 163-164
+  s_1e114e823b9048::t_a92ca1d9b0cb5e 160-162
+  s_1e114e823b9048::t_2dc3faf96a1d70 167,171
+  s_1e114e823b9048::t_4e2613e7256abc 192
+  s_1e114e823b9048::t_731da526d4a4a3 266-271
+  s_1e114e823b9048::t_8757e9f7362d2e 144-148
+  s_1e114e823b9048::t_640e836f6971fa 97-112
+  s_1e114e823b9048::t_2af7f56204cf23 149-156
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_a7d8fc517afd9a 70-72,74-77,79-81,183,196-200,582
+  s_1e114e823b9048::t_72236279aa67dd 88
+  s_1e114e823b9048::t_714acfdcf0b1ae 195,201-202,580
+src-tauri/src/models/run_configuration.rs
+  s_1e114e823b9048::t_09261d77c2b1c0 84-115
+src-tauri/src/services/run_plan.rs
+  s_1e114e823b9048::t_20bffae55054f8 1-40,43-85,87-355,358-371,374-430,432-548,550-795,797-827,829-858,860-907,909-912,914-915,917-922,925-926
+  s_1e114e823b9048::t_62b6cc1432372c 356-357
+  s_1e114e823b9048::t_506ce097ef47c0 431
+  s_1e114e823b9048::t_3912bc09278af2 41-42,86,908,913,916,923-924
+  s_1e114e823b9048::t_1f7ddce35e67b0 372-373,549,796,828,859
+src/components/build/BuildPanel.tsx
+  s_1e114e823b9048::t_eb35b2ccec449a 15,145
+  s_1e114e823b9048::t_415a6d2784a7d1 147
+src/bindings/ResolvedRun.ts
+  s_1e114e823b9048::t_fb0dc7859ee867 1-27
+src/components/logcat/LogcatPanel.auto-filter.test.ts
+  s_1e114e823b9048::t_3aa4ae81406b02 164-189
+  s_1e114e823b9048::t_65985b18e9933c 21
+  s_1e114e823b9048::t_037be8134c71be 15
+  s_1e114e823b9048::t_b8565fd1e577fb 51-52
+src/components/logcat/LogcatPanel.tsx
+  s_1e114e823b9048::t_6b5d5cd6a584c2 493,495-497
+  s_1e114e823b9048::t_2bdf3c2be4f838 507-509,513
+  s_1e114e823b9048::t_db6e84d8ec38c9 39
+src/services/build.service.ts
+  s_1e114e823b9048::t_526c3d915a303f 8-12,461,463-467,490-491,495,497-498,500-501,526,539-547,562,580,583,585-586,594-597,602,608,615,617,627-629,635-636,643,646,667-706
+  s_1e114e823b9048::t_73209465126ada 587-588,590-593
+  s_1e114e823b9048::t_d2c18ab6febb80 609
+  s_1e114e823b9048::t_487e0e1f76bfee 707
+  s_1e114e823b9048::t_41d087dab045f0 46-47,469,492,581-582,584,589,598-601,603-607,610-614,616,618-619,621-624,626,634,637-642,644-645,647,650-666,839-841
+  s_1e114e823b9048::t_e8d5955d184e4b 18
+  s_1e114e823b9048::t_731da526d4a4a3 620
+  s_1e114e823b9048::t_c9a2b8bd17fe27 493,630-633
+  s_1e114e823b9048::t_a24cb4dce38f70 625,648-649
+src-tauri/src/services/run_configurations.rs
+  s_1e114e823b9048::t_06e5cb374636eb 83,292,309,332
+  s_1e114e823b9048::t_c7b4594de50fb6 538-573
+  s_1e114e823b9048::t_ce07c3aafbffe4 1137-1171
+  s_1e114e823b9048::t_2bb39d35e6a476 1136
+  s_1e114e823b9048::t_9d644d82207143 574-614
+  s_1e114e823b9048::t_9d66c0eb4fd471 1173-1211
+  s_1e114e823b9048::t_5d4753f977d5e1 1172
+src/App.tsx
+  s_1e114e823b9048::t_72f2536284a052 47-53
+  s_1e114e823b9048::t_eb35b2ccec449a 338
+  s_1e114e823b9048::t_765041abc36806 23-26,376-394,629-631
+src/test/mock-backend/devices.ts
+  s_1e114e823b9048::t_bec852216cbd8d 48-52,194-197
+src/bindings/index.ts
+  s_1e114e823b9048::t_a7f50465fcc4c4 105-106
+src/stores/build.store.ts
+  s_1e114e823b9048::t_cf03bce3b26c22 30-31,90,309-313,317,359
+src/test/ipc-fixtures/fixtures.ts
+  s_1e114e823b9048::t_fb0dc7859ee867 44,49,421,451-505
+  s_1e114e823b9048::t_a00bac11600ffd 422-444
+src/lib/logcat-query.ts
+  s_1e114e823b9048::t_359cdcf4af46fb 574-590
+  s_1e114e823b9048::t_00dcb71ffa49b4 531-573
+  s_1e114e823b9048::t_f0a725a4e61d1b 530
+src/services/build.service.trust.test.ts
+  s_1e114e823b9048::t_0d8e3b85687f5c 3-8,51
+  s_1e114e823b9048::t_e98ddbb42966c6 54
+src-tauri/tests/ipc_fixtures.rs
+  s_1e114e823b9048::t_b8f5317aeec3dd 772-819
+  s_1e114e823b9048::t_cb37269e20cb39 970-983
+  s_1e114e823b9048::t_9e38d16604094d 987-994
+scripts/ipc-payloads.test.mjs
+  s_1e114e823b9048::t_84c5fec2d00a49 350,352
+  s_1e114e823b9048::t_a1d3a5dce7d6db 351
+references/USER_MANUAL.md
+  s_1e114e823b9048::t_a7d8fc517afd9a 133
+  s_1e114e823b9048::t_72236279aa67dd 468
+  s_1e114e823b9048::t_5f5c426899d439 81,132,134,138-153,467,484-486
+e2e/smoke/build-flow.spec.ts
+  s_1e114e823b9048::t_6577ec0709a498 70-115,117,119,125-130,133-157,161
+  s_1e114e823b9048::t_a2896c47b0523f 217,220-221,223,231
+  s_1e114e823b9048::t_a841a78703ee24 164-216,218-219,222,224-230,232-235
+src/services/build.service.test.ts
+  s_1e114e823b9048::t_c2332e20c04858 145-154,160,1129
+  s_1e114e823b9048::t_ac1fbb0c485f33 20
+  s_1e114e823b9048::t_5cbc3b9c761342 10,23-24,456-459,485-486,522-527,530-531,622,626,628-630,633,635-644,648-733,761,764-765,768,774-837,839,841-843,847,1118,1122,1124-1126,1130,1132,1136,1138-1141,1148,1152-1153,1180,1184,1188-1189
+  s_1e114e823b9048::t_be56f699b4801e 1111-1117,1119-1121,1123,1127-1128,1131,1133-1135,1137,1142-1147,1149-1151,1154,1173-1179,1181-1183,1185-1187,1190
+  s_1e114e823b9048::t_d48c7053ed2fa6 25,38
+  s_1e114e823b9048::t_29a633092be99b 33-37,39-41,838,840,844-846,848-859,1171
+  s_1e114e823b9048::t_9b1160c606ecfc 861
+  s_1e114e823b9048::t_57151dc61b9958 1155-1170
+  s_1e114e823b9048::t_296b5684359e45 1172
+src-tauri/src/commands/run_configuration.rs
+  s_1e114e823b9048::t_91858eacd4b8ca 193
+  s_1e114e823b9048::t_64706bff663940 5-6,74-76,80-82,84-105,109-110,115-136,171-192,194-199
+  s_1e114e823b9048::t_3912bc09278af2 77-79,83,106-108,111-114
+  s_1e114e823b9048::t_265e4366e41f6c 7
+  s_1e114e823b9048::t_9cb973b793bd54 137-159
+  s_1e114e823b9048::t_ec7957d47160ba 160-170
+  s_1e114e823b9048::t_354c2d7f781684 2-4
+src/App.log-mode.test.tsx
+  s_1e114e823b9048::t_415a6d2784a7d1 115
+src/test/mock-backend/projects.ts
+  s_1e114e823b9048::t_49ecbfd35ff307 3,7,9,12,71-178,230,243-251
+  s_1e114e823b9048::t_48e4522c87f007 252-253
+  s_1e114e823b9048::t_2ea731784430c7 231
+  s_1e114e823b9048::t_4560e600dc25ee 191-199
+  s_1e114e823b9048::t_b55528d95edb4b 10
+  s_1e114e823b9048::t_8a1efb4f81e428 232-242
+src/test/factories/build.ts
+  s_1e114e823b9048::t_a72f7f59145288 11
+  s_1e114e823b9048::t_76fe2670364c94 114-128
+  s_1e114e823b9048::t_276b04bbc8448b 10,12-13,129-161
+src-tauri/src/lib.rs
+  s_1e114e823b9048::t_1c987bef4fe414 378,381-382
+  s_1e114e823b9048::t_265e4366e41f6c 34-36,379-380
+src/components/build/RunConfigurationPicker.test.tsx
+  s_1e114e823b9048::t_4b46679640d872 1-96
+src/lib/logcat-query.run-filter.test.ts
+  s_1e114e823b9048::t_472a990a81b7f2 1-8,10-41
+  s_1e114e823b9048::t_b9912872b2b6cb 9
+src/components/ui/Input/Input.test.tsx
+  s_1e114e823b9048::t_013b7150760ca4 33-42
+src/components/ui/Select/Select.test.tsx
+  s_1e114e823b9048::t_0a4f835a71cefa 2,69-81
+  s_1e114e823b9048::t_12e70e88be5a87 82-98
+src/components/build/VariantSelectorPill.test.tsx
+  s_1e114e823b9048::t_df0671cbf40bdc 1-44
+src/components/layout/TitleBar.test.tsx
+  s_1e114e823b9048::t_3e25a707d1583e 9-13,190-202,206
+  s_1e114e823b9048::t_3140c994b3be9a 203-205
+  s_1e114e823b9048::t_341267c46bb1f3 207-208
+src/stores/run-configurations.store.ts
+  s_1e114e823b9048::t_98cdbb1ba2e3b8 1-52
+src/components/ui/Select/Select.stories.tsx
+  s_1e114e823b9048::t_12e70e88be5a87 22
+references/DESIGN_SYSTEM.md
+  s_1e114e823b9048::t_5ab8e6310d7268 47-48
+src/components/ui/Select/Select.tsx
+  s_1e114e823b9048::t_12e70e88be5a87 13-17,31-33
+  s_1e114e823b9048::t_0a4f835a71cefa 45-50
+src/components/build/RunConfigurationsDialog.tsx
+  s_1e114e823b9048::t_481bb6cba91715 209,268,307-309,311-312,390
+  s_1e114e823b9048::t_731da526d4a4a3 27,316
+  s_1e114e823b9048::t_abfe99ad9760b5 1-26,28-208,210-267,269-306,310,313-315,317-374,378-389,391-585
+  s_1e114e823b9048::t_b9912872b2b6cb 375-377
+src/services/run-configurations.service.test.ts
+  s_1e114e823b9048::t_3140c994b3be9a 133-136
+  s_1e114e823b9048::t_24967013294b6d 207-218
+  s_1e114e823b9048::t_1ce4069b4749d8 1-132,137-206,219-233
+src/components/ui/Input/Input.tsx
+  s_1e114e823b9048::t_f73b514cb6375f 10-11,64
+src/components/build/run-configuration-draft.test.ts
+  s_1e114e823b9048::t_75f759b03b6aa2 1-69
+src/components/build/run-configuration-draft.ts
+  s_1e114e823b9048::t_1a30f040fc65b1 1-120
+src/components/build/RunConfigurationsDialog.test.tsx
+  s_1e114e823b9048::t_25bb67c38f8047 5-6
+  s_1e114e823b9048::t_3140c994b3be9a 180-195,198-200,227-231,318
+  s_1e114e823b9048::t_83a0a977c4512d 144
+  s_1e114e823b9048::t_04245a127b3015 1-4,7-143,145-179,196-197,201-226,232-317,319-361
+src/components/layout/TitleBar.tsx
+  s_1e114e823b9048::t_b9912872b2b6cb 204-206
+  s_1e114e823b9048::t_b5f962c782e306 12-13,207-208
+src/services/run-configurations.service.ts
+  s_1e114e823b9048::t_e83661b659401f 1-63,66-68,70-124,127-225
+  s_1e114e823b9048::t_b9912872b2b6cb 125-126
+  s_1e114e823b9048::t_27e1aa71e38bea 64-65,69
+src/components/build/RunConfigurationPicker.tsx
+  s_1e114e823b9048::t_33e4aa30cdfaff 1-50,52-76
+  s_1e114e823b9048::t_79834dbff82086 51
+src/services/project.service.ts
+  s_1e114e823b9048::t_7e8e52108268fe 60-63,73-74,243-247
+src/components/build/RunConfigurationPicker.module.css
+  s_1e114e823b9048::t_79834dbff82086 6-11
+  s_1e114e823b9048::t_0d3ef1196df9e0 1-5
+src/components/build/RunConfigurationsDialog.module.css
+  s_1e114e823b9048::t_481bb6cba91715 1-143
+e2e/smoke/keyboard-access.spec.ts
+  s_1e114e823b9048::t_e9fe675566ebe4 240
+src/components/build/VariantSelector.tsx
+  s_1e114e823b9048::t_f9095ae3515b70 23-27
+  s_1e114e823b9048::t_5e8b769734f9a4 5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "3cf2be44b7b113230702537a04de605d2c92c409",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
