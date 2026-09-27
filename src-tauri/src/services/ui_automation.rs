@@ -1515,6 +1515,19 @@ pub fn parse_soft_keyboard_visible(output: &str) -> Option<bool> {
     None
 }
 
+/// Schemes that open no app but run script, read local data, or build an
+/// arbitrary intent.
+const REFUSED_DEEP_LINK_SCHEMES: &[&str] = &[
+    "javascript",
+    "vbscript",
+    "data",
+    "file",
+    "content",
+    "intent",
+    "about",
+    "blob",
+];
+
 pub fn validate_deep_link_uri(uri: &str) -> Result<(), String> {
     let trimmed = uri.trim();
     if trimmed.is_empty() {
@@ -1539,6 +1552,14 @@ pub fn validate_deep_link_uri(uri: &str) -> Result<(), String> {
     }
     if !chars.all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '-' || c == '.') {
         return Err("uri scheme contains invalid characters".to_string());
+    }
+    if REFUSED_DEEP_LINK_SCHEMES
+        .iter()
+        .any(|refused| scheme.eq_ignore_ascii_case(refused))
+    {
+        return Err(format!(
+            "uri scheme '{scheme}' does not open an app; use an app link such as myapp://path or https://"
+        ));
     }
     Ok(())
 }
@@ -2533,6 +2554,26 @@ mod tests {
         assert!(validate_deep_link_uri("myapp://profile/42").is_ok());
         assert!(validate_deep_link_uri("missing-scheme").is_err());
         assert!(validate_deep_link_uri("myapp://bad\npath").is_err());
+    }
+
+    #[test]
+    fn validate_deep_link_uri_refuses_schemes_that_open_no_app() {
+        for uri in [
+            "javascript:alert(1)",
+            "JavaScript:alert(1)",
+            " vbscript:msgbox",
+            "data:text/html,<b>x</b>",
+            "file:///sdcard/secret.txt",
+            "content://com.example.provider/items",
+            "intent://scan/#Intent;scheme=zxing;end",
+            "about:blank",
+            "blob:https://example.com/id",
+        ] {
+            let err = validate_deep_link_uri(uri).unwrap_err();
+            assert!(err.contains("does not open an app"), "{uri}: {err}");
+        }
+        assert!(validate_deep_link_uri("android-app://com.example/https/example.com").is_ok());
+        assert!(validate_deep_link_uri("http://example.com").is_ok());
     }
 
     #[test]

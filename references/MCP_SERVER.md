@@ -190,7 +190,7 @@ A debug session is one install of the app on a device, by Keynobi or `install_ap
 | `ui_type_text_unicode`, `clear_focused_input`, `hide_soft_keyboard`, `send_ui_key` | W | |
 | `ui_swipe` | W | |
 | `ui_scroll_until_element` | W | Max 25 swipes. |
-| `open_deep_link`, `open_app_settings` | W | Return a tool error when `am start` reports one (for example "unable to resolve Intent"), even with exit code 0. |
+| `open_deep_link`, `open_app_settings` | W | Return a tool error when `am start` reports one (for example "unable to resolve Intent"), even with exit code 0. `open_deep_link` refuses schemes that open no app (`javascript`, `vbscript`, `data`, `file`, `content`, `intent`, `about`, `blob`). |
 | `set_device_orientation` | W | |
 | `set_network_state` | D | `wifi?`, `mobileData?`, `airplaneMode?`. Can cut the device off the network. Turning Wi-Fi off or airplane mode on is refused for wireless-ADB serials (`host:port`, `._adb-tls-connect._tcp`, `._adb._tcp`). Returns `previous` (the prior state read from global settings) so the change can be reverted. Airplane mode uses `cmd connectivity airplane-mode`; only if that fails does it write `airplane_mode_on` and send the `AIRPLANE_MODE` broadcast, restoring the setting when the broadcast is refused. |
 | `grant_runtime_permission` | W | `package`, `permission`, `allow_foreign_package?`. [Package-scoped](#package-scope). |
