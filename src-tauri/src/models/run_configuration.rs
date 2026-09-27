@@ -1,4 +1,4 @@
-use crate::models::build::{LaunchResult, RunApk};
+use crate::models::build::{BuildActor, LaunchResult, RunApk};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use ts_rs::TS;
@@ -161,12 +161,15 @@ pub enum DeployPhase {
     Cancelled,
 }
 
-/// Payload of `deploy:phase`: the app's run of a configuration entered `phase`.
+/// Payload of `deploy:phase`: a run of a configuration in the app's process
+/// (the app's own, or an attached agent's) entered `phase`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct DeployPhaseEvent {
     pub phase: DeployPhase,
+    /// Who runs it: the app, or an attached agent.
+    pub origin: BuildActor,
     /// The configuration's name.
     pub name: String,
     /// The plan in one line.

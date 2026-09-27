@@ -46,6 +46,11 @@ export function buildActorLabels(
   return labels.filter(Boolean);
 }
 
+/** A run of the configuration `name`, for the build log: "Run 'Default' by an agent (Claude Code)". */
+export function runByLabel(name: string, actor: BuildActor): string {
+  return actor.kind === "agent" ? `Run '${name}' by ${agentLabel(actor)}` : `Run '${name}'`;
+}
+
 /** Why the app cannot build right now: "A build started by an agent (Claude Code) is running". */
 export function buildRunningLabel(actor: BuildActor | null | undefined): string {
   return actor?.kind === "agent"

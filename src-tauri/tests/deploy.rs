@@ -2,7 +2,7 @@
 //! configuration is built through the build service, its APK installed, and
 //! the app launched, against fake `gradlew` and `adb` scripts.
 
-use keynobi_lib::models::build::{BuildActor, BuildStatus};
+use keynobi_lib::models::build::{AgentActor, BuildActor, BuildStatus};
 use keynobi_lib::models::debug_session::DebugSessionEventData;
 use keynobi_lib::models::device::{Device, DeviceConnectionState, DeviceKind};
 use keynobi_lib::models::error::AppError;
@@ -19,6 +19,7 @@ use keynobi_lib::services::run_plan::{self, Devices, RunRequest};
 use keynobi_lib::services::{debug_sessions, settings_manager};
 use keynobi_lib::FsState;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 mod common;
@@ -129,6 +130,7 @@ esac"#,
             device_state,
             logcat_state: keynobi_lib::commands::logcat::new_logcat_state(),
             app: None,
+            phases: None,
             adb,
             aapt2: None,
         };
@@ -430,6 +432,36 @@ async fn a_run_builds_installs_the_apk_its_build_wrote_and_launches_the_app() {
         &e.event,
         DebugSessionEventData::Launch(l) if l.timing.as_ref().map(|t| t.total_ms) == Some(812)
     )));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_app_gets_every_phase_of_a_run_naming_who_runs_it() {
+    let _history = common::lock_history().await;
+    let mut f = Fixture::new(vec![configuration("Default", RunLaunch::Default)]);
+    f.gradlew_writing_the_debug_apk("agent apk");
+    let seen: Arc<Mutex<Vec<DeployPhaseEvent>>> = Arc::default();
+    let sink = seen.clone();
+    f.env.phases = Some(Arc::new(move |event: &DeployPhaseEvent| {
+        sink.lock().unwrap().push(event.clone());
+    }));
+    let agent = BuildActor::Agent(AgentActor {
+        session_id: Some(3),
+        client_name: Some("Claude Code".into()),
+        standalone: false,
+    });
+    let mut hooks = Hooks::new(&f);
+
+    let resolved = f.resolve("Default").await;
+    let result = deploy::run_configuration(&f.env, &f.open, resolved, agent.clone(), &mut hooks)
+        .await
+        .unwrap();
+
+    assert_eq!(result.outcome, DeployOutcome::Done);
+    let seen = seen.lock().unwrap().clone();
+    // The app gets what the hooks get, in the same order.
+    assert_eq!(seen, hooks.phases);
+    assert_eq!(seen.len(), 4, "{seen:?}");
+    assert!(seen.iter().all(|e| e.origin == agent), "{seen:?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]

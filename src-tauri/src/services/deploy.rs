@@ -21,10 +21,23 @@ use crate::utils::validation;
 use crate::FsState;
 use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
-/// Sent to the app as its own run of a configuration moves on.
+/// Sent to the app as a run of a configuration in its process (its own, or
+/// an attached agent's) moves on.
 pub const DEPLOY_PHASE_EVENT: &str = "deploy:phase";
+
+/// Where the phases of a run go when the app shows it.
+pub type PhaseSink = Arc<dyn Fn(&DeployPhaseEvent) + Send + Sync>;
+
+/// Emits each phase to the app's window as `deploy:phase`.
+pub fn app_phase_sink(app: tauri::AppHandle) -> PhaseSink {
+    use tauri::Emitter;
+    Arc::new(move |event| {
+        let _ = app.emit(DEPLOY_PHASE_EVENT, event);
+    })
+}
 
 /// How long a timed-out build gets to record the timeout before the run answers.
 const TIMEOUT_RECORD_GRACE: Duration = Duration::from_secs(10);
@@ -156,6 +169,8 @@ pub struct DeployEnv {
     pub logcat_state: LogcatState,
     /// Sends display times that arrive after the launch (`build:launch_timing`).
     pub app: Option<tauri::AppHandle>,
+    /// The app, for a run in its process: it gets every phase, with who runs it.
+    pub phases: Option<PhaseSink>,
     pub adb: PathBuf,
     pub aapt2: Option<PathBuf>,
 }
@@ -167,7 +182,8 @@ pub trait DeployHooks: Send {
     /// not run to an end (refused, not started, timed out).
     fn build(&mut self, task: &str) -> impl Future<Output = Result<BuildOutcome, AppError>> + Send;
 
-    /// The run entered `event.phase`.
+    /// The run entered `event.phase`, after the app got it
+    /// ([`DeployEnv::phases`]).
     fn phase(&mut self, event: DeployPhaseEvent) -> impl Future<Output = ()> + Send;
 }
 
@@ -197,7 +213,7 @@ pub async fn run_configuration<H: DeployHooks>(
             run.name
         ))
     })?;
-    let mut report = Reporter::new(hooks, &run, &device);
+    let mut report = Reporter::new(hooks, &run, &device, &by, env.phases.clone());
     let mut result = DeployResult {
         run: run.clone(),
         outcome: DeployOutcome::Done,
@@ -337,9 +353,12 @@ async fn install_and_launch<H: DeployHooks>(
     Ok(())
 }
 
-/// Collects a run's log lines and sends them with the next phase.
+/// Collects a run's log lines and sends them with the next phase, to the app
+/// (when it shows the run) and to the hooks.
 struct Reporter<'a, H> {
     hooks: &'a mut H,
+    app: Option<PhaseSink>,
+    origin: BuildActor,
     name: String,
     plan: String,
     device: RunDevice,
@@ -348,9 +367,17 @@ struct Reporter<'a, H> {
 }
 
 impl<'a, H: DeployHooks> Reporter<'a, H> {
-    fn new(hooks: &'a mut H, run: &ResolvedRun, device: &RunDevice) -> Self {
+    fn new(
+        hooks: &'a mut H,
+        run: &ResolvedRun,
+        device: &RunDevice,
+        origin: &BuildActor,
+        app: Option<PhaseSink>,
+    ) -> Self {
         Self {
             hooks,
+            app,
+            origin: origin.clone(),
             name: run.name.clone(),
             plan: run.plan.clone(),
             device: device.clone(),
@@ -366,6 +393,7 @@ impl<'a, H: DeployHooks> Reporter<'a, H> {
     async fn enter(&mut self, phase: DeployPhase, error: Option<String>) {
         let event = DeployPhaseEvent {
             phase,
+            origin: self.origin.clone(),
             name: self.name.clone(),
             plan: self.plan.clone(),
             device: self.device.clone(),
@@ -373,6 +401,9 @@ impl<'a, H: DeployHooks> Reporter<'a, H> {
             steps: std::mem::take(&mut self.steps),
             error,
         };
+        if let Some(app) = &self.app {
+            app(&event);
+        }
         self.hooks.phase(event).await;
     }
 }

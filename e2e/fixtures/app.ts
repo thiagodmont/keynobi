@@ -6,6 +6,13 @@ export interface E2EBridge {
   triggerEvent: (event: string, payload: unknown) => void;
   /** Starts a build as an attached agent would; returns its run ID. */
   startAgentBuild: (task: string, clientName: string | null, lineDelayMs?: number) => number;
+  /** Runs a run configuration as an attached agent would: build, install, launch. */
+  startAgentRun: (
+    name: string,
+    serial: string | null,
+    clientName: string | null,
+    lineDelayMs?: number
+  ) => Promise<unknown>;
   /** Adds a build to the history, as if recorded earlier; returns its history ID. */
   addPastBuild: (build: MockPastBuild) => number;
   /** Slows down builds the app starts (default 80 ms per output line). */
