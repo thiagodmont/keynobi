@@ -1446,6 +1446,8 @@ pub struct BuildOutcome {
     pub timed_out_after_sec: Option<u64>,
     pub duration_ms: u64,
     pub errors: Vec<BuildError>,
+    /// The run's build history record.
+    pub record_id: Option<u32>,
 }
 
 /// A started run. Dropping it, or the future waiting on it, does not affect
@@ -1484,6 +1486,7 @@ impl BuildHandle {
                 col: None,
                 severity: BuildErrorSeverity::Error,
             }],
+            record_id: None,
         }
     }
 }
@@ -1881,7 +1884,7 @@ impl Run {
             && self.collector.succeeded.load(Ordering::Relaxed);
         let duration_ms = self.collector.duration_ms.load(Ordering::Relaxed);
 
-        emit_build_complete(
+        let complete = emit_build_complete(
             &self.state,
             self.app.as_ref(),
             BuildFinalization {
@@ -1909,6 +1912,7 @@ impl Run {
             timed_out_after_sec,
             duration_ms,
             errors,
+            record_id: Some(complete.record_id),
         }
     }
 }

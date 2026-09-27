@@ -24,6 +24,8 @@ const CORE_TOOLS: &[&str] = &[
     "set_active_variant",
     "find_apk_path",
     "run_tests",
+    "list_run_configurations",
+    "build_run_configuration",
     "get_build_config",
     "start_logcat",
     "stop_logcat",
