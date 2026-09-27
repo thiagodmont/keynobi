@@ -1,0 +1,31 @@
+references/DOMAIN_PATTERNS.md
+  s_1e114e823b9048::t_4d237ea3ac42d5 213
+references/MCP_SERVER.md
+  s_1e114e823b9048::t_6df145ef299ec4 191
+src-tauri/src/services/ui_automation.rs
+  s_c3d8cdc17649f7::t_82b5d9dc3320b5 1518-1530,1556-1563,2559-2578
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "66771b8715ac9907b0342d90deac0f9220127e83",
+  "prompts": {},
+  "sessions": {
+    "s_1e114e823b9048": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ee90270d-16ad-42ec-89fa-b2cfc0714996",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    },
+    "s_c3d8cdc17649f7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "55e5fea9-bdf6-43a0-8049-9d58f09397c5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
