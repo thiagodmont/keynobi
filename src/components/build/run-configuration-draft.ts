@@ -16,6 +16,8 @@ export interface RunConfigurationDraft {
   logcatFilter: string;
   /** The target as a select value (see `targetValue`). */
   target: string;
+  /** Kept in the project's shared file rather than on this Mac. */
+  shared: boolean;
 }
 
 /** The task Run builds when a configuration names none: `:app:assembleDebug`. */
@@ -44,7 +46,8 @@ export function parseTarget(value: string): TargetPreference {
 export function draftFrom(
   config: RunConfiguration,
   target: TargetPreference,
-  savedName: string | null = config.name
+  savedName: string | null = config.name,
+  shared = false
 ): RunConfigurationDraft {
   return {
     savedName,
@@ -57,6 +60,7 @@ export function draftFrom(
     uri: config.launch.kind === "deepLink" ? config.launch.uri : "",
     logcatFilter: config.logcatFilter ?? "",
     target: targetValue(target),
+    shared,
   };
 }
 

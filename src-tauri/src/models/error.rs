@@ -33,6 +33,11 @@ pub enum AppError {
 
     #[error("{0}")]
     Other(String),
+
+    /// The user must approve the action first (a shared run configuration
+    /// the project's file changed since it was approved).
+    #[error("Approval required: {0}")]
+    ApprovalRequired(String),
 }
 
 impl AppError {

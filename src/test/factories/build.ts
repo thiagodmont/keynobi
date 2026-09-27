@@ -139,12 +139,25 @@ export function makeRunConfiguration(overrides: Partial<RunConfiguration> = {}):
   };
 }
 
-/** A project's configurations as `list_run_configurations` returns them; the first is active. */
+/**
+ * A project's configurations as `list_run_configurations` returns them; the
+ * first is active. `shared` names those read from the project's shared file.
+ */
 export function makeProjectRunConfigurations(
   configurations: RunConfiguration[] = [makeRunConfiguration()],
-  targets: Record<string, TargetPreference> = {}
+  targets: Record<string, TargetPreference> = {},
+  shared: string[] = []
 ): ProjectRunConfigurations {
   return {
+    shared,
+    sharedFile: shared.length
+      ? {
+          path: ".keynobi/run-configurations.json",
+          sha256: "a".repeat(64),
+          error: null,
+          problems: [],
+        }
+      : null,
     configurations,
     active: configurations[0]?.name ?? null,
     local: Object.fromEntries(

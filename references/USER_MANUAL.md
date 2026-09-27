@@ -137,7 +137,7 @@ Builds need a trusted project; in Safe Mode every build action is disabled (see 
 
 ### Run configurations
 
-A run configuration says what **Run App** and **Build Only** do: the application module and variant, the Gradle task, the device, what to launch, and the Logcat filter to apply after the launch. Configurations belong to the project and are kept on this Mac.
+A run configuration says what **Run App** and **Build Only** do: the application module and variant, the Gradle task, the device, what to launch, and the Logcat filter to apply after the launch. Configurations belong to the project and are kept on this Mac, unless you share them with the project.
 
 - **Choose one**: the picker left of **Run App** in the title bar lists the project's configurations and shows the active one. Choosing one makes it active; the variant pill follows its module and variant. From the Command Palette, **Select Run Configuration…** moves focus to the picker.
 - **Edit them**: choose **Edit Configurations…** at the bottom of the picker, or **Edit Run Configurations…** in the Command Palette. The editor lists the configurations (the active one is marked **Active**) with **Add**, **Duplicate**, and **Delete**, and edits the selected one:
@@ -146,10 +146,13 @@ A run configuration says what **Run App** and **Build Only** do: the application
   - **Target device**: **Ask each time**, **Last used device** (the device it last ran on, else the selected one), an online device, or an AVD.
   - **Launch**: the default activity, an activity (`.SettingsActivity`), a deep link (`myapp://home`), or nothing (install only).
   - **Logcat filter**: a query in the Logcat query bar's syntax, checked as you type. Empty keeps the current filter and adds `package:mine`.
-  - **Resolved plan**: what Run App would do with the saved configuration now, for example **Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine**, or why it cannot run. When it runs on an AVD that is not running, **Launch AVD** starts it.
+  - **Share with project**: saves the configuration in the project's `.keynobi/run-configurations.json`, to commit so everyone who opens the project gets it. Only the module, variant, task, launch, and Logcat filter are shared; the target device, the last device, and your approvals stay on this Mac. Shared configurations are marked **Shared**. Unchecking it moves the configuration back to this Mac and out of the file.
+  - **Resolved plan**: what Run App would do with the saved configuration now, for example **Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine**, or why it cannot run. When it runs on an AVD that is not running, **Launch AVD** starts it. When a shared configuration needs your approval, **Approve…** asks for it.
 
   **Save** checks the configuration against the project and shows any problem next to the form, saving nothing. Closing the editor, or selecting another configuration, with unsaved changes asks before discarding them.
 - **Run one without choosing it**: the Command Palette has **Run: <name>** and **Build: <name>** for each configuration of the open project.
+- **Shared configurations**: Keynobi reads `.keynobi/run-configurations.json` each time it lists or runs configurations, also in Safe Mode, so a pulled change shows up without reopening the project. Shared configurations follow yours in the picker. When one of yours has the same name, yours is used and the editor says so. When the file cannot be used (not valid JSON, larger than 64 KiB, an unknown field, or another `schemaVersion`), or a configuration in it does not fit the project, the editor lists why above the configurations and offers the rest; Keynobi does not change the file until it is fixed.
+- **Approving a shared configuration**: a shared configuration that builds a task other than an `assemble` task, or opens a deep link, runs only after you approve it. **Run App**, **Build Only**, or **Approve…** in the editor shows why and asks **Approve shared run configuration?**. Your approval is for the file as it is now: when the file changes (for example after a pull), Keynobi asks again. **Cancel** runs nothing.
 
 Builds an attached AI client starts show in the Build tab like your own, labelled **Started by an agent (client name)**, with their output, errors, and result. Keynobi never installs or launches an AI client's build. While it runs, **Build** is disabled and its tooltip says which agent is building; you can still cancel it.
 

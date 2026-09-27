@@ -10,6 +10,7 @@ export type LocalRunState = { target: TargetPreference,
  */
 lastDevice: string | null, 
 /**
- * SHA-256 of the shared configuration file the user last approved.
+ * SHA-256 of the project's shared configuration file when the user last
+ * approved running this shared configuration.
  */
 approvedProjectFileSha256: string | null, };

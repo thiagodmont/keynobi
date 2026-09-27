@@ -42,14 +42,17 @@ pub async fn list_run_configurations(
 }
 
 /// Save a run configuration of the open project, replacing the one of the
-/// same name.
+/// same name. `shared` moves it into the project's shared file (`true`) or
+/// back to the local configurations (`false`); without it, it stays where it
+/// is.
 #[tauri::command]
 pub async fn save_run_configuration(
     config: RunConfiguration,
+    shared: Option<bool>,
     fs_state: State<'_, FsState>,
 ) -> Result<ProjectRunConfigurations, AppError> {
     let project_root = open_project_root(&fs_state).await?;
-    blocking(move || run_configurations::save(&project_root, config)).await
+    blocking(move || run_configurations::save(&project_root, config, shared)).await
 }
 
 /// Delete a run configuration of the open project.
@@ -166,6 +169,18 @@ pub async fn set_run_configuration_target(
 ) -> Result<ProjectRunConfigurations, AppError> {
     let project_root = open_project_root(&fs_state).await?;
     blocking(move || run_configurations::set_target(&project_root, &name, target)).await
+}
+
+/// Approve running the shared configuration named `name` as the project's
+/// shared file is now; `sha256` is the file's hash the user reviewed.
+#[tauri::command]
+pub async fn approve_shared_run_configuration(
+    name: String,
+    sha256: String,
+    fs_state: State<'_, FsState>,
+) -> Result<ProjectRunConfigurations, AppError> {
+    let project_root = open_project_root(&fs_state).await?;
+    blocking(move || run_configurations::approve_shared(&project_root, &name, &sha256)).await
 }
 
 /// Remember the device a run of the configuration named `name` installed on.

@@ -10,6 +10,10 @@ export interface E2EBridge {
   addPastBuild: (build: MockPastBuild) => number;
   /** Slows down builds the app starts (default 80 ms per output line). */
   setAppBuildLineDelay: (ms: number) => void;
+  /** The mock project's shared run configuration file, as on disk; null when absent. */
+  sharedRunConfigurationsFile: () => string | null;
+  /** Replace the shared file, as a pulled commit would. */
+  setSharedRunConfigurationsFile: (text: string | null) => void;
 }
 
 declare global {

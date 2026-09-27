@@ -270,3 +270,67 @@ test("an agent's build shows who started it and can be cancelled from the app", 
     page.getByText("Build cancelled · Started by an agent (Claude Code) · Cancelled in Keynobi")
   ).toBeVisible({ timeout: 5_000 });
 });
+
+test("a configuration shared with the project is written to its file and approved before it builds", async ({
+  page,
+}) => {
+  await selectMockProject(page);
+  const picker = page.getByRole("combobox", { name: "Run configuration" });
+  await expect(picker).toHaveValue("Default", { timeout: 5_000 });
+
+  await picker.selectOption({ label: "Edit Configurations…" });
+  const editor = page.getByRole("dialog", { name: "Run Configurations" });
+  await editor.getByRole("button", { name: "Add" }).click();
+  await editor.getByLabel("Name", { exact: true }).fill("Bundle");
+  await editor.getByLabel("Gradle task", { exact: true }).fill(":app:bundleDebug");
+  await editor.getByRole("checkbox", { name: "Share with project" }).check();
+  await editor.getByRole("button", { name: "Save" }).click();
+
+  await expect(
+    editor.getByRole("listbox", { name: "Run configurations" }).getByRole("option", {
+      name: /Bundle/,
+    })
+  ).toContainText("Shared");
+  const file = await page.evaluate(() => window.__e2e__.sharedRunConfigurationsFile());
+  expect(JSON.parse(file ?? "null")).toEqual({
+    schemaVersion: 1,
+    configurations: [
+      {
+        name: "Bundle",
+        module: ":app",
+        variant: "debug",
+        task: ":app:bundleDebug",
+        logcatFilter: "package:mine",
+      },
+    ],
+  });
+  // A task outside assemble* needs approval before it runs.
+  await expect(editor.getByText(/You have not approved it yet/)).toBeVisible();
+  await editor.getByRole("button", { name: "Close" }).click();
+  await expect(editor).toBeHidden();
+
+  await picker.selectOption("Bundle");
+  await page.getByRole("tab", { name: "Build" }).click();
+  await page.getByTitle(/Build only/i).click();
+  const approval = page.getByRole("dialog", { name: "Approve shared run configuration?" });
+  await expect(approval).toContainText("builds :app:bundleDebug, which is not an assemble task");
+  await approval.getByRole("button", { name: "Approve" }).click();
+
+  await expect(page.getByText("Build 'Bundle': build :app:bundleDebug")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByText(/BUILD SUCCESSFUL in 4s/i)).toBeVisible({ timeout: 10_000 });
+
+  // A pulled change to the file asks again.
+  await page.evaluate(() =>
+    window.__e2e__.setSharedRunConfigurationsFile(
+      (window.__e2e__.sharedRunConfigurationsFile() ?? "").replace("bundleDebug", "bundleRelease")
+    )
+  );
+  await page.getByTitle(/Build only/i).click();
+  await expect(approval).toContainText("The file changed since you approved it.");
+  await approval.getByRole("button", { name: "Cancel" }).click();
+  await expect(
+    page.getByText("The shared run configuration was not approved — build cancelled.")
+  ).toBeVisible();
+});

@@ -1,12 +1,14 @@
 import type {
   AppError,
   Device,
+  LocalRunState,
   ProjectAppInfo,
   ProjectEntry,
   ProjectRunConfigurations,
   ResolvedRun,
   RunConfiguration,
   RunDevice,
+  SharedRunConfigurationsFile,
   TargetPreference,
 } from "@/bindings";
 import { mockDeviceSelection } from "./devices";
@@ -28,6 +30,107 @@ const MAX_MOCK_RUN_CONFIGURATIONS = 32;
 
 function appError(kind: AppError["kind"], message: string): AppError {
   return { kind, message } as AppError;
+}
+
+/** The mock project's shared file, as the backend's `.keynobi/run-configurations.json`. */
+const SHARED_FILE = ".keynobi/run-configurations.json";
+
+/** The shared file's text; null when the mock project has none. */
+let mockSharedFile: string | null = null;
+
+/** The text of the mock project's shared file, as a test would read it on disk. */
+export function mockSharedRunConfigurationsFile(): string | null {
+  return mockSharedFile;
+}
+
+/** Replace the shared file, as a pulled commit would. */
+export function setMockSharedRunConfigurationsFile(text: string | null): void {
+  mockSharedFile = text;
+}
+
+/** A stand-in for the file's SHA-256: 64 hex characters that change with the text. */
+function mockSha256(text: string): string {
+  let out = "";
+  for (let seed = 0; out.length < 64; seed++) {
+    let hash = 0x811c9dc5 ^ seed;
+    for (let i = 0; i < text.length; i++) {
+      hash = Math.imul(hash ^ text.charCodeAt(i), 0x01000193) >>> 0;
+    }
+    out += hash.toString(16).padStart(8, "0");
+  }
+  return out.slice(0, 64);
+}
+
+/** The shared file's configurations, or the reason it cannot be used. */
+function readMockSharedFile(): { configurations: RunConfiguration[]; error: string | null } {
+  if (mockSharedFile === null) return { configurations: [], error: null };
+  try {
+    const parsed = JSON.parse(mockSharedFile) as {
+      schemaVersion?: number;
+      configurations?: Partial<RunConfiguration>[];
+    };
+    if (parsed.schemaVersion !== 1) {
+      return { configurations: [], error: "It has no schemaVersion (expected 1)." };
+    }
+    return {
+      configurations: (parsed.configurations ?? []).map((c) => ({
+        name: c.name ?? "",
+        module: c.module ?? ":app",
+        variant: c.variant ?? "debug",
+        task: c.task ?? null,
+        launch: c.launch ?? { kind: "default" },
+        logcatFilter: c.logcatFilter ?? null,
+      })),
+      error: null,
+    };
+  } catch (e) {
+    return { configurations: [], error: `It is not valid JSON: ${String(e)}.` };
+  }
+}
+
+/** Write the shared file with only the portable fields, or remove it when empty. */
+function writeMockSharedFile(configurations: RunConfiguration[]): void {
+  if (readMockSharedFile().error) {
+    throw appError(
+      "invalidInput",
+      `The project's shared run configurations (${SHARED_FILE}) cannot be changed because the file cannot be used. Fix or remove the file first.`
+    );
+  }
+  if (configurations.length === 0) {
+    mockSharedFile = null;
+    return;
+  }
+  const portable = configurations.map((c) => ({
+    name: c.name,
+    module: c.module,
+    variant: c.variant,
+    ...(c.task ? { task: c.task } : {}),
+    ...(c.launch.kind !== "default" ? { launch: c.launch } : {}),
+    ...(c.logcatFilter ? { logcatFilter: c.logcatFilter } : {}),
+  }));
+  mockSharedFile = `${JSON.stringify({ schemaVersion: 1, configurations: portable }, null, 2)}\n`;
+}
+
+function sameName(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}
+
+/** Shared configurations no local one hides, as the backend merges them. */
+function visibleShared(): RunConfiguration[] {
+  const locals = mockProject.runConfigurations ?? [];
+  return readMockSharedFile().configurations.filter(
+    (shared) => !locals.some((local) => sameName(local.name, shared.name))
+  );
+}
+
+function localStateOf(name: string): LocalRunState {
+  return (
+    mockProject.runLocal?.[name] ?? {
+      target: { kind: "lastUsed" },
+      lastDevice: null,
+      approvedProjectFileSha256: null,
+    }
+  );
 }
 
 /**
@@ -55,10 +158,28 @@ function mockRunConfigurations(): ProjectRunConfigurations {
     };
     mockProject.activeRunConfiguration = "Default";
   }
+  const shared = visibleShared();
+  const { configurations: inFile, error } = readMockSharedFile();
+  const sharedFile: SharedRunConfigurationsFile | null =
+    mockSharedFile === null
+      ? null
+      : {
+          path: SHARED_FILE,
+          sha256: mockSha256(mockSharedFile),
+          error,
+          problems: inFile
+            .filter((c) => !shared.includes(c))
+            .map((c) => ({
+              name: c.name,
+              message: "Your local configuration has the same name and is used instead.",
+            })),
+        };
   return {
-    configurations: [...mockProject.runConfigurations],
+    configurations: [...mockProject.runConfigurations, ...shared],
     active: mockProject.activeRunConfiguration ?? null,
     local: { ...mockProject.runLocal },
+    shared: shared.map((c) => c.name),
+    sharedFile,
   };
 }
 
@@ -163,6 +284,23 @@ function mockResolveRun(args: unknown): ResolvedRun {
       "This project is not trusted, so Keynobi will not run its Gradle build scripts."
     );
   }
+  if (project.shared.includes(config.name)) {
+    const reasons: string[] = [];
+    const taskName = task.split(":").pop() ?? task;
+    if (!taskName.startsWith("assemble")) {
+      reasons.push(`builds ${task}, which is not an assemble task`);
+    }
+    if (!buildOnly && config.launch.kind === "deepLink") {
+      reasons.push(`opens the deep link ${config.launch.uri}`);
+    }
+    const approved = localStateOf(config.name).approvedProjectFileSha256;
+    if (reasons.length && approved !== project.sharedFile?.sha256) {
+      throw appError(
+        "approvalRequired",
+        `Run configuration '${config.name}' is shared with the project (${SHARED_FILE}) and ${reasons.join(" and ")}. ${approved ? "The file changed since you approved it." : "You have not approved it yet."} Review it, then approve it to run it.`
+      );
+    }
+  }
   const device = buildOnly ? null : mockRunTarget(config, selectedSerial ?? null);
   return {
     name: config.name,
@@ -180,8 +318,9 @@ export function projectHandlers(): Record<string, (args: unknown) => unknown> {
   return {
     list_run_configurations: () => mockRunConfigurations(),
     save_run_configuration: (args) => {
-      const { config } = args as { config: RunConfiguration };
-      const configurations = mockRunConfigurations().configurations;
+      const { config, shared } = args as { config: RunConfiguration; shared?: boolean | null };
+      const isShared = mockRunConfigurations().shared.includes(config.name);
+      const toShared = shared ?? isShared;
       if (config.module !== ":app") {
         throw appError(
           "invalidInput",
@@ -197,6 +336,27 @@ export function projectHandlers(): Record<string, (args: unknown) => unknown> {
           `The task '${config.task}' is not a task of ${config.module}: name it in the module (for example ${config.module}:assembleDebug).`
         );
       }
+      if (toShared) {
+        const inFile = readMockSharedFile().configurations;
+        const index = inFile.findIndex((c) => sameName(c.name, config.name));
+        if (index < 0) inFile.push(config);
+        else inFile[index] = config;
+        writeMockSharedFile(inFile);
+        mockProject.runConfigurations = mockProject.runConfigurations?.filter(
+          (c) => c.name !== config.name
+        );
+        mockProject.runLocal = {
+          ...mockProject.runLocal,
+          [config.name]: localStateOf(config.name),
+        };
+        return mockRunConfigurations();
+      }
+      if (isShared) {
+        writeMockSharedFile(
+          readMockSharedFile().configurations.filter((c) => c.name !== config.name)
+        );
+      }
+      const configurations = [...(mockProject.runConfigurations ?? [])];
       const index = configurations.findIndex((c) => c.name === config.name);
       if (index < 0 && configurations.length >= MAX_MOCK_RUN_CONFIGURATIONS) {
         throw appError(
@@ -207,19 +367,15 @@ export function projectHandlers(): Record<string, (args: unknown) => unknown> {
       if (index < 0) configurations.push(config);
       else configurations[index] = config;
       mockProject.runConfigurations = configurations;
-      mockProject.runLocal = {
-        [config.name]: {
-          target: { kind: "lastUsed" },
-          lastDevice: null,
-          approvedProjectFileSha256: null,
-        },
-        ...mockProject.runLocal,
-      };
+      mockProject.runLocal = { ...mockProject.runLocal, [config.name]: localStateOf(config.name) };
       return mockRunConfigurations();
     },
     delete_run_configuration: (args) => {
       const { name } = args as { name: string };
       requireRunConfiguration(name);
+      if (mockRunConfigurations().shared.includes(name)) {
+        writeMockSharedFile(readMockSharedFile().configurations.filter((c) => c.name !== name));
+      }
       mockProject.runConfigurations = mockProject.runConfigurations?.filter((c) => c.name !== name);
       const local = { ...mockProject.runLocal };
       delete local[name];
@@ -228,6 +384,24 @@ export function projectHandlers(): Record<string, (args: unknown) => unknown> {
       return mockRunConfigurations();
     },
     resolve_run_configuration: (args) => mockResolveRun(args),
+    approve_shared_run_configuration: (args) => {
+      const { name, sha256 } = args as { name: string; sha256: string };
+      const project = mockRunConfigurations();
+      if (!project.shared.includes(name)) {
+        throw appError("notFound", `There is no shared run configuration named '${name}'.`);
+      }
+      if (project.sharedFile?.sha256 !== sha256) {
+        throw appError(
+          "invalidInput",
+          `The project's shared run configurations (${SHARED_FILE}) changed since you reviewed them. Review them again.`
+        );
+      }
+      mockProject.runLocal = {
+        ...mockProject.runLocal,
+        [name]: { ...localStateOf(name), approvedProjectFileSha256: sha256 },
+      };
+      return mockRunConfigurations();
+    },
     list_application_modules: () => [":app"],
     set_run_configuration_target: (args) => {
       const { name, target } = args as { name: string; target: TargetPreference };

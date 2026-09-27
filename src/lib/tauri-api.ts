@@ -123,15 +123,31 @@ export async function listRunConfigurations(
 
 /**
  * Save a run configuration of the open project, replacing the one of the
- * same name. Rejects with `invalidInput` naming the field that is not valid.
+ * same name. `shared` moves it into the project's shared file (`true`) or
+ * back to the local configurations (`false`); without it, it stays where it
+ * is. Rejects with `invalidInput` naming the field that is not valid, or when
+ * the shared file cannot be rewritten.
  */
 export async function saveRunConfiguration(
-  config: RunConfiguration
+  config: RunConfiguration,
+  shared: boolean | null = null
 ): Promise<ProjectRunConfigurations> {
-  return invoke<ProjectRunConfigurations>("save_run_configuration", { config });
+  return invoke<ProjectRunConfigurations>("save_run_configuration", { config, shared });
 }
 
-/** Delete a run configuration of the open project. */
+/**
+ * Approve running a shared run configuration as the project's shared file is
+ * now; `sha256` is the file's hash the user reviewed. Rejects with
+ * `invalidInput` when the file changed since.
+ */
+export async function approveSharedRunConfiguration(
+  name: string,
+  sha256: string
+): Promise<ProjectRunConfigurations> {
+  return invoke<ProjectRunConfigurations>("approve_shared_run_configuration", { name, sha256 });
+}
+
+/** Delete a run configuration of the open project (from the shared file when it is shared). */
 export async function deleteRunConfiguration(name: string): Promise<ProjectRunConfigurations> {
   return invoke<ProjectRunConfigurations>("delete_run_configuration", { name });
 }
@@ -161,7 +177,9 @@ export async function setRunConfigurationTarget(
  * this run (default: the backend's selection), which a target of `ask`, or
  * `lastUsed` without its last device, runs on. Rejects with `notFound` when
  * the target finds no online device, `invalidInput` when no configuration is
- * active or it no longer fits the project, and `permissionDenied` in Safe Mode.
+ * active or it no longer fits the project, `permissionDenied` in Safe Mode,
+ * and `approvalRequired` for a shared configuration the user must approve
+ * first (`approveSharedRunConfiguration`).
  */
 export async function resolveRunConfiguration(
   opts: { name?: string | null; selectedSerial?: string | null; buildOnly?: boolean } = {}

@@ -208,7 +208,8 @@ fn error_message(e: AppError) -> String {
         | AppError::ProcessFailed(m)
         | AppError::SettingsError(m)
         | AppError::McpError(m)
-        | AppError::Other(m) => m,
+        | AppError::Other(m)
+        | AppError::ApprovalRequired(m) => m,
     }
 }
 

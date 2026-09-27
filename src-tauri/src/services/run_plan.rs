@@ -8,7 +8,9 @@ use crate::models::run_configuration::{
     LocalRunState, ProjectRunConfigurations, ResolvedRun, RunConfiguration, RunDevice, RunLaunch,
     TargetPreference,
 };
-use crate::services::{gradle_modules, project_trust, run_configurations, settings_manager};
+use crate::services::{
+    gradle_modules, project_trust, run_configurations, settings_manager, shared_run_configurations,
+};
 use std::path::Path;
 
 /// The logcat filter a launch applies when its configuration names none.
@@ -48,8 +50,10 @@ pub struct Devices<'a> {
 /// # Errors
 /// `invalidInput` when no configuration is active or the configuration no
 /// longer fits the project (module, variant, task, launch), `permissionDenied`
-/// in Safe Mode, and `notFound` when the configuration does not exist or its
-/// target finds no online device.
+/// in Safe Mode, `approvalRequired` for a shared configuration that needs the
+/// user's approval of the project's shared file as it is now (see
+/// [`check_approval`]), and `notFound` when the configuration does not exist
+/// or its target finds no online device.
 pub fn resolve(
     project: RunProject<'_>,
     request: &RunRequest,
@@ -75,14 +79,15 @@ pub fn resolve_at(
     let settings = settings_manager::load_settings_at_path(settings_path);
     project_trust::require_trusted(&settings, project.trust_root)
         .map_err(AppError::PermissionDenied)?;
+    let local = configurations
+        .local
+        .get(&config.name)
+        .cloned()
+        .unwrap_or_default();
+    check_approval(&configurations, config, &local, &task, !request.build_only)?;
     let device = if request.build_only {
         None
     } else {
-        let local = configurations
-            .local
-            .get(&config.name)
-            .cloned()
-            .unwrap_or_default();
         Some(target(config, &local, devices)?)
     };
     let plan = describe(config, &task, device.as_ref());
@@ -96,6 +101,46 @@ pub fn resolve_at(
         device,
         plan,
     })
+}
+
+/// A shared configuration whose task is outside `assemble*`, or that opens a
+/// deep link when it `launches`, runs only once the user approved it for the
+/// project's shared file as it is now (`approved_project_file_sha256`): a
+/// pulled change to the file asks again.
+fn check_approval(
+    configurations: &ProjectRunConfigurations,
+    config: &RunConfiguration,
+    local: &LocalRunState,
+    task: &str,
+    launches: bool,
+) -> Result<(), AppError> {
+    if !configurations.shared.contains(&config.name) {
+        return Ok(());
+    }
+    let reasons = shared_run_configurations::needs_approval(config, task, launches);
+    if reasons.is_empty() {
+        return Ok(());
+    }
+    let sha256 = configurations
+        .shared_file
+        .as_ref()
+        .and_then(|f| f.sha256.as_deref());
+    let approved = local.approved_project_file_sha256.as_deref();
+    if sha256.is_some() && approved == sha256 {
+        return Ok(());
+    }
+    Err(AppError::ApprovalRequired(format!(
+        "Run configuration '{}' is shared with the project ({}) and {}. {} Review it, then \
+         approve it to run it.",
+        config.name,
+        shared_run_configurations::SHARED_FILE,
+        reasons.join(" and "),
+        if approved.is_some() {
+            "The file changed since you approved it."
+        } else {
+            "You have not approved it yet."
+        }
+    )))
 }
 
 /// The configuration named `name`, else the active one.
@@ -343,7 +388,7 @@ mod tests {
         }
 
         fn save(&self, config: RunConfiguration) {
-            run_configurations::save_at(&self.path, &self.root(), config).unwrap();
+            run_configurations::save_at(&self.path, &self.root(), config, None).unwrap();
         }
 
         fn set_active(&self, name: &str) {
@@ -922,5 +967,129 @@ mod tests {
         );
         let resolved = f.resolve(run(), on(&both, Some("28151FDH2000Q4"))).unwrap();
         assert_eq!(resolved.device.unwrap().serial, "emulator-5554");
+    }
+
+    // ── Shared configurations ────────────────────────────────────────────────
+
+    fn share(f: &Fixture, configurations: &str) {
+        write(
+            f.project.path(),
+            crate::services::shared_run_configurations::SHARED_FILE,
+            &format!(r#"{{"schemaVersion": 1, "configurations": [{configurations}]}}"#),
+        );
+    }
+
+    fn named(name: &str) -> RunRequest {
+        RunRequest {
+            name: Some(name.into()),
+            ..run()
+        }
+    }
+
+    fn build_only(name: &str) -> RunRequest {
+        RunRequest {
+            build_only: true,
+            ..named(name)
+        }
+    }
+
+    fn approve(f: &Fixture, name: &str) {
+        let sha = run_configurations::list_at(&f.path, &f.root())
+            .unwrap()
+            .shared_file
+            .unwrap()
+            .sha256
+            .unwrap();
+        run_configurations::approve_shared_at(&f.path, &f.root(), name, &sha).unwrap();
+    }
+
+    const BUNDLE: &str =
+        r#"{"name": "Bundle", "module": ":app", "variant": "debug", "task": ":app:bundleDebug"}"#;
+
+    #[test]
+    fn a_shared_task_outside_assemble_runs_once_approved_and_asks_again_after_the_file_changes() {
+        let f = Fixture::new(&[":app"], Some(true));
+        share(&f, BUNDLE);
+        let devices = [pixel()];
+
+        let err = f
+            .resolve(named("Bundle"), on(&devices, Some("emulator-5554")))
+            .unwrap_err();
+        assert!(matches!(err, AppError::ApprovalRequired(_)), "{err:?}");
+        assert!(message(err).contains(
+            "Run configuration 'Bundle' is shared with the project \
+             (.keynobi/run-configurations.json) and builds :app:bundleDebug, which is not an \
+             assemble task. You have not approved it yet."
+        ));
+        // Build Only asks too.
+        let err = f.resolve(build_only("Bundle"), on(&[], None)).unwrap_err();
+        assert!(matches!(err, AppError::ApprovalRequired(_)), "{err:?}");
+
+        approve(&f, "Bundle");
+        let resolved = f
+            .resolve(named("Bundle"), on(&devices, Some("emulator-5554")))
+            .unwrap();
+        assert_eq!(resolved.task, ":app:bundleDebug");
+        f.resolve(build_only("Bundle"), on(&[], None)).unwrap();
+
+        // A pulled change to the file asks again.
+        share(&f, &BUNDLE.replace("bundleDebug", "bundleRelease"));
+        let err = f
+            .resolve(named("Bundle"), on(&devices, Some("emulator-5554")))
+            .unwrap_err();
+        assert!(matches!(err, AppError::ApprovalRequired(_)), "{err:?}");
+        assert!(message(err).contains("The file changed since you approved it."));
+        approve(&f, "Bundle");
+        f.resolve(named("Bundle"), on(&devices, Some("emulator-5554")))
+            .unwrap();
+    }
+
+    #[test]
+    fn a_shared_deep_link_needs_approval_to_run_but_not_to_build() {
+        let f = Fixture::new(&[":app"], Some(true));
+        share(
+            &f,
+            r#"{"name": "Pay", "module": ":app", "variant": "debug",
+                "launch": {"kind": "deepLink", "uri": "myapp://pay"}}"#,
+        );
+
+        let err = f
+            .resolve(named("Pay"), on(&[pixel()], Some("emulator-5554")))
+            .unwrap_err();
+
+        assert!(matches!(err, AppError::ApprovalRequired(_)), "{err:?}");
+        assert!(message(err).contains("opens the deep link myapp://pay"));
+        f.resolve(build_only("Pay"), on(&[], None)).unwrap();
+    }
+
+    #[test]
+    fn shared_assemble_tasks_and_local_configurations_need_no_approval() {
+        let f = Fixture::new(&[":app"], Some(true));
+        share(
+            &f,
+            r#"{"name": "Phone", "module": ":app", "variant": "debug", "task": ":app:assembleDebug"}"#,
+        );
+        f.save(RunConfiguration {
+            task: Some(":app:bundleDebug".into()),
+            launch: RunLaunch::DeepLink {
+                uri: "myapp://pay".into(),
+            },
+            ..config("Local", ":app")
+        });
+
+        for name in ["Phone", "Local"] {
+            f.resolve(named(name), on(&[pixel()], Some("emulator-5554")))
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn safe_mode_refuses_a_shared_configuration_before_asking_for_approval() {
+        let f = Fixture::new(&[":app"], Some(false));
+        share(&f, BUNDLE);
+
+        let err = f.resolve(build_only("Bundle"), on(&[], None)).unwrap_err();
+
+        assert!(matches!(err, AppError::PermissionDenied(_)), "{err:?}");
     }
 }

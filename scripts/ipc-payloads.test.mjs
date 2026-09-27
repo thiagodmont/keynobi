@@ -327,6 +327,18 @@ describe("the mock backend matches the real payloads", () => {
     });
     // That crash is on the first session, with the lines kept around it.
     const detail = await handleInvoke("get_debug_session", { id: mockSessionId(1) });
+    // A configuration shared with the project, to approve; saved and deleted below.
+    await handleInvoke("save_run_configuration", {
+      config: {
+        name: "Wear deep link",
+        module: ":app",
+        variant: "debug",
+        task: ":app:bundleDebug",
+        launch: { kind: "default" },
+        logcatFilter: null,
+      },
+      shared: true,
+    });
     const args = {
       get_build_log_entries: { id: addMockPastBuild({ task: "assembleDebug", state: "success" }) },
       launch_app_on_device: { serial: "emulator-5554", package: "com.example.mockapp" },
@@ -350,10 +362,19 @@ describe("the mock backend matches the real payloads", () => {
       record_run_device: { name: "Default", serial: "emulator-5554" },
       set_run_configuration_target: { name: "Default", target: { kind: "lastUsed" } },
       resolve_run_configuration: { selectedSerial: "emulator-5554" },
+      // The file's hash as it is when approving.
+      approve_shared_run_configuration: async () => ({
+        name: "Wear deep link",
+        sha256: (await handleInvoke("list_run_configurations")).sharedFile.sha256,
+      }),
     };
     for (const [command, type] of invokedTypes()) {
       if (!isNamedType(type)) continue;
-      const response = await handleInvoke(command, args[command] ?? {});
+      const arg = args[command];
+      const response = await handleInvoke(
+        command,
+        (typeof arg === "function" ? await arg() : arg) ?? {}
+      );
       checked++;
       for (const problem of mismatchesAgainst(response, type)) {
         problems.push(`${command} (${type}) ${problem}`);

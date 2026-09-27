@@ -44,7 +44,11 @@ import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { buildRunningLabel } from "@/lib/build-actor";
 import { describeDisplayTimes, formatLaunchTime } from "@/lib/launch-timing";
 import type { BuildError, ResolvedRun, RunApk, TargetPreference } from "@/bindings";
-import { launchRunAvd, setRunConfigurationRunner } from "@/services/run-configurations.service";
+import {
+  launchRunAvd,
+  resolveApprovedRun,
+  setRunConfigurationRunner,
+} from "@/services/run-configurations.service";
 
 let buildUnlisteners: Array<() => void> | null = null;
 // Held so concurrent callers await the SAME registration. A plain
@@ -584,12 +588,16 @@ export async function runAndDeploy(name: string | null = null): Promise<void> {
 export async function runBuildOnly(name: string | null = null): Promise<void> {
   assertProjectTrusted();
   if (deployInFlight) throw new Error("A build or deploy is already running.");
-  let plan: ResolvedRun;
+  let plan: ResolvedRun | null;
   try {
-    plan = await resolveRunConfiguration({ name, buildOnly: true });
+    plan = await resolveApprovedRun({ name, buildOnly: true });
   } catch (e) {
     logError(`Build failed: ${formatError(e)}`);
     throw e;
+  }
+  if (!plan) {
+    logStep("The shared run configuration was not approved — build cancelled.");
+    return;
   }
   await runBuild(plan.task, { headerLines: [plan.plan] });
 }
@@ -607,11 +615,13 @@ async function resolveRunPlan(
   let failure: unknown;
   try {
     // The app's selection may be one the device list chose, not yet the backend's.
-    return await resolveRunConfiguration({
+    const plan = await resolveApprovedRun({
       name,
       buildOnly,
       selectedSerial: deviceState.selectedSerial,
     });
+    if (!plan) logStep("The shared run configuration was not approved — run cancelled.");
+    return plan;
   } catch (e) {
     failure = e;
   }
