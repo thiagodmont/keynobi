@@ -2,14 +2,15 @@
 
 use crate::models::debug_session::{
     DebugSessionCapture, DebugSessionDetail, DebugSessionEvent, DebugSessionExitRefresh,
-    DebugSessionSummary,
+    DebugSessionSummary, SessionExportOptions, SessionExportResult,
 };
 use crate::models::error::AppError;
 use crate::services::adb_manager::{get_adb_path, DeviceState};
 use crate::services::debug_sessions;
 use crate::services::installed_builds::InstallTarget;
 use crate::services::settings_manager;
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_dialog::DialogExt;
 
 async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> Result<T, AppError> + Send + 'static,
@@ -81,6 +82,41 @@ pub async fn get_session_capture(
     limit: Option<u32>,
 ) -> Result<DebugSessionCapture, AppError> {
     blocking(move || debug_sessions::get_capture(&id, seq, limit)).await
+}
+
+/// Save a debug session as a zip bundle, redacted as `options` says, to a
+/// file the user chooses in the save dialog. `None` when the dialog was
+/// cancelled.
+#[tauri::command]
+pub async fn export_debug_session(
+    app: AppHandle,
+    id: String,
+    options: SessionExportOptions,
+) -> Result<Option<SessionExportResult>, AppError> {
+    let name = {
+        let id = id.clone();
+        blocking(move || debug_sessions::export_file_name(&id)).await?
+    };
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("Zip archive", &["zip"])
+        .set_file_name(&name)
+        .save_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(path) = rx
+        .await
+        .map_err(|_| AppError::Other("Save dialog closed unexpectedly".into()))?
+    else {
+        return Ok(None);
+    };
+    let path = path
+        .into_path()
+        .map_err(|e| AppError::InvalidInput(e.to_string()))?;
+    blocking(move || debug_sessions::export_session_to(&id, &options, &path))
+        .await
+        .map(Some)
 }
 
 /// Read the app's exit reasons from the session's device and add those that

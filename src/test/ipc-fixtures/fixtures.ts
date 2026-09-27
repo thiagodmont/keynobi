@@ -49,6 +49,7 @@ import type {
   RunDevice,
   RunLaunch,
   SdkDownloadProgress,
+  SessionExportResult,
   SharedRunConfigurationProblem,
   SharedRunConfigurationsFile,
   SystemHealthReport,
@@ -2588,6 +2589,52 @@ export const typeFixtures = {
       "truncated": false
     }
   ] satisfies Wire<DebugSessionCapture>[],
+  SessionExportResult: [
+    {
+      "bytes": 48213,
+      "entries": [
+        "manifest.json",
+        "session.json",
+        "timeline.jsonl",
+        "logs/crash-4.log",
+        "redaction.json"
+      ],
+      "omitted": [
+        {
+          "item": "R8 mappings",
+          "reason": "never exported; the session names each by SHA-256 and map id"
+        }
+      ],
+      "path": "/Users/me/Desktop/keynobi-session-com.example.app-20260925.zip",
+      "redactions": [
+        {
+          "count": 0,
+          "enabled": true,
+          "rule": "emails"
+        },
+        {
+          "count": 1,
+          "enabled": true,
+          "rule": "secrets"
+        },
+        {
+          "count": 2,
+          "enabled": false,
+          "rule": "ipAddresses"
+        },
+        {
+          "count": 3,
+          "enabled": true,
+          "rule": "paths"
+        },
+        {
+          "count": 4,
+          "enabled": true,
+          "rule": "deviceSerials"
+        }
+      ]
+    }
+  ] satisfies Wire<SessionExportResult>[],
   DebugSessionExitRefresh: [
     {
       "added": 2,

@@ -11,6 +11,9 @@ import type {
   InstalledBuild,
   LaunchTiming,
   ProcessedEntry,
+  RedactionRule,
+  SessionExportOptions,
+  SessionExportResult,
 } from "@/bindings";
 
 /** Most sessions kept, as `MAX_SESSIONS` in the backend. */
@@ -269,6 +272,42 @@ export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
         MAX_MOCK_CAPTURE_ENTRIES
       );
       return { seq, entries: lines.slice(-keep), truncated: lines.length > keep };
+    },
+    // Like the backend after the user picked a file in its save dialog.
+    export_debug_session: (args: unknown): SessionExportResult => {
+      const { id, options } = args as { id: string; options: SessionExportOptions };
+      const entry = find(id);
+      const logs = options.includeCrashLogs
+        ? [...entry.captures.keys()].map((seq) => `logs/crash-${seq}.log`)
+        : [];
+      const omitted = [
+        {
+          item: "R8 mappings",
+          reason: "never exported; the session names each by SHA-256 and map id",
+        },
+      ];
+      if (!options.includeCrashLogs && entry.captures.size > 0) {
+        omitted.push({ item: "crash log lines", reason: "not selected" });
+      }
+      const rules = options.redaction;
+      const enabled: Record<RedactionRule, boolean> = {
+        emails: rules.emails,
+        secrets: rules.secrets,
+        ipAddresses: rules.ipAddresses,
+        paths: rules.paths,
+        deviceSerials: rules.deviceSerials,
+      };
+      return {
+        path: `/mock/Desktop/keynobi-session-${entry.session.package}.zip`,
+        bytes: 4096,
+        entries: ["manifest.json", "session.json", "timeline.jsonl", ...logs, "redaction.json"],
+        redactions: (Object.keys(enabled) as RedactionRule[]).map((rule) => ({
+          rule,
+          enabled: enabled[rule],
+          count: enabled[rule] && rule === "paths" ? 1 : 0,
+        })),
+        omitted,
+      };
     },
     refresh_session_exit_reasons: (args: unknown): DebugSessionExitRefresh => {
       find((args as { id: string }).id);

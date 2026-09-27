@@ -33,6 +33,7 @@ pub mod monitor;
 pub mod process_manager;
 pub mod project_app_info;
 pub mod project_trust;
+pub mod redaction;
 pub mod retrace;
 pub mod retrace_match;
 pub mod run_configurations;

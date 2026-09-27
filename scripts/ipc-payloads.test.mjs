@@ -367,6 +367,19 @@ describe("the mock backend matches the real payloads", () => {
         name: "Wear deep link",
         sha256: (await handleInvoke("list_run_configurations")).sharedFile.sha256,
       }),
+      export_debug_session: {
+        id: mockSessionId(1),
+        options: {
+          redaction: {
+            emails: true,
+            secrets: true,
+            ipAddresses: true,
+            paths: true,
+            deviceSerials: true,
+          },
+          includeCrashLogs: true,
+        },
+      },
     };
     for (const [command, type] of invokedTypes()) {
       if (!isNamedType(type)) continue;

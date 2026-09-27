@@ -14,6 +14,7 @@ import {
   attributionLabel,
   crashCountLabel,
   describeEvent,
+  exportResultLabel,
   isUnattributed,
   sessionBuildLabel,
   sessionDeviceLabel,
@@ -255,5 +256,38 @@ describe("sessionSourceLabel", () => {
     ).toBe("No commit (not a git repository)");
     expect(sessionSourceLabel(undefined)).toBe("Not recorded");
     expect(sessionSourceLabel(null)).toBe("Not recorded");
+  });
+});
+
+describe("exportResultLabel", () => {
+  const result = {
+    path: "/Users/me/Desktop/keynobi-session-com.example.app-20260925.zip",
+    bytes: 812,
+    entries: ["manifest.json"],
+    redactions: [
+      { rule: "emails" as const, enabled: true, count: 1 },
+      { rule: "ipAddresses" as const, enabled: true, count: 2 },
+      { rule: "deviceSerials" as const, enabled: false, count: 0 },
+    ],
+    omitted: [],
+  };
+
+  it("names the file, its size, what was redacted, and the rules turned off", () => {
+    expect(exportResultLabel(result)).toBe(
+      "Saved keynobi-session-com.example.app-20260925.zip (812 B). Redacted 1 email, 2 IP addresses. Not redacted: device serials."
+    );
+  });
+
+  it("says when nothing needed redacting and what was left out", () => {
+    expect(
+      exportResultLabel({
+        ...result,
+        bytes: 3 * 1024 * 1024,
+        redactions: [{ rule: "paths", enabled: true, count: 0 }],
+        omitted: [{ item: "R8 mappings", reason: "never exported" }],
+      })
+    ).toBe(
+      "Saved keynobi-session-com.example.app-20260925.zip (3.0 MB). Nothing needed redacting. Left out: R8 mappings."
+    );
   });
 });

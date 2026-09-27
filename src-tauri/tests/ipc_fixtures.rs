@@ -1334,6 +1334,33 @@ fn fixtures() -> Fixtures {
         ],
     );
     f.add(
+        "SessionExportResult",
+        &[SessionExportResult {
+            path: "/Users/me/Desktop/keynobi-session-com.example.app-20260925.zip".into(),
+            bytes: 48_213,
+            entries: vec![
+                "manifest.json".into(),
+                "session.json".into(),
+                "timeline.jsonl".into(),
+                "logs/crash-4.log".into(),
+                "redaction.json".into(),
+            ],
+            redactions: RedactionRule::ALL
+                .iter()
+                .enumerate()
+                .map(|(i, &rule)| RedactionCount {
+                    rule,
+                    enabled: i != 2,
+                    count: i as u32,
+                })
+                .collect(),
+            omitted: vec![SessionExportOmission {
+                item: "R8 mappings".into(),
+                reason: "never exported; the session names each by SHA-256 and map id".into(),
+            }],
+        }],
+    );
+    f.add(
         "DebugSessionExitRefresh",
         &[
             DebugSessionExitRefresh {
