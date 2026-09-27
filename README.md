@@ -45,7 +45,7 @@ Connect Keynobi to your agent once, then ask for things like:
 >
 > "Open the login screen, type a wrong password, and check which error message appears."
 
-Your agent gets 56 tools for builds, logcat, crashes, devices, and UI automation. Set it up from **Health Center**, which copies the exact command for your install, or run:
+Your agent gets 63 tools for builds, run configurations, logcat, crashes, debug sessions, devices, and UI automation. Set it up from **Health Center**, which copies the exact command for your install, or run:
 
 ```bash
 # Claude Code

@@ -5699,6 +5699,22 @@ mod tests {
         }
     }
 
+    /// The tool counts that the reference docs and the README state.
+    #[test]
+    fn the_documented_tool_counts_match_the_server() {
+        let count = headless_server().tool_router.list_all().len();
+        let reference = include_str!("../../../references/MCP_SERVER.md");
+        let readme = include_str!("../../../README.md");
+        assert!(
+            reference.contains(&format!("\n{count} tools. ")),
+            "references/MCP_SERVER.md does not say {count} tools"
+        );
+        assert!(
+            readme.contains(&format!("Your agent gets {count} tools ")),
+            "README.md does not say {count} tools"
+        );
+    }
+
     /// The UI and the MCP server share one build slot. Without it, an agent
     /// could start a second Gradle process against the same project and
     /// orphan the first.
