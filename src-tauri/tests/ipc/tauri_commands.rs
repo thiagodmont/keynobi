@@ -268,8 +268,11 @@ fn tauri_ipc_variant_discovery_runs_gradle_only_for_a_trusted_project() {
     .unwrap();
     // The fake gradlew prints no variants, so discovery still fails, but only
     // after running it.
-    let _ = get_ipc_response(&webview, request("get_variants_from_gradle", json!({})));
-    assert!(marker.exists(), "gradlew did not run for a trusted project");
+    let response = get_ipc_response(&webview, request("get_variants_from_gradle", json!({})));
+    assert!(
+        marker.exists(),
+        "gradlew did not run for a trusted project: {response:?}"
+    );
 }
 
 /// Trust `project` in the isolated settings.
