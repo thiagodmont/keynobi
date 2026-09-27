@@ -3,7 +3,8 @@
 use crate::models::build::BuildActor;
 use crate::models::debug_session::{
     DebugSessionAttachmentData, DebugSessionCapture, DebugSessionDetail, DebugSessionEvent,
-    DebugSessionExitRefresh, DebugSessionSummary, SessionExportOptions, SessionExportResult,
+    DebugSessionExitRefresh, DebugSessionHierarchy, DebugSessionSummary, SessionExportOptions,
+    SessionExportResult,
 };
 use crate::models::error::AppError;
 use crate::services::adb_manager::{get_adb_path, DeviceState};
@@ -175,4 +176,21 @@ pub async fn get_session_attachment(
     seq: u32,
 ) -> Result<DebugSessionAttachmentData, AppError> {
     blocking(move || debug_sessions::get_attachment(&id, seq)).await
+}
+
+/// Capture the UI hierarchy of an open debug session's device and attach it.
+#[tauri::command]
+pub async fn attach_session_hierarchy(id: String) -> Result<DebugSessionEvent, AppError> {
+    let (settings, _) = settings_manager::load_settings();
+    let adb = get_adb_path(&settings);
+    debug_sessions::attach_hierarchy(&id, &adb, BuildActor::App).await
+}
+
+/// The UI hierarchy of attachment event `seq` of a debug session.
+#[tauri::command]
+pub async fn get_session_hierarchy(
+    id: String,
+    seq: u32,
+) -> Result<DebugSessionHierarchy, AppError> {
+    blocking(move || debug_sessions::get_hierarchy(&id, seq)).await
 }

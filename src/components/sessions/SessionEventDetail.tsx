@@ -24,6 +24,7 @@ import {
   formatSessionTime,
 } from "./session-format";
 import { AttachmentImage } from "./SessionAttachments";
+import { SessionHierarchy } from "./SessionHierarchy";
 import styles from "./SessionsDialog.module.css";
 
 /** Log lines read per page of a capture. */
@@ -210,13 +211,16 @@ export function SessionEventDetail(props: {
       <Show when={props.event.kind === "exit" && props.event.data.record.description}>
         {(description) => <div class={styles.eventText}>{description()}</div>}
       </Show>
-      <Show when={props.event.kind === "attachment"}>
+      <Show when={props.event.kind === "attachment" && props.event.data.kind === "screenshot"}>
         <AttachmentImage
           sessionId={props.sessionId}
           seq={props.event.seq}
           alt={`Screenshot from ${formatSessionTime(props.event.at)}`}
           class={styles.preview}
         />
+      </Show>
+      <Show when={props.event.kind === "attachment" && props.event.data.kind === "hierarchy"}>
+        <SessionHierarchy sessionId={props.sessionId} seq={props.event.seq} />
       </Show>
       <Show when={crashOf(props.event)}>
         {(crash) => (

@@ -6,6 +6,8 @@ import type {
   DebugSession,
   DebugSessionEvent,
   DebugSessionExitRefresh,
+  DebugSessionHierarchy,
+  DebugSessionHierarchyNode,
   ProcessedEntry,
   SessionExportResult,
 } from "@/bindings";
@@ -48,6 +50,32 @@ interface FakeBackend {
 }
 
 let fake: FakeBackend;
+
+const hierarchyNode = (
+  depth: number,
+  cls: string,
+  text = "",
+  resourceId = ""
+): DebugSessionHierarchyNode => ({
+  depth,
+  class: cls,
+  resourceId,
+  text,
+  contentDesc: "",
+  bounds: `[0,${depth * 100}][1080,2400]`,
+});
+
+const HIERARCHY: DebugSessionHierarchy = {
+  capturedAt: "2026-09-25T10:40:00Z",
+  foregroundActivity: "topResumedActivity=ActivityRecord{1 u0 com.example.app/.SignIn t9}",
+  truncated: false,
+  nodes: [
+    hierarchyNode(0, "android.widget.FrameLayout"),
+    hierarchyNode(1, "android.widget.TextView", "Sign in", "com.example.app:id/title"),
+    hierarchyNode(1, "android.widget.LinearLayout", "", "com.example.app:id/actions"),
+    hierarchyNode(2, "android.widget.Button", "OK", "com.example.app:id/ok"),
+  ],
+};
 
 function session(id: string): DebugSession {
   const found = [...fake.sessions, ...fake.imported].find((s) => s.id === id);
@@ -137,6 +165,30 @@ function installFake(): void {
       case "get_session_attachment":
         session(a.id as string);
         return { seq: a.seq, mediaType: "image/png", base64: "iVBORw0KGgo=" };
+      case "attach_session_hierarchy": {
+        const s = session(a.id as string);
+        const seq = s.eventCount + 1;
+        const event = makeSessionEvent(
+          seq,
+          {
+            kind: "attachment",
+            data: {
+              kind: "hierarchy",
+              name: `hierarchy-${seq}.json`,
+              bytes: 3072,
+              nodeCount: HIERARCHY.nodes.length,
+              serial: s.device.serial,
+            },
+          },
+          { actor: { kind: "app" } }
+        );
+        append(s, event);
+        s.counts.attachments += 1;
+        return event;
+      }
+      case "get_session_hierarchy":
+        session(a.id as string);
+        return HIERARCHY;
       case "import_debug_session": {
         const imported = fake.importResult;
         if (!imported) return null;
@@ -462,8 +514,15 @@ describe("SessionsDialog", () => {
     expect(boxes).toHaveLength(7);
     expect(boxes.every((b) => b.checked)).toBe(true);
     expect(options.textContent).toContain("Screenshots are images and are not");
+    expect(options.textContent).toContain(
+      "UI hierarchies are text and are redacted like the timeline."
+    );
     fireEvent.click(within(options).getByLabelText("Log lines kept with crashes and ANRs"));
-    fireEvent.click(within(options).getByLabelText("Attached screenshots (not redacted)"));
+    fireEvent.click(
+      within(options).getByLabelText(
+        "Attachments: screenshots (not redacted) and UI hierarchies (redacted)"
+      )
+    );
     fireEvent.click(within(options).getByLabelText("Email addresses"));
 
     // A cancelled save dialog keeps the options open.
@@ -854,6 +913,67 @@ describe("SessionsDialog", () => {
       fireEvent.click(within(dialog).getByRole("button", { name: "End session" }));
       await waitFor(() => expect(attach.disabled).toBe(true));
       expect(calls("attach_session_screenshot")).toHaveLength(0);
+    });
+
+    it("attaches the device's UI hierarchy and shows it as a read-only tree", async () => {
+      const { newest } = seed();
+      setDevices([makeDevice({ serial: "emulator-5554", avdName: "Pixel_7" })]);
+      const dialog = await openDialog();
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Attach UI hierarchy" }));
+      await waitFor(() => expect(lastArgs("attach_session_hierarchy")).toEqual({ id: newest.id }));
+      expect(await within(dialog).findByText("UI hierarchy attached.")).toBeTruthy();
+
+      const strip = await within(dialog).findByRole("group", { name: "Attachments" });
+      const chip = within(strip).getByRole("button", { name: /^UI hierarchy from / });
+      expect(chip.getAttribute("aria-pressed")).toBe("true");
+      expect(calls("get_session_attachment")).toHaveLength(0);
+
+      const detail = within(dialog).getByRole("region", { name: "Selected event" });
+      expect(detail.textContent).toContain("UI hierarchy attached · 4 nodes · 3.0 KB · by Keynobi");
+      const tree = await within(detail).findByRole("tree", { name: "UI hierarchy" });
+      expect(calls("get_session_hierarchy").map(([, args]) => args)).toContainEqual({
+        id: newest.id,
+        seq: 5,
+      });
+      expect(detail.textContent).toContain("com.example.app/.SignIn");
+      expect(detail.textContent).toContain("4 nodes");
+      const rows = within(tree).getAllByRole("treeitem");
+      expect(rows).toHaveLength(4);
+      expect(rows[1].textContent).toContain("TextView");
+      expect(rows[1].textContent).toContain("#title");
+      expect(rows[1].textContent).toContain("“Sign in”");
+      expect(rows[1].textContent).toContain("[0,100][1080,2400]");
+      expect(rows[1].getAttribute("aria-level")).toBe("2");
+      expect(rows[1].title).toContain("com.example.app:id/title");
+
+      // Collapsing a node hides its subtree; the keyboard moves and toggles.
+      expect(rows[0].getAttribute("aria-expanded")).toBe("true");
+      fireEvent.click(rows[2]);
+      await waitFor(() => expect(within(tree).getAllByRole("treeitem")).toHaveLength(3));
+      fireEvent.keyDown(tree, { key: "ArrowRight" });
+      await waitFor(() => expect(within(tree).getAllByRole("treeitem")).toHaveLength(4));
+      fireEvent.keyDown(tree, { key: "ArrowRight" });
+      expect(tree.getAttribute("aria-activedescendant")).toMatch(/-3$/);
+      fireEvent.keyDown(tree, { key: "ArrowLeft" });
+      expect(tree.getAttribute("aria-activedescendant")).toMatch(/-2$/);
+      fireEvent.keyDown(tree, { key: "Home" });
+      fireEvent.keyDown(tree, { key: "ArrowLeft" });
+      await waitFor(() => expect(within(tree).getAllByRole("treeitem")).toHaveLength(1));
+      expect(within(tree).getByRole("treeitem").getAttribute("aria-expanded")).toBe("false");
+    });
+
+    it("cannot attach a UI hierarchy while the session's device is offline", async () => {
+      seed();
+      setDevices([]);
+      const dialog = await openDialog();
+      const attach = within(dialog).getByRole("button", {
+        name: "Attach UI hierarchy",
+      }) as HTMLButtonElement;
+      expect(attach.disabled).toBe(true);
+      expect(attach.title).toBe("The session's device is not online");
+      fireEvent.click(attach);
+      expect(calls("attach_session_hierarchy")).toHaveLength(0);
     });
   });
 });

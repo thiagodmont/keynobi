@@ -374,6 +374,27 @@ async fn capture_within(
     ))
 }
 
+/// The hierarchy and foreground activity alone, without the layout probes and
+/// screenshot of [`capture_ui_hierarchy_snapshot`], under the same device lock
+/// and [`CAPTURE_TOTAL_DEADLINE`].
+pub async fn capture_ui_hierarchy_tree(
+    adb: &Path,
+    serial: &str,
+) -> Result<UiHierarchySnapshot, String> {
+    let budget = CaptureBudget::new(CAPTURE_TOTAL_DEADLINE);
+    let _device = ui_automator_lock::acquire(serial, budget.deadline, &budget.label()).await?;
+    let fg = probe_foreground_activity(adb, serial, &budget).await;
+    let (xml, xml_truncated, command_log) = dump_hierarchy_xml(adb, serial, &budget).await?;
+    Ok(build_snapshot(
+        &xml,
+        xml_truncated,
+        fg,
+        UiLayoutContext::default(),
+        command_log,
+        None,
+    ))
+}
+
 /// Best-effort foreground activity / resumed component line.
 async fn probe_foreground_activity(
     adb: &Path,

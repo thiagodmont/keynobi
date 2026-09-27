@@ -20,6 +20,7 @@ import type {
   DebugSessionDetail,
   DebugSessionEvent,
   DebugSessionExitRefresh,
+  DebugSessionHierarchy,
   DebugSessionSummary,
   DeployPhaseEvent,
   DeployResult,
@@ -1730,7 +1731,7 @@ export const typeFixtures = {
       "counts": {
         "agentActions": 2,
         "anrs": 0,
-        "attachments": 1,
+        "attachments": 2,
         "bookmarks": 1,
         "captures": 1,
         "crashes": 0,
@@ -1866,7 +1867,7 @@ export const typeFixtures = {
       "counts": {
         "agentActions": 2,
         "anrs": 0,
-        "attachments": 1,
+        "attachments": 2,
         "bookmarks": 1,
         "captures": 1,
         "crashes": 0,
@@ -2346,6 +2347,19 @@ export const typeFixtures = {
       },
       "kind": "attachment",
       "seq": 21
+    },
+    {
+      "actor": null,
+      "at": "2026-04-23T10:00:00Z",
+      "data": {
+        "bytes": 1874,
+        "kind": "hierarchy",
+        "name": "hierarchy-22.json",
+        "nodeCount": 3,
+        "serial": "emulator-5554"
+      },
+      "kind": "attachment",
+      "seq": 22
     }
   ] satisfies Wire<DebugSessionEvent>[],
   DebugSessionDetail: [
@@ -2366,6 +2380,19 @@ export const typeFixtures = {
           },
           "kind": "attachment",
           "seq": 21
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "bytes": 1874,
+            "kind": "hierarchy",
+            "name": "hierarchy-22.json",
+            "nodeCount": 3,
+            "serial": "emulator-5554"
+          },
+          "kind": "attachment",
+          "seq": 22
         }
       ],
       "crashes": [
@@ -2799,6 +2826,19 @@ export const typeFixtures = {
           },
           "kind": "attachment",
           "seq": 21
+        },
+        {
+          "actor": null,
+          "at": "2026-04-23T10:00:00Z",
+          "data": {
+            "bytes": 1874,
+            "kind": "hierarchy",
+            "name": "hierarchy-22.json",
+            "nodeCount": 3,
+            "serial": "emulator-5554"
+          },
+          "kind": "attachment",
+          "seq": 22
         }
       ],
       "eventsTruncated": true,
@@ -2848,7 +2888,7 @@ export const typeFixtures = {
         "counts": {
           "agentActions": 2,
           "anrs": 0,
-          "attachments": 1,
+          "attachments": 2,
           "bookmarks": 1,
           "captures": 1,
           "crashes": 0,
@@ -2974,6 +3014,39 @@ export const typeFixtures = {
       "truncated": false
     }
   ] satisfies Wire<DebugSessionCapture>[],
+  DebugSessionHierarchy: [
+    {
+      "capturedAt": "2026-04-23T10:00:00Z",
+      "foregroundActivity": "topResumedActivity=ActivityRecord{1 u0 com.example.app/.MainActivity t12}",
+      "nodes": [
+        {
+          "bounds": "[0,0][1080,2400]",
+          "class": "android.widget.FrameLayout",
+          "contentDesc": "",
+          "depth": 0,
+          "resourceId": "",
+          "text": ""
+        },
+        {
+          "bounds": "[48,200][400,280]",
+          "class": "android.widget.TextView",
+          "contentDesc": "",
+          "depth": 1,
+          "resourceId": "com.example.app:id/title",
+          "text": "Hello"
+        },
+        {
+          "bounds": "[800,2100][1032,2320]",
+          "class": "android.widget.Button",
+          "contentDesc": "Confirm",
+          "depth": 1,
+          "resourceId": "com.example.app:id/ok",
+          "text": "OK"
+        }
+      ],
+      "truncated": false
+    }
+  ] satisfies Wire<DebugSessionHierarchy>[],
   DebugSessionAttachmentData: [
     {
       "base64": "iVBORw0KGgo=",

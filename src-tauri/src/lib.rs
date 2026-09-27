@@ -35,10 +35,10 @@ use commands::run_configuration::{
     save_run_configuration, set_active_run_configuration, set_run_configuration_target,
 };
 use commands::sessions::{
-    add_session_bookmark, attach_session_screenshot, delete_imported_debug_session,
-    end_debug_session, export_debug_session, get_debug_session, get_session_attachment,
-    get_session_capture, import_debug_session, list_debug_sessions, refresh_session_exit_reasons,
-    set_debug_session_kept,
+    add_session_bookmark, attach_session_hierarchy, attach_session_screenshot,
+    delete_imported_debug_session, end_debug_session, export_debug_session, get_debug_session,
+    get_session_attachment, get_session_capture, get_session_hierarchy, import_debug_session,
+    list_debug_sessions, refresh_session_exit_reasons, set_debug_session_kept,
 };
 use commands::settings::*;
 use commands::studio::open_in_studio;
@@ -425,6 +425,8 @@ pub fn run() {
             delete_imported_debug_session,
             attach_session_screenshot,
             get_session_attachment,
+            attach_session_hierarchy,
+            get_session_hierarchy,
             // MCP Server
             get_mcp_setup_status,
             get_mcp_activity,

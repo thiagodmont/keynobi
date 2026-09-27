@@ -8,6 +8,7 @@ import type {
   DebugSessionEvent,
   DebugSessionEventData,
   DebugSessionExitRefresh,
+  DebugSessionHierarchy,
   DebugSessionSummary,
   InstalledBuild,
   LaunchTiming,
@@ -32,6 +33,41 @@ const MOCK_SCREENSHOT_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
 /** As `MAX_ATTACHMENTS_PER_SESSION` in the backend. */
 const MAX_MOCK_ATTACHMENTS = 10;
+/** What the mock device's screen holds, as a hierarchy attachment stores it. */
+const MOCK_HIERARCHY_NODES: DebugSessionHierarchy["nodes"] = [
+  {
+    depth: 0,
+    class: "android.widget.FrameLayout",
+    resourceId: "",
+    text: "",
+    contentDesc: "",
+    bounds: "[0,0][1080,2400]",
+  },
+  {
+    depth: 1,
+    class: "android.widget.TextView",
+    resourceId: "com.example.mockapp:id/title",
+    text: "Hello, Keynobi",
+    contentDesc: "",
+    bounds: "[48,200][1032,280]",
+  },
+  {
+    depth: 1,
+    class: "android.widget.LinearLayout",
+    resourceId: "com.example.mockapp:id/actions",
+    text: "",
+    contentDesc: "",
+    bounds: "[0,2000][1080,2400]",
+  },
+  {
+    depth: 2,
+    class: "android.widget.Button",
+    resourceId: "com.example.mockapp:id/ok",
+    text: "OK",
+    contentDesc: "Confirm",
+    bounds: "[800,2100][1032,2320]",
+  },
+];
 /** `EntryFlags.ANR`. */
 const ANR_FLAG = 1 << 1;
 
@@ -112,6 +148,30 @@ function notFound(id: string): AppError {
 function find(id: string): MockSession {
   const entry = [...sessions, ...imported].find((s) => s.session.id === id);
   if (!entry) throw notFound(id);
+  return entry;
+}
+
+function mockHierarchy(): DebugSessionHierarchy {
+  return {
+    capturedAt: new Date().toISOString(),
+    foregroundActivity:
+      "topResumedActivity=ActivityRecord{1 u0 com.example.mockapp/.MainActivity t12}",
+    truncated: false,
+    nodes: MOCK_HIERARCHY_NODES.map((n) => ({ ...n })),
+  };
+}
+
+/** Like the backend before it captures from the device: an open recorded session with room. */
+function attachable(id: string): MockSession {
+  const entry = findRecorded(id);
+  const fail = (message: string): never => {
+    const error: AppError = { kind: "invalidInput", message };
+    throw error;
+  };
+  if (entry.session.closedAt !== null) fail(`Debug session ${entry.session.id} is closed`);
+  if (entry.session.counts.attachments >= MAX_MOCK_ATTACHMENTS) {
+    fail(`Debug session ${entry.session.id} is full (MAX_ATTACHMENTS_PER_SESSION)`);
+  }
   return entry;
 }
 
@@ -470,15 +530,7 @@ export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
     },
     // Like the backend after adb screencap returned the screen.
     attach_session_screenshot: (args: unknown): DebugSessionEvent => {
-      const entry = findRecorded((args as { id: string }).id);
-      const fail = (message: string): never => {
-        const error: AppError = { kind: "invalidInput", message };
-        throw error;
-      };
-      if (entry.session.closedAt !== null) fail(`Debug session ${entry.session.id} is closed`);
-      if (entry.session.counts.attachments >= MAX_MOCK_ATTACHMENTS) {
-        fail(`Debug session ${entry.session.id} is full (MAX_ATTACHMENTS_PER_SESSION)`);
-      }
+      const entry = attachable((args as { id: string }).id);
       const seq = entry.events.length + 1;
       const bytes = Math.floor((MOCK_SCREENSHOT_BASE64.length * 3) / 4);
       entry.session.bytes += bytes;
@@ -498,9 +550,46 @@ export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
         }
       );
     },
+    // Like the backend after uiautomator dumped the screen.
+    attach_session_hierarchy: (args: unknown): DebugSessionEvent => {
+      const entry = attachable((args as { id: string }).id);
+      const seq = entry.events.length + 1;
+      const bytes = JSON.stringify(mockHierarchy()).length;
+      entry.session.bytes += bytes;
+      return append(
+        entry,
+        { kind: "app" },
+        {
+          kind: "attachment",
+          data: {
+            kind: "hierarchy",
+            name: `hierarchy-${seq}.json`,
+            bytes,
+            nodeCount: MOCK_HIERARCHY_NODES.length,
+            serial: entry.session.device.serial,
+          },
+        }
+      );
+    },
+    get_session_hierarchy: (args: unknown): DebugSessionHierarchy => {
+      const { id, seq } = args as { id: string; seq: number };
+      const found = find(id).events.some(
+        (e) => e.seq === seq && e.kind === "attachment" && e.data.kind === "hierarchy"
+      );
+      if (!found) {
+        const error: AppError = {
+          kind: "notFound",
+          message: `Debug session ${id} has no attachment for event ${seq}`,
+        };
+        throw error;
+      }
+      return mockHierarchy();
+    },
     get_session_attachment: (args: unknown): DebugSessionAttachmentData => {
       const { id, seq } = args as { id: string; seq: number };
-      const found = find(id).events.some((e) => e.seq === seq && e.kind === "attachment");
+      const found = find(id).events.some(
+        (e) => e.seq === seq && e.kind === "attachment" && e.data.kind === "screenshot"
+      );
       if (!found) {
         const error: AppError = {
           kind: "notFound",

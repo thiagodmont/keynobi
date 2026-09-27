@@ -16,6 +16,8 @@ pub const MAX_AGENT_EVENTS: usize = MAX_EVENTS_RETURNED;
 pub const MAX_AGENT_CRASHES: usize = 20;
 /// Log lines of a capture `get_debug_session` returns by default.
 pub const DEFAULT_AGENT_LOG_LINES: usize = 100;
+/// Attachments `get_debug_session` lists, the newest.
+pub const MAX_AGENT_ATTACHMENTS: usize = MAX_ATTACHMENTS_PER_SESSION as usize;
 
 /// Which sessions to list, by state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -234,10 +236,21 @@ pub fn event_summary(event: &DebugSessionEventData) -> String {
             let status = if a.ok { "ok" } else { "failed" };
             format!("agent ran {} ({status}, {} ms)", a.tool, a.duration_ms)
         }
-        E::Attachment(a) => format!(
-            "screenshot attached: {} ({}x{}, {} bytes)",
-            a.name, a.width, a.height, a.bytes
-        ),
+        E::Attachment(a) => match a.kind {
+            DebugSessionAttachmentKind::Screenshot => format!(
+                "screenshot attached: {} ({}x{}, {} bytes)",
+                a.name,
+                a.width.unwrap_or(0),
+                a.height.unwrap_or(0),
+                a.bytes
+            ),
+            DebugSessionAttachmentKind::Hierarchy => format!(
+                "UI hierarchy attached: {} ({} nodes, {} bytes)",
+                a.name,
+                a.node_count.unwrap_or(0),
+                a.bytes
+            ),
+        },
     }
 }
 
@@ -337,6 +350,30 @@ pub(super) fn session_for_agent_in(
                 "log_lines_kept": c.capture.as_ref().map(|k| k.entries),
                 "dropped_lines": c.dropped_lines,
             }))
+        })
+        .collect();
+
+    let all_attachments = attachments::attachment_events(&events);
+    let attachments_truncated = all_attachments.len() > MAX_AGENT_ATTACHMENTS;
+    let attachments: Vec<Value> = all_attachments
+        .iter()
+        .skip(all_attachments.len().saturating_sub(MAX_AGENT_ATTACHMENTS))
+        .filter_map(|event| match &event.event {
+            DebugSessionEventData::Attachment(a) => Some(json!({
+                "seq": event.seq,
+                "at": event.at,
+                "kind": match a.kind {
+                    DebugSessionAttachmentKind::Screenshot => "screenshot",
+                    DebugSessionAttachmentKind::Hierarchy => "hierarchy",
+                },
+                "name": a.name,
+                "bytes": a.bytes,
+                "width": a.width,
+                "height": a.height,
+                "node_count": a.node_count,
+                "serial": a.serial,
+            })),
+            _ => None,
         })
         .collect();
 
@@ -443,6 +480,7 @@ pub(super) fn session_for_agent_in(
                 "bookmarks": c.bookmarks,
                 "agent_actions": c.agent_actions,
                 "log_captures": c.captures,
+                "attachments": c.attachments,
             },
             "events": session.event_count,
             "dropped_events": session.dropped_events,
@@ -451,6 +489,8 @@ pub(super) fn session_for_agent_in(
         "next_before_seq": next_before_seq,
         "crashes": crashes,
         "crashes_truncated": crashes_truncated,
+        "attachments": attachments,
+        "attachments_truncated": attachments_truncated,
         "capture": capture,
     }))
 }

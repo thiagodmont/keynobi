@@ -9,6 +9,8 @@
 //! - `logs/crash-<seq>.log`: the lines kept with crash or ANR event `seq`;
 //! - `attachments/screenshot-<seq>.png`: the screenshot of attachment event
 //!   `seq`, when `includeAttachments`; images are not redacted;
+//! - `attachments/hierarchy-<seq>.json`: the UI hierarchy of attachment
+//!   event `seq`, when `includeAttachments`, redacted like the timeline;
 //! - `redaction.json`: the rules, whether each was on, and how many matches
 //!   each replaced.
 //!
@@ -164,6 +166,19 @@ fn omission(item: impl Into<String>, reason: impl Into<String>) -> SessionExport
     }
 }
 
+/// `hierarchy` with every string redacted, fitted again to the caps an
+/// import checks, since a placeholder can be longer than what it replaced.
+fn redacted_hierarchy(
+    redactor: &mut Redactor,
+    hierarchy: &DebugSessionHierarchy,
+) -> Result<Vec<u8>, AppError> {
+    let failed = |e: serde_json::Error| AppError::Other(format!("Cannot redact a hierarchy: {e}"));
+    let mut value = serde_json::to_value(hierarchy).map_err(failed)?;
+    redactor.redact_json(&mut value);
+    let redacted: DebugSessionHierarchy = serde_json::from_value(value).map_err(failed)?;
+    attachments::fitted_hierarchy(redacted).map(|(json, _)| json)
+}
+
 /// Build the bundle of session `id` in memory.
 pub(super) fn build_bundle_in(
     data_dir: &Path,
@@ -248,10 +263,10 @@ pub(super) fn build_bundle_in(
         files.push((name, text.into_bytes()));
     }
 
-    let attached: Vec<(u32, String)> = events
+    let attached: Vec<(u32, &DebugSessionAttachment)> = events
         .iter()
         .filter_map(|e| match &e.event {
-            DebugSessionEventData::Attachment(a) => Some((e.seq, a.name.clone())),
+            DebugSessionEventData::Attachment(a) => Some((e.seq, a)),
             _ => None,
         })
         .collect();
@@ -259,25 +274,34 @@ pub(super) fn build_bundle_in(
         omitted.push(omission("attachments", "not selected"));
     }
     let mut images = false;
-    for (seq, name) in attached.iter().filter(|_| options.include_attachments) {
-        let entry = attachment_entry(name);
-        let png = match attachments::read_attachment_in(data_dir, id, *seq) {
-            Ok(png) => png,
+    for (seq, a) in attached.iter().filter(|_| options.include_attachments) {
+        let entry = attachment_entry(&a.name);
+        let data = match a.kind {
+            DebugSessionAttachmentKind::Screenshot => {
+                attachments::read_attachment_in(data_dir, id, *seq)
+            }
+            DebugSessionAttachmentKind::Hierarchy => {
+                attachments::read_hierarchy_in(data_dir, id, *seq)
+                    .and_then(|h| redacted_hierarchy(&mut redactor, &h))
+            }
+        };
+        let data = match data {
+            Ok(data) => data,
             Err(e) => {
                 omitted.push(omission(entry, e.to_string()));
                 continue;
             }
         };
-        let fits = png.len() <= MAX_BUNDLE_ENTRY_BYTES
-            && total + png.len() <= MAX_BUNDLE_UNCOMPRESSED_BYTES
+        let fits = data.len() <= MAX_BUNDLE_ENTRY_BYTES
+            && total + data.len() <= MAX_BUNDLE_UNCOMPRESSED_BYTES
             && files.len() + 3 <= MAX_BUNDLE_ENTRIES;
         if !fits {
             omitted.push(omission(entry, "the bundle reached its size or file limit"));
             continue;
         }
-        total += png.len();
-        images = true;
-        files.push((entry, png));
+        total += data.len();
+        images |= a.kind == DebugSessionAttachmentKind::Screenshot;
+        files.push((entry, data));
     }
 
     let redactions = redactor.counts();

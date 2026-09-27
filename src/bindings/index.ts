@@ -70,6 +70,8 @@ export type { DebugSessionImport } from "./DebugSessionImport";
 export type { DebugSessionAttachment } from "./DebugSessionAttachment";
 export type { DebugSessionAttachmentData } from "./DebugSessionAttachmentData";
 export type { DebugSessionAttachmentKind } from "./DebugSessionAttachmentKind";
+export type { DebugSessionHierarchy } from "./DebugSessionHierarchy";
+export type { DebugSessionHierarchyNode } from "./DebugSessionHierarchyNode";
 export type { SessionExportOptions } from "./SessionExportOptions";
 export type { SessionExportOmission } from "./SessionExportOmission";
 export type { SessionExportResult } from "./SessionExportResult";

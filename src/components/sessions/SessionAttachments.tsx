@@ -1,11 +1,12 @@
 /**
- * Screenshots attached to a debug session: a strip of thumbnails that select
- * their timeline event, and the image itself, read from the backend as base64.
+ * Files attached to a debug session: a strip of screenshot thumbnails and UI
+ * hierarchy chips that select their timeline event, and a screenshot's image,
+ * read from the backend as base64.
  */
 import { type JSX, For, Show, createResource } from "solid-js";
 import type { DebugSessionEvent } from "@/bindings";
 import { formatError, getSessionAttachment } from "@/lib/tauri-api";
-import { Button, Spinner } from "@/components/ui";
+import { Button, Icon, Spinner } from "@/components/ui";
 import { formatSessionTime } from "./session-format";
 import styles from "./SessionsDialog.module.css";
 
@@ -48,7 +49,10 @@ export function SessionAttachments(props: {
     <div class={styles.attachments} role="group" aria-label="Attachments">
       <For each={props.attachments}>
         {(event) => {
-          const label = `Screenshot from ${formatSessionTime(event.at)}`;
+          const hierarchy = event.kind === "attachment" && event.data.kind === "hierarchy";
+          const label = `${hierarchy ? "UI hierarchy" : "Screenshot"} from ${formatSessionTime(
+            event.at
+          )}`;
           return (
             <Button
               variant="ghost"
@@ -58,12 +62,22 @@ export function SessionAttachments(props: {
               title={label}
               onClick={() => props.onSelect(event.seq)}
             >
-              <AttachmentImage
-                sessionId={props.sessionId}
-                seq={event.seq}
-                alt=""
-                class={styles.thumbImage}
-              />
+              <Show
+                when={!hierarchy}
+                fallback={
+                  <span class={styles.thumbHierarchy} aria-hidden="true">
+                    <Icon name="list" size={16} />
+                    Hierarchy
+                  </span>
+                }
+              >
+                <AttachmentImage
+                  sessionId={props.sessionId}
+                  seq={event.seq}
+                  alt=""
+                  class={styles.thumbImage}
+                />
+              </Show>
             </Button>
           );
         }}

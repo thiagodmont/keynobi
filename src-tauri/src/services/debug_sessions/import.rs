@@ -8,8 +8,9 @@
 //!   [`MAX_BUNDLE_ENTRIES`] distinct names, and no two entries share data;
 //! - every name is one the export writes, exactly: `manifest.json`,
 //!   `session.json`, `timeline.jsonl`, `redaction.json`,
-//!   `logs/crash-<seq>.log`, and `attachments/screenshot-<seq>.png`, so no
-//!   absolute path, `..`, backslash, or folder gets through;
+//!   `logs/crash-<seq>.log`, `attachments/screenshot-<seq>.png`, and
+//!   `attachments/hierarchy-<seq>.json`, so no absolute path, `..`,
+//!   backslash, or folder gets through;
 //! - every entry is a regular file, stored or deflated, not encrypted, and its
 //!   bytes, counted as they are inflated, stay within
 //!   [`MAX_BUNDLE_ENTRY_BYTES`], [`MAX_BUNDLE_UNCOMPRESSED_BYTES`] in total,
@@ -17,7 +18,11 @@
 //! - `bundleVersion` and `schemaVersion` are ones this version writes, and
 //!   every JSON file parses with no field the schema does not know;
 //! - every screenshot is a PNG (signature and header) within
-//!   [`MAX_ATTACHMENT_BYTES`] and the screenshot pixel cap.
+//!   [`MAX_ATTACHMENT_BYTES`] and the screenshot pixel cap, and every UI
+//!   hierarchy parses with no unknown field within
+//!   [`MAX_HIERARCHY_ATTACHMENT_BYTES`], [`MAX_HIERARCHY_NODES`], and
+//!   [`MAX_HIERARCHY_DEPTH`];
+//! - every attachment event is shaped as this version attaches it.
 //!
 //! What is accepted is rewritten, not copied: at most the caps of a recorded
 //! session ([`MAX_EVENTS_PER_SESSION`], [`MAX_SESSION_BYTES`],
@@ -81,6 +86,7 @@ enum Entry {
     Redaction,
     CrashLog(u32),
     Screenshot(u32),
+    Hierarchy(u32),
 }
 
 /// The entry `name` is, when it is exactly a name the export writes.
@@ -94,6 +100,9 @@ fn allowlisted(name: &[u8]) -> Option<Entry> {
         _ => {
             if let Some(seq) = name.strip_prefix("logs/crash-") {
                 return canonical_seq(seq.strip_suffix(".log")?).map(Entry::CrashLog);
+            }
+            if let Some(seq) = name.strip_prefix("attachments/hierarchy-") {
+                return canonical_seq(seq.strip_suffix(".json")?).map(Entry::Hierarchy);
             }
             let seq = name
                 .strip_prefix("attachments/screenshot-")?
@@ -420,7 +429,7 @@ pub(super) struct PreparedImport {
     pub events: Vec<u8>,
     /// `captures/crash-<seq>.jsonl`, by seq.
     pub captures: BTreeMap<u32, Vec<u8>>,
-    /// `attachments/<name>`, checked PNGs.
+    /// `attachments/<name>`: checked PNGs and rewritten hierarchies.
     pub attachments: BTreeMap<String, Vec<u8>>,
 }
 
@@ -454,14 +463,23 @@ pub(super) fn prepare_import(
     let report: RedactionReport =
         parse_strict(&take(Entry::Redaction, REDACTION_ENTRY)?, REDACTION_ENTRY)?;
     let mut logs: BTreeMap<u32, Vec<u8>> = BTreeMap::new();
-    let mut screenshots: BTreeMap<u32, Vec<u8>> = BTreeMap::new();
+    // By seq, then kind: the files attachment events name, in timeline order.
+    let mut attached: Vec<(u32, DebugSessionAttachmentKind, Vec<u8>)> = Vec::new();
     for (entry, data) in files {
         match entry {
-            Entry::CrashLog(seq) => logs.insert(seq, data),
-            Entry::Screenshot(seq) => screenshots.insert(seq, data),
-            _ => None,
-        };
+            Entry::CrashLog(seq) => {
+                logs.insert(seq, data);
+            }
+            Entry::Screenshot(seq) => {
+                attached.push((seq, DebugSessionAttachmentKind::Screenshot, data));
+            }
+            Entry::Hierarchy(seq) => {
+                attached.push((seq, DebugSessionAttachmentKind::Hierarchy, data));
+            }
+            _ => {}
+        }
     }
+    attached.sort_by_key(|(seq, kind, _)| (*seq, *kind == DebugSessionAttachmentKind::Hierarchy));
 
     if manifest.schema_version != DEBUG_SESSION_SCHEMA_VERSION
         || session.schema_version != DEBUG_SESSION_SCHEMA_VERSION
@@ -501,9 +519,9 @@ pub(super) fn prepare_import(
     .map(|s| s.to_string())
     .chain(logs.keys().map(|seq| format!("logs/crash-{seq}.log")))
     .chain(
-        screenshots
-            .keys()
-            .map(|seq| export::attachment_entry(&attachments::screenshot_name(*seq))),
+        attached
+            .iter()
+            .map(|(seq, kind, _)| export::attachment_entry(&attachment_name(*kind, *seq))),
     )
     .collect();
     if listed.len() != manifest.entries.len()
@@ -535,6 +553,15 @@ pub(super) fn prepare_import(
         }
         let event: DebugSessionEvent =
             parse_strict(line.as_bytes(), &format!("{TIMELINE_ENTRY} line {}", i + 1))?;
+        if let DebugSessionEventData::Attachment(a) = &event.event {
+            if !attachments::well_formed(a, event.seq) {
+                return Err(refused(format!(
+                    "{TIMELINE_ENTRY} line {} is an attachment this version of Keynobi does \
+                     not write",
+                    i + 1
+                )));
+            }
+        }
         if events.last().is_some_and(|last| event.seq <= last.seq) {
             return Err(refused(format!(
                 "{TIMELINE_ENTRY} line {} is out of order",
@@ -606,22 +633,34 @@ pub(super) fn prepare_import(
     }
     counts.captures = captures.len() as u32;
 
-    // Screenshots of attachment events the timeline kept, within the caps.
+    // Attachments of events the timeline kept, within the caps.
     let mut stored = BTreeMap::new();
     let mut attachment_bytes = 0u64;
-    for (seq, png) in screenshots {
-        let name = attachments::screenshot_name(seq);
+    for (seq, kind, data) in attached {
+        let name = attachment_name(kind, seq);
         let entry = export::attachment_entry(&name);
-        attachments::checked_png(&png).map_err(|e| refused(format!("{entry}: {e}")))?;
+        let data = match kind {
+            DebugSessionAttachmentKind::Screenshot => {
+                attachments::checked_png(&data).map_err(|e| refused(format!("{entry}: {e}")))?;
+                data
+            }
+            DebugSessionAttachmentKind::Hierarchy => {
+                let hierarchy = attachments::checked_hierarchy(&data)
+                    .map_err(|e| refused(format!("{entry}: {e}")))?;
+                serde_json::to_vec(&hierarchy)
+                    .map_err(|e| AppError::Other(format!("Cannot serialize {entry}: {e}")))?
+            }
+        };
         let named = events.iter().any(|e| {
             e.seq == seq
-                && matches!(&e.event, DebugSessionEventData::Attachment(a) if a.name == name)
+                && matches!(&e.event, DebugSessionEventData::Attachment(a)
+                    if a.kind == kind && a.name == name)
         });
         if !named {
             omitted.push(omission(entry, "no attachment of the timeline names it"));
             continue;
         }
-        let size = png.len() as u64;
+        let size = data.len() as u64;
         let full = stored.len() >= MAX_ATTACHMENTS_PER_SESSION as usize
             || events_file.len() as u64 + attachment_bytes + size > MAX_SESSION_BYTES;
         if full {
@@ -636,7 +675,7 @@ pub(super) fn prepare_import(
             continue;
         }
         attachment_bytes += size;
-        stored.insert(name, png);
+        stored.insert(name, data);
     }
 
     let mut session = session;
@@ -663,6 +702,13 @@ pub(super) fn prepare_import(
         captures,
         attachments: stored,
     })
+}
+
+fn attachment_name(kind: DebugSessionAttachmentKind, seq: u32) -> String {
+    match kind {
+        DebugSessionAttachmentKind::Screenshot => attachments::screenshot_name(seq),
+        DebugSessionAttachmentKind::Hierarchy => attachments::hierarchy_name(seq),
+    }
 }
 
 fn omission(item: impl Into<String>, reason: impl Into<String>) -> SessionExportOmission {
@@ -763,8 +809,8 @@ pub(super) fn store_import_in(
             if !prepared.attachments.is_empty() {
                 let folder = dir.join(attachments::ATTACHMENTS_DIR);
                 std::fs::create_dir(&folder).map_err(|e| AppError::io(folder.display(), e))?;
-                for (name, png) in &prepared.attachments {
-                    write_new(&folder.join(name), png)?;
+                for (name, data) in &prepared.attachments {
+                    write_new(&folder.join(name), data)?;
                 }
             }
             let manifest = serde_json::to_vec_pretty(&prepared.session)
