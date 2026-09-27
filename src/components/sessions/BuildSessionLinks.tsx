@@ -9,7 +9,7 @@ import { openSessionsDialog } from "./SessionsDialog";
 /**
  * The newest debug session of `record`'s APK on each device, newest first.
  * The hash is compared too, so a build ID reused after the history was
- * cleared is not mistaken for the record.
+ * cleared is not mistaken for the record. Imported sessions were built elsewhere.
  */
 export function sessionsOfBuild(
   record: BuildRecord,
@@ -17,7 +17,11 @@ export function sessionsOfBuild(
 ): DebugSessionSummary[] {
   const devices = new Set<string>();
   return sessions.filter((s) => {
-    if (s.buildId !== record.id || !record.apks.some((a) => a.sha256 === s.apkSha256)) {
+    if (
+      s.recordedBy === "imported" ||
+      s.buildId !== record.id ||
+      !record.apks.some((a) => a.sha256 === s.apkSha256)
+    ) {
       return false;
     }
     const device = s.device.avdName ?? s.device.serial;

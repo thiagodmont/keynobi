@@ -47,6 +47,17 @@ describe("sessionsOfBuild", () => {
     ]);
     expect(sessionsOfBuild(makeBuildRecord({ id: 13, apks: [apk] }), [pixel])).toEqual([]);
   });
+
+  it("never links a build to an imported session of the same APK", () => {
+    const imported = summaryOf(
+      makeSession({
+        id: "i-20260926T081500Z-00000000000b",
+        device: { serial: "<device-1>", avdName: null, model: "Pixel 8" },
+        recordedBy: "imported",
+      })
+    );
+    expect(sessionsOfBuild(record, [imported])).toEqual([]);
+  });
 });
 
 describe("BuildSessionLinks", () => {

@@ -20,10 +20,10 @@ async fn blocking<T: Send + 'static>(
         .map_err(|e| AppError::Other(format!("Debug session task failed: {e}")))?
 }
 
-/// Every debug session, newest first.
+/// Every recorded debug session, newest first, then the imported ones.
 #[tauri::command]
 pub async fn list_debug_sessions() -> Result<Vec<DebugSessionSummary>, AppError> {
-    blocking(|| Ok(debug_sessions::list_sessions())).await
+    blocking(|| Ok(debug_sessions::list_all_sessions())).await
 }
 
 /// A debug session and its most recent events.
@@ -126,4 +126,35 @@ pub async fn refresh_session_exit_reasons(id: String) -> Result<DebugSessionExit
     let (settings, _) = settings_manager::load_settings();
     let adb = get_adb_path(&settings);
     debug_sessions::refresh_exit_reasons(&id, &adb).await
+}
+
+/// Import a debug session bundle the user chooses in the open dialog, as a
+/// read-only imported session. `None` when the dialog was cancelled.
+#[tauri::command]
+pub async fn import_debug_session(app: AppHandle) -> Result<Option<DebugSessionSummary>, AppError> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .add_filter("Zip archive", &["zip"])
+        .pick_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let Some(path) = rx
+        .await
+        .map_err(|_| AppError::Other("Open dialog closed unexpectedly".into()))?
+    else {
+        return Ok(None);
+    };
+    let path = path
+        .into_path()
+        .map_err(|e| AppError::InvalidInput(e.to_string()))?;
+    blocking(move || debug_sessions::import_session_from(&path))
+        .await
+        .map(Some)
+}
+
+/// Delete an imported debug session.
+#[tauri::command]
+pub async fn delete_imported_debug_session(id: String) -> Result<(), AppError> {
+    blocking(move || debug_sessions::delete_imported_session(&id)).await
 }

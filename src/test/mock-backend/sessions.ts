@@ -38,6 +38,9 @@ interface MockSession {
 
 let sessions: MockSession[] = [];
 let nextSession = 1;
+/** Imported sessions, newest import first. */
+let imported: MockSession[] = [];
+let nextImport = 1;
 
 /** Ids are predictable so tests can name them: the first is `mockSessionId(1)`. */
 export function mockSessionId(n: number): string {
@@ -100,8 +103,123 @@ function notFound(id: string): AppError {
 }
 
 function find(id: string): MockSession {
-  const entry = sessions.find((s) => s.session.id === id);
+  const entry = [...sessions, ...imported].find((s) => s.session.id === id);
   if (!entry) throw notFound(id);
+  return entry;
+}
+
+/** Like the backend: an imported session is read-only. */
+function findRecorded(id: string): MockSession {
+  const entry = find(id);
+  if (entry.session.recordedBy === "imported") {
+    const error: AppError = {
+      kind: "invalidInput",
+      message: `Debug session ${id} was imported and is read-only`,
+    };
+    throw error;
+  }
+  return entry;
+}
+
+/**
+ * Like the backend after the user picked a bundle in its open dialog: a
+ * redacted session with a crash and its kept lines, read-only.
+ */
+function importMockSession(): MockSession {
+  const at = "2026-09-25T10:32:00.000000Z";
+  const n = nextImport++;
+  const install = {
+    apkSha256: "c3".repeat(32),
+    versionCode: 7,
+    installedAt: at,
+    by: { kind: "app" } as BuildActor,
+  };
+  const entry: MockSession = {
+    session: {
+      schemaVersion: 1,
+      id: `i-20260926T081500Z-${n.toString(16).padStart(12, "0")}`,
+      projectRoot: "<project>",
+      package: "com.example.mockapp",
+      device: { serial: "<device-1>", avdName: null, model: "Pixel 8" },
+      build: null,
+      install,
+      openedAt: at,
+      closedAt: "2026-09-25T11:00:00.000000Z",
+      closeReason: "ended",
+      recordedBy: "imported",
+      kept: false,
+      counts: {
+        launches: 0,
+        crashes: 0,
+        anrs: 0,
+        exits: 0,
+        bookmarks: 0,
+        captures: 0,
+        agentActions: 0,
+      },
+      lastEventAt: at,
+      eventCount: 0,
+      droppedEvents: 0,
+      bytes: 0,
+      imported: {
+        fileName: "keynobi-session-com.example.mockapp-20260925.zip",
+        exportedAt: "2026-09-25T12:00:00.000000Z",
+        importedAt: new Date().toISOString(),
+        originalId: "s-20260925T103200Z-4f2a9c00b1de",
+        keynobiVersion: "0.9.0",
+        omitted: [
+          {
+            item: "R8 mappings",
+            reason: "never exported; the session names each by SHA-256 and map id",
+          },
+        ],
+        redactions: [
+          { rule: "emails", enabled: true, count: 1 },
+          { rule: "secrets", enabled: true, count: 0 },
+          { rule: "ipAddresses", enabled: true, count: 0 },
+          { rule: "paths", enabled: true, count: 2 },
+          { rule: "deviceSerials", enabled: true, count: 1 },
+        ],
+      },
+    },
+    events: [],
+    captures: new Map(),
+  };
+  append(entry, { kind: "app" }, { kind: "install", data: install });
+  const crash = append(entry, null, {
+    kind: "crash",
+    data: {
+      serial: "<device-1>",
+      pid: 4242,
+      summary: "java.lang.IllegalStateException: <email-1> not found",
+      signature: "00000000deadbeef",
+      receivedAt: at,
+      deviceTime: "09-25 10:32:05.123",
+      attribution: { method: "installRecord", verified: true, reason: null },
+      capture: { entries: 2, bytes: 512, truncated: false },
+      droppedLines: 0,
+    },
+  });
+  const line = (id: number, message: string): ProcessedEntry => ({
+    id,
+    timestamp: "09-25 10:32:05.123",
+    pid: 4242,
+    tid: 4242,
+    level: "error",
+    tag: "AndroidRuntime",
+    message,
+    package: null,
+    kind: "normal",
+    isCrash: false,
+    flags: 0,
+    category: "general",
+    crashGroupId: null,
+    jsonBody: null,
+  });
+  entry.captures.set(crash.seq, [
+    line(1, "FATAL EXCEPTION: main"),
+    line(2, "java.lang.IllegalStateException: <email-1> not found"),
+  ]);
   return entry;
 }
 
@@ -247,7 +365,24 @@ export function recordMockCrashes(added: ProcessedEntry[], buffer: ProcessedEntr
 
 export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
   return {
-    list_debug_sessions: () => [...sessions].reverse().map(summary),
+    list_debug_sessions: () => [...[...sessions].reverse(), ...imported].map(summary),
+    import_debug_session: (): DebugSessionSummary => {
+      const entry = importMockSession();
+      imported = [entry, ...imported];
+      return summary(entry);
+    },
+    delete_imported_debug_session: (args: unknown) => {
+      const { id } = args as { id: string };
+      const entry = find(id);
+      if (entry.session.recordedBy !== "imported") {
+        const error: AppError = {
+          kind: "invalidInput",
+          message: "Only an imported debug session can be deleted",
+        };
+        throw error;
+      }
+      imported = imported.filter((s) => s !== entry);
+    },
     get_debug_session: (args: unknown) => {
       const entry = find((args as { id: string }).id);
       return {
@@ -276,7 +411,7 @@ export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
     // Like the backend after the user picked a file in its save dialog.
     export_debug_session: (args: unknown): SessionExportResult => {
       const { id, options } = args as { id: string; options: SessionExportOptions };
-      const entry = find(id);
+      const entry = findRecorded(id);
       const logs = options.includeCrashLogs
         ? [...entry.captures.keys()].map((seq) => `logs/crash-${seq}.log`)
         : [];
@@ -310,11 +445,11 @@ export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
       };
     },
     refresh_session_exit_reasons: (args: unknown): DebugSessionExitRefresh => {
-      find((args as { id: string }).id);
+      findRecorded((args as { id: string }).id);
       return { added: 0, message: null };
     },
     end_debug_session: (args: unknown) => {
-      const { session } = find((args as { id: string }).id);
+      const { session } = findRecorded((args as { id: string }).id);
       if (session.closedAt === null) {
         session.closedAt = new Date().toISOString();
         session.closeReason = "ended";
@@ -322,7 +457,7 @@ export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
     },
     set_debug_session_kept: (args: unknown) => {
       const { id, kept } = args as { id: string; kept: boolean };
-      const { session } = find(id);
+      const { session } = findRecorded(id);
       if (kept && !session.kept && sessions.filter((s) => s.session.kept).length >= MAX_MOCK_KEPT) {
         const error: AppError = {
           kind: "invalidInput",
@@ -339,7 +474,7 @@ export function sessionHandlers(): Record<string, (args: unknown) => unknown> {
         logEntryId?: number | null;
       };
       const entry = sessionId
-        ? find(sessionId)
+        ? findRecorded(sessionId)
         : [...sessions].reverse().find((s) => s.session.closedAt === null);
       if (!entry) {
         const error: AppError = { kind: "notFound", message: "No debug session is open" };

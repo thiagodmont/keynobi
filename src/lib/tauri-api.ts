@@ -746,6 +746,19 @@ export async function exportDebugSession(
   return invoke<SessionExportResult | null>("export_debug_session", { id, options });
 }
 
+/**
+ * Import a debug session bundle as a read-only session. The backend shows the
+ * open dialog and checks the file; `null` when the dialog was cancelled.
+ */
+export async function importDebugSession(): Promise<DebugSessionSummary | null> {
+  return invoke<DebugSessionSummary | null>("import_debug_session");
+}
+
+/** Delete an imported debug session. */
+export async function deleteImportedDebugSession(id: string): Promise<void> {
+  return invoke<void>("delete_imported_debug_session", { id });
+}
+
 // ── MCP Server ─────────────────────────────────────────────────────────────────
 
 import type {

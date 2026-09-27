@@ -3,6 +3,7 @@ import type { DebugSessionBuild } from "./DebugSessionBuild";
 import type { DebugSessionCloseReason } from "./DebugSessionCloseReason";
 import type { DebugSessionCounts } from "./DebugSessionCounts";
 import type { DebugSessionDevice } from "./DebugSessionDevice";
+import type { DebugSessionImport } from "./DebugSessionImport";
 import type { DebugSessionInstall } from "./DebugSessionInstall";
 import type { DebugSessionRecorder } from "./DebugSessionRecorder";
 
@@ -29,4 +30,8 @@ droppedEvents: number,
 /**
  * Size of the session's event log.
  */
-bytes: number, };
+bytes: number, 
+/**
+ * Set on a session imported from a bundle.
+ */
+imported?: DebugSessionImport, };

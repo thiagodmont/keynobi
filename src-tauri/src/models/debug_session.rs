@@ -94,6 +94,28 @@ pub enum DebugSessionRecorder {
     App,
     /// A standalone `keynobi --mcp` process.
     Standalone,
+    /// Nobody here: it was imported from a bundle. Read-only.
+    Imported,
+}
+
+/// Where an imported session came from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DebugSessionImport {
+    /// The bundle's file name, without its folder.
+    pub file_name: String,
+    /// When the bundle was exported, as its manifest says.
+    pub exported_at: String,
+    pub imported_at: String,
+    /// The session's id where it was recorded.
+    pub original_id: String,
+    /// The Keynobi version that exported it.
+    pub keynobi_version: String,
+    /// What the export, and then the import, left out, and why.
+    pub omitted: Vec<SessionExportOmission>,
+    /// The export's redaction rules, whether each was on, and what it replaced.
+    pub redactions: Vec<RedactionCount>,
 }
 
 /// How many events of each kind a session holds.
@@ -140,6 +162,10 @@ pub struct DebugSession {
     /// Size of the session's event log.
     #[ts(type = "number")]
     pub bytes: u64,
+    /// Set on a session imported from a bundle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub imported: Option<DebugSessionImport>,
 }
 
 /// A session as `index.json` lists it: what the list view shows.

@@ -114,10 +114,14 @@ pub fn validate_activity_name(activity: &str) -> Result<(), String> {
 }
 
 /// Validate a debug session id, which names a folder in the data directory:
-/// `s-<yyyymmdd>T<hhmmss>Z-<12 lowercase hex digits>`.
+/// `s-<yyyymmdd>T<hhmmss>Z-<12 lowercase hex digits>` for a recorded session,
+/// `i-…` for an imported one.
 pub fn validate_debug_session_id(id: &str) -> Result<(), String> {
     let invalid = || format!("Invalid debug session id '{id}'");
-    let rest = id.strip_prefix("s-").ok_or_else(invalid)?;
+    let rest = id
+        .strip_prefix("s-")
+        .or_else(|| id.strip_prefix("i-"))
+        .ok_or_else(invalid)?;
     let (stamp, suffix) = rest.split_once('-').ok_or_else(invalid)?;
     let stamp_ok = stamp.len() == 16
         && stamp.char_indices().all(|(i, c)| match i {
@@ -336,7 +340,10 @@ mod tests {
     #[test]
     fn debug_session_id_accepts_only_the_generated_shape() {
         assert!(validate_debug_session_id("s-20260925T103200Z-4f2a9c00b1de").is_ok());
+        assert!(validate_debug_session_id("i-20260926T081500Z-00ff00ff00ff").is_ok());
         for id in [
+            "i-20260926T081500Z-00ff00ff00f",
+            "is-20260926T081500Z-00ff00ff00ff",
             "",
             "s-20260925T103200Z-4f2a9c",
             "s-20260925T103200Z-4F2A9C00B1DE",

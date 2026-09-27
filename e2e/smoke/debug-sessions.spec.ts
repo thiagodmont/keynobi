@@ -81,3 +81,34 @@ test("Run App opens a debug session that shows the install and launch, and can b
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
 });
+
+test("Import Debug Session… opens a shared bundle read-only, and it can be deleted", async ({
+  page,
+}) => {
+  await page.keyboard.press("Meta+Shift+P");
+  await page.keyboard.type("Import Debug Session");
+  await expect(page.getByRole("option", { name: /Import Debug Session…/ })).toBeVisible();
+  await page.keyboard.press("Enter");
+
+  const dialog = page.getByRole("dialog", { name: "Debug Sessions" });
+  await expect(dialog).toBeVisible();
+  const sessions = dialog.getByRole("listbox", { name: "Debug sessions" });
+  const imported = sessions.getByRole("option").filter({ hasText: "Imported" });
+  await expect(imported).toHaveCount(1);
+  await expect(imported).toHaveAttribute("aria-selected", "true");
+
+  await expect(dialog.getByText("Imported session, read-only")).toBeVisible();
+  await expect(dialog.getByText(/Left out: R8 mappings/)).toBeVisible();
+  for (const name of ["Keep", "End session", "Refresh exit reasons", "Export…", "Add bookmark"]) {
+    await expect(dialog.getByRole("button", { name, exact: true })).toHaveCount(0);
+  }
+
+  const timeline = dialog.getByRole("listbox", { name: "Timeline, oldest first" });
+  await timeline.getByRole("option").filter({ hasText: "<email-1> not found" }).click();
+  await dialog.getByRole("button", { name: /^Show log lines/ }).click();
+  await expect(dialog.getByText("FATAL EXCEPTION: main")).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await dialog.getByRole("button", { name: "Delete session" }).click();
+  await expect(sessions.getByRole("option").filter({ hasText: "Imported" })).toHaveCount(0);
+});

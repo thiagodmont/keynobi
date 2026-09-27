@@ -9,6 +9,7 @@ import {
   Match,
   Show,
   Switch,
+  createEffect,
   createMemo,
   createSignal,
   onCleanup,
@@ -17,11 +18,12 @@ import {
 } from "solid-js";
 import { Portal } from "solid-js/web";
 import type { DebugSessionSummary } from "@/bindings";
-import { formatError, listDebugSessions } from "@/lib/tauri-api";
+import { formatError, importDebugSession, listDebugSessions } from "@/lib/tauri-api";
 import { Alert, Badge, Button, EmptyState, Listbox, Spinner, modalFocus } from "@/components/ui";
 import {
   STATE_LABELS,
   formatSessionTime,
+  isImported,
   isUnattributed,
   sessionBuildLabel,
   sessionCountsLabel,
@@ -37,10 +39,17 @@ export const SESSIONS_POLL_MS = 3000;
 
 const [open, setOpen] = createSignal(false);
 const [requestedId, setRequestedId] = createSignal<string | null>(null);
+const [importRequested, setImportRequested] = createSignal(false);
 
 /** Open the dialog, on `sessionId` when given, else on the newest session. */
 export function openSessionsDialog(sessionId?: string): void {
   setRequestedId(sessionId ?? null);
+  setOpen(true);
+}
+
+/** Open the dialog and import a bundle the user picks, then show it. */
+export function importDebugSessionIntoDialog(): void {
+  setImportRequested(true);
   setOpen(true);
 }
 
@@ -64,9 +73,18 @@ function SessionOption(props: { session: DebugSessionSummary }): JSX.Element {
     <div class={styles.option}>
       <div class={styles.optionHead}>
         <span class={styles.optionBuild}>{sessionBuildLabel(props.session)}</span>
-        <Badge size="xs" variant={stateVariant(state())}>
-          {STATE_LABELS[state()]}
-        </Badge>
+        <Show
+          when={isImported(props.session)}
+          fallback={
+            <Badge size="xs" variant={stateVariant(state())}>
+              {STATE_LABELS[state()]}
+            </Badge>
+          }
+        >
+          <Badge size="xs" variant="info" title="Imported from a bundle; read-only">
+            Imported
+          </Badge>
+        </Show>
       </div>
       <div class={styles.optionMeta}>
         {sessionDeviceLabel(props.session.device)} · {props.session.package}
@@ -105,6 +123,8 @@ function SessionsDialogBody(): JSX.Element {
   const [sessions, setSessions] = createSignal<DebugSessionSummary[] | null>(null);
   const [listError, setListError] = createSignal<string | null>(null);
   const [selectedId, setSelectedId] = createSignal<string | null>(untrack(requestedId));
+  const [importing, setImporting] = createSignal(false);
+  const [importError, setImportError] = createSignal<string | null>(null);
   // Drops a list that arrives after a newer one.
   let request = 0;
   let box!: HTMLDivElement;
@@ -141,6 +161,31 @@ function SessionsDialogBody(): JSX.Element {
     });
   });
 
+  async function importBundle(): Promise<void> {
+    if (importing()) return;
+    setImporting(true);
+    setImportError(null);
+    try {
+      const imported = await importDebugSession();
+      if (imported) {
+        setSelectedId(imported.id);
+        await loadList();
+      }
+    } catch (e) {
+      setImportError(formatError(e));
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  // The palette's Import Debug Session…, whether or not the dialog was open.
+  createEffect(() => {
+    if (importRequested()) {
+      setImportRequested(false);
+      void importBundle();
+    }
+  });
+
   const selected = createMemo(() => sessions()?.find((s) => s.id === selectedId()) ?? null);
 
   return (
@@ -158,11 +203,41 @@ function SessionsDialogBody(): JSX.Element {
         onClick={(e) => e.stopPropagation()}
       >
         <div class={styles.header}>
-          <h2 id="debug-sessions-title" class={styles.title}>
-            Debug Sessions
-          </h2>
-          <span class={styles.subtitle}>One per install of the app on a device, newest first</span>
+          <div class={styles.headerText}>
+            <h2 id="debug-sessions-title" class={styles.title}>
+              Debug Sessions
+            </h2>
+            <span class={styles.subtitle}>
+              One per install of the app on a device, newest first; imported ones last
+            </span>
+          </div>
+          <Button
+            variant="outline"
+            size="xs"
+            title="Open a session bundle someone exported, to read it here"
+            onClick={() => void importBundle()}
+          >
+            Import Session…
+          </Button>
         </div>
+        <Show when={importing()}>
+          <div class={styles.status} role="status">
+            <Spinner size="sm" />
+            Waiting for the file to import…
+          </div>
+        </Show>
+        <Show when={importError()}>
+          {(message) => (
+            <Alert
+              variant="error"
+              title="Could not import the session"
+              dismissible
+              onDismiss={() => setImportError(null)}
+            >
+              {message()}
+            </Alert>
+          )}
+        </Show>
 
         <div class={styles.split}>
           <div class={styles.listPane}>
@@ -195,7 +270,7 @@ function SessionsDialogBody(): JSX.Element {
                 <EmptyState
                   icon="list"
                   title="No debug sessions yet"
-                  description="Run App, or an AI client's install_apk, opens one for each install on a device."
+                  description="Run App, or an AI client's install_apk, opens one for each install on a device. Import Session… opens one someone shared."
                   density="compact"
                 />
               </Match>

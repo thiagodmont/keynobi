@@ -1799,6 +1799,57 @@ export const typeFixtures = {
       "projectRoot": null,
       "recordedBy": "standalone",
       "schemaVersion": 1
+    },
+    {
+      "build": null,
+      "bytes": 0,
+      "closeReason": null,
+      "closedAt": null,
+      "counts": {
+        "agentActions": 0,
+        "anrs": 0,
+        "bookmarks": 0,
+        "captures": 0,
+        "crashes": 0,
+        "exits": 0,
+        "launches": 0
+      },
+      "device": {
+        "avdName": null,
+        "model": "Pixel 8",
+        "serial": "<device-1>"
+      },
+      "droppedEvents": 0,
+      "eventCount": 0,
+      "id": "i-20260926T081500Z-00ff00ff00ff",
+      "imported": {
+        "exportedAt": "2026-04-23T10:00:00Z",
+        "fileName": "keynobi-session-com.example.app-20260925.zip",
+        "importedAt": "2026-04-23T10:00:00Z",
+        "keynobiVersion": "0.9.0",
+        "omitted": [
+          {
+            "item": "R8 mappings",
+            "reason": "never exported"
+          }
+        ],
+        "originalId": "s-20260925T103200Z-4f2a9c00b1de",
+        "redactions": [
+          {
+            "count": 2,
+            "enabled": true,
+            "rule": "emails"
+          }
+        ]
+      },
+      "install": null,
+      "kept": false,
+      "lastEventAt": "2026-04-23T10:00:00Z",
+      "openedAt": "2026-04-23T10:00:00Z",
+      "package": "com.example.app",
+      "projectRoot": "<project>",
+      "recordedBy": "imported",
+      "schemaVersion": 1
     }
   ] satisfies Wire<DebugSession>[],
   DebugSessionSummary: [
@@ -1869,6 +1920,40 @@ export const typeFixtures = {
       "package": "com.example.app.debug",
       "projectRoot": null,
       "recordedBy": "standalone",
+      "variant": null,
+      "versionCode": null
+    },
+    {
+      "apkSha256": null,
+      "buildId": null,
+      "bytes": 0,
+      "closeReason": null,
+      "closedAt": null,
+      "counts": {
+        "agentActions": 0,
+        "anrs": 0,
+        "bookmarks": 0,
+        "captures": 0,
+        "crashes": 0,
+        "exits": 0,
+        "launches": 0
+      },
+      "device": {
+        "avdName": null,
+        "model": "Pixel 8",
+        "serial": "<device-1>"
+      },
+      "droppedEvents": 0,
+      "eventCount": 0,
+      "id": "i-20260926T081500Z-00ff00ff00ff",
+      "kept": false,
+      "lastEventAt": "2026-04-23T10:00:00Z",
+      "mappingSha256s": [],
+      "module": null,
+      "openedAt": "2026-04-23T10:00:00Z",
+      "package": "com.example.app",
+      "projectRoot": "<project>",
+      "recordedBy": "imported",
       "variant": null,
       "versionCode": null
     }

@@ -23,6 +23,7 @@ import {
   SESSIONS_POLL_MS,
   SessionsDialog,
   closeSessionsDialog,
+  importDebugSessionIntoDialog,
   openSessionsDialog,
 } from "./SessionsDialog";
 import { CAPTURE_PAGE_LINES } from "./SessionEventDetail";
@@ -36,6 +37,10 @@ interface FakeBackend {
   exitRefresh: DebugSessionExitRefresh;
   /** What the export returns; `null` when the save dialog is cancelled. */
   exportResult: SessionExportResult | null;
+  /** Imported sessions, newest import first, listed after the recorded ones. */
+  imported: DebugSession[];
+  /** What the import returns; `null` when the open dialog is cancelled. */
+  importResult: DebugSession | null;
   /** Commands that reject with this error. */
   failing: Map<string, AppError>;
 }
@@ -43,7 +48,7 @@ interface FakeBackend {
 let fake: FakeBackend;
 
 function session(id: string): DebugSession {
-  const found = fake.sessions.find((s) => s.id === id);
+  const found = [...fake.sessions, ...fake.imported].find((s) => s.id === id);
   if (!found) throw { kind: "notFound", message: `Debug session ${id} is no longer kept` };
   return found;
 }
@@ -61,7 +66,7 @@ function installFake(): void {
     const a = (args ?? {}) as Record<string, unknown>;
     switch (command) {
       case "list_debug_sessions":
-        return [...fake.sessions].reverse().map(summaryOf);
+        return [...[...fake.sessions].reverse(), ...fake.imported].map(summaryOf);
       case "get_debug_session": {
         const s = session(a.id as string);
         return makeSessionDetail({ ...s }, fake.events.get(s.id) ?? []);
@@ -105,6 +110,16 @@ function installFake(): void {
       case "export_debug_session":
         session(a.id as string);
         return fake.exportResult;
+      case "import_debug_session": {
+        const imported = fake.importResult;
+        if (!imported) return null;
+        fake.imported = [imported, ...fake.imported];
+        return summaryOf(imported);
+      }
+      case "delete_imported_debug_session":
+        session(a.id as string);
+        fake.imported = fake.imported.filter((s) => s.id !== a.id);
+        return null;
     }
     throw new Error(`unexpected command ${command}`);
   });
@@ -215,6 +230,8 @@ describe("SessionsDialog", () => {
       captures: new Map(),
       exitRefresh: { added: 0, message: null },
       exportResult: null,
+      imported: [],
+      importResult: null,
       failing: new Map(),
     };
     installFake();
@@ -641,5 +658,125 @@ describe("SessionsDialog", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(opener);
     opener.remove();
+  });
+
+  describe("imported sessions", () => {
+    const IMPORTED_ID = "i-20260926T081500Z-00000000000b";
+
+    function importable(): DebugSession {
+      return makeSession({
+        id: IMPORTED_ID,
+        projectRoot: "<project>",
+        device: { serial: "<device-1>", avdName: null, model: "Pixel 8" },
+        recordedBy: "imported",
+        imported: {
+          fileName: "keynobi-session-com.example.app-20260925.zip",
+          exportedAt: "2026-09-25T12:00:00.000000Z",
+          importedAt: "2026-09-26T08:15:00.000000Z",
+          originalId: "s-20260925T103200Z-4f2a9c00b1de",
+          keynobiVersion: "0.9.0",
+          omitted: [{ item: "R8 mappings", reason: "never exported" }],
+          redactions: [
+            { rule: "emails", enabled: true, count: 2 },
+            { rule: "ipAddresses", enabled: false, count: 0 },
+          ],
+        },
+      });
+    }
+
+    it("imports a bundle, lists it last with an Imported badge, and shows it read-only", async () => {
+      seed();
+      fake.importResult = importable();
+      const dialog = await openDialog();
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Import Session…" }));
+      await waitFor(() => expect(calls("import_debug_session")).toHaveLength(1));
+      const list = within(dialog).getByRole("listbox", { name: "Debug sessions" });
+      await waitFor(() => expect(within(list).getAllByRole("option")).toHaveLength(3));
+      const options = within(list).getAllByRole("option");
+      const imported = options[2];
+      expect(within(imported).getByText("Imported")).toBeTruthy();
+      expect(imported.textContent).not.toContain("Open");
+      await waitFor(() => expect(imported.getAttribute("aria-selected")).toBe("true"));
+      for (const option of options.slice(0, 2)) {
+        expect(within(option).queryByText("Imported")).toBeNull();
+      }
+
+      const alert = await within(dialog).findByText(/Exported .* by Keynobi 0\.9\.0/);
+      expect(alert.textContent).toContain("as keynobi-session-com.example.app-20260925.zip");
+      expect(alert.textContent).toContain("Redacted 2 emails.");
+      expect(alert.textContent).toContain("Not redacted: IP addresses.");
+      expect(alert.textContent).toContain("Left out: R8 mappings (never exported).");
+      expect(within(dialog).getByText("Imported session, read-only")).toBeTruthy();
+      for (const name of [
+        "Keep",
+        "End session",
+        "Refresh exit reasons",
+        "Export…",
+        "Add bookmark",
+      ]) {
+        expect(within(dialog).queryByRole("button", { name })).toBeNull();
+      }
+      expect(within(dialog).queryByLabelText("Bookmark note")).toBeNull();
+    });
+
+    it("deletes an imported session after asking", async () => {
+      seed();
+      fake.imported = [importable()];
+      const dialog = await openDialog(IMPORTED_ID);
+
+      fireEvent.click(await within(dialog).findByRole("button", { name: "Delete" }));
+      expect(calls("delete_imported_debug_session")).toHaveLength(0);
+      within(dialog).getByText("Delete this imported session?");
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
+      fireEvent.click(within(dialog).getByRole("button", { name: "Delete session" }));
+
+      await waitFor(() =>
+        expect(lastArgs("delete_imported_debug_session")).toEqual({ id: IMPORTED_ID })
+      );
+      const list = within(dialog).getByRole("listbox", { name: "Debug sessions" });
+      await waitFor(() => expect(within(list).getAllByRole("option")).toHaveLength(2));
+    });
+
+    it("imports from the palette action, opening the dialog", async () => {
+      seed();
+      fake.importResult = importable();
+      render(() => <SessionsDialog />);
+      importDebugSessionIntoDialog();
+
+      const dialog = await screen.findByRole("dialog", { name: "Debug Sessions" });
+      await waitFor(() => expect(calls("import_debug_session")).toHaveLength(1));
+      const list = await within(dialog).findByRole("listbox", { name: "Debug sessions" });
+      await waitFor(() =>
+        expect(
+          within(list)
+            .getAllByRole("option")
+            .find((o) => o.getAttribute("aria-selected") === "true")?.textContent
+        ).toContain("Imported")
+      );
+    });
+
+    it("says why a bundle was refused, and a cancelled pick changes nothing", async () => {
+      seed();
+      const dialog = await openDialog();
+      fireEvent.click(within(dialog).getByRole("button", { name: "Import Session…" }));
+      await waitFor(() => expect(calls("import_debug_session")).toHaveLength(1));
+      await waitFor(() =>
+        expect(within(dialog).queryByText("Waiting for the file to import…")).toBeNull()
+      );
+      expect(within(dialog).queryByRole("alert")).toBeNull();
+
+      fake.failing.set("import_debug_session", {
+        kind: "invalidInput",
+        message:
+          "This bundle cannot be imported: notes.txt is not a file a debug session bundle holds",
+      });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Import Session…" }));
+      expect(await within(dialog).findByText("Could not import the session")).toBeTruthy();
+      expect(within(dialog).getByText(/notes\.txt is not a file/)).toBeTruthy();
+      const list = within(dialog).getByRole("listbox", { name: "Debug sessions" });
+      expect(within(list).getAllByRole("option")).toHaveLength(2);
+    });
   });
 });

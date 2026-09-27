@@ -35,8 +35,9 @@ use commands::run_configuration::{
     save_run_configuration, set_active_run_configuration, set_run_configuration_target,
 };
 use commands::sessions::{
-    add_session_bookmark, end_debug_session, export_debug_session, get_debug_session,
-    get_session_capture, list_debug_sessions, refresh_session_exit_reasons, set_debug_session_kept,
+    add_session_bookmark, delete_imported_debug_session, end_debug_session, export_debug_session,
+    get_debug_session, get_session_capture, import_debug_session, list_debug_sessions,
+    refresh_session_exit_reasons, set_debug_session_kept,
 };
 use commands::settings::*;
 use commands::studio::open_in_studio;
@@ -419,6 +420,8 @@ pub fn run() {
             get_session_capture,
             refresh_session_exit_reasons,
             export_debug_session,
+            import_debug_session,
+            delete_imported_debug_session,
             // MCP Server
             get_mcp_setup_status,
             get_mcp_activity,

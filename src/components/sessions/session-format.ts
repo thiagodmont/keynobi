@@ -6,6 +6,7 @@ import type {
   DebugSessionCrash,
   DebugSessionDevice,
   DebugSessionEvent,
+  DebugSessionImport,
   DebugSessionSummary,
   RedactionRule,
   SessionExportResult,
@@ -74,6 +75,11 @@ export function sessionSourceLabel(provenance: BuildProvenance | null | undefine
 /** A session no Keynobi install opened: crashes of an app Keynobi did not install. */
 export function isUnattributed(session: Pick<DebugSessionSummary, "apkSha256">): boolean {
   return session.apkSha256 === null;
+}
+
+/** A session imported from a bundle: read-only, recorded elsewhere. */
+export function isImported(session: Pick<DebugSessionSummary, "recordedBy">): boolean {
+  return session.recordedBy === "imported";
 }
 
 function plural(n: number, one: string, many = `${one}s`): string {
@@ -319,6 +325,27 @@ export function exportResultLabel(result: SessionExportResult): string {
     redacted.length > 0 ? `Redacted ${redacted.join(", ")}.` : "Nothing needed redacting.",
     off.length > 0 ? `Not redacted: ${off.join(", ")}.` : null,
     result.omitted.length > 0 ? `Left out: ${result.omitted.map((o) => o.item).join(", ")}.` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * What an imported bundle says about itself: "Exported … by Keynobi 0.9.0 as
+ * x.zip. Redacted 2 emails. Left out: R8 mappings (never exported)."
+ */
+export function importSummaryLabel(imported: DebugSessionImport): string {
+  const redacted = imported.redactions
+    .filter((r) => r.count > 0)
+    .map((r) => plural(r.count, ...REDACTION_NOUNS[r.rule]));
+  const off = imported.redactions.filter((r) => !r.enabled).map((r) => REDACTION_NOUNS[r.rule][1]);
+  return [
+    `Exported ${formatSessionTime(imported.exportedAt)} by Keynobi ${imported.keynobiVersion} as ${imported.fileName}.`,
+    redacted.length > 0 ? `Redacted ${redacted.join(", ")}.` : "Nothing was redacted.",
+    off.length > 0 ? `Not redacted: ${off.join(", ")}.` : null,
+    imported.omitted.length > 0
+      ? `Left out: ${imported.omitted.map((o) => `${o.item} (${o.reason})`).join("; ")}.`
+      : null,
   ]
     .filter(Boolean)
     .join(" ");
