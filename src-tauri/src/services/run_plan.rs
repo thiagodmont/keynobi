@@ -23,6 +23,9 @@ pub struct RunRequest {
     pub name: Option<String>,
     /// Plan the build only: no device, install, or launch.
     pub build_only: bool,
+    /// The device the caller chose (an agent): it replaces a target of `ask`
+    /// or `lastUsed`, and must be the device a `serial` or `avd` target names.
+    pub device: Option<String>,
 }
 
 /// The project a run belongs to.
@@ -88,7 +91,7 @@ pub fn resolve_at(
     let device = if request.build_only {
         None
     } else {
-        Some(target(config, &local, devices)?)
+        Some(target(config, &local, devices, request.device.as_deref())?)
     };
     let plan = describe(config, &task, device.as_ref());
     Ok(ResolvedRun {
@@ -164,7 +167,7 @@ pub fn resolve_each_at(
         .map(|config| {
             let request = RunRequest {
                 name: Some(config.name.clone()),
-                build_only: false,
+                ..RunRequest::default()
             };
             resolve_at(settings_path, project, &request, devices)
         })
@@ -248,11 +251,13 @@ pub fn assemble_task(module: &str, variant: &str) -> String {
     }
 }
 
-/// The one online device `config`'s target names.
+/// The one online device `config`'s target names, or `chosen` when the
+/// target leaves the device open.
 fn target(
     config: &RunConfiguration,
     local: &LocalRunState,
     devices: Devices<'_>,
+    chosen: Option<&str>,
 ) -> Result<RunDevice, AppError> {
     let online = |serial: &str| {
         devices.list.iter().find(|d| {
@@ -267,6 +272,41 @@ fn target(
         ))
     };
     let selected = || devices.selected.and_then(online);
+    let mismatch = |target: String| {
+        AppError::InvalidInput(format!(
+            "Run configuration '{name}' runs on {target}, not on device {}. Run it without \
+             choosing a device, or change the configuration's target.",
+            chosen.unwrap_or_default()
+        ))
+    };
+    match (&local.target, chosen) {
+        (TargetPreference::Serial { serial }, Some(chosen)) if chosen != serial => {
+            return Err(mismatch(format!("device {serial}")));
+        }
+        (TargetPreference::Avd { name: avd }, Some(chosen)) => {
+            let runs_avd = |d: &&Device| d.avd_name.as_deref() == Some(avd.as_str());
+            if let Some(device) = online(chosen).filter(runs_avd) {
+                return Ok(run_device(device));
+            }
+            // An AVD that is not running is reported as below, so it can be launched.
+            if devices
+                .list
+                .iter()
+                .filter(runs_avd)
+                .any(|d| online(&d.serial).is_some())
+            {
+                return Err(mismatch(format!("the AVD {avd}")));
+            }
+        }
+        (TargetPreference::Ask | TargetPreference::LastUsed, Some(chosen)) => {
+            return online(chosen).map(run_device).ok_or_else(|| {
+                AppError::NotFound(format!(
+                    "Device {chosen} is not online. Choose an online device, then run again."
+                ))
+            });
+        }
+        _ => {}
+    }
     match &local.target {
         TargetPreference::Serial { serial } => online(serial).map(run_device).ok_or_else(|| {
             AppError::NotFound(format!(
@@ -773,6 +813,7 @@ mod tests {
                 RunRequest {
                     name: Some("Free".into()),
                     build_only: true,
+                    ..run()
                 },
                 on(&[], None),
             )
@@ -1032,6 +1073,89 @@ mod tests {
         );
         let resolved = f.resolve(run(), on(&both, Some("28151FDH2000Q4"))).unwrap();
         assert_eq!(resolved.device.unwrap().serial, "emulator-5554");
+    }
+
+    fn on_device(serial: &str) -> RunRequest {
+        RunRequest {
+            device: Some(serial.into()),
+            ..run()
+        }
+    }
+
+    #[test]
+    fn a_chosen_device_replaces_ask_and_last_used_when_it_is_online() {
+        let f = Fixture::new(&[":app"], Some(true));
+        let both = [pixel(), phone()];
+        // Last used would pick emulator-5554, the project's last device.
+        let resolved = f
+            .resolve(
+                on_device("28151FDH2000Q4"),
+                on(&both, Some("emulator-5554")),
+            )
+            .unwrap();
+        assert_eq!(resolved.device.unwrap().serial, "28151FDH2000Q4");
+
+        f.target("Default", TargetPreference::Ask);
+        let resolved = f
+            .resolve(on_device("emulator-5554"), on(&both, None))
+            .unwrap();
+        assert_eq!(resolved.device.unwrap().serial, "emulator-5554");
+
+        let err = f
+            .resolve(on_device("emulator-5556"), on(&both, Some("emulator-5554")))
+            .unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+        assert!(message(err).contains("Device emulator-5556 is not online"));
+    }
+
+    #[test]
+    fn a_chosen_device_must_be_the_one_a_serial_or_avd_target_names() {
+        let f = Fixture::new(&[":app"], Some(true));
+        let both = [pixel(), phone()];
+        f.target(
+            "Default",
+            TargetPreference::Serial {
+                serial: "28151FDH2000Q4".into(),
+            },
+        );
+        let resolved = f
+            .resolve(on_device("28151FDH2000Q4"), on(&both, None))
+            .unwrap();
+        assert_eq!(resolved.device.unwrap().serial, "28151FDH2000Q4");
+        let err = f
+            .resolve(on_device("emulator-5554"), on(&both, None))
+            .unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert!(
+            message(err).contains(
+                "Run configuration 'Default' runs on device 28151FDH2000Q4, not on device \
+                 emulator-5554."
+            ),
+            "wrong reason"
+        );
+
+        f.target(
+            "Default",
+            TargetPreference::Avd {
+                name: "Pixel_7".into(),
+            },
+        );
+        let resolved = f
+            .resolve(on_device("emulator-5554"), on(&both, None))
+            .unwrap();
+        assert_eq!(resolved.device.unwrap().serial, "emulator-5554");
+        let err = f
+            .resolve(on_device("28151FDH2000Q4"), on(&both, None))
+            .unwrap_err();
+        assert!(matches!(err, AppError::InvalidInput(_)), "{err:?}");
+        assert!(message(err).contains("runs on the AVD Pixel_7, not on device 28151FDH2000Q4"));
+
+        // With the AVD not running, the reason is that it is not running.
+        let err = f
+            .resolve(on_device("28151FDH2000Q4"), on(&[phone()], None))
+            .unwrap_err();
+        assert!(matches!(err, AppError::NotFound(_)), "{err:?}");
+        assert!(message(err).contains("runs on the AVD Pixel_7, which is not running"));
     }
 
     // ── Shared configurations ────────────────────────────────────────────────

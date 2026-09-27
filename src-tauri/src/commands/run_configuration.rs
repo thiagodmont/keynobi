@@ -103,6 +103,7 @@ pub async fn resolve_run_configuration(
     let request = RunRequest {
         name,
         build_only: build_only.unwrap_or(false),
+        device: None,
     };
     resolve(project, request, selected_serial, &device_state).await
 }
@@ -162,7 +163,7 @@ pub async fn run_run_configuration(
     }
     let request = RunRequest {
         name,
-        build_only: false,
+        ..RunRequest::default()
     };
     let run = resolve(project.clone(), request, selected_serial, &device_state).await?;
     let (settings, _) = settings_manager::load_settings();

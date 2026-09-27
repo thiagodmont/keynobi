@@ -3138,3 +3138,446 @@ fn run_configuration_tools_belong_to_the_core_toolset() {
     assert_hidden(&mut ui, "build_run_configuration", "core");
     assert!(!marker.exists(), "a hidden tool ran gradlew");
 }
+
+/// An `adb` that sees one emulator running the AVD Pixel_7, installs, and
+/// launches the sandbox app.
+fn one_emulator_adb_that_installs_and_launches(sandbox: &Sandbox) {
+    sandbox.write_adb(
+        r#"case "$*" in
+  "devices -l")
+    echo 'List of devices attached'
+    echo 'emulator-5554          device product:sdk_gphone64 model:sdk_gphone64_arm64 device:emu64a transport_id:1'
+    ;;
+  *"emu avd name"*) printf 'Pixel_7\nOK\n' ;;
+  *"ro.build.version.sdk"*) echo 35 ;;
+  *"ro.build.version.release"*) echo 15 ;;
+  *" install "*) echo Success ;;
+  *"resolve-activity"*) printf 'priority=0\ncom.example.sandbox/com.example.sandbox.MainActivity\n' ;;
+  *"am start -W -n"*)
+    echo 'Status: ok'
+    echo 'LaunchState: COLD'
+    echo 'TotalTime: 812'
+    echo 'WaitTime: 815'
+    echo 'Complete'
+    ;;
+esac"#,
+    );
+}
+
+/// Call `run_run_configuration` with `arguments` and a progress token;
+/// returns the result and the progress messages sent before it.
+fn run_noting_progress(
+    client: &mut headless::McpClient,
+    arguments: serde_json::Value,
+) -> (headless::ToolOutput, Vec<String>) {
+    let id = client.send_request(
+        "tools/call",
+        json!({
+            "name": "run_run_configuration",
+            "arguments": arguments,
+            "_meta": { "progressToken": "run-1" },
+        }),
+    );
+    let mut progress = Vec::new();
+    let result = client
+        .wait_response_noting(id, |message| {
+            if message["method"] == "notifications/progress" {
+                progress.push(
+                    message["params"]["message"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string(),
+                );
+            }
+        })
+        .expect("run_run_configuration");
+    let output = headless::ToolOutput {
+        text: result["content"][0]["text"]
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        is_error: result["isError"].as_bool().unwrap_or(false),
+    };
+    (output, progress)
+}
+
+/// The `events.jsonl` of every debug session, once one has a launch.
+fn session_events_with_a_launch(sandbox: &Sandbox) -> String {
+    let dir = sandbox.home.join(".keynobi/sessions");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let events: String = std::fs::read_dir(&dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter_map(|e| std::fs::read_to_string(e.path().join("events.jsonl")).ok())
+            .collect();
+        if events.contains(r#""kind":"launch""#) {
+            return events;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "no launch in the debug sessions: {events}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+fn nothing_installed(sandbox: &Sandbox) -> bool {
+    sandbox
+        .adb_calls()
+        .iter()
+        .all(|c| !c.contains(" install ") && !c.contains("am start"))
+}
+
+#[test]
+fn run_run_configuration_builds_installs_and_launches_on_its_device() {
+    let sandbox = Sandbox::new();
+    write_three_run_configurations(&sandbox, json!(true));
+    one_emulator_adb_that_installs_and_launches(&sandbox);
+    let args = gradlew_writing_the_debug_apk(&sandbox);
+    let mut client = sandbox.start();
+
+    let (out, progress) = run_noting_progress(&mut client, json!({ "name": "Default" }));
+
+    assert!(!out.is_error, "{}", out.text);
+    let ran: serde_json::Value = serde_json::from_str(&out.text).unwrap();
+    assert!(
+        std::fs::read_to_string(&args)
+            .unwrap()
+            .contains(":app:assembleDebug"),
+        "gradlew did not run the configuration's task"
+    );
+    let history: Vec<serde_json::Value> = serde_json::from_str(
+        &std::fs::read_to_string(sandbox.home.join(".keynobi/build-history.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(history.len(), 1, "{history:?}");
+    assert_eq!(history[0]["origin"]["kind"], "agent", "{:?}", history[0]);
+    let installed: Vec<serde_json::Value> = serde_json::from_str(
+        &std::fs::read_to_string(sandbox.home.join(".keynobi/installed-builds.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(installed.len(), 1, "{installed:?}");
+
+    assert_eq!(ran["configuration"], "Default", "{ran}");
+    assert_eq!(ran["outcome"], "done", "{ran}");
+    assert_eq!(ran["build_id"], history[0]["id"], "{ran}");
+    assert_eq!(
+        ran["device"],
+        json!({ "serial": "emulator-5554", "label": "Pixel_7" })
+    );
+    assert_eq!(ran["package"], "com.example.sandbox", "{ran}");
+    assert_eq!(ran["apk_sha256"], installed[0]["apkSha256"], "{ran}");
+    assert_eq!(ran["apk_written_by_this_build"], true, "{ran}");
+    assert_eq!(ran["launch_timing"]["total_ms"], 812, "{ran}");
+    assert_eq!(ran["launch_timing"]["launch_state"], "cold", "{ran}");
+    assert_eq!(ran["logcat_filter"], "package:mine", "{ran}");
+    assert!(
+        ran["result"].as_str().unwrap().contains(
+            "installed on Pixel_7 and launched com.example.sandbox. Launch time: 812 ms."
+        ),
+        "{ran}"
+    );
+    let calls = sandbox.adb_calls();
+    assert!(
+        calls
+            .iter()
+            .any(|c| c.contains("-s emulator-5554") && c.contains(" install ")),
+        "{calls:?}"
+    );
+    assert!(
+        calls
+            .iter()
+            .any(|c| c.contains("am start -W -n com.example.sandbox/")),
+        "{calls:?}"
+    );
+    for phase in [
+        "Run 'Default': building",
+        "Run 'Default': installing on Pixel_7",
+        "Run 'Default': launching on Pixel_7",
+        "Run 'Default': done",
+    ] {
+        assert!(progress.iter().any(|m| m == phase), "{phase}: {progress:?}");
+    }
+    // The device is recorded as the configuration's last one, and the
+    // launch is on the install's debug session, by the agent.
+    let settings: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(sandbox.home.join(".keynobi/settings.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        settings["recentProjects"][0]["runLocal"]["Default"]["lastDevice"], "emulator-5554",
+        "{settings}"
+    );
+    let events = session_events_with_a_launch(&sandbox);
+    let launch = events
+        .lines()
+        .find(|l| l.contains(r#""kind":"launch""#))
+        .unwrap();
+    assert!(launch.contains(r#""kind":"agent""#), "{launch}");
+}
+
+#[test]
+fn an_ask_target_runs_on_the_device_the_agent_chooses() {
+    let sandbox = Sandbox::new();
+    write_run_configurations(
+        &sandbox,
+        json!(true),
+        json!([{ "name": "Default", "module": ":app", "variant": "debug" }]),
+        json!({ "Default": { "target": { "kind": "ask" } } }),
+    );
+    one_emulator_adb_that_installs_and_launches(&sandbox);
+    let marker = gradlew_leaving_a_marker(&sandbox);
+    let mut client = sandbox.start();
+
+    // No device chosen and none selected: nothing runs.
+    let out = client.call_tool("run_run_configuration", json!({ "name": "Default" }));
+    assert!(out.is_error, "{}", out.text);
+    assert!(out.text.contains("no device is selected"), "{}", out.text);
+    assert!(
+        out.text
+            .contains("Choose an online device with device_serial (from list_devices)."),
+        "{}",
+        out.text
+    );
+    // A device that is not online is refused too.
+    let out = client.call_tool(
+        "run_run_configuration",
+        json!({ "name": "Default", "device_serial": "emulator-5556" }),
+    );
+    assert!(out.is_error, "{}", out.text);
+    assert!(
+        out.text.contains("Device emulator-5556 is not online"),
+        "{}",
+        out.text
+    );
+    assert!(!marker.exists(), "gradlew ran without a device");
+    assert!(nothing_installed(&sandbox), "{:?}", sandbox.adb_calls());
+
+    gradlew_writing_the_debug_apk(&sandbox);
+    let ran = client.call_tool_json(
+        "run_run_configuration",
+        json!({ "name": "Default", "device_serial": "emulator-5554" }),
+    );
+    assert_eq!(ran["outcome"], "done", "{ran}");
+    assert_eq!(ran["device"]["serial"], "emulator-5554", "{ran}");
+}
+
+#[test]
+fn a_chosen_device_must_be_the_one_a_serial_target_names() {
+    let sandbox = Sandbox::new();
+    write_three_run_configurations(&sandbox, json!(true));
+    one_emulator_adb_that_installs_and_launches(&sandbox);
+    let marker = gradlew_leaving_a_marker(&sandbox);
+    let mut client = sandbox.start();
+
+    let out = client.call_tool(
+        "run_run_configuration",
+        json!({ "name": "Default", "device_serial": "28151FDH2000Q4" }),
+    );
+
+    assert!(out.is_error, "{}", out.text);
+    assert!(
+        out.text.contains(
+            "Run configuration 'Default' runs on device emulator-5554, not on device \
+             28151FDH2000Q4."
+        ),
+        "{}",
+        out.text
+    );
+    assert!(!marker.exists(), "gradlew ran for the wrong device");
+    assert!(nothing_installed(&sandbox), "{:?}", sandbox.adb_calls());
+}
+
+#[test]
+fn an_avd_that_is_not_running_is_a_tool_error_naming_launch_avd() {
+    let sandbox = Sandbox::new();
+    write_three_run_configurations(&sandbox, json!(true));
+    one_emulator_adb_that_installs_and_launches(&sandbox);
+    let marker = gradlew_leaving_a_marker(&sandbox);
+    let mut client = sandbox.start();
+
+    let out = client.call_tool("run_run_configuration", json!({ "name": "Tablet" }));
+
+    assert!(out.is_error, "{}", out.text);
+    assert!(
+        out.text
+            .contains("runs on the AVD Pixel_Tablet, which is not running"),
+        "{}",
+        out.text
+    );
+    assert!(
+        out.text
+            .contains("Start the AVD with launch_avd (name: Pixel_Tablet), then run again."),
+        "{}",
+        out.text
+    );
+    assert!(!marker.exists(), "gradlew ran without its AVD");
+    // Only reads: no emulator was started, nothing installed.
+    assert!(
+        sandbox
+            .adb_calls()
+            .iter()
+            .all(|c| c == "devices -l" || c.contains("emu avd name") || c.contains("getprop")),
+        "{:?}",
+        sandbox.adb_calls()
+    );
+}
+
+#[test]
+fn run_run_configuration_is_refused_in_safe_mode() {
+    let sandbox = Sandbox::new();
+    write_three_run_configurations(&sandbox, json!(false));
+    one_emulator_adb_that_installs_and_launches(&sandbox);
+    let marker = gradlew_leaving_a_marker(&sandbox);
+    let mut client = sandbox.start();
+
+    let message = client.call_tool_rejected("run_run_configuration", json!({ "name": "Default" }));
+
+    assert!(message.contains("not trusted"), "{message}");
+    assert!(!marker.exists(), "gradlew ran in Safe Mode");
+    assert!(nothing_installed(&sandbox), "{:?}", sandbox.adb_calls());
+    let message = client.call_tool_rejected("run_run_configuration", json!({ "name": "Nope" }));
+    assert!(
+        message.contains("no run configuration named 'Nope'"),
+        "{message}"
+    );
+}
+
+#[test]
+fn run_run_configuration_refuses_an_unapproved_shared_configuration_and_a_blocked_task() {
+    let sandbox = Sandbox::new();
+    write_run_configurations(
+        &sandbox,
+        json!(true),
+        json!([
+            { "name": "Default", "module": ":app", "variant": "debug" },
+            { "name": "Publish", "module": ":app", "variant": "release", "task": ":app:publishRelease" }
+        ]),
+        json!({
+            "Default": { "target": { "kind": "serial", "serial": "emulator-5554" } },
+            "Publish": { "target": { "kind": "serial", "serial": "emulator-5554" } },
+            "Bundle": { "target": { "kind": "serial", "serial": "emulator-5554" } }
+        }),
+    );
+    let shared = sandbox.project.join(".keynobi");
+    std::fs::create_dir_all(&shared).unwrap();
+    std::fs::write(
+        shared.join("run-configurations.json"),
+        json!({
+            "schemaVersion": 1,
+            "configurations": [
+                { "name": "Bundle", "module": ":app", "variant": "debug", "task": ":app:bundleDebug" }
+            ]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    one_emulator_adb_that_installs_and_launches(&sandbox);
+    let marker = gradlew_leaving_a_marker(&sandbox);
+    let mut client = sandbox.start();
+
+    let out = client.call_tool("run_run_configuration", json!({ "name": "Bundle" }));
+    assert!(out.is_error, "{}", out.text);
+    assert!(
+        out.text.contains("You have not approved it yet."),
+        "{}",
+        out.text
+    );
+    assert!(
+        out.text.contains("Only the user can approve it"),
+        "{}",
+        out.text
+    );
+
+    let message = client.call_tool_rejected("run_run_configuration", json!({ "name": "Publish" }));
+    assert!(
+        message.contains("Gradle task ':app:publishRelease' is blocked for MCP clients"),
+        "{message}"
+    );
+    assert!(!marker.exists(), "gradlew ran a refused configuration");
+    assert!(nothing_installed(&sandbox), "{:?}", sandbox.adb_calls());
+}
+
+#[test]
+fn run_run_configuration_belongs_to_the_device_admin_toolset() {
+    let sandbox = Sandbox::new();
+    write_three_run_configurations(&sandbox, json!(true));
+    let marker = gradlew_leaving_a_marker(&sandbox);
+
+    let admin = sandbox
+        .start_args(&["--toolsets", "device-admin"])
+        .tool_names();
+    assert!(
+        admin.iter().any(|t| t == "run_run_configuration"),
+        "{admin:?}"
+    );
+    let mut core = sandbox.start_args(&["--toolsets", "core"]);
+    assert!(
+        !core
+            .tool_names()
+            .iter()
+            .any(|t| t == "run_run_configuration"),
+        "run_run_configuration is listed in core"
+    );
+    assert_hidden(&mut core, "run_run_configuration", "device-admin");
+    assert!(!marker.exists(), "a hidden tool ran gradlew");
+}
+
+#[test]
+fn cancelling_a_run_request_while_it_builds_cancels_the_build_and_installs_nothing() {
+    let sandbox = Sandbox::new();
+    write_three_run_configurations(&sandbox, json!(true));
+    one_emulator_adb_that_installs_and_launches(&sandbox);
+    let started = sandbox.home.join("build-started");
+    let release = sandbox.home.join("release-build");
+    sandbox.write_gradlew(&format!(
+        "touch '{}'\n\
+         while [ ! -e '{}' ]; do sleep 0.05; done\n\
+         echo 'BUILD SUCCESSFUL in 1s'",
+        started.display(),
+        release.display()
+    ));
+    let mut client = sandbox.start();
+
+    let id = client.send_request(
+        "tools/call",
+        json!({ "name": "run_run_configuration", "arguments": { "name": "Default" } }),
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while !started.exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the build never started"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    client.notify(
+        "notifications/cancelled",
+        json!({ "requestId": id, "reason": "the user stopped the agent" }),
+    );
+    // A cancelled request gets no answer; the build is recorded as cancelled.
+    let history_path = sandbox.home.join(".keynobi/build-history.json");
+    let history = loop {
+        let history: Vec<serde_json::Value> = std::fs::read_to_string(&history_path)
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default();
+        if !history.is_empty() {
+            break history;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "no build was recorded"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    assert_eq!(history[0]["status"]["state"], "cancelled", "{history:?}");
+    assert_eq!(history[0]["cancelledBy"]["kind"], "agent", "{history:?}");
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    assert!(nothing_installed(&sandbox), "{:?}", sandbox.adb_calls());
+    // The session keeps working.
+    let listed = client.call_tool_json("list_run_configurations", json!({}));
+    assert_eq!(listed["count"], 3, "{listed}");
+}
