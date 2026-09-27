@@ -3,4 +3,4 @@
 /**
  * What an attachment holds.
  */
-export type DebugSessionAttachmentKind = "screenshot";
+export type DebugSessionAttachmentKind = "screenshot" | "hierarchy";

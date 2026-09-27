@@ -336,6 +336,8 @@ describe("the mock backend matches the real payloads", () => {
     });
     // A screenshot on the second session, to read back.
     const attached = await handleInvoke("attach_session_screenshot", { id: mockSessionId(2) });
+    // And a UI hierarchy.
+    const tree = await handleInvoke("attach_session_hierarchy", { id: mockSessionId(2) });
     const args = {
       get_build_log_entries: { id: addMockPastBuild({ task: "assembleDebug", state: "success" }) },
       retrace_crash: { crashGroupId: 90 },
@@ -364,6 +366,8 @@ describe("the mock backend matches the real payloads", () => {
       }),
       attach_session_screenshot: { id: mockSessionId(2) },
       get_session_attachment: { id: mockSessionId(2), seq: attached.seq },
+      attach_session_hierarchy: { id: mockSessionId(2) },
+      get_session_hierarchy: { id: mockSessionId(2), seq: tree.seq },
       export_debug_session: {
         id: mockSessionId(1),
         options: {

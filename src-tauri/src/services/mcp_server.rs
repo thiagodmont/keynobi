@@ -3300,7 +3300,7 @@ impl AndroidMcpServer {
 
     /// One debug session: summary, a page of its timeline, and its crashes.
     #[tool(
-        description = "One debug session: what was installed where (build, APK hash, R8 map ids), its timeline (builds, installs, launches with launch times, logcat and device changes, bookmarks, crashes, ANRs, process exits, and agent actions), newest max_events with a before_seq cursor for older ones, and its newest crashes and ANRs with how each was attributed to the installed build (install_record, verified by the device or not, or unattributed). capture_seq adds the log lines kept with that crash.",
+        description = "One debug session: what was installed where (build, APK hash, R8 map ids), its timeline (builds, installs, launches with launch times, logcat and device changes, bookmarks, crashes, ANRs, process exits, agent actions, and attachments), newest max_events with a before_seq cursor for older ones, its newest crashes and ANRs with how each was attributed to the installed build (install_record, verified by the device or not, or unattributed), and the screenshots and UI hierarchies the user attached. capture_seq adds the log lines kept with that crash.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,

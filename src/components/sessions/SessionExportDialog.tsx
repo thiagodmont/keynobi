@@ -74,7 +74,8 @@ export function SessionExportDialog(props: {
           <p id="session-export-description" class={styles.description}>
             Saves a .zip with the session, its timeline, and what you select below. Redaction is
             best effort: check the file before you share it. Screenshots are images and are not
-            redacted: leave them out if they show personal data. R8 mappings are never included.
+            redacted: leave them out if they show personal data. UI hierarchies are text and are
+            redacted like the timeline. R8 mappings are never included.
           </p>
           <Checkbox
             checked={options().includeCrashLogs}
@@ -86,7 +87,7 @@ export function SessionExportDialog(props: {
             checked={options().includeAttachments}
             onChange={(on) => setOptions((o) => ({ ...o, includeAttachments: on }))}
           >
-            Attached screenshots (not redacted)
+            Attachments: screenshots (not redacted) and UI hierarchies (redacted)
           </Checkbox>
           <fieldset class={styles.rules}>
             <legend class={styles.legend}>Redact</legend>

@@ -20,6 +20,7 @@ import type {
 } from "@/bindings";
 import {
   addSessionBookmark,
+  attachSessionHierarchy,
   attachSessionScreenshot,
   deleteImportedDebugSession,
   endDebugSession,
@@ -60,21 +61,25 @@ type DetailState =
   | { kind: "loaded"; detail: DebugSessionDetail }
   | { kind: "error"; message: string };
 
-type Action = "keep" | "end" | "bookmark" | "exits" | "delete" | "screenshot";
+type Action = "keep" | "end" | "bookmark" | "exits" | "delete" | "screenshot" | "hierarchy";
 
 const BUSY_LABELS: Record<Action, string> = {
   delete: "Deleting the session…",
   screenshot: "Taking a screenshot of the device…",
+  hierarchy: "Capturing the device's UI hierarchy…",
   keep: "Saving…",
   end: "Ending the session…",
   bookmark: "Adding the bookmark…",
   exits: "Reading exit reasons from the device…",
 };
 
-/** The timeline's events and every crash, even one older than the events returned. */
+/**
+ * The timeline's events and every crash and attachment, even one older than
+ * the events returned.
+ */
 export function timelineEvents(detail: DebugSessionDetail): DebugSessionEvent[] {
   const seen = new Set(detail.events.map((e) => e.seq));
-  const older = detail.crashes.filter((c) => !seen.has(c.seq));
+  const older = [...detail.crashes, ...detail.attachments].filter((e) => !seen.has(e.seq));
   if (older.length === 0) return detail.events;
   return [...older, ...detail.events].sort((a, b) => a.seq - b.seq);
 }
@@ -256,6 +261,19 @@ export function SessionDetail(props: {
     });
   }
 
+  function attachHierarchy(): Promise<void> {
+    const id = props.id;
+    return run("hierarchy", async () => {
+      const event = await attachSessionHierarchy(id);
+      setSelectedSeq(event.seq);
+      return "UI hierarchy attached.";
+    });
+  }
+
+  // Why nothing can be captured from the session's device now, if so.
+  const captureBlocked = () =>
+    !open() ? "Closed" : deviceOnline() ? null : "The session's device is not online";
+
   function activate(event: DebugSessionEvent): void {
     setSelectedSeq(event.seq);
     if (crashOf(event)?.capture) setCaptureSeq(event.seq);
@@ -420,17 +438,26 @@ export function SessionDetail(props: {
           <Button
             variant="outline"
             size="xs"
-            disabled={!open() || !deviceOnline()}
+            disabled={captureBlocked() !== null}
             title={
-              !open()
-                ? "Closed"
-                : deviceOnline()
-                  ? "Take a screenshot of the session's device and add it to the session"
-                  : "The session's device is not online"
+              captureBlocked() ??
+              "Take a screenshot of the session's device and add it to the session"
             }
             onClick={() => void attachScreenshot()}
           >
             Attach screenshot
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={captureBlocked() !== null}
+            title={
+              captureBlocked() ??
+              "Capture the UI hierarchy of the session's device and add it to the session"
+            }
+            onClick={() => void attachHierarchy()}
+          >
+            Attach UI hierarchy
           </Button>
           <Button
             variant="outline"

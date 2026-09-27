@@ -386,7 +386,7 @@ fn debug_sessions() -> Vec<DebugSession> {
                 bookmarks: 1,
                 captures: 1,
                 agent_actions: 2,
-                attachments: 1,
+                attachments: 2,
             },
             last_event_at: TIME.into(),
             event_count: 4,
@@ -615,8 +615,18 @@ fn debug_session_events() -> Vec<DebugSessionEvent> {
             kind: DebugSessionAttachmentKind::Screenshot,
             name: "screenshot-17.png".into(),
             bytes: 412_311,
-            width: 576,
-            height: 1280,
+            width: Some(576),
+            height: Some(1280),
+            node_count: None,
+            serial: "emulator-5554".into(),
+        }),
+        DebugSessionEventData::Attachment(DebugSessionAttachment {
+            kind: DebugSessionAttachmentKind::Hierarchy,
+            name: "hierarchy-22.json".into(),
+            bytes: 1_874,
+            width: None,
+            height: None,
+            node_count: Some(3),
             serial: "emulator-5554".into(),
         }),
     ];
@@ -1521,6 +1531,42 @@ fn fixtures() -> Fixtures {
                 truncated: false,
             },
         ],
+    );
+    f.add(
+        "DebugSessionHierarchy",
+        &[DebugSessionHierarchy {
+            captured_at: TIME.into(),
+            foreground_activity: Some(
+                "topResumedActivity=ActivityRecord{1 u0 com.example.app/.MainActivity t12}".into(),
+            ),
+            truncated: false,
+            nodes: vec![
+                DebugSessionHierarchyNode {
+                    depth: 0,
+                    class: "android.widget.FrameLayout".into(),
+                    resource_id: String::new(),
+                    text: String::new(),
+                    content_desc: String::new(),
+                    bounds: "[0,0][1080,2400]".into(),
+                },
+                DebugSessionHierarchyNode {
+                    depth: 1,
+                    class: "android.widget.TextView".into(),
+                    resource_id: "com.example.app:id/title".into(),
+                    text: "Hello".into(),
+                    content_desc: String::new(),
+                    bounds: "[48,200][400,280]".into(),
+                },
+                DebugSessionHierarchyNode {
+                    depth: 1,
+                    class: "android.widget.Button".into(),
+                    resource_id: "com.example.app:id/ok".into(),
+                    text: "OK".into(),
+                    content_desc: "Confirm".into(),
+                    bounds: "[800,2100][1032,2320]".into(),
+                },
+            ],
+        }],
     );
     f.add(
         "DebugSessionAttachmentData",

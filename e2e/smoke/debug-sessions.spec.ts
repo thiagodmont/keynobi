@@ -145,9 +145,57 @@ test("a screenshot attached to the session shows as a thumbnail and can be left 
 
   await dialog.getByRole("button", { name: "Export…" }).click();
   const exportOptions = page.getByRole("dialog", { name: "Export Debug Session" });
-  const screenshots = exportOptions.getByLabel("Attached screenshots (not redacted)");
+  const screenshots = exportOptions.getByLabel(
+    "Attachments: screenshots (not redacted) and UI hierarchies (redacted)"
+  );
   await expect(screenshots).toBeChecked();
   await screenshots.uncheck();
   await exportOptions.getByRole("button", { name: "Save…" }).click();
   await expect(dialog.getByText(/Left out: .*attachments/)).toBeVisible();
+});
+
+test("a UI hierarchy attached to the session shows as a tree and is exported redacted", async ({
+  page,
+}) => {
+  await page.getByText("MockProject", { exact: true }).first().click();
+  await expect(page.getByText("Keynobi — MockProject")).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("tab", { name: "Build" }).click();
+  await page
+    .getByTitle(/^Run App/)
+    .first()
+    .click();
+  await expect(page.getByText("▶ Launch time: 812 ms (cold)")).toBeVisible({ timeout: 10_000 });
+
+  await page.keyboard.press("Meta+Shift+P");
+  await page.keyboard.type("Show Debug Sessions");
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Debug Sessions" });
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Attach UI hierarchy" }).click();
+  await expect(dialog.getByText("UI hierarchy attached.")).toBeVisible();
+  const strip = dialog.getByRole("group", { name: "Attachments" });
+  await expect(strip.getByRole("button", { name: /^UI hierarchy from / })).toHaveCount(1);
+  const timeline = dialog.getByRole("listbox", { name: "Timeline, oldest first" });
+  await expect(
+    timeline.getByRole("option").filter({ hasText: "UI hierarchy attached · 4 nodes" })
+  ).toHaveCount(1);
+
+  const selected = dialog.getByRole("region", { name: "Selected event" });
+  const tree = selected.getByRole("tree", { name: "UI hierarchy" });
+  await expect(tree.getByRole("treeitem")).toHaveCount(4);
+  await expect(tree.getByRole("treeitem").nth(1)).toContainText("#title");
+  await expect(tree.getByRole("treeitem").nth(1)).toContainText("Hello, Keynobi");
+  await tree.focus();
+  await page.keyboard.press("End");
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await expect(tree.getByRole("treeitem")).toHaveCount(3);
+
+  await dialog.getByRole("button", { name: "Export…" }).click();
+  const exportOptions = page.getByRole("dialog", { name: "Export Debug Session" });
+  await expect(exportOptions).toContainText("UI hierarchies are text and are redacted");
+  await exportOptions.getByRole("button", { name: "Save…" }).click();
+  await expect(exportOptions).toBeHidden();
+  await expect(dialog.getByText(/^Saved keynobi-session-/)).toBeVisible();
 });

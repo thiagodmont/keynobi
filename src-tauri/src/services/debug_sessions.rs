@@ -54,8 +54,9 @@ pub use agent::{
     MAX_AGENT_EVENTS, MAX_AGENT_SESSIONS,
 };
 pub use attachments::{
-    attach_screenshot, get_attachment, ATTACHMENT_SCREENSHOT_MAX_DIMENSION,
-    MAX_ATTACHMENTS_PER_SESSION, MAX_ATTACHMENT_BYTES,
+    attach_hierarchy, attach_screenshot, get_attachment, get_hierarchy,
+    ATTACHMENT_SCREENSHOT_MAX_DIMENSION, MAX_ATTACHMENTS_PER_SESSION, MAX_ATTACHMENT_BYTES,
+    MAX_HIERARCHY_ATTACHMENT_BYTES, MAX_HIERARCHY_DEPTH, MAX_HIERARCHY_NODES,
 };
 pub use compare::{compare_sessions, SessionComparison, MAX_COMPARED_SIGNATURES};
 pub use crashes::{

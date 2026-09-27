@@ -395,6 +395,8 @@ pub struct DebugSessionAgentAction {
 pub enum DebugSessionAttachmentKind {
     /// A PNG screenshot of the session's device.
     Screenshot,
+    /// The UI hierarchy of the session's device, as JSON.
+    Hierarchy,
 }
 
 /// A file attached to the session: `attachments/<name>`.
@@ -403,15 +405,55 @@ pub enum DebugSessionAttachmentKind {
 #[ts(export, export_to = "../../src/bindings/")]
 pub struct DebugSessionAttachment {
     pub kind: DebugSessionAttachmentKind,
-    /// `screenshot-<seq>.png`, named by the event's `seq`.
+    /// `screenshot-<seq>.png` or `hierarchy-<seq>.json`, named by the
+    /// event's `seq`.
     pub name: String,
     #[ts(type = "number")]
     pub bytes: u64,
-    /// The image's size in pixels.
-    pub width: u32,
-    pub height: u32,
+    /// A screenshot's size in pixels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub width: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub height: Option<u32>,
+    /// A hierarchy's nodes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub node_count: Option<u32>,
     /// The device it shows.
     pub serial: String,
+}
+
+/// An attached UI hierarchy (`attachments/hierarchy-<seq>.json`): its nodes
+/// in pre-order, a parent before its children, each with its depth, so the
+/// file reads without recursion.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DebugSessionHierarchy {
+    /// When it was captured, on the host clock.
+    pub captured_at: String,
+    /// The resumed activity, when the device said.
+    pub foreground_activity: Option<String>,
+    /// Whether nodes or text were cut to the caps.
+    pub truncated: bool,
+    pub nodes: Vec<DebugSessionHierarchyNode>,
+}
+
+/// One node of an attached UI hierarchy.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct DebugSessionHierarchyNode {
+    /// 0 for a top-level node; a child is one deeper than its parent.
+    pub depth: u32,
+    pub class: String,
+    pub resource_id: String,
+    pub text: String,
+    pub content_desc: String,
+    /// As UI Automator prints it: `[left,top][right,bottom]`.
+    pub bounds: String,
 }
 
 /// What happened, by kind.

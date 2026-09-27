@@ -669,6 +669,7 @@ import type {
   DebugSessionDetail,
   DebugSessionEvent,
   DebugSessionExitRefresh,
+  DebugSessionHierarchy,
   DebugSessionSummary,
   SessionExportOptions,
   SessionExportResult,
@@ -679,6 +680,7 @@ export type {
   DebugSessionDetail,
   DebugSessionEvent,
   DebugSessionExitRefresh,
+  DebugSessionHierarchy,
   DebugSessionSummary,
   SessionExportOptions,
   SessionExportResult,
@@ -772,6 +774,16 @@ export async function getSessionAttachment(
   seq: number
 ): Promise<DebugSessionAttachmentData> {
   return invoke<DebugSessionAttachmentData>("get_session_attachment", { id, seq });
+}
+
+/** Capture the UI hierarchy of an open debug session's device and attach it to the session. */
+export async function attachSessionHierarchy(id: string): Promise<DebugSessionEvent> {
+  return invoke<DebugSessionEvent>("attach_session_hierarchy", { id });
+}
+
+/** The UI hierarchy of attachment event `seq` of a debug session. */
+export async function getSessionHierarchy(id: string, seq: number): Promise<DebugSessionHierarchy> {
+  return invoke<DebugSessionHierarchy>("get_session_hierarchy", { id, seq });
 }
 
 // ── MCP Server ─────────────────────────────────────────────────────────────────

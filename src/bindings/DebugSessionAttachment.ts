@@ -6,13 +6,18 @@ import type { DebugSessionAttachmentKind } from "./DebugSessionAttachmentKind";
  */
 export type DebugSessionAttachment = { kind: DebugSessionAttachmentKind, 
 /**
- * `screenshot-<seq>.png`, named by the event's `seq`.
+ * `screenshot-<seq>.png` or `hierarchy-<seq>.json`, named by the
+ * event's `seq`.
  */
 name: string, bytes: number, 
 /**
- * The image's size in pixels.
+ * A screenshot's size in pixels.
  */
-width: number, height: number, 
+width?: number, height?: number, 
+/**
+ * A hierarchy's nodes.
+ */
+nodeCount?: number, 
 /**
  * The device it shows.
  */

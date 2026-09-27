@@ -277,14 +277,20 @@ export function describeEvent(event: DebugSessionEvent): EventView {
       };
     }
     case "attachment": {
-      const { width, height, bytes } = event.data;
+      const { width, height, nodeCount, bytes } = event.data;
       const by = actorLabel(event.actor);
+      const tail = `${formatBytes(bytes)}${by ? ` · by ${by}` : ""}`;
+      if (event.data.kind === "hierarchy") {
+        return {
+          label: "Hierarchy",
+          variant: "info",
+          text: `UI hierarchy attached · ${plural(nodeCount ?? 0, "node")} · ${tail}`,
+        };
+      }
       return {
         label: "Screenshot",
         variant: "info",
-        text: `Screenshot attached · ${width}×${height} · ${formatBytes(bytes)}${
-          by ? ` · by ${by}` : ""
-        }`,
+        text: `Screenshot attached · ${width ?? 0}×${height ?? 0} · ${tail}`,
       };
     }
   }

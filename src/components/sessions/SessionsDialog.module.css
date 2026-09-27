@@ -374,3 +374,89 @@
   border: 1px solid var(--border);
   border-radius: 4px;
 }
+
+.thumbHierarchy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: var(--font-size-ui-sm);
+}
+
+.hierarchy {
+  display: flex;
+  flex-direction: column;
+  height: 240px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: none;
+}
+
+.hierarchy:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: -2px;
+}
+
+.hierarchyScroll {
+  flex: 1;
+  min-height: 0;
+}
+
+.hierarchyRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  height: 20px;
+  padding-right: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-ui-sm);
+  white-space: nowrap;
+  cursor: default;
+}
+
+.hierarchyRow:hover {
+  background: var(--bg-hover);
+}
+
+.hierarchyRow[aria-selected="true"] {
+  background: var(--bg-selection);
+}
+
+.hierarchyToggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  width: 12px;
+  color: var(--text-muted);
+}
+
+.hierarchyClass {
+  flex-shrink: 0;
+  color: var(--text-primary);
+}
+
+.hierarchyId {
+  flex-shrink: 0;
+  color: var(--accent-text);
+}
+
+.hierarchyText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.hierarchyBounds {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+.hierarchyActivity {
+  font-family: var(--font-mono);
+}
