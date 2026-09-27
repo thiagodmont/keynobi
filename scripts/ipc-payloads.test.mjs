@@ -334,6 +334,8 @@ describe("the mock backend matches the real payloads", () => {
       },
       shared: true,
     });
+    // A screenshot on the second session, to read back.
+    const attached = await handleInvoke("attach_session_screenshot", { id: mockSessionId(2) });
     const args = {
       get_build_log_entries: { id: addMockPastBuild({ task: "assembleDebug", state: "success" }) },
       retrace_crash: { crashGroupId: 90 },
@@ -360,6 +362,8 @@ describe("the mock backend matches the real payloads", () => {
         name: "Wear deep link",
         sha256: (await handleInvoke("list_run_configurations")).sharedFile.sha256,
       }),
+      attach_session_screenshot: { id: mockSessionId(2) },
+      get_session_attachment: { id: mockSessionId(2), seq: attached.seq },
       export_debug_session: {
         id: mockSessionId(1),
         options: {
@@ -371,6 +375,7 @@ describe("the mock backend matches the real payloads", () => {
             deviceSerials: true,
           },
           includeCrashLogs: true,
+          includeAttachments: true,
         },
       },
     };

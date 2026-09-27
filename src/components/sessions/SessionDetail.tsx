@@ -20,6 +20,7 @@ import type {
 } from "@/bindings";
 import {
   addSessionBookmark,
+  attachSessionScreenshot,
   deleteImportedDebugSession,
   endDebugSession,
   formatError,
@@ -47,6 +48,8 @@ import {
 import { SessionTimeline } from "./SessionTimeline";
 import { SessionEventDetail } from "./SessionEventDetail";
 import { SessionExportDialog } from "./SessionExportDialog";
+import { SessionAttachments } from "./SessionAttachments";
+import { onlineDevices } from "@/stores/device.store";
 import styles from "./SessionsDialog.module.css";
 
 /** As `MAX_BOOKMARK_NOTE_CHARS` in the backend. */
@@ -57,10 +60,11 @@ type DetailState =
   | { kind: "loaded"; detail: DebugSessionDetail }
   | { kind: "error"; message: string };
 
-type Action = "keep" | "end" | "bookmark" | "exits" | "delete";
+type Action = "keep" | "end" | "bookmark" | "exits" | "delete" | "screenshot";
 
 const BUSY_LABELS: Record<Action, string> = {
   delete: "Deleting the session…",
+  screenshot: "Taking a screenshot of the device…",
   keep: "Saving…",
   end: "Ending the session…",
   bookmark: "Adding the bookmark…",
@@ -144,6 +148,14 @@ export function SessionDetail(props: {
   const summary = () => props.summary();
   const open = () => summary()?.closedAt === null;
   const kept = () => summary()?.kept ?? false;
+  // The session's device: the same AVD for an emulator, else the same serial.
+  const deviceOnline = () => {
+    const device = summary()?.device;
+    if (!device) return false;
+    return onlineDevices().some((d) =>
+      device.avdName !== null ? d.avdName === device.avdName : d.serial === device.serial
+    );
+  };
   const imported = () => {
     const s = summary();
     return s !== null && isImported(s);
@@ -232,6 +244,15 @@ export function SessionDetail(props: {
     return run("delete", async () => {
       await deleteImportedDebugSession(id);
       return null;
+    });
+  }
+
+  function attachScreenshot(): Promise<void> {
+    const id = props.id;
+    return run("screenshot", async () => {
+      const event = await attachSessionScreenshot(id);
+      setSelectedSeq(event.seq);
+      return "Screenshot attached.";
     });
   }
 
@@ -399,6 +420,21 @@ export function SessionDetail(props: {
           <Button
             variant="outline"
             size="xs"
+            disabled={!open() || !deviceOnline()}
+            title={
+              !open()
+                ? "Closed"
+                : deviceOnline()
+                  ? "Take a screenshot of the session's device and add it to the session"
+                  : "The session's device is not online"
+            }
+            onClick={() => void attachScreenshot()}
+          >
+            Attach screenshot
+          </Button>
+          <Button
+            variant="outline"
+            size="xs"
             title="Save this session as a .zip to share, with personal data redacted"
             onClick={() => {
               setActionError(null);
@@ -497,6 +533,14 @@ export function SessionDetail(props: {
                   Showing the newest {d().events.length} of {d().session.eventCount} events, and
                   every crash.
                 </div>
+              </Show>
+              <Show when={d().attachments.length > 0}>
+                <SessionAttachments
+                  sessionId={props.id}
+                  attachments={d().attachments}
+                  selectedSeq={selectedSeq()}
+                  onSelect={setSelectedSeq}
+                />
               </Show>
               <SessionTimeline
                 events={events()}

@@ -234,6 +234,10 @@ pub fn event_summary(event: &DebugSessionEventData) -> String {
             let status = if a.ok { "ok" } else { "failed" };
             format!("agent ran {} ({status}, {} ms)", a.tool, a.duration_ms)
         }
+        E::Attachment(a) => format!(
+            "screenshot attached: {} ({}x{}, {} bytes)",
+            a.name, a.width, a.height, a.bytes
+        ),
     }
 }
 

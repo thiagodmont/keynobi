@@ -11,4 +11,8 @@ captures: number,
 /**
  * MCP tool calls that acted on the session's device.
  */
-agentActions: number, };
+agentActions: number, 
+/**
+ * Screenshots attached to the session.
+ */
+attachments: number, };

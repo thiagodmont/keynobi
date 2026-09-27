@@ -23,6 +23,7 @@ import {
   describeEvent,
   formatSessionTime,
 } from "./session-format";
+import { AttachmentImage } from "./SessionAttachments";
 import styles from "./SessionsDialog.module.css";
 
 /** Log lines read per page of a capture. */
@@ -208,6 +209,14 @@ export function SessionEventDetail(props: {
       <div class={styles.eventText}>{view().text}</div>
       <Show when={props.event.kind === "exit" && props.event.data.record.description}>
         {(description) => <div class={styles.eventText}>{description()}</div>}
+      </Show>
+      <Show when={props.event.kind === "attachment"}>
+        <AttachmentImage
+          sessionId={props.sessionId}
+          seq={props.event.seq}
+          alt={`Screenshot from ${formatSessionTime(props.event.at)}`}
+          class={styles.preview}
+        />
       </Show>
       <Show when={crashOf(props.event)}>
         {(crash) => (

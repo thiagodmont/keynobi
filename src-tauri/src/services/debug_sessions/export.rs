@@ -7,6 +7,8 @@
 //! - `session.json`: the session's manifest;
 //! - `timeline.jsonl`: its events, one per line;
 //! - `logs/crash-<seq>.log`: the lines kept with crash or ANR event `seq`;
+//! - `attachments/screenshot-<seq>.png`: the screenshot of attachment event
+//!   `seq`, when `includeAttachments`; images are not redacted;
 //! - `redaction.json`: the rules, whether each was on, and how many matches
 //!   each replaced.
 //!
@@ -39,6 +41,10 @@ pub const REDACTION_ENTRY: &str = "redaction.json";
 
 fn crash_log_entry(seq: u32) -> String {
     format!("logs/crash-{seq}.log")
+}
+
+pub(super) fn attachment_entry(name: &str) -> String {
+    format!("{}/{name}", attachments::ATTACHMENTS_DIR)
 }
 
 /// A built bundle, not yet saved.
@@ -242,10 +248,48 @@ pub(super) fn build_bundle_in(
         files.push((name, text.into_bytes()));
     }
 
+    let attached: Vec<(u32, String)> = events
+        .iter()
+        .filter_map(|e| match &e.event {
+            DebugSessionEventData::Attachment(a) => Some((e.seq, a.name.clone())),
+            _ => None,
+        })
+        .collect();
+    if !options.include_attachments && !attached.is_empty() {
+        omitted.push(omission("attachments", "not selected"));
+    }
+    let mut images = false;
+    for (seq, name) in attached.iter().filter(|_| options.include_attachments) {
+        let entry = attachment_entry(name);
+        let png = match attachments::read_attachment_in(data_dir, id, *seq) {
+            Ok(png) => png,
+            Err(e) => {
+                omitted.push(omission(entry, e.to_string()));
+                continue;
+            }
+        };
+        let fits = png.len() <= MAX_BUNDLE_ENTRY_BYTES
+            && total + png.len() <= MAX_BUNDLE_UNCOMPRESSED_BYTES
+            && files.len() + 3 <= MAX_BUNDLE_ENTRIES;
+        if !fits {
+            omitted.push(omission(entry, "the bundle reached its size or file limit"));
+            continue;
+        }
+        total += png.len();
+        images = true;
+        files.push((entry, png));
+    }
+
     let redactions = redactor.counts();
+    let note = if images {
+        "Redaction replaces what its rules recognise and nothing else; attached screenshots \
+         are not redacted. Check the files before sharing them."
+    } else {
+        "Redaction replaces what its rules recognise and nothing else. Check the files before sharing them."
+    };
     let report = json!({
         "bestEffort": true,
-        "note": "Redaction replaces what its rules recognise and nothing else. Check the files before sharing them.",
+        "note": note,
         "rules": redactions,
     });
     files.push((
@@ -575,6 +619,7 @@ mod tests {
                 ..RedactionRules::default()
             },
             include_crash_logs: true,
+            include_attachments: true,
         };
         let bundle = build(dir.path(), &session.id, &options);
         let files = unzip(&bundle.bytes);

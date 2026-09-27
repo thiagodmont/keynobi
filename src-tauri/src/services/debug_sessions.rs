@@ -43,6 +43,7 @@ use std::sync::{LazyLock, Mutex as StdMutex};
 use std::time::{Duration, SystemTime};
 
 mod agent;
+mod attachments;
 mod compare;
 mod crashes;
 mod export;
@@ -51,6 +52,10 @@ pub use agent::{
     agent_line, list_for_agent, session_for_agent, AgentSessionRequest, SessionFilter, StateFilter,
     DEFAULT_AGENT_EVENTS, DEFAULT_AGENT_LOG_LINES, DEFAULT_AGENT_SESSIONS, MAX_AGENT_CRASHES,
     MAX_AGENT_EVENTS, MAX_AGENT_SESSIONS,
+};
+pub use attachments::{
+    attach_screenshot, get_attachment, ATTACHMENT_SCREENSHOT_MAX_DIMENSION,
+    MAX_ATTACHMENTS_PER_SESSION, MAX_ATTACHMENT_BYTES,
 };
 pub use compare::{compare_sessions, SessionComparison, MAX_COMPARED_SIGNATURES};
 pub use crashes::{
@@ -619,6 +624,7 @@ fn count_event(counts: &mut DebugSessionCounts, event: &DebugSessionEventData) {
         }
         DebugSessionEventData::Exit(_) => counts.exits += 1,
         DebugSessionEventData::AgentAction(_) => counts.agent_actions += 1,
+        DebugSessionEventData::Attachment(_) => counts.attachments += 1,
         _ => {}
     }
 }
@@ -1273,6 +1279,7 @@ fn get_session_in(
     let session = read_session_in(data_dir, id, now)?;
     let mut events = read_events(data_dir, id)?;
     let crashes = crashes::crash_events(&events);
+    let attachments = attachments::attachment_events(&events);
     let events_truncated = events.len() > MAX_EVENTS_RETURNED;
     if events_truncated {
         events.drain(..events.len() - MAX_EVENTS_RETURNED);
@@ -1282,6 +1289,7 @@ fn get_session_in(
         events,
         events_truncated,
         crashes,
+        attachments,
     })
 }
 

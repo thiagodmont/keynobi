@@ -10,6 +10,8 @@ import type {
   SessionExportResult,
 } from "@/bindings";
 import { makeLogEntry } from "@/test/factories/logcat";
+import { makeDevice } from "@/test/factories/devices";
+import { resetDeviceState, setDevices } from "@/stores/device.store";
 import { makeLaunchTiming } from "@/test/factories/build";
 import {
   makeBuildProvenance,
@@ -110,6 +112,31 @@ function installFake(): void {
       case "export_debug_session":
         session(a.id as string);
         return fake.exportResult;
+      case "attach_session_screenshot": {
+        const s = session(a.id as string);
+        const seq = s.eventCount + 1;
+        const event = makeSessionEvent(
+          seq,
+          {
+            kind: "attachment",
+            data: {
+              kind: "screenshot",
+              name: `screenshot-${seq}.png`,
+              bytes: 2048,
+              width: 576,
+              height: 1280,
+              serial: s.device.serial,
+            },
+          },
+          { actor: { kind: "app" } }
+        );
+        append(s, event);
+        s.counts.attachments += 1;
+        return event;
+      }
+      case "get_session_attachment":
+        session(a.id as string);
+        return { seq: a.seq, mediaType: "image/png", base64: "iVBORw0KGgo=" };
       case "import_debug_session": {
         const imported = fake.importResult;
         if (!imported) return null;
@@ -154,6 +181,7 @@ function seed(): { older: DebugSession; newest: DebugSession } {
       bookmarks: 0,
       captures: 0,
       agentActions: 0,
+      attachments: 0,
     },
   });
   const newest = makeSession({
@@ -166,6 +194,7 @@ function seed(): { older: DebugSession; newest: DebugSession } {
       bookmarks: 0,
       captures: 1,
       agentActions: 0,
+      attachments: 0,
     },
     eventCount: 4,
   });
@@ -238,6 +267,7 @@ describe("SessionsDialog", () => {
   });
 
   afterEach(() => {
+    resetDeviceState();
     closeSessionsDialog();
     cleanup();
     vi.useRealTimers();
@@ -429,9 +459,11 @@ describe("SessionsDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Export…" }));
     const options = await screen.findByRole("dialog", { name: "Export Debug Session" });
     const boxes = within(options).getAllByRole("checkbox") as HTMLInputElement[];
-    expect(boxes).toHaveLength(6);
+    expect(boxes).toHaveLength(7);
     expect(boxes.every((b) => b.checked)).toBe(true);
+    expect(options.textContent).toContain("Screenshots are images and are not");
     fireEvent.click(within(options).getByLabelText("Log lines kept with crashes and ANRs"));
+    fireEvent.click(within(options).getByLabelText("Attached screenshots (not redacted)"));
     fireEvent.click(within(options).getByLabelText("Email addresses"));
 
     // A cancelled save dialog keeps the options open.
@@ -448,6 +480,7 @@ describe("SessionsDialog", () => {
           deviceSerials: true,
         },
         includeCrashLogs: false,
+        includeAttachments: false,
       },
     });
     await waitFor(() =>
@@ -777,6 +810,50 @@ describe("SessionsDialog", () => {
       expect(within(dialog).getByText(/notes\.txt is not a file/)).toBeTruthy();
       const list = within(dialog).getByRole("listbox", { name: "Debug sessions" });
       expect(within(list).getAllByRole("option")).toHaveLength(2);
+    });
+  });
+  describe("attachments", () => {
+    it("attaches a screenshot of the session's device and shows it as a thumbnail and in full", async () => {
+      const { newest } = seed();
+      setDevices([makeDevice({ serial: "emulator-5554", avdName: "Pixel_7" })]);
+      const dialog = await openDialog();
+
+      fireEvent.click(within(dialog).getByRole("button", { name: "Attach screenshot" }));
+      await waitFor(() => expect(lastArgs("attach_session_screenshot")).toEqual({ id: newest.id }));
+      expect(await within(dialog).findByText("Screenshot attached.")).toBeTruthy();
+
+      const strip = await within(dialog).findByRole("group", { name: "Attachments" });
+      const thumbs = within(strip).getAllByRole("button");
+      expect(thumbs).toHaveLength(1);
+      const thumb = await within(thumbs[0]).findByRole("presentation", { hidden: true });
+      expect(thumb.getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
+      expect(thumbs[0].getAttribute("aria-pressed")).toBe("true");
+
+      const detail = within(dialog).getByRole("region", { name: "Selected event" });
+      expect(detail.textContent).toContain("Screenshot attached · 576×1280 · 2.0 KB · by Keynobi");
+      const full = await within(detail).findByAltText(/^Screenshot from /);
+      expect(full.getAttribute("src")).toBe("data:image/png;base64,iVBORw0KGgo=");
+      expect(calls("get_session_attachment").map(([, args]) => args)).toContainEqual({
+        id: newest.id,
+        seq: 5,
+      });
+    });
+
+    it("cannot attach while the session's device is offline or the session is closed", async () => {
+      seed();
+      setDevices([makeDevice({ serial: "emulator-5556", avdName: "Pixel_8" })]);
+      const dialog = await openDialog();
+      const attach = within(dialog).getByRole("button", {
+        name: "Attach screenshot",
+      }) as HTMLButtonElement;
+      expect(attach.disabled).toBe(true);
+      expect(attach.title).toBe("The session's device is not online");
+
+      setDevices([makeDevice({ serial: "emulator-5554", avdName: "Pixel_7" })]);
+      await waitFor(() => expect(attach.disabled).toBe(false));
+      fireEvent.click(within(dialog).getByRole("button", { name: "End session" }));
+      await waitFor(() => expect(attach.disabled).toBe(true));
+      expect(calls("attach_session_screenshot")).toHaveLength(0);
     });
   });
 });

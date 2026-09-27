@@ -112,3 +112,42 @@ test("Import Debug Session… opens a shared bundle read-only, and it can be del
   await dialog.getByRole("button", { name: "Delete session" }).click();
   await expect(sessions.getByRole("option").filter({ hasText: "Imported" })).toHaveCount(0);
 });
+
+test("a screenshot attached to the session shows as a thumbnail and can be left out of an export", async ({
+  page,
+}) => {
+  await page.getByText("MockProject", { exact: true }).first().click();
+  await expect(page.getByText("Keynobi — MockProject")).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("tab", { name: "Build" }).click();
+  await page
+    .getByTitle(/^Run App/)
+    .first()
+    .click();
+  await expect(page.getByText("▶ Launch time: 812 ms (cold)")).toBeVisible({ timeout: 10_000 });
+
+  await page.keyboard.press("Meta+Shift+P");
+  await page.keyboard.type("Show Debug Sessions");
+  await page.keyboard.press("Enter");
+  const dialog = page.getByRole("dialog", { name: "Debug Sessions" });
+  await expect(dialog).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Attach screenshot" }).click();
+  await expect(dialog.getByText("Screenshot attached.")).toBeVisible();
+  const strip = dialog.getByRole("group", { name: "Attachments" });
+  await expect(strip.getByRole("button")).toHaveCount(1);
+  const timeline = dialog.getByRole("listbox", { name: "Timeline, oldest first" });
+  await expect(timeline.getByRole("option").filter({ hasText: "Screenshot attached" })).toHaveCount(
+    1
+  );
+  await expect(
+    dialog.getByRole("region", { name: "Selected event" }).getByAltText(/^Screenshot from /)
+  ).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Export…" }).click();
+  const exportOptions = page.getByRole("dialog", { name: "Export Debug Session" });
+  const screenshots = exportOptions.getByLabel("Attached screenshots (not redacted)");
+  await expect(screenshots).toBeChecked();
+  await screenshots.uncheck();
+  await exportOptions.getByRole("button", { name: "Save…" }).click();
+  await expect(dialog.getByText(/Left out: .*attachments/)).toBeVisible();
+});

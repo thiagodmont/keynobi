@@ -20,6 +20,7 @@ const pixel = summaryOf(
       bookmarks: 0,
       captures: 2,
       agentActions: 0,
+      attachments: 0,
     },
   })
 );
