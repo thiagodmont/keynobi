@@ -230,6 +230,41 @@ fn launch_timings() -> Vec<LaunchTiming> {
     ]
 }
 
+/// A build of a commit with uncommitted changes, and one outside a repository.
+fn build_provenances() -> Vec<BuildProvenance> {
+    vec![
+        BuildProvenance {
+            commit: Some("3f9c2e1d".repeat(5)),
+            branch: Some("main".into()),
+            dirty: Some(true),
+            changed_files: Some(2),
+            git_unavailable: None,
+            build_files: vec![
+                BuildFileHash {
+                    path: "app/build.gradle.kts".into(),
+                    sha256: "c3".repeat(32),
+                },
+                BuildFileHash {
+                    path: "gradle/libs.versions.toml".into(),
+                    sha256: "d4".repeat(32),
+                },
+            ],
+            gradle_version: Some("8.7".into()),
+            jdk_version: Some("17.0.9".into()),
+        },
+        BuildProvenance {
+            commit: None,
+            branch: None,
+            dirty: None,
+            changed_files: None,
+            git_unavailable: Some("not a git repository".into()),
+            build_files: vec![],
+            gradle_version: None,
+            jdk_version: None,
+        },
+    ]
+}
+
 fn mapping_snapshots() -> Vec<MappingSnapshot> {
     vec![
         MappingSnapshot {
@@ -329,6 +364,7 @@ fn debug_sessions() -> Vec<DebugSession> {
                     sha256: "6b1c2f0a".repeat(8),
                     pg_map_id: Some("6b1c2f0".into()),
                 }],
+                provenance: build_provenances().into_iter().next(),
             }),
             install: Some(DebugSessionInstall {
                 apk_sha256: "a1".repeat(32),
@@ -1170,45 +1206,65 @@ fn fixtures() -> Fixtures {
     );
     f.add("BuildLine", &build_lines());
     f.add("BuildError", &build_errors());
-    let records: Vec<BuildRecord> = actors()
-        .into_iter()
-        .map(Some)
-        .chain([None])
-        .enumerate()
-        .map(|(i, actor)| BuildRecord {
-            id: 7 + i as u32,
-            task: "assembleDebug".into(),
-            status: match &actor {
-                Some(_) => BuildStatus::Cancelled,
-                None => BuildStatus::Failed(build_result(false)),
-            },
-            errors: if actor.is_none() {
-                build_errors()
-            } else {
-                vec![]
-            },
-            started_at: TIME.into(),
-            project_root: actor.as_ref().map(|_| "/p".to_string()),
-            origin: actor.clone(),
-            cancelled_by: actor,
-            launch: None,
-            mappings: vec![],
-            apks: vec![],
-        })
-        .chain(launch_timings().into_iter().map(|launch| BuildRecord {
-            id: 20,
-            task: "assembleDebug".into(),
-            status: BuildStatus::Success(build_result(true)),
-            errors: vec![],
-            started_at: TIME.into(),
-            project_root: Some("/p".into()),
-            origin: Some(BuildActor::App),
-            cancelled_by: None,
-            launch: Some(launch),
-            mappings: mapping_snapshots(),
-            apks: built_apks(),
-        }))
-        .collect();
+    let records: Vec<BuildRecord> =
+        actors()
+            .into_iter()
+            .map(Some)
+            .chain([None])
+            .enumerate()
+            .map(|(i, actor)| BuildRecord {
+                id: 7 + i as u32,
+                task: "assembleDebug".into(),
+                status: match &actor {
+                    Some(_) => BuildStatus::Cancelled,
+                    None => BuildStatus::Failed(build_result(false)),
+                },
+                errors: if actor.is_none() {
+                    build_errors()
+                } else {
+                    vec![]
+                },
+                started_at: TIME.into(),
+                project_root: actor.as_ref().map(|_| "/p".to_string()),
+                origin: actor.clone(),
+                cancelled_by: actor,
+                launch: None,
+                mappings: vec![],
+                apks: vec![],
+                provenance: None,
+            })
+            .chain(launch_timings().into_iter().zip(build_provenances()).map(
+                |(launch, provenance)| BuildRecord {
+                    id: 20,
+                    task: "assembleDebug".into(),
+                    status: BuildStatus::Success(build_result(true)),
+                    errors: vec![],
+                    started_at: TIME.into(),
+                    project_root: Some("/p".into()),
+                    origin: Some(BuildActor::App),
+                    cancelled_by: None,
+                    launch: Some(launch),
+                    mappings: mapping_snapshots(),
+                    apks: built_apks(),
+                    provenance: Some(provenance),
+                },
+            ))
+            // A successful build that was never launched.
+            .chain(std::iter::once(BuildRecord {
+                id: 21,
+                task: "assembleDebug".into(),
+                status: BuildStatus::Success(build_result(true)),
+                errors: vec![],
+                started_at: TIME.into(),
+                project_root: Some("/p".into()),
+                origin: Some(BuildActor::App),
+                cancelled_by: None,
+                launch: None,
+                mappings: vec![],
+                apks: built_apks(),
+                provenance: build_provenances().into_iter().next(),
+            }))
+            .collect();
     f.add("BuildRecord", &records);
     f.add("MappingSnapshot", &mapping_snapshots());
     f.add("BuiltApk", &built_apks());

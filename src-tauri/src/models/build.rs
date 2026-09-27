@@ -161,6 +161,48 @@ pub struct BuildRecord {
     /// and for records saved before APKs were hashed.
     #[serde(default)]
     pub apks: Vec<BuiltApk>,
+    /// Where a successful build came from: its source commit and build files.
+    /// Absent for other builds and for records saved before it was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub provenance: Option<BuildProvenance>,
+}
+
+/// Where a build came from, recorded when it finished, so two builds can be
+/// compared: the git commit checked out and the SHA-256 of its build files.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct BuildProvenance {
+    /// The commit checked out (`HEAD`), full hex; `None` when git could not
+    /// say (see `gitUnavailable`) or before the first commit.
+    pub commit: Option<String>,
+    /// The branch checked out; `None` when `HEAD` is detached or unknown.
+    pub branch: Option<String>,
+    /// Whether files differed from the commit (untracked files included);
+    /// `None` when unknown.
+    pub dirty: Option<bool>,
+    /// How many files differed, when known.
+    pub changed_files: Option<u32>,
+    /// Why git gave nothing: not found, not a repository, or failed.
+    pub git_unavailable: Option<String>,
+    /// The build files found, by path relative to the Gradle root, sorted.
+    pub build_files: Vec<BuildFileHash>,
+    /// From the Gradle wrapper's `distributionUrl` (`8.7`).
+    pub gradle_version: Option<String>,
+    /// `JAVA_VERSION` of the JDK Gradle builds with (`17.0.9`).
+    pub jdk_version: Option<String>,
+}
+
+/// SHA-256 of one build file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "../../src/bindings/")]
+pub struct BuildFileHash {
+    /// Relative to the Gradle root (`gradle/libs.versions.toml`).
+    pub path: String,
+    /// Lowercase hex.
+    pub sha256: String,
 }
 
 /// One APK a successful build wrote, as listed in AGP's `output-metadata.json`.

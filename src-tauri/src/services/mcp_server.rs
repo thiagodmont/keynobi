@@ -3079,7 +3079,7 @@ impl AndroidMcpServer {
 
     /// Compare two debug sessions.
     #[tool(
-        description = "Compare two debug sessions: build, task, module, variant, version code, APK and R8 mapping hashes, device, and who installed; the latest launch times (compared only on the same device and launch state); crash and ANR signatures, with those new in `to`; and process exit reasons. Without from and to, compares the newest session that launched without crashing with the first later crashing session of the same app and variant. Source commits and build files are not recorded yet; not_recorded lists what the comparison cannot say.",
+        description = "Compare two debug sessions: build, task, module, variant, version code, APK and R8 mapping hashes, device, and who installed; the latest launch times (compared only on the same device and launch state); crash and ANR signatures, with those new in `to`; and process exit reasons. Without from and to, compares the newest session that launched without crashing with the first later crashing session of the same app and variant. provenance compares the builds' source commits, branches, uncommitted changes, Gradle and JDK versions, and which build files changed; not_recorded lists what the comparison cannot say.",
         annotations(
             read_only_hint = true,
             destructive_hint = false,

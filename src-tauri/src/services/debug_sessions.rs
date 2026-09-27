@@ -337,6 +337,7 @@ fn build_digest(record: &BuildRecord, entry: &InstalledBuild) -> Option<DebugSes
                 pg_map_id: m.pg_map_id.clone(),
             })
             .collect(),
+        provenance: record.provenance.clone(),
     })
 }
 
@@ -1523,6 +1524,7 @@ mod tests {
                 bytes: 1,
                 path: "app/build/outputs/apk/release/app-release.apk".into(),
             }],
+            provenance: None,
         }
     }
 
@@ -1619,6 +1621,37 @@ mod tests {
         assert_eq!(listed.mapping_sha256s, vec![mapping(1).sha256]);
         assert_eq!(listed.event_count, 2);
         assert!(listed.closed_at.is_none());
+        assert_eq!(build.provenance, None);
+    }
+
+    #[test]
+    fn the_build_digest_keeps_the_builds_provenance() {
+        let dir = TempDir::new().unwrap();
+        let apk = "a".repeat(64);
+        let mut built = record(4, &apk);
+        built.provenance = Some(crate::models::build::BuildProvenance {
+            commit: Some("c".repeat(40)),
+            branch: Some("main".into()),
+            dirty: Some(true),
+            changed_files: Some(1),
+            git_unavailable: None,
+            build_files: vec![crate::models::build::BuildFileHash {
+                path: "settings.gradle.kts".into(),
+                sha256: "d".repeat(64),
+            }],
+            gradle_version: Some("8.7".into()),
+            jdk_version: None,
+        });
+        write_history(dir.path(), &[built.clone()]);
+        let target = phone("R5CT");
+        let entry = installed(&target, "com.example", &apk, Some(4), vec![]);
+
+        let session = open_for_install_in(dir.path(), &target, &entry, BuildActor::App, RETAIN)
+            .expect("opened");
+
+        let build = session.build.clone().expect("build digest");
+        assert_eq!(build.provenance, built.provenance);
+        assert_eq!(read_manifest(dir.path(), &session.id).unwrap(), session);
     }
 
     #[test]

@@ -11,6 +11,7 @@ import type {
 import { makeLogEntry } from "@/test/factories/logcat";
 import { makeLaunchTiming } from "@/test/factories/build";
 import {
+  makeBuildProvenance,
   makeSession,
   makeSessionCrash,
   makeSessionDetail,
@@ -250,6 +251,24 @@ describe("SessionsDialog", () => {
       expect.stringContaining("java.lang.IllegalStateException: boom"),
     ]);
     expect(screen.getByText("1 crash · 0 ANRs · 1 launch · 0 exits · 0 bookmarks")).toBeTruthy();
+  });
+
+  it("shows the commit the session's build came from, and whether it had uncommitted changes", async () => {
+    const { newest } = seed();
+    if (newest.build) {
+      newest.build.provenance = makeBuildProvenance({ dirty: true, changedFiles: 2 });
+    }
+    const dialog = await openDialog();
+
+    const source = await within(dialog).findByText("3f9c2e1 · main · 2 uncommitted changes");
+    expect(source.getAttribute("title")).toBe(`${"3f9c2e1d".repeat(5)} · Gradle 8.7 · JDK 17.0.9`);
+  });
+
+  it("says when the session's build recorded no source commit", async () => {
+    seed();
+    const dialog = await openDialog();
+    const label = within(dialog).getByText("Source");
+    expect(label.parentElement?.textContent).toContain("Not recorded");
   });
 
   it("shows what an agent did on the device in the timeline", async () => {

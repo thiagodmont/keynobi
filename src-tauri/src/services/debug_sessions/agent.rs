@@ -362,6 +362,15 @@ pub(super) fn session_for_agent_in(
             "version_code": b.apk.version_code,
             "apk_sha256": b.apk.sha256,
             "map_ids": b.mappings.iter().filter_map(|m| m.pg_map_id.clone()).collect::<Vec<_>>(),
+            "source": b.provenance.as_ref().map(|p| json!({
+                "commit": p.commit,
+                "branch": p.branch,
+                "uncommitted_changes": p.dirty,
+                "changed_files": p.changed_files,
+                "no_commit_because": p.git_unavailable,
+                "gradle_version": p.gradle_version,
+                "jdk_version": p.jdk_version,
+            })),
         })
     });
     let install = session.install.as_ref().map(|i| {

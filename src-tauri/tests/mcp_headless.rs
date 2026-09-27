@@ -2404,6 +2404,7 @@ fn record_build_with_mapping(sandbox: &Sandbox, apk_sha256: &str, pg_map_id: &st
             bytes: 1,
             path: "app/build/outputs/apk/release/app-release.apk".into(),
         }],
+        provenance: None,
     };
     std::fs::write(
         data.join("build-history.json"),

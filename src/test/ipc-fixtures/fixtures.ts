@@ -1197,6 +1197,25 @@ export const typeFixtures = {
         "kind": "app"
       },
       "projectRoot": "/p",
+      "provenance": {
+        "branch": "main",
+        "buildFiles": [
+          {
+            "path": "app/build.gradle.kts",
+            "sha256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+          },
+          {
+            "path": "gradle/libs.versions.toml",
+            "sha256": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+          }
+        ],
+        "changedFiles": 2,
+        "commit": "3f9c2e1d3f9c2e1d3f9c2e1d3f9c2e1d3f9c2e1d",
+        "dirty": true,
+        "gitUnavailable": null,
+        "gradleVersion": "8.7",
+        "jdkVersion": "17.0.9"
+      },
       "startedAt": "2026-04-23T10:00:00Z",
       "status": {
         "durationMs": 4200,
@@ -1262,6 +1281,75 @@ export const typeFixtures = {
         "kind": "app"
       },
       "projectRoot": "/p",
+      "provenance": {
+        "branch": null,
+        "buildFiles": [],
+        "changedFiles": null,
+        "commit": null,
+        "dirty": null,
+        "gitUnavailable": "not a git repository",
+        "gradleVersion": null,
+        "jdkVersion": null
+      },
+      "startedAt": "2026-04-23T10:00:00Z",
+      "status": {
+        "durationMs": 4200,
+        "errorCount": 0,
+        "state": "success",
+        "success": true,
+        "warningCount": 2
+      },
+      "task": "assembleDebug"
+    },
+    {
+      "apks": [
+        {
+          "applicationId": "com.example.app",
+          "bytes": 12582912,
+          "module": ":app",
+          "path": "app/build/outputs/apk/release/app-release.apk",
+          "sha256": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+          "variant": "release",
+          "versionCode": 42
+        },
+        {
+          "applicationId": null,
+          "bytes": 4096,
+          "module": ":wear",
+          "path": "wear/build/outputs/apk/paid/release/wear-paid-release.apk",
+          "sha256": "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2",
+          "variant": "paidRelease",
+          "versionCode": null
+        }
+      ],
+      "cancelledBy": null,
+      "errors": [],
+      "id": 21,
+      "launch": null,
+      "mappings": [],
+      "origin": {
+        "kind": "app"
+      },
+      "projectRoot": "/p",
+      "provenance": {
+        "branch": "main",
+        "buildFiles": [
+          {
+            "path": "app/build.gradle.kts",
+            "sha256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+          },
+          {
+            "path": "gradle/libs.versions.toml",
+            "sha256": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+          }
+        ],
+        "changedFiles": 2,
+        "commit": "3f9c2e1d3f9c2e1d3f9c2e1d3f9c2e1d3f9c2e1d",
+        "dirty": true,
+        "gitUnavailable": null,
+        "gradleVersion": "8.7",
+        "jdkVersion": "17.0.9"
+      },
       "startedAt": "2026-04-23T10:00:00Z",
       "status": {
         "durationMs": 4200,
@@ -1371,6 +1459,25 @@ export const typeFixtures = {
         ],
         "origin": {
           "kind": "app"
+        },
+        "provenance": {
+          "branch": "main",
+          "buildFiles": [
+            {
+              "path": "app/build.gradle.kts",
+              "sha256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+            },
+            {
+              "path": "gradle/libs.versions.toml",
+              "sha256": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+            }
+          ],
+          "changedFiles": 2,
+          "commit": "3f9c2e1d3f9c2e1d3f9c2e1d3f9c2e1d3f9c2e1d",
+          "dirty": true,
+          "gitUnavailable": null,
+          "gradleVersion": "8.7",
+          "jdkVersion": "17.0.9"
         },
         "startedAt": "2026-04-23T10:00:00Z",
         "task": "assembleRelease"
@@ -1547,6 +1654,25 @@ export const typeFixtures = {
         ],
         "origin": {
           "kind": "app"
+        },
+        "provenance": {
+          "branch": "main",
+          "buildFiles": [
+            {
+              "path": "app/build.gradle.kts",
+              "sha256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+            },
+            {
+              "path": "gradle/libs.versions.toml",
+              "sha256": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+            }
+          ],
+          "changedFiles": 2,
+          "commit": "3f9c2e1d3f9c2e1d3f9c2e1d3f9c2e1d3f9c2e1d",
+          "dirty": true,
+          "gitUnavailable": null,
+          "gradleVersion": "8.7",
+          "jdkVersion": "17.0.9"
         },
         "startedAt": "2026-04-23T10:00:00Z",
         "task": "assembleRelease"
@@ -1948,6 +2074,25 @@ export const typeFixtures = {
             "origin": {
               "kind": "app"
             },
+            "provenance": {
+              "branch": "main",
+              "buildFiles": [
+                {
+                  "path": "app/build.gradle.kts",
+                  "sha256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+                },
+                {
+                  "path": "gradle/libs.versions.toml",
+                  "sha256": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+                }
+              ],
+              "changedFiles": 2,
+              "commit": "3f9c2e1d3f9c2e1d3f9c2e1d3f9c2e1d3f9c2e1d",
+              "dirty": true,
+              "gitUnavailable": null,
+              "gradleVersion": "8.7",
+              "jdkVersion": "17.0.9"
+            },
             "startedAt": "2026-04-23T10:00:00Z",
             "task": "assembleRelease"
           },
@@ -2291,6 +2436,25 @@ export const typeFixtures = {
           ],
           "origin": {
             "kind": "app"
+          },
+          "provenance": {
+            "branch": "main",
+            "buildFiles": [
+              {
+                "path": "app/build.gradle.kts",
+                "sha256": "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+              },
+              {
+                "path": "gradle/libs.versions.toml",
+                "sha256": "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+              }
+            ],
+            "changedFiles": 2,
+            "commit": "3f9c2e1d3f9c2e1d3f9c2e1d3f9c2e1d3f9c2e1d",
+            "dirty": true,
+            "gitUnavailable": null,
+            "gradleVersion": "8.7",
+            "jdkVersion": "17.0.9"
           },
           "startedAt": "2026-04-23T10:00:00Z",
           "task": "assembleRelease"

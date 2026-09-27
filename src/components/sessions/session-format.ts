@@ -1,6 +1,7 @@
 import type {
   AppExitReason,
   BuildActor,
+  BuildProvenance,
   DebugSession,
   DebugSessionCrash,
   DebugSessionDevice,
@@ -45,6 +46,27 @@ export function sessionBuildLabel(
   }
   const where = [session.module, session.variant].filter(Boolean).join(" ");
   return where ? `#${session.buildId} · ${where}` : `#${session.buildId}`;
+}
+
+/**
+ * The source the build came from: "3f9c2e1 · main · 2 uncommitted changes",
+ * or why it has no commit.
+ */
+export function sessionSourceLabel(provenance: BuildProvenance | null | undefined): string {
+  if (!provenance) return "Not recorded";
+  if (provenance.commit === null) {
+    return provenance.gitUnavailable ? `No commit (${provenance.gitUnavailable})` : "No commit";
+  }
+  const parts = [provenance.commit.slice(0, 7)];
+  if (provenance.branch) parts.push(provenance.branch);
+  if (provenance.dirty) {
+    parts.push(
+      provenance.changedFiles !== null
+        ? plural(provenance.changedFiles, "uncommitted change")
+        : "uncommitted changes"
+    );
+  }
+  return parts.join(" · ");
 }
 
 /** A session no Keynobi install opened: crashes of an app Keynobi did not install. */

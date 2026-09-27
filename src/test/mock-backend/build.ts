@@ -3,6 +3,7 @@ import type {
   BuildActor,
   BuildError,
   BuildLine,
+  BuildProvenance,
   BuildRecord,
   BuildStatus,
   BuiltApk,
@@ -62,6 +63,21 @@ const mockBuildLines: BuildLine[] = [
   { kind: "summary", content: "BUILD SUCCESSFUL in 4s", file: null, line: null, col: null },
 ];
 
+/** Like the backend, a successful build records the commit and build files it came from. */
+const MOCK_PROVENANCE: BuildProvenance = {
+  commit: "3f9c2e1d".repeat(5),
+  branch: "main",
+  dirty: false,
+  changedFiles: 0,
+  gitUnavailable: null,
+  buildFiles: [
+    { path: "app/build.gradle.kts", sha256: "c3".repeat(32) },
+    { path: "gradle/libs.versions.toml", sha256: "d4".repeat(32) },
+  ],
+  gradleVersion: "8.7",
+  jdkVersion: "17.0.9",
+};
+
 function recordStatus(
   state: "success" | "failed" | "cancelled",
   errors: BuildError[]
@@ -93,6 +109,7 @@ function recordBuild(
       launch: null,
       mappings: mockMappings(state, build.task),
       apks: mockApks(state, build.task, id),
+      ...(state === "success" ? { provenance: MOCK_PROVENANCE } : {}),
     },
     lines,
   });

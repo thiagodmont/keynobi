@@ -119,6 +119,25 @@ pub fn java_home_for_gradle(settings: &AppSettings, gradle_root: Option<&Path>) 
         .map(|jdk| jdk.home.to_string_lossy().into_owned())
 }
 
+/// `JAVA_VERSION` from the `release` file of the JDK Gradle builds
+/// `gradle_root` with (`17.0.9`). Reads files only; nothing is run.
+pub fn gradle_jdk_version(settings: &AppSettings, gradle_root: &Path) -> Option<String> {
+    let jdk = resolve_jdk(settings, Some(gradle_root), &JdkSearchRoots::system())?;
+    release_version_text(&jdk.home)
+}
+
+/// The `JAVA_VERSION` value of `home`'s `release` file, when it is a version.
+fn release_version_text(home: &Path) -> Option<String> {
+    const MAX_VERSION_CHARS: usize = 32;
+    let content = std::fs::read_to_string(home.join("release")).ok()?;
+    content.lines().find_map(|line| {
+        let value = line.trim().strip_prefix("JAVA_VERSION=")?;
+        let value = value.trim().trim_matches('"');
+        (value.len() <= MAX_VERSION_CHARS && version_components(value).is_some())
+            .then(|| value.to_string())
+    })
+}
+
 fn android_studio_jbr(application_dirs: &[PathBuf]) -> Option<PathBuf> {
     application_dirs
         .iter()
@@ -742,5 +761,25 @@ mod tests {
         assert_eq!(json["ok"], false);
         assert_eq!(json["source"], "settings");
         assert!(json["hint"].is_string());
+    }
+
+    #[test]
+    fn the_gradle_jdk_version_is_read_from_its_release_file() {
+        let f = Fixture::new();
+        let jdk = f.root.join("jdk21");
+        std::fs::create_dir_all(&jdk).unwrap();
+        std::fs::write(jdk.join("release"), "JAVA_VERSION=\"21.0.4\"\n").unwrap();
+        let settings = settings_with_home(Some(&jdk));
+        assert_eq!(
+            gradle_jdk_version(&settings, &f.project).as_deref(),
+            Some("21.0.4")
+        );
+
+        std::fs::write(jdk.join("release"), "JAVA_VERSION=\"not a version\"\n").unwrap();
+        assert_eq!(gradle_jdk_version(&settings, &f.project), None);
+        assert_eq!(
+            gradle_jdk_version(&settings_with_home(None), &f.project),
+            None
+        );
     }
 }

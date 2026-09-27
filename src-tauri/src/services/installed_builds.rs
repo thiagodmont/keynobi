@@ -1353,6 +1353,7 @@ mod tests {
             launch: None,
             mappings,
             apks,
+            provenance: None,
         }
     }
 

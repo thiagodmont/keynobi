@@ -2,7 +2,7 @@
 //! See `services/debug_sessions.rs` for storage and retention.
 
 use crate::models::app_exit::AppExitRecord;
-use crate::models::build::{BuildActor, LaunchTiming};
+use crate::models::build::{BuildActor, BuildProvenance, LaunchTiming};
 use crate::models::logcat::ProcessedEntry;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -54,6 +54,10 @@ pub struct DebugSessionBuild {
     pub origin: Option<BuildActor>,
     pub apk: DebugSessionApk,
     pub mappings: Vec<DebugSessionMapping>,
+    /// The build's source commit and build files, when it recorded them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub provenance: Option<BuildProvenance>,
 }
 
 /// The install that opened the session.
