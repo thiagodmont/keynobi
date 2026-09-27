@@ -1,23 +1,20 @@
 use crate::models::app_exit::AppExitReasons;
-use crate::models::build::{BuildActor, InstalledBuild, LaunchResult, LaunchTiming};
+use crate::models::build::InstalledBuild;
 use crate::models::device::{
     AvailableSystemImage, AvdInfo, Device, DeviceConnectionState, DeviceDefinition, DeviceKind,
     SdkDownloadProgress, SystemImageInfo,
 };
 use crate::models::error::AppError;
 use crate::services::adb_manager::{
-    create_avd, delete_avd, download_system_image, enrich_device_props, find_aapt2, get_adb_path,
-    get_avdmanager_path, get_emulator_path, get_sdkmanager_path, launch_app, launch_emulator,
+    create_avd, delete_avd, download_system_image, enrich_device_props, get_adb_path,
+    get_avdmanager_path, get_emulator_path, get_sdkmanager_path, launch_emulator,
     list_available_system_images, list_avds, list_device_definitions, list_devices,
     list_system_images, stop_app, stop_emulator, validate_avd_name, validate_device_profile_id,
-    validate_system_image_id, wipe_avd_data, AmStartTiming, DeviceState, DeviceStateInner,
+    validate_system_image_id, wipe_avd_data, DeviceState, DeviceStateInner,
 };
 use crate::services::app_exit_info;
-use crate::services::build_runner::{attach_launch_timing, BuildState};
-use crate::services::debug_sessions::{self, LaunchRecord};
+use crate::services::debug_sessions;
 use crate::services::installed_builds;
-use crate::services::launch_display::{self, LaunchWatch};
-use crate::services::logcat::LogcatState;
 use crate::services::settings_manager;
 use crate::FsState;
 use serde::Serialize;
@@ -67,6 +64,7 @@ fn validate_package_name(package: &str) -> Result<(), AppError> {
     crate::utils::validation::validate_package_name(package).map_err(AppError::InvalidInput)
 }
 
+#[cfg(test)]
 fn validate_activity_name(activity: &str) -> Result<(), AppError> {
     crate::utils::validation::validate_activity_name(activity).map_err(AppError::InvalidInput)
 }
@@ -112,34 +110,6 @@ pub async fn get_selected_device(
     Ok(device_state.0.lock().await.selected_serial.clone())
 }
 
-/// Install an APK on the given device, and record which build produced it.
-#[tauri::command]
-pub async fn install_apk_on_device(
-    serial: String,
-    apk_path: String,
-    fs_state: State<'_, FsState>,
-    device_state: State<'_, DeviceState>,
-) -> Result<String, AppError> {
-    validate_device_serial(&serial)?;
-    let root = {
-        let fs = fs_state.0.lock().await;
-        fs.gradle_root
-            .as_ref()
-            .or(fs.project_root.as_ref())
-            .cloned()
-            .ok_or_else(|| AppError::NotFound("No project is open".into()))?
-    };
-    let apk = crate::utils::path::validate_apk_within_build_outputs(&root, &apk_path)?;
-    let (settings, _) = settings_manager::load_settings();
-    let adb = get_adb_path(&settings);
-    let aapt2 = find_aapt2(&settings);
-    let by = BuildActor::App;
-    installed_builds::install_and_record(&adb, aapt2.as_deref(), &serial, &apk, &device_state, by)
-        .await
-        .map(|outcome| outcome.output)
-        .map_err(AppError::Io)
-}
-
 /// What Keynobi last installed on each device, per package, and the build
 /// that produced it.
 #[tauri::command]
@@ -147,121 +117,6 @@ pub async fn list_installed_builds() -> Result<Vec<InstalledBuild>, AppError> {
     tokio::task::spawn_blocking(installed_builds::list_installed_builds)
         .await
         .map_err(|e| AppError::Other(format!("Failed to read installed builds: {e}")))
-}
-
-/// Launch an app on the given device. With `build_id`, the launch time is
-/// recorded on that build's history entry: the build whose APK was installed.
-///
-/// While this process's logcat stream reads the device, the times to initial
-/// and full display are read from it too: what arrived shortly after the
-/// launch is returned, and what arrives later is added to the record and sent
-/// as `build:launch_timing`.
-#[tauri::command]
-#[allow(clippy::too_many_arguments)]
-pub async fn launch_app_on_device(
-    serial: String,
-    package: String,
-    activity: Option<String>,
-    build_id: Option<u32>,
-    device_state: State<'_, DeviceState>,
-    build_state: State<'_, BuildState>,
-    logcat_state: State<'_, LogcatState>,
-    app: AppHandle,
-) -> Result<LaunchResult, AppError> {
-    validate_device_serial(&serial)?;
-    validate_package_name(&package)?;
-    if let Some(ref activity_name) = activity {
-        validate_activity_name(activity_name)?;
-    }
-    let (settings, _) = settings_manager::load_settings();
-    let adb = get_adb_path(&settings);
-    let only_online_device = {
-        let devices = &device_state.0.lock().await.devices;
-        let mut online = devices
-            .iter()
-            .filter(|d| matches!(d.connection_state, DeviceConnectionState::Online));
-        online.next().is_some_and(|d| d.serial == serial) && online.next().is_none()
-    };
-    let watch = LaunchWatch::start(
-        &*logcat_state.lock().await,
-        &serial,
-        &package,
-        only_online_device,
-    );
-    let started = tokio::time::Instant::now();
-    let outcome = launch_app(&adb, &serial, &package, activity.as_deref())
-        .await
-        .map_err(AppError::ProcessFailed)?;
-
-    let mut timing = match outcome.timing {
-        Some(measured) => {
-            let device = device_state
-                .0
-                .lock()
-                .await
-                .devices
-                .iter()
-                .find(|d| d.serial == serial)
-                .cloned();
-            Some(launch_timing(measured, &serial, device.as_ref()))
-        }
-        None => None,
-    };
-    if let (Some(timing), Some(watch)) = (&mut timing, &watch) {
-        launch_display::add_display_times(timing, watch, &logcat_state).await;
-    }
-    if let (Some(id), Some(timing)) = (build_id, &timing) {
-        // The app launched; failing to record its time must not fail the launch.
-        if let Err(e) = attach_launch_timing(&build_state, id, timing.clone()).await {
-            tracing::warn!("Launch time not recorded on build #{id}: {e}");
-        } else if let Some(watch) = watch.filter(|_| timing.fully_drawn_ms.is_none()) {
-            let late = launch_display::record_late_display_times(
-                build_state.inner().clone(),
-                logcat_state.inner().clone(),
-                Some(app),
-                id,
-                timing.clone(),
-                watch,
-                started,
-            );
-            let package = package.clone();
-            tokio::spawn(async move {
-                if let Some(timing) = late.await {
-                    debug_sessions::record_late_launch_timing(&package, timing, BuildActor::App);
-                }
-            });
-        }
-    }
-    let launch = launch_record(&serial, &package, &timing);
-    debug_sessions::record_launch(adb, device_state.inner().clone(), launch);
-    Ok(LaunchResult {
-        output: outcome.description,
-        timing,
-    })
-}
-
-fn launch_record(serial: &str, package: &str, timing: &Option<LaunchTiming>) -> LaunchRecord {
-    LaunchRecord {
-        serial: serial.to_string(),
-        package: package.to_string(),
-        timing: timing.clone(),
-        restart: false,
-        by: BuildActor::App,
-    }
-}
-
-fn launch_timing(measured: AmStartTiming, serial: &str, device: Option<&Device>) -> LaunchTiming {
-    LaunchTiming {
-        total_ms: measured.total_ms,
-        wait_ms: measured.wait_ms,
-        launch_state: measured.launch_state,
-        measured_at: chrono::Utc::now().to_rfc3339(),
-        serial: serial.to_string(),
-        avd_name: device.and_then(|d| d.avd_name.clone()),
-        model: device.and_then(|d| d.model.clone()),
-        displayed_ms: None,
-        fully_drawn_ms: None,
-    }
 }
 
 /// Force-stop an app on the given device.

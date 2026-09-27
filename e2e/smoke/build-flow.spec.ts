@@ -248,6 +248,36 @@ deployTest("a past build says which device Run App installed it on", async ({ pa
   await expect(page.getByText(/^Installed on Pixel_6_API_34 · /)).toBeVisible();
 });
 
+deployTest(
+  "a run whose install fails says why, launches nothing, and can run again",
+  async ({ page }) => {
+    await selectMockProject(page);
+    await page.getByRole("tab", { name: "Build" }).click();
+    await page.evaluate(() =>
+      window.__e2e__.failNextInstall("adb: failed to install: INSTALL_FAILED_INSUFFICIENT_STORAGE")
+    );
+    const runApp = page.getByTitle(/^Run App/).first();
+    await runApp.click();
+
+    await expect(
+      page.getByText(/Deploy failed: .*INSTALL_FAILED_INSUFFICIENT_STORAGE/)
+    ).toBeVisible({
+      timeout: 10_000,
+    });
+    // The install phase logged its steps; nothing was launched.
+    await expect(page.getByText(/^▶ adb install .*app-debug\.apk$/)).toBeVisible();
+    await expect(page.getByText(/^▶ adb shell am start/)).toHaveCount(0);
+    await expect(page.getByText("Installing APK…")).toHaveCount(0);
+
+    // The failed run is over, so the next one installs and launches.
+    await expect(runApp).toBeEnabled();
+    await runApp.click();
+    await expect(page.getByText("▶ Launch time: 812 ms (cold) · displayed 790 ms")).toBeVisible({
+      timeout: 10_000,
+    });
+  }
+);
+
 test("an agent's build shows who started it and can be cancelled from the app", async ({
   page,
 }) => {

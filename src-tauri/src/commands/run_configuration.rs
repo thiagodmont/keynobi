@@ -1,12 +1,23 @@
+use crate::models::build::BuildActor;
 use crate::models::error::AppError;
 use crate::models::run_configuration::{
-    ProjectRunConfigurations, ResolvedRun, RunConfiguration, TargetPreference,
+    DeployPhaseEvent, DeployResult, ProjectRunConfigurations, ResolvedRun, RunConfiguration,
+    TargetPreference,
 };
-use crate::services::adb_manager::{get_adb_path, DeviceState};
-use crate::services::run_plan::{self, Devices, RunProject, RunRequest};
-use crate::services::{gradle_modules, run_configurations, settings_manager, ui_automation};
+use crate::services::adb_manager::{find_aapt2, get_adb_path, DeviceState};
+use crate::services::build_runner::{BuildOutcome, BuildState};
+use crate::services::deploy::{self, DeployEnv, DeployHooks, OpenProject};
+use crate::services::logcat::LogcatState;
+use crate::services::process_manager::ProcessManager;
+use crate::services::run_plan::{self, Devices, RunRequest};
+use crate::services::{gradle_modules, run_configurations, settings_manager};
 use crate::FsState;
-use tauri::State;
+use std::time::Duration;
+use tauri::{AppHandle, Emitter, State};
+
+/// The shortest and longest wait for the build of the app's run
+/// (`mcp.buildTimeoutSec`, clamped).
+const RUN_BUILD_TIMEOUT_SECS: (u64, u64) = (60, 3_600);
 
 /// The open project's root, as its registry entry names it.
 async fn open_project_root(fs_state: &State<'_, FsState>) -> Result<String, AppError> {
@@ -88,24 +99,20 @@ pub async fn resolve_run_configuration(
     fs_state: State<'_, FsState>,
     device_state: State<'_, DeviceState>,
 ) -> Result<ResolvedRun, AppError> {
-    let (registry_root, gradle_root, trust_root) = {
-        let fs = fs_state.0.lock().await;
-        let gradle_root = fs
-            .gradle_root
-            .as_ref()
-            .or(fs.project_root.as_ref())
-            .cloned()
-            .ok_or_else(|| AppError::NotFound("No project is open".into()))?;
-        let project_root = fs
-            .project_root
-            .clone()
-            .unwrap_or_else(|| gradle_root.clone());
-        (
-            project_root.to_string_lossy().into_owned(),
-            gradle_root,
-            project_root,
-        )
+    let project = OpenProject::of(&fs_state).await?;
+    let request = RunRequest {
+        name,
+        build_only: build_only.unwrap_or(false),
     };
+    resolve(project, request, selected_serial, &device_state).await
+}
+
+async fn resolve(
+    project: OpenProject,
+    request: RunRequest,
+    selected_serial: Option<String>,
+    device_state: &DeviceState,
+) -> Result<ResolvedRun, AppError> {
     if let Some(serial) = &selected_serial {
         crate::utils::validation::validate_device_serial(serial).map_err(AppError::InvalidInput)?;
     }
@@ -116,17 +123,9 @@ pub async fn resolve_run_configuration(
             selected_serial.or_else(|| state.selected_serial.clone()),
         )
     };
-    let request = RunRequest {
-        name,
-        build_only: build_only.unwrap_or(false),
-    };
     blocking(move || {
         run_plan::resolve(
-            RunProject {
-                registry_root: &registry_root,
-                gradle_root: &gradle_root,
-                trust_root: &trust_root,
-            },
+            project.run_project(),
             &request,
             Devices {
                 list: &devices,
@@ -135,6 +134,85 @@ pub async fn resolve_run_configuration(
         )
     })
     .await
+}
+
+/// Run the configuration named `name` (default: the active one): resolve it
+/// as `resolve_run_configuration` does, build its task, install the APK that
+/// build wrote, and launch it. Progress arrives as `build:*` and
+/// `deploy:phase` events. `project_root` is the project the app resolved the
+/// run for; the run is refused when another one is open.
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn run_run_configuration(
+    name: Option<String>,
+    selected_serial: Option<String>,
+    project_root: Option<String>,
+    app: AppHandle,
+    fs_state: State<'_, FsState>,
+    device_state: State<'_, DeviceState>,
+    build_state: State<'_, BuildState>,
+    logcat_state: State<'_, LogcatState>,
+    process_manager: State<'_, ProcessManager>,
+) -> Result<DeployResult, AppError> {
+    let project = OpenProject::of(&fs_state).await?;
+    if project_root.is_some_and(|root| root != project.registry_root) {
+        return Err(AppError::InvalidInput(
+            "The project changed before the run started. Nothing was built.".into(),
+        ));
+    }
+    let request = RunRequest {
+        name,
+        build_only: false,
+    };
+    let run = resolve(project.clone(), request, selected_serial, &device_state).await?;
+    let (settings, _) = settings_manager::load_settings();
+    let (min, max) = RUN_BUILD_TIMEOUT_SECS;
+    let timeout = Duration::from_secs(u64::from(settings.mcp.build_timeout_sec).clamp(min, max));
+    let env = DeployEnv {
+        fs_state: fs_state.inner().clone(),
+        build_state: build_state.inner().clone(),
+        device_state: device_state.inner().clone(),
+        logcat_state: logcat_state.inner().clone(),
+        app: Some(app.clone()),
+        adb: get_adb_path(&settings),
+        aapt2: find_aapt2(&settings),
+    };
+    let mut hooks = AppRun {
+        app,
+        project: project.clone(),
+        build_state: build_state.inner().clone(),
+        process_manager: process_manager.inner().clone(),
+        timeout,
+    };
+    deploy::run_configuration(&env, &project, run, BuildActor::App, &mut hooks).await
+}
+
+/// The app's run: its build is the app's, cancelled with Cancel, and its
+/// phases go to the app.
+struct AppRun {
+    app: AppHandle,
+    project: OpenProject,
+    build_state: BuildState,
+    process_manager: ProcessManager,
+    timeout: Duration,
+}
+
+impl DeployHooks for AppRun {
+    async fn build(&mut self, task: &str) -> Result<BuildOutcome, AppError> {
+        let request = deploy::build_request(&self.project, task.to_string(), BuildActor::App)?;
+        deploy::build_and_wait(
+            &self.build_state,
+            &self.process_manager,
+            Some(&self.app),
+            request,
+            self.timeout,
+        )
+        .await
+    }
+
+    async fn phase(&mut self, event: DeployPhaseEvent) {
+        let _ = self.app.emit(deploy::DEPLOY_PHASE_EVENT, event);
+    }
 }
 
 /// The open project's application modules (Gradle paths), which a run
@@ -181,34 +259,4 @@ pub async fn approve_shared_run_configuration(
 ) -> Result<ProjectRunConfigurations, AppError> {
     let project_root = open_project_root(&fs_state).await?;
     blocking(move || run_configurations::approve_shared(&project_root, &name, &sha256)).await
-}
-
-/// Remember the device a run of the configuration named `name` installed on.
-#[tauri::command]
-pub async fn record_run_device(
-    name: String,
-    serial: String,
-    fs_state: State<'_, FsState>,
-) -> Result<ProjectRunConfigurations, AppError> {
-    let project_root = open_project_root(&fs_state).await?;
-    blocking(move || run_configurations::record_last_device(&project_root, &name, &serial)).await
-}
-
-/// Open `uri` in `package` on the device (`am start -a VIEW -d <uri> -p
-/// <package>`): a run configuration's deep-link launch. Android reports no
-/// launch time for it.
-#[tauri::command]
-pub async fn open_deep_link_on_device(
-    serial: String,
-    uri: String,
-    package: String,
-) -> Result<String, AppError> {
-    crate::utils::validation::validate_device_serial(&serial).map_err(AppError::InvalidInput)?;
-    crate::utils::validation::validate_package_name(&package).map_err(AppError::InvalidInput)?;
-    ui_automation::validate_deep_link_uri(&uri).map_err(AppError::InvalidInput)?;
-    let (settings, _) = settings_manager::load_settings();
-    let adb = get_adb_path(&settings);
-    ui_automation::adb_open_deep_link(&adb, &serial, &uri, Some(&package))
-        .await
-        .map_err(AppError::ProcessFailed)
 }

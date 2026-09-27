@@ -11,6 +11,7 @@ pub mod build_provenance;
 pub mod build_runner;
 pub mod crash_inspector;
 pub mod debug_sessions;
+pub mod deploy;
 pub mod device_inspector;
 pub mod fs_manager;
 pub mod gradle_modules;

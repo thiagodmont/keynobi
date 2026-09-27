@@ -6,8 +6,14 @@ import { initBuildService, resetBuildServiceForTests } from "@/services/build.se
 const mockListen = vi.mocked(listen);
 const mockInvoke = vi.mocked(invoke);
 
-/** build:started, build:lines, build:complete, build:launch_timing. */
-const BUILD_EVENTS = ["build:started", "build:lines", "build:complete", "build:launch_timing"];
+/** build:started, build:lines, build:complete, build:launch_timing, deploy:phase. */
+const BUILD_EVENTS = [
+  "build:started",
+  "build:lines",
+  "build:complete",
+  "build:launch_timing",
+  "deploy:phase",
+];
 
 function deferred<T>() {
   let resolve!: (value: T) => void;

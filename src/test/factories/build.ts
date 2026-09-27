@@ -4,6 +4,7 @@ import type {
   BuildRecord,
   BuildStatus,
   BuiltApk,
+  DeployResult,
   InstalledBuild,
   LaunchTiming,
   MappingSnapshot,
@@ -123,6 +124,25 @@ export function makeResolvedRun(overrides: Partial<ResolvedRun> = {}): ResolvedR
     logcatFilter: null,
     device: { serial: "emulator-5554", label: "Pixel_7" },
     plan: "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+    ...overrides,
+  };
+}
+
+/** A finished run of `run`: built as #7, installed, and launched on its device. */
+export function makeDeployResult(
+  overrides: Partial<DeployResult> = {},
+  run: ResolvedRun = makeResolvedRun()
+): DeployResult {
+  return {
+    run,
+    outcome: "done",
+    buildId: 7,
+    device: run.device ?? { serial: "emulator-5554", label: "Pixel_7" },
+    apk: { path: "/tmp/app-debug.apk", buildId: 7, fromThisBuild: true },
+    apkSha256: "a".repeat(64),
+    package: "com.example.app",
+    launch: { output: "Status: ok", timing: makeLaunchTiming() },
+    logcatFilter: run.logcatFilter,
     ...overrides,
   };
 }

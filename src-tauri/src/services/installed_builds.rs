@@ -405,6 +405,8 @@ pub struct InstallOutcome {
     pub output: String,
     /// The saved install, or `None` when it could not be recorded (logged).
     pub recorded: Option<InstalledBuild>,
+    /// SHA-256 of the installed APK; `None` when it could not be hashed.
+    pub sha256: Option<String>,
 }
 
 /// Install `apk` (a canonical path already validated inside the project's
@@ -440,17 +442,17 @@ async fn install_and_record_in(
 
     let sha256 = match hashing.await {
         Ok(Ok(Some((sha256, _)))) => sha256,
-        Ok(Ok(None)) => return Ok(unrecorded(output)),
+        Ok(Ok(None)) => return Ok(unrecorded(output, None)),
         Ok(Err(reason)) => {
             tracing::warn!(
                 "Install of {} on {serial} not recorded: the APK could not be hashed: {reason}",
                 apk.display()
             );
-            return Ok(unrecorded(output));
+            return Ok(unrecorded(output, None));
         }
         Err(e) => {
             tracing::warn!("Install on {serial} not recorded: {e}");
-            return Ok(unrecorded(output));
+            return Ok(unrecorded(output, None));
         }
     };
     let (mut application_id, version_code) = metadata_beside(apk);
@@ -462,7 +464,7 @@ async fn install_and_record_in(
     }
     let target = resolve_target(adb, serial, device_state).await;
     let installed = InstalledApk {
-        sha256,
+        sha256: sha256.clone(),
         application_id,
         version_code,
     };
@@ -482,10 +484,11 @@ async fn install_and_record_in(
         Ok(entry) => Ok(InstallOutcome {
             output,
             recorded: Some(entry),
+            sha256: Some(sha256),
         }),
         Err(e) => {
             tracing::warn!("Install of {} on {serial} not recorded: {e}", apk.display());
-            Ok(unrecorded(output))
+            Ok(unrecorded(output, Some(sha256)))
         }
     }
 }
@@ -514,10 +517,11 @@ pub fn describe_install(entry: &InstalledBuild) -> String {
     )
 }
 
-fn unrecorded(output: String) -> InstallOutcome {
+fn unrecorded(output: String, sha256: Option<String>) -> InstallOutcome {
     InstallOutcome {
         output,
         recorded: None,
+        sha256,
     }
 }
 

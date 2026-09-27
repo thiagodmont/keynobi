@@ -116,6 +116,10 @@ export type { SharedRunConfigurationsFile } from "./SharedRunConfigurationsFile"
 export type { SharedRunConfigurationProblem } from "./SharedRunConfigurationProblem";
 export type { ResolvedRun } from "./ResolvedRun";
 export type { RunDevice } from "./RunDevice";
+export type { DeployPhase } from "./DeployPhase";
+export type { DeployPhaseEvent } from "./DeployPhaseEvent";
+export type { DeployOutcome } from "./DeployOutcome";
+export type { DeployResult } from "./DeployResult";
 
 // MCP
 export type { McpClientSetupStatus } from "./McpClientSetupStatus";

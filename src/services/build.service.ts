@@ -1,20 +1,16 @@
 import {
   runGradleTask,
   cancelBuild as cancelBuildApi,
-  findApkPath,
-  getPackageNameFromApk,
-  installApkOnDevice,
-  launchAppOnDevice,
   listRunConfigurations,
-  openDeepLinkOnDevice,
-  recordRunDevice,
   resolveRunConfiguration,
+  runRunConfiguration,
   isAppErrorKind,
   getBuildHistory,
   listenBuildStarted,
   listenBuildLines,
   listenBuildComplete,
   listenBuildLaunchTiming,
+  listenDeployPhase,
   errorMessage,
   formatError,
   type BuildActor,
@@ -22,6 +18,8 @@ import {
   type BuildLine,
   type BuildLinesEvent,
   type BuildStartedEvent,
+  type DeployPhaseEvent,
+  type DeployResult,
 } from "@/lib/tauri-api";
 import {
   startBuild,
@@ -43,7 +41,7 @@ import { settingsState } from "@/stores/settings.store";
 import { isActiveProjectTrusted } from "@/stores/projects.store";
 import { buildRunningLabel } from "@/lib/build-actor";
 import { describeDisplayTimes, formatLaunchTime } from "@/lib/launch-timing";
-import type { BuildError, ResolvedRun, RunApk, TargetPreference } from "@/bindings";
+import type { BuildError, ResolvedRun, TargetPreference } from "@/bindings";
 import {
   launchRunAvd,
   resolveApprovedRun,
@@ -57,6 +55,14 @@ let buildUnlisteners: Array<() => void> | null = null;
 let buildListenerInit: Promise<void> | null = null;
 let currentBuildPromise: Promise<BuildCompletion | null> | null = null;
 let deployInFlight = false;
+/**
+ * The project generation of this window's latest run of a configuration,
+ * while the Build panel still shows it: its `deploy:phase` steps are logged,
+ * even one arriving after the run answered. Null once another build shows.
+ */
+let deployLogGeneration: number | null = null;
+/** How long a run that answered waits for its build's `build:complete`. */
+const BUILD_COMPLETE_GRACE_MS = 5_000;
 
 interface RunBuildOptions {
   headerLines?: string[];
@@ -83,6 +89,7 @@ export function resetBuildServiceForTests(): void {
   buildListenerInit = null;
   activeRun = null;
   observedRun = null;
+  deployLogGeneration = null;
   earlyCompletions.clear();
   clearEarlyLines();
   clearBuildCompleteTimer();
@@ -94,6 +101,7 @@ async function registerBuildListeners(): Promise<void> {
     listenBuildLines(onBuildLines),
     listenBuildComplete(onBuildComplete),
     listenBuildLaunchTiming(onLaunchTiming),
+    listenDeployPhase(onDeployPhase),
   ]);
   const unlisteners = registrations.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
   const failed = registrations.find((r) => r.status === "rejected");
@@ -198,6 +206,16 @@ function onBuildLines(e: BuildLinesEvent): void {
   }
 }
 
+/** This window's run of a configuration moved on: log its steps, and show its phase while it runs. */
+function onDeployPhase(e: DeployPhaseEvent): void {
+  if (deployLogGeneration === null || deployLogGeneration !== currentProjectGeneration()) return;
+  e.steps.forEach(logStep);
+  if (!deployInFlight) return;
+  if (e.phase === "building" || e.phase === "installing" || e.phase === "launching") {
+    setDeployPhase(e.phase);
+  }
+}
+
 /** Display times arrived after a launch returned: the build's record has them now. */
 function onLaunchTiming(): void {
   getBuildHistory()
@@ -271,6 +289,7 @@ function showObservedRunWhenIdle(): void {
     return;
   }
   run.shown = true;
+  deployLogGeneration = null;
   startBuild(run.task, run.origin);
   run.hiddenLines.splice(0).forEach(addBuildLine);
 }
@@ -364,6 +383,7 @@ async function runBuildInternal(
   const variant = variantState.activeVariant;
   const effectiveTask = task ?? (variant ? `assemble${capitalize(variant)}` : "assembleDebug");
 
+  deployLogGeneration = null;
   startBuild(effectiveTask);
   setActiveTab("build");
 
@@ -467,8 +487,10 @@ async function runBuildInternal(
  * The configuration is resolved first (task, device, launch); its plan heads
  * the build log. A target of Ask or Last used that finds no online device
  * shows the device picker — skipped entirely when "Auto Install on Build" is
- * off (build-only run). After a successful build the APK is installed and
- * the app launched the way the configuration says.
+ * off (build-only run). The backend then runs it (`runRunConfiguration`):
+ * builds, installs the APK that build wrote, and launches the app the way the
+ * configuration says, while this window follows the build and the
+ * `deploy:phase` steps.
  */
 export async function runAndDeploy(name: string | null = null): Promise<void> {
   assertProjectTrusted();
@@ -483,8 +505,8 @@ export async function runAndDeploy(name: string | null = null): Promise<void> {
   }
 
   deployInFlight = true;
-  // APK lookup reads the backend's current project, so a project switch
-  // mid-deploy must stop it before it installs the other project's APK.
+  // The backend refuses the run once another project is open, so it never
+  // installs the other project's APK.
   const projectGeneration = currentProjectGeneration();
   // Read once up front: when auto-install is off this is a build-only run,
   // which must not force device selection.
@@ -496,80 +518,21 @@ export async function runAndDeploy(name: string | null = null): Promise<void> {
     const plan = await resolveRunPlan(!autoInstall, name);
     if (!plan) return;
     assertSameProject(projectGeneration);
-    const serial = plan.device?.serial ?? null;
 
-    // 1. Build. startBuild() inside runBuild() clears the log, so the plan is
-    //    added as the very first line.
     setDeployPhase("building");
-    const target = `${plan.module} ${plan.variant}`;
-    const completion = await runBuildGuarded(plan.task, { headerLines: [plan.plan] }, true);
-
-    const phase = buildState.phase;
-    if (phase !== "success") {
-      logError(`Build phase is "${phase}" — skipping install. Check the Problems tab for errors.`);
-      setDeployPhase(null);
-      return;
-    }
-
-    // The "Auto Install on Build" setting gates install + launch; the build
-    // itself still counts as a successful deploy cycle when it is off.
     if (!autoInstall) {
+      // The "Auto Install on Build" setting gates install + launch; the build
+      // itself still counts as a successful run when it is off.
+      await runBuildGuarded(plan.task, { headerLines: [plan.plan] }, true);
+      if (buildState.phase !== "success") {
+        logError(`Build phase is "${buildState.phase}" — skipping install.`);
+        return;
+      }
       logStep("Auto Install on Build is disabled — skipping install and launch.");
-      setDeployPhase(null);
-      return;
-    }
-    if (!serial) {
-      throw new Error("No device selected.");
-    }
-
-    // 2. Find the APK this build wrote. Rejects with the reason when no APK
-    //    of this module and variant exists; another variant's is never used.
-    assertSameProject(projectGeneration);
-    logStep(`Searching for the APK of ${target}…`);
-    const buildId = completion?.success ? completion.recordId : null;
-    const apk = await findApkPath(plan.variant, { module: plan.module, buildId });
-    assertSameProject(projectGeneration);
-    logStep(describeRunApk(apk));
-    const apkPath = apk.path;
-
-    // 3. Install.
-    setDeployPhase("installing");
-    const deviceInfo = deviceLabel(serial);
-    logStep(`Installing on: ${deviceInfo}`);
-    logStep(`adb install ${apkPath}`);
-    const installStart = Date.now();
-    const installOutput = await installApkOnDevice(serial, apkPath);
-    logStep(`Install: ${installOutput.trim()} (${formatDuration(Date.now() - installStart)})`);
-    // A Last used target prefers this device next time.
-    recordRunDevice(plan.name, serial).catch((err) => {
-      console.error("[build] Failed to record the run's device:", err);
-    });
-
-    if (plan.launch.kind === "none") {
-      logStep(`Run configuration '${plan.name}' installs only — not launching.`);
       return;
     }
 
-    // 4. Launch — resolve the exact package name of this APK (aapt2, or the
-    // variant's output metadata). The project's base applicationId is not a
-    // safe guess: it ignores applicationIdSuffix and would launch another app.
-    setDeployPhase("launching");
-    let packageName: string | null = null;
-    try {
-      packageName = await getPackageNameFromApk(apkPath);
-      logStep(`Package (from APK): ${packageName}`);
-    } catch (e) {
-      logStep(`Could not read the APK's package name: ${formatError(e)}`);
-    }
-
-    if (packageName) {
-      await launchPlan(plan, serial, packageName, buildId);
-    } else {
-      logStep(
-        "APK installed. Could not determine package name — cannot auto-launch. " +
-          "Ensure aapt2 is available in your Android SDK (Settings → Android SDK)."
-      );
-    }
+    showRunResult(await runInBackend(plan));
   } catch (e) {
     const msg = formatError(e);
     logError(`Deploy failed: ${msg}`);
@@ -578,6 +541,86 @@ export async function runAndDeploy(name: string | null = null): Promise<void> {
     setDeployPhase(null);
     deployInFlight = false;
     showObservedRunWhenIdle();
+  }
+}
+
+/**
+ * Have the backend run `plan`, showing its build in the Build panel the way
+ * runBuild shows one: the plan and the build header head the log, and the
+ * build's output and outcome follow its events.
+ */
+async function runInBackend(plan: ResolvedRun): Promise<DeployResult> {
+  deployLogGeneration = currentProjectGeneration();
+  startBuild(plan.task);
+  setActiveTab("build");
+  addBuildLine({ kind: "info", content: plan.plan, file: null, line: null, col: null });
+  logBuildHeader(plan.task);
+
+  const run: ActiveRun = { runId: null, resolve: () => {} };
+  const built = new Promise<BuildCompletion>((resolve) => {
+    run.resolve = resolve;
+  });
+  activeRun = run;
+  earlyCompletions.clear();
+  clearEarlyLines();
+
+  let result: DeployResult | null = null;
+  let failure: { error: unknown } | null = null;
+  try {
+    result = await runRunConfiguration({
+      name: plan.name,
+      selectedSerial: plan.device?.serial ?? null,
+      projectRoot: projectState.projectRoot,
+    });
+  } catch (e) {
+    failure = { error: e };
+  }
+  // build:complete can arrive after the run answered.
+  if (activeRun === run && run.runId !== null) {
+    await Promise.race([
+      built,
+      new Promise((resolve) => setTimeout(resolve, BUILD_COMPLETE_GRACE_MS)),
+    ]);
+  }
+  if (activeRun === run) {
+    // Its build never started, or its outcome never arrived.
+    activeRun = null;
+    earlyCompletions.clear();
+    clearEarlyLines();
+    flushPendingLines();
+    if (buildState.phase === "running") setBuildResult({ success: false, durationMs: 0 });
+  }
+  if (failure) throw failure.error;
+  return result as DeployResult;
+}
+
+/** Log how a run ended, and after a launch apply its logcat filter. */
+function showRunResult(result: DeployResult): void {
+  if (result.outcome !== "done") {
+    const phase = result.outcome === "cancelled" ? "cancelled" : "failed";
+    logError(`Build phase is "${phase}" — skipping install. Check the Problems tab for errors.`);
+    return;
+  }
+  const launch = result.launch;
+  if (!launch || !result.package) return;
+  logStep(`Launch: ${launch.output.trim()}`);
+  setLastLaunchedAt(Date.now(), result.package, result.logcatFilter);
+  if (result.run.launch.kind === "deepLink") {
+    logStep("Launch time: not reported for a deep link");
+    return;
+  }
+  logStep(
+    launch.timing
+      ? `Launch time: ${[formatLaunchTime(launch.timing), ...describeDisplayTimes(launch.timing)].join(" · ")}`
+      : "Launch time: not reported by this launch method"
+  );
+  // The run recorded the launch time on its build.
+  if (launch.timing && result.buildId !== null) {
+    getBuildHistory()
+      .then(setBuildHistory)
+      .catch((err) => {
+        console.error("[build] Failed to reload build history:", err);
+      });
   }
 }
 
@@ -676,45 +719,6 @@ async function offerToLaunchAvd(avdName: string, reason: string): Promise<boolea
   return true;
 }
 
-/** Launch the installed app the way the run configuration says. */
-async function launchPlan(
-  plan: ResolvedRun,
-  serial: string,
-  packageName: string,
-  buildId: number | null
-): Promise<void> {
-  const launch = plan.launch;
-  if (launch.kind === "deepLink") {
-    logStep(`adb shell am start -a android.intent.action.VIEW -d ${launch.uri} -p ${packageName}`);
-    const output = await openDeepLinkOnDevice(serial, launch.uri, packageName);
-    logStep(`Launch: ${output.trim()}`);
-    setLastLaunchedAt(Date.now(), packageName, plan.logcatFilter);
-    logStep("Launch time: not reported for a deep link");
-    return;
-  }
-  const activity = launch.kind === "activity" ? launch.name : undefined;
-  logStep(
-    `adb shell am start -W (${activity ? `${packageName}/${activity}` : `package: ${packageName}`})`
-  );
-  // The launch time is recorded on the build this deploy ran, named by its
-  // own build:complete, never on whichever build finished last.
-  const result = await launchAppOnDevice(serial, packageName, { activity, buildId });
-  logStep(`Launch: ${result.output.trim()}`);
-  setLastLaunchedAt(Date.now(), packageName, plan.logcatFilter);
-  logStep(
-    result.timing
-      ? `Launch time: ${[formatLaunchTime(result.timing), ...describeDisplayTimes(result.timing)].join(" · ")}`
-      : "Launch time: not reported by this launch method"
-  );
-  if (result.timing && buildId !== null) {
-    getBuildHistory()
-      .then(setBuildHistory)
-      .catch((err) => {
-        console.error("[build] Failed to reload build history:", err);
-      });
-  }
-}
-
 /** Cancel the running build, whoever started it. No-op if no build is running. */
 export async function cancelBuild(): Promise<void> {
   if (buildState.phase !== "running") return;
@@ -796,24 +800,6 @@ function logEnvVar(name: string, value: string | null | undefined): void {
   }
 }
 
-/** Format device label for logging. */
-function deviceLabel(serial: string): string {
-  const dev = deviceState.devices.find((d) => d.serial === serial);
-  if (!dev) return serial;
-  const model = dev.model ?? dev.name ?? serial;
-  const api = dev.apiLevel !== null ? ` (API ${dev.apiLevel})` : "";
-  return `${model}${api} [${serial}]`;
-}
-
-function formatDuration(ms: number): string {
-  if (!ms) return "0ms";
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  const mins = Math.floor(ms / 60000);
-  const secs = ((ms % 60000) / 1000).toFixed(0);
-  return `${mins}m ${secs}s`;
-}
-
 /** Log build header: task, working directory, and relevant env vars. */
 function logBuildHeader(effectiveTask: string): void {
   logStep(`Build started: ${effectiveTask}`);
@@ -833,13 +819,6 @@ function assertSameProject(generation: number): void {
 /** Emit a visible error into the build log AND the Problems tab. */
 function logError(message: string): void {
   addBuildLine({ kind: "error", content: message, file: null, line: null, col: null });
-}
-
-/** Which build wrote the APK Run App installs. */
-function describeRunApk(apk: RunApk): string {
-  if (apk.fromThisBuild) return `APK (build #${apk.buildId}): ${apk.path}`;
-  if (apk.buildId !== null) return `APK unchanged since build #${apk.buildId}: ${apk.path}`;
-  return `APK unchanged by this build, and no build in the history wrote it: ${apk.path}`;
 }
 
 function capitalize(s: string): string {

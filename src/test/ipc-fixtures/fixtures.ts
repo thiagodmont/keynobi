@@ -20,6 +20,8 @@ import type {
   DebugSessionEvent,
   DebugSessionExitRefresh,
   DebugSessionSummary,
+  DeployPhaseEvent,
+  DeployResult,
   Device,
   DeviceDefinition,
   DeviceListChangedEvent,
@@ -643,6 +645,244 @@ export const typeFixtures = {
       "variant": "debug"
     }
   ] satisfies Wire<ResolvedRun>[],
+  DeployResult: [
+    {
+      "apk": {
+        "buildId": 21,
+        "fromThisBuild": true,
+        "path": "/work/app/build/outputs/apk/debug/app-debug.apk"
+      },
+      "apkSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "buildId": 21,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "launch": {
+        "output": "am start OK: Status: ok",
+        "timing": {
+          "avdName": "Pixel_7_API_34",
+          "displayedMs": 790,
+          "fullyDrawnMs": 1400,
+          "launchState": "cold",
+          "measuredAt": "2026-04-23T10:00:00Z",
+          "model": "sdk_gphone64_arm64",
+          "serial": "emulator-5554",
+          "totalMs": 812,
+          "waitMs": 815
+        }
+      },
+      "logcatFilter": null,
+      "outcome": "done",
+      "package": "com.example.app.debug",
+      "run": {
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "launch": {
+          "kind": "default"
+        },
+        "logcatFilter": null,
+        "module": ":app",
+        "name": "Default",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "task": ":app:assembleDebug",
+        "variant": "debug"
+      }
+    },
+    {
+      "apk": {
+        "buildId": 21,
+        "fromThisBuild": true,
+        "path": "/work/app/build/outputs/apk/debug/app-debug.apk"
+      },
+      "apkSha256": null,
+      "buildId": 21,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "launch": {
+        "output": "am start OK: Status: ok",
+        "timing": {
+          "avdName": "Pixel_7_API_34",
+          "displayedMs": 790,
+          "fullyDrawnMs": null,
+          "launchState": "cold",
+          "measuredAt": "2026-04-23T10:00:00Z",
+          "model": "sdk_gphone64_arm64",
+          "serial": "emulator-5554",
+          "totalMs": 812,
+          "waitMs": 815
+        }
+      },
+      "logcatFilter": "package:mine level:warn",
+      "outcome": "done",
+      "package": "com.example.app.debug",
+      "run": {
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "launch": {
+          "kind": "default"
+        },
+        "logcatFilter": null,
+        "module": ":app",
+        "name": "Default",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "task": ":app:assembleDebug",
+        "variant": "debug"
+      }
+    },
+    {
+      "apk": {
+        "buildId": 9,
+        "fromThisBuild": false,
+        "path": "/work/app/build/outputs/apk/debug/app-debug.apk"
+      },
+      "apkSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "buildId": 22,
+      "device": {
+        "label": "Pixel 7",
+        "serial": "28151FDH2000Q4"
+      },
+      "launch": {
+        "output": "Starting: Intent { act=android.intent.action.VIEW dat=myapp://home }",
+        "timing": null
+      },
+      "logcatFilter": "package:mine level:warn",
+      "outcome": "done",
+      "package": "com.example.wear",
+      "run": {
+        "device": {
+          "label": "Pixel 7",
+          "serial": "28151FDH2000Q4"
+        },
+        "launch": {
+          "kind": "deepLink",
+          "uri": "myapp://home"
+        },
+        "logcatFilter": "package:mine level:warn",
+        "module": ":wear",
+        "name": "Wear deep link",
+        "plan": "Run 'Wear deep link': build :wear:bundleFreeRelease → install this build's APK → open myapp://home on Pixel 7 → filter package:mine level:warn",
+        "task": ":wear:bundleFreeRelease",
+        "variant": "freeRelease"
+      }
+    },
+    {
+      "apk": null,
+      "apkSha256": null,
+      "buildId": 23,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "launch": null,
+      "logcatFilter": null,
+      "outcome": "buildFailed",
+      "package": null,
+      "run": {
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "launch": {
+          "kind": "default"
+        },
+        "logcatFilter": null,
+        "module": ":app",
+        "name": "Default",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "task": ":app:assembleDebug",
+        "variant": "debug"
+      }
+    }
+  ] satisfies Wire<DeployResult>[],
+  DeployPhaseEvent: [
+    {
+      "buildId": null,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "error": null,
+      "name": "Default",
+      "phase": "building",
+      "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+      "steps": []
+    },
+    {
+      "buildId": 21,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "error": null,
+      "name": "Default",
+      "phase": "installing",
+      "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+      "steps": [
+        "APK (build #21): /work/app/build/outputs/apk/debug/app-debug.apk",
+        "Installing on: sdk_gphone64_arm64 (API 35) [emulator-5554]",
+        "adb install /work/app/build/outputs/apk/debug/app-debug.apk"
+      ]
+    },
+    {
+      "buildId": 21,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "error": null,
+      "name": "Default",
+      "phase": "launching",
+      "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+      "steps": [
+        "Install: Success (1.2s)",
+        "Package (from APK): com.example.app.debug",
+        "adb shell am start -W (package: com.example.app.debug)"
+      ]
+    },
+    {
+      "buildId": 21,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "error": null,
+      "name": "Default",
+      "phase": "done",
+      "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+      "steps": []
+    },
+    {
+      "buildId": 22,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "error": "The build failed; nothing was installed.",
+      "name": "Default",
+      "phase": "failed",
+      "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+      "steps": []
+    },
+    {
+      "buildId": 23,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "error": null,
+      "name": "Default",
+      "phase": "cancelled",
+      "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+      "steps": []
+    }
+  ] satisfies Wire<DeployPhaseEvent>[],
   RunDevice: [
     {
       "label": "Pixel_7",
@@ -3645,6 +3885,91 @@ export const eventFixtures = {
         "recordId": 12
       }
     ] satisfies Wire<LaunchTimingEvent>[],
+  },
+  "deploy:phase": {
+    type: "DeployPhaseEvent",
+    samples: [
+      {
+        "buildId": null,
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "error": null,
+        "name": "Default",
+        "phase": "building",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "steps": []
+      },
+      {
+        "buildId": 21,
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "error": null,
+        "name": "Default",
+        "phase": "installing",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "steps": [
+          "APK (build #21): /work/app/build/outputs/apk/debug/app-debug.apk",
+          "Installing on: sdk_gphone64_arm64 (API 35) [emulator-5554]",
+          "adb install /work/app/build/outputs/apk/debug/app-debug.apk"
+        ]
+      },
+      {
+        "buildId": 21,
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "error": null,
+        "name": "Default",
+        "phase": "launching",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "steps": [
+          "Install: Success (1.2s)",
+          "Package (from APK): com.example.app.debug",
+          "adb shell am start -W (package: com.example.app.debug)"
+        ]
+      },
+      {
+        "buildId": 21,
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "error": null,
+        "name": "Default",
+        "phase": "done",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "steps": []
+      },
+      {
+        "buildId": 22,
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "error": "The build failed; nothing was installed.",
+        "name": "Default",
+        "phase": "failed",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "steps": []
+      },
+      {
+        "buildId": 23,
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "error": null,
+        "name": "Default",
+        "phase": "cancelled",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "steps": []
+      }
+    ] satisfies Wire<DeployPhaseEvent>[],
   },
   "device:list_changed": {
     type: "DeviceListChangedEvent",
