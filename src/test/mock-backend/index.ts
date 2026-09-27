@@ -7,7 +7,7 @@ import {
 } from "./projects";
 import { devicesHandlers } from "./devices";
 import { addMockPastBuild, buildHandlers, setMockAppBuildLineDelay, startMockBuild } from "./build";
-import { deployHandlers, failNextMockInstall } from "./deploy";
+import { deployHandlers, failNextMockInstall, startMockAgentRun } from "./deploy";
 import { logcatHandlers } from "./logcat";
 import { sessionHandlers } from "./sessions";
 import { triggerEvent } from "./events";
@@ -95,6 +95,8 @@ if (import.meta.env.VITE_E2E === "true") {
         { kind: "agent", sessionId: 1, clientName, standalone: false },
         lineDelayMs
       ),
+    /** An attached agent runs a run configuration: build, install, launch. */
+    startAgentRun: startMockAgentRun,
     /** A build already in the history; returns its history ID. */
     addPastBuild: addMockPastBuild,
     setAppBuildLineDelay: setMockAppBuildLineDelay,

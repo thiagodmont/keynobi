@@ -959,6 +959,7 @@ fn deploy_phase_events() -> Vec<DeployPhaseEvent> {
     let device = run.device.clone().expect("the sample run has a device");
     let event = |phase, build_id, steps: &[&str], error: Option<&str>| DeployPhaseEvent {
         phase,
+        origin: BuildActor::App,
         name: run.name.clone(),
         plan: run.plan.clone(),
         device: device.clone(),
@@ -966,7 +967,7 @@ fn deploy_phase_events() -> Vec<DeployPhaseEvent> {
         steps: steps.iter().map(|s| s.to_string()).collect(),
         error: error.map(str::to_string),
     };
-    vec![
+    let mut events = vec![
         event(DeployPhase::Building, None, &[], None),
         event(
             DeployPhase::Installing,
@@ -996,7 +997,17 @@ fn deploy_phase_events() -> Vec<DeployPhaseEvent> {
             Some("The build failed; nothing was installed."),
         ),
         event(DeployPhase::Cancelled, Some(23), &[], None),
-    ]
+    ];
+    // An attached agent's run, which the app shows but does not own.
+    let by_agent: Vec<DeployPhaseEvent> = events[1..=4]
+        .iter()
+        .map(|e| DeployPhaseEvent {
+            origin: agent(),
+            ..e.clone()
+        })
+        .collect();
+    events.extend(by_agent);
+    events
 }
 
 fn deploy_results() -> Vec<DeployResult> {

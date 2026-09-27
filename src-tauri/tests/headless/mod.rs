@@ -4,20 +4,24 @@
 //! Each [`Sandbox`] gets its own `HOME`, so the child's data directory
 //! (`$HOME/.keynobi`) is a temp dir and a developer's real one is never read
 //! or written. [`TestApp`] plays the running app: it serves attach requests
-//! on a sandbox's socket from this test process.
+//! on a sandbox's socket from this test process, on this process's isolated
+//! data dir and settings, which name a fake SDK.
 
+use keynobi_lib::models::run_configuration::DeployPhaseEvent;
 use keynobi_lib::services::adb_manager::DeviceState;
 use keynobi_lib::services::build_runner::{BuildState, BuildStateInner};
 use keynobi_lib::services::mcp_attach;
 use keynobi_lib::services::mcp_server::AndroidMcpServer;
 use keynobi_lib::services::mcp_sessions::McpSessionRegistry;
 use keynobi_lib::services::process_manager::ProcessManager;
+use keynobi_lib::services::settings_manager;
 use keynobi_lib::FsState;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
 const REPLY_TIMEOUT: Duration = Duration::from_secs(30);
@@ -209,6 +213,86 @@ pub fn project_entry(path: &Path, trusted: Value) -> Value {
         "pinned": false,
         "trusted": trusted,
     })
+}
+
+/// A project whose application module `:app` declares debug and release, in
+/// a registry entry (trusted or not) holding `configurations` with their
+/// local state `local`; `Default` is active.
+pub fn write_run_configurations(
+    sandbox: &Sandbox,
+    trusted: Value,
+    configurations: Value,
+    local: Value,
+) {
+    std::fs::write(
+        sandbox.project.join("settings.gradle.kts"),
+        "rootProject.name = \"sandbox\"\ninclude(\":app\")\n",
+    )
+    .unwrap();
+    let app = sandbox.project.join("app");
+    std::fs::create_dir_all(&app).unwrap();
+    std::fs::write(
+        app.join("build.gradle.kts"),
+        r#"plugins { id("com.android.application") }
+android {
+    defaultConfig { applicationId = "com.example.sandbox" }
+    buildTypes {
+        release {
+        }
+    }
+}
+"#,
+    )
+    .unwrap();
+    let mut entry = project_entry(&sandbox.project, trusted);
+    entry["runConfigurations"] = configurations;
+    entry["runLocal"] = local;
+    entry["activeRunConfiguration"] = json!("Default");
+    sandbox.write_projects(json!([entry]), None);
+}
+
+/// A `gradlew` that writes `:app`'s debug APK, records its arguments in the
+/// returned file, and succeeds.
+pub fn gradlew_writing_the_debug_apk(sandbox: &Sandbox) -> PathBuf {
+    let args = sandbox.home.join("gradlew-args");
+    let debug = sandbox.project.join("app/build/outputs/apk/debug");
+    sandbox.write_gradlew(&format!(
+        "echo \"$*\" > '{args}'\n\
+         mkdir -p '{debug}'\n\
+         printf 'debug apk' > '{debug}/app-debug.apk'\n\
+         printf '%s' '{{\"applicationId\":\"com.example.sandbox\",\"variantName\":\"debug\",\
+         \"elements\":[{{\"versionCode\":1,\"outputFile\":\"app-debug.apk\"}}]}}' \
+         > '{debug}/output-metadata.json'\n\
+         echo 'BUILD SUCCESSFUL in 1s'",
+        args = args.display(),
+        debug = debug.display(),
+    ));
+    args
+}
+
+/// An `adb` that sees one emulator running the AVD Pixel_7, installs, and
+/// launches the sandbox app.
+pub fn one_emulator_adb_that_installs_and_launches(sandbox: &Sandbox) {
+    sandbox.write_adb(
+        r#"case "$*" in
+  "devices -l")
+    echo 'List of devices attached'
+    echo 'emulator-5554          device product:sdk_gphone64 model:sdk_gphone64_arm64 device:emu64a transport_id:1'
+    ;;
+  *"emu avd name"*) printf 'Pixel_7\nOK\n' ;;
+  *"ro.build.version.sdk"*) echo 35 ;;
+  *"ro.build.version.release"*) echo 15 ;;
+  *" install "*) echo Success ;;
+  *"resolve-activity"*) printf 'priority=0\ncom.example.sandbox/com.example.sandbox.MainActivity\n' ;;
+  *"am start -W -n"*)
+    echo 'Status: ok'
+    echo 'LaunchState: COLD'
+    echo 'TotalTime: 812'
+    echo 'WaitTime: 815'
+    echo 'Complete'
+    ;;
+esac"#,
+    );
 }
 
 /// A JDK home whose `java -version` reports `version`.
@@ -425,6 +509,8 @@ pub struct TestApp {
     pub build_state: BuildState,
     pub process_manager: ProcessManager,
     pub registry: McpSessionRegistry,
+    /// The `deploy:phase` events its sessions' runs sent to the app.
+    pub deploy_phases: Arc<Mutex<Vec<DeployPhaseEvent>>>,
 }
 
 impl TestApp {
@@ -435,12 +521,14 @@ impl TestApp {
             .enable_all()
             .build()
             .expect("build test app runtime");
+        give_the_app_a_fake_sdk();
         let app = Self {
             rt: None,
             fs_state: FsState::new(),
             build_state: crate::common::isolated_build_state(),
             process_manager: ProcessManager::new(),
             registry: McpSessionRegistry::new(),
+            deploy_phases: Arc::default(),
         };
         app.open(project);
         app.serve(rt, sandbox)
@@ -455,6 +543,11 @@ impl TestApp {
         let device_state = DeviceState::new();
         let logcat_state = keynobi_lib::commands::logcat::new_logcat_state();
         let process_manager = self.process_manager.clone();
+        let phases = self.deploy_phases.clone();
+        let deploy_phases: keynobi_lib::services::deploy::PhaseSink =
+            Arc::new(move |event: &DeployPhaseEvent| {
+                phases.lock().unwrap().push(event.clone());
+            });
         rt.spawn(mcp_attach::serve_mcp_socket(
             listener,
             self.fs_state.clone(),
@@ -468,6 +561,7 @@ impl TestApp {
                     process_manager.clone(),
                     None,
                 )
+                .with_deploy_phases(deploy_phases.clone())
             },
         ));
         self.rt = Some(rt);
@@ -541,6 +635,30 @@ impl TestApp {
             std::thread::sleep(Duration::from_millis(20));
         }
     }
+}
+
+/// The app's side of an attached session runs in this test process and
+/// reads its settings. Unless a test named an SDK there, name one whose
+/// `adb` sees no devices, so it never reaches this machine's adb.
+fn give_the_app_a_fake_sdk() {
+    static SDK: OnceLock<()> = OnceLock::new();
+    SDK.get_or_init(|| {
+        crate::common::isolate_data_dir();
+        let sdk = tempfile::Builder::new()
+            .prefix("keynobi-itest-sdk-")
+            .tempdir()
+            .expect("create a fake SDK")
+            .keep();
+        let adb = sdk.join("platform-tools").join("adb");
+        write_script(&adb, "echo 'List of devices attached'");
+        run_once(&adb);
+        settings_manager::mutate_settings(|settings| {
+            if settings.android.sdk_path.is_none() {
+                settings.android.sdk_path = Some(sdk.to_string_lossy().into_owned());
+            }
+        })
+        .expect("name the fake SDK in this process's settings");
+    });
 }
 
 impl Drop for TestApp {

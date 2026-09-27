@@ -1,5 +1,6 @@
 import type {
   AppError,
+  BuildActor,
   DeployPhase,
   DeployPhaseEvent,
   DeployResult,
@@ -7,7 +8,13 @@ import type {
   RunApk,
   RunDevice,
 } from "@/bindings";
-import { mockRunApk, recordMockInstall, startMockAppBuild, type MockBuildOutcome } from "./build";
+import {
+  mockRunApk,
+  recordMockInstall,
+  startMockAppBuild,
+  startMockBuild,
+  type MockBuildOutcome,
+} from "./build";
 import { mockDevice, mockLaunchApp } from "./devices";
 import { mockResolveRun, recordMockRunDevice } from "./projects";
 import { triggerEvent } from "./events";
@@ -41,7 +48,30 @@ function deviceLabel(serial: string): string {
  * APK that build wrote, record the device, and launch, sending `deploy:phase`
  * with each phase's steps.
  */
-async function mockRunConfiguration(args: unknown): Promise<DeployResult> {
+function mockRunConfiguration(args: unknown): Promise<DeployResult> {
+  return mockRun(args, { kind: "app" }, 0);
+}
+
+/**
+ * An attached agent's `run_run_configuration`: its build streams to the app
+ * as the agent's (`lineDelayMs` per output line), and its phases are sent to
+ * the app with the agent as their origin.
+ */
+export function startMockAgentRun(
+  name: string,
+  serial: string | null,
+  clientName: string | null,
+  lineDelayMs = 80
+): Promise<DeployResult> {
+  const agent: BuildActor = { kind: "agent", sessionId: 1, clientName, standalone: false };
+  return mockRun({ name, selectedSerial: serial }, agent, lineDelayMs);
+}
+
+async function mockRun(
+  args: unknown,
+  origin: BuildActor,
+  lineDelayMs: number
+): Promise<DeployResult> {
   const { name, selectedSerial } = (args ?? {}) as {
     name?: string | null;
     selectedSerial?: string | null;
@@ -53,6 +83,7 @@ async function mockRunConfiguration(args: unknown): Promise<DeployResult> {
   const phase = (to: DeployPhase, error: string | null = null) => {
     const event: DeployPhaseEvent = {
       phase: to,
+      origin,
       name: run.name,
       plan: run.plan,
       device,
@@ -77,7 +108,8 @@ async function mockRunConfiguration(args: unknown): Promise<DeployResult> {
 
   phase("building");
   const built = await new Promise<MockBuildOutcome>((resolve) => {
-    startMockAppBuild(run.task, resolve);
+    if (origin.kind === "app") startMockAppBuild(run.task, resolve);
+    else startMockBuild(run.task, origin, lineDelayMs, resolve);
   });
   buildId = built.recordId;
   result.buildId = built.recordId;

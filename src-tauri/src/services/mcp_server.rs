@@ -188,6 +188,8 @@ pub struct AndroidMcpServer {
     process_manager: ProcessManager,
     /// Present when the app serves the session; used for GUI events and logcat streaming.
     app_handle: Option<AppHandle>,
+    /// The app, when it serves the session: it shows the phases of the runs.
+    deploy_phases: Option<deploy::PhaseSink>,
     /// How the project was chosen; `None` when no project was found.
     project_selection: Option<ProjectSelection>,
     mode: SessionMode,
@@ -214,6 +216,7 @@ impl AndroidMcpServer {
             fs_state,
             process_manager,
             app_handle: Some(app.clone()),
+            deploy_phases: Some(deploy::app_phase_sink(app.clone())),
             project_selection: Some(ProjectSelection::App),
             mode: SessionMode::Attached {
                 pinned_project: None,
@@ -241,6 +244,7 @@ impl AndroidMcpServer {
             fs_state,
             process_manager,
             app_handle: None,
+            deploy_phases: None,
             project_selection,
             mode: SessionMode::Standalone {
                 reason: "not attached to the Keynobi app".into(),
@@ -271,6 +275,12 @@ impl AndroidMcpServer {
     /// The app's registry id of the attached session this server serves.
     pub fn with_session_id(mut self, id: u32) -> Self {
         self.session_id = Some(id);
+        self
+    }
+
+    /// Send the phases of this session's runs to `sink`, as the app gets them.
+    pub fn with_deploy_phases(mut self, sink: deploy::PhaseSink) -> Self {
+        self.deploy_phases = Some(sink);
         self
     }
 
@@ -1223,6 +1233,7 @@ impl AndroidMcpServer {
             device_state: self.device_state.clone(),
             logcat_state: self.logcat_state.clone(),
             app: self.app_handle.clone(),
+            phases: self.deploy_phases.clone(),
             adb: adb_manager::get_adb_path(&settings),
             aapt2: adb_manager::find_aapt2(&settings),
         };
@@ -4463,7 +4474,8 @@ impl AndroidMcpServer {
 
 /// An agent's run of a configuration: its build runs like run_gradle_task's
 /// (task policy, timeout, progress, and the request's cancellation), and each
-/// phase is reported as progress.
+/// phase is reported as progress (and, attached, sent to the app as the
+/// agent's).
 struct AgentRun<'a> {
     server: &'a AndroidMcpServer,
     request: &'a RequestContext<RoleServer>,

@@ -301,6 +301,27 @@ test("an agent's build shows who started it and can be cancelled from the app", 
   ).toBeVisible({ timeout: 5_000 });
 });
 
+test("an agent's run shows its install and launch under its build, without taking it over", async ({
+  page,
+}) => {
+  await selectMockProject(page);
+  await page.getByRole("tab", { name: "Build" }).click();
+
+  await page.evaluate(() =>
+    window.__e2e__.startAgentRun("Default", "emulator-5554", "Claude Code")
+  );
+
+  await expect(page.getByText(/Started by an agent \(Claude Code\)/).first()).toBeVisible();
+  await expect(page.getByText(/^▶ adb install .*app-debug\.apk$/)).toBeVisible();
+  await expect(page.getByText(/^▶ adb shell am start -W/)).toBeVisible();
+  await expect(
+    page.getByText(/^▶ Run 'Default' by an agent \(Claude Code\): done on /)
+  ).toBeVisible();
+  // The app shows the run; it does not follow it as its own.
+  await expect(page.getByText(/^▶ Launch: /)).toHaveCount(0);
+  await expect(page.getByTitle(/^Run App/).first()).toBeEnabled();
+});
+
 test("a configuration shared with the project is written to its file and approved before it builds", async ({
   page,
 }) => {

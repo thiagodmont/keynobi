@@ -39,7 +39,7 @@ import { setActiveTab } from "@/stores/ui.store";
 import { projectState, currentProjectGeneration } from "@/stores/project.store";
 import { settingsState } from "@/stores/settings.store";
 import { isActiveProjectTrusted } from "@/stores/projects.store";
-import { buildRunningLabel } from "@/lib/build-actor";
+import { buildRunningLabel, runByLabel } from "@/lib/build-actor";
 import { describeDisplayTimes, formatLaunchTime } from "@/lib/launch-timing";
 import type { BuildError, ResolvedRun, TargetPreference } from "@/bindings";
 import {
@@ -56,11 +56,15 @@ let buildListenerInit: Promise<void> | null = null;
 let currentBuildPromise: Promise<BuildCompletion | null> | null = null;
 let deployInFlight = false;
 /**
- * The project generation of this window's latest run of a configuration,
- * while the Build panel still shows it: its `deploy:phase` steps are logged,
- * even one arriving after the run answered. Null once another build shows.
+ * The run of a configuration whose build the Build panel shows, and the
+ * project generation it ran under: its `deploy:phase` steps are logged, even
+ * ones arriving after it answered. Either this window's latest run, or an
+ * attached agent's run (known by its build's record once the build shows).
+ * Null once another build shows.
  */
-let deployLogGeneration: number | null = null;
+type DeployLog =
+  { run: "own"; generation: number } | { run: "agent"; buildId: number; generation: number };
+let deployLog: DeployLog | null = null;
 /** How long a run that answered waits for its build's `build:complete`. */
 const BUILD_COMPLETE_GRACE_MS = 5_000;
 
@@ -89,7 +93,7 @@ export function resetBuildServiceForTests(): void {
   buildListenerInit = null;
   activeRun = null;
   observedRun = null;
-  deployLogGeneration = null;
+  deployLog = null;
   earlyCompletions.clear();
   clearEarlyLines();
   clearBuildCompleteTimer();
@@ -206,14 +210,31 @@ function onBuildLines(e: BuildLinesEvent): void {
   }
 }
 
-/** This window's run of a configuration moved on: log its steps, and show its phase while it runs. */
+/**
+ * A run of a configuration moved on. This window's own run: log its steps,
+ * and show its phase while it runs. An agent's run whose build the panel
+ * shows: log its steps and how it ended, without taking it over.
+ */
 function onDeployPhase(e: DeployPhaseEvent): void {
-  if (deployLogGeneration === null || deployLogGeneration !== currentProjectGeneration()) return;
+  const log = deployLog;
+  if (!log || log.generation !== currentProjectGeneration()) return;
+  if (e.origin.kind === "agent") {
+    if (log.run === "agent" && e.buildId === log.buildId) logAgentPhase(e);
+    return;
+  }
+  if (log.run !== "own") return;
   e.steps.forEach(logStep);
   if (!deployInFlight) return;
   if (e.phase === "building" || e.phase === "installing" || e.phase === "launching") {
     setDeployPhase(e.phase);
   }
+}
+
+function logAgentPhase(e: DeployPhaseEvent): void {
+  e.steps.forEach(logStep);
+  const run = runByLabel(e.name, e.origin);
+  if (e.phase === "done") logStep(`${run}: done on ${e.device.label}`);
+  if (e.phase === "failed") logError(`${run} failed: ${e.error ?? "see the agent's result"}`);
 }
 
 /** Display times arrived after a launch returned: the build's record has them now. */
@@ -257,6 +278,10 @@ function onBuildComplete(e: BuildCompleteEvent): void {
   } else {
     setBuildResult({ success: e.success, durationMs: e.durationMs });
   }
+  // An agent that runs a configuration installs and launches this build next.
+  if (run.origin.kind === "agent" && e.recordId !== null) {
+    deployLog = { run: "agent", buildId: e.recordId, generation: run.generation };
+  }
 }
 
 /** Learn the run ID of this window's own build and apply what arrived early. */
@@ -289,7 +314,7 @@ function showObservedRunWhenIdle(): void {
     return;
   }
   run.shown = true;
-  deployLogGeneration = null;
+  deployLog = null;
   startBuild(run.task, run.origin);
   run.hiddenLines.splice(0).forEach(addBuildLine);
 }
@@ -383,7 +408,7 @@ async function runBuildInternal(
   const variant = variantState.activeVariant;
   const effectiveTask = task ?? (variant ? `assemble${capitalize(variant)}` : "assembleDebug");
 
-  deployLogGeneration = null;
+  deployLog = null;
   startBuild(effectiveTask);
   setActiveTab("build");
 
@@ -550,7 +575,7 @@ export async function runAndDeploy(name: string | null = null): Promise<void> {
  * build's output and outcome follow its events.
  */
 async function runInBackend(plan: ResolvedRun): Promise<DeployResult> {
-  deployLogGeneration = currentProjectGeneration();
+  deployLog = { run: "own", generation: currentProjectGeneration() };
   startBuild(plan.task);
   setActiveTab("build");
   addBuildLine({ kind: "info", content: plan.plan, file: null, line: null, col: null });

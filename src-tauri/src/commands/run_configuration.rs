@@ -13,7 +13,7 @@ use crate::services::run_plan::{self, Devices, RunRequest};
 use crate::services::{gradle_modules, run_configurations, settings_manager};
 use crate::FsState;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
 
 /// The shortest and longest wait for the build of the app's run
 /// (`mcp.buildTimeoutSec`, clamped).
@@ -175,6 +175,7 @@ pub async fn run_run_configuration(
         device_state: device_state.inner().clone(),
         logcat_state: logcat_state.inner().clone(),
         app: Some(app.clone()),
+        phases: Some(deploy::app_phase_sink(app.clone())),
         adb: get_adb_path(&settings),
         aapt2: find_aapt2(&settings),
     };
@@ -188,8 +189,8 @@ pub async fn run_run_configuration(
     deploy::run_configuration(&env, &project, run, BuildActor::App, &mut hooks).await
 }
 
-/// The app's run: its build is the app's, cancelled with Cancel, and its
-/// phases go to the app.
+/// The app's run: its build is the app's, cancelled with Cancel. Its phases
+/// reach the app through [`DeployEnv::phases`].
 struct AppRun {
     app: AppHandle,
     project: OpenProject,
@@ -211,9 +212,7 @@ impl DeployHooks for AppRun {
         .await
     }
 
-    async fn phase(&mut self, event: DeployPhaseEvent) {
-        let _ = self.app.emit(deploy::DEPLOY_PHASE_EVENT, event);
-    }
+    async fn phase(&mut self, _event: DeployPhaseEvent) {}
 }
 
 /// The open project's application modules (Gradle paths), which a run

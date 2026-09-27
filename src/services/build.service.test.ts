@@ -29,6 +29,7 @@ import {
   makeRunConfiguration,
 } from "@/test/factories/build";
 import type {
+  BuildActor,
   DeployPhase,
   DeployPhaseEvent,
   DeployResult,
@@ -494,10 +495,12 @@ describe("runAndDeploy runs the configuration in the backend", () => {
   function phaseEvent(
     phase: DeployPhase,
     steps: string[] = [],
-    run: ResolvedRun = makeResolvedRun()
+    run: ResolvedRun = makeResolvedRun(),
+    origin: BuildActor = { kind: "app" }
   ): DeployPhaseEvent {
     return {
       phase,
+      origin,
       name: run.name,
       plan: run.plan,
       device: run.device ?? { serial: "emulator-5554", label: "Pixel_7" },
@@ -682,6 +685,40 @@ describe("runAndDeploy runs the configuration in the backend", () => {
       ])
     );
     expect(buildState.deployPhase).toBeNull();
+  });
+
+  it("keeps an agent's phases out of this window's run", async () => {
+    const agent: BuildActor = {
+      kind: "agent",
+      sessionId: 3,
+      clientName: "Claude Code",
+      standalone: false,
+    };
+    let seen: unknown = undefined;
+    replies({
+      backend: async () => {
+        emit("deploy:phase", phaseEvent("building"));
+        backendBuild();
+        emit("deploy:phase", phaseEvent("installing", ["APK (build #7): /tmp/app-debug.apk"]));
+        // An agent's run, even one naming the same build, is not this run.
+        emit(
+          "deploy:phase",
+          phaseEvent("launching", ["adb shell am start -W (agent)"], makeResolvedRun(), agent)
+        );
+        emit("deploy:phase", phaseEvent("failed", [], makeResolvedRun(), agent));
+        seen = buildState.deployPhase;
+        emit("deploy:phase", phaseEvent("done"));
+        return makeDeployResult();
+      },
+    });
+
+    await runAndDeploy();
+
+    expect(seen).toBe("installing");
+    const log = buildLog();
+    expect(log).toContain("▶ APK (build #7): /tmp/app-debug.apk");
+    expect(log.join("\n")).not.toContain("(agent)");
+    expect(log.join("\n")).not.toContain("by an agent");
   });
 
   it("logs steps that arrive after the run answered", async () => {
@@ -1180,6 +1217,114 @@ describe("builds this window did not start", () => {
 
     complete(8);
     expect(buildState.phase).toBe("success");
+  });
+
+  /** An agent's run of the configuration Default entered `phase`. */
+  function agentPhase(
+    phase: DeployPhase,
+    buildId: number | null,
+    steps: string[] = [],
+    error: string | null = null
+  ): DeployPhaseEvent {
+    const run = makeResolvedRun();
+    return {
+      phase,
+      origin: claude,
+      name: run.name,
+      plan: run.plan,
+      device: { serial: "emulator-5554", label: "Pixel_7" },
+      buildId,
+      steps,
+      error,
+    };
+  }
+
+  it("logs an agent's install and launch under its build, without taking the run over", () => {
+    emit("deploy:phase", agentPhase("building", null));
+    started(4, ":app:assembleDebug");
+    emit("build:lines", { runId: 4, lines: [line("> Task :app:assembleDebug")] });
+    complete(4, { recordId: 21 });
+    emit(
+      "deploy:phase",
+      agentPhase("installing", 21, [
+        "APK (build #21): /p/app-debug.apk",
+        "adb install /p/app-debug.apk",
+      ])
+    );
+    emit(
+      "deploy:phase",
+      agentPhase("launching", 21, [
+        "Install: Success (1.2s)",
+        "adb shell am start -W (package: com.example.app)",
+      ])
+    );
+    emit("deploy:phase", agentPhase("done", 21));
+
+    expect(logContents()).toEqual([
+      "> Task :app:assembleDebug",
+      "▶ APK (build #21): /p/app-debug.apk",
+      "▶ adb install /p/app-debug.apk",
+      "▶ Install: Success (1.2s)",
+      "▶ adb shell am start -W (package: com.example.app)",
+      "▶ Run 'Default' by an agent (Claude Code): done on Pixel_7",
+    ]);
+    expect(buildState.origin).toEqual(claude);
+    expect(buildState.phase).toBe("success");
+    // The app's own run state is untouched: no phase, no logcat filter, no picker.
+    expect(buildState.deployPhase).toBeNull();
+    expect(buildState.lastLaunchedAt).toBeNull();
+    expect(buildState.lastLaunchedFilter).toBeNull();
+    expect(devicePickerMock.showDevicePicker).not.toHaveBeenCalled();
+    expect(mockInvoke.mock.calls.filter(([cmd]) => cmd !== "get_build_history")).toHaveLength(0);
+  });
+
+  it("logs why an agent's run failed", () => {
+    started(4);
+    complete(4, { recordId: 21 });
+
+    emit(
+      "deploy:phase",
+      agentPhase("failed", 21, ["adb install /p/app-debug.apk"], "adb: INSTALL_FAILED")
+    );
+
+    expect(logContents()).toEqual([
+      "▶ adb install /p/app-debug.apk",
+      "Run 'Default' by an agent (Claude Code) failed: adb: INSTALL_FAILED",
+    ]);
+  });
+
+  it("does not log an agent's run whose build the panel does not show", async () => {
+    // Another build's record.
+    started(4);
+    complete(4, { recordId: 21 });
+    emit("deploy:phase", agentPhase("installing", 22, ["adb install /p/other.apk"]));
+    expect(logContents()).toEqual([]);
+
+    // This window's build replaced the agent's in the panel.
+    mockInvoke.mockImplementation((cmd) => {
+      if (cmd === "run_gradle_task") return Promise.resolve(5);
+      if (cmd === "get_build_history") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+    const build = runBuild("assembleDebug");
+    emit("deploy:phase", agentPhase("launching", 21, ["adb shell am start -W (late)"]));
+    complete(5, { origin: { kind: "app" }, recordId: 22 });
+    await build;
+    emit("deploy:phase", agentPhase("done", 21));
+
+    expect(logContents().join("\n")).not.toContain("late");
+    expect(logContents().join("\n")).not.toContain("by an agent");
+  });
+
+  it("does not log an agent's run after a project switch", () => {
+    started(4);
+    complete(4, { recordId: 21 });
+    beginProjectOpen();
+    resetBuildState();
+
+    emit("deploy:phase", agentPhase("installing", 21, ["adb install /p/app-debug.apk"]));
+
+    expect(logContents()).toEqual([]);
   });
 
   it("does not bring back an agent's build that finished after a project switch", () => {

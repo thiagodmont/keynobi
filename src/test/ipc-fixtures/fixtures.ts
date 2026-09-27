@@ -811,6 +811,9 @@ export const typeFixtures = {
       },
       "error": null,
       "name": "Default",
+      "origin": {
+        "kind": "app"
+      },
       "phase": "building",
       "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
       "steps": []
@@ -823,6 +826,9 @@ export const typeFixtures = {
       },
       "error": null,
       "name": "Default",
+      "origin": {
+        "kind": "app"
+      },
       "phase": "installing",
       "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
       "steps": [
@@ -839,6 +845,9 @@ export const typeFixtures = {
       },
       "error": null,
       "name": "Default",
+      "origin": {
+        "kind": "app"
+      },
       "phase": "launching",
       "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
       "steps": [
@@ -855,6 +864,9 @@ export const typeFixtures = {
       },
       "error": null,
       "name": "Default",
+      "origin": {
+        "kind": "app"
+      },
       "phase": "done",
       "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
       "steps": []
@@ -867,6 +879,9 @@ export const typeFixtures = {
       },
       "error": "The build failed; nothing was installed.",
       "name": "Default",
+      "origin": {
+        "kind": "app"
+      },
       "phase": "failed",
       "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
       "steps": []
@@ -879,7 +894,90 @@ export const typeFixtures = {
       },
       "error": null,
       "name": "Default",
+      "origin": {
+        "kind": "app"
+      },
       "phase": "cancelled",
+      "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+      "steps": []
+    },
+    {
+      "buildId": 21,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "error": null,
+      "name": "Default",
+      "origin": {
+        "clientName": "Claude Code",
+        "kind": "agent",
+        "sessionId": 2,
+        "standalone": false
+      },
+      "phase": "installing",
+      "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+      "steps": [
+        "APK (build #21): /work/app/build/outputs/apk/debug/app-debug.apk",
+        "Installing on: sdk_gphone64_arm64 (API 35) [emulator-5554]",
+        "adb install /work/app/build/outputs/apk/debug/app-debug.apk"
+      ]
+    },
+    {
+      "buildId": 21,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "error": null,
+      "name": "Default",
+      "origin": {
+        "clientName": "Claude Code",
+        "kind": "agent",
+        "sessionId": 2,
+        "standalone": false
+      },
+      "phase": "launching",
+      "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+      "steps": [
+        "Install: Success (1.2s)",
+        "Package (from APK): com.example.app.debug",
+        "adb shell am start -W (package: com.example.app.debug)"
+      ]
+    },
+    {
+      "buildId": 21,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "error": null,
+      "name": "Default",
+      "origin": {
+        "clientName": "Claude Code",
+        "kind": "agent",
+        "sessionId": 2,
+        "standalone": false
+      },
+      "phase": "done",
+      "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+      "steps": []
+    },
+    {
+      "buildId": 22,
+      "device": {
+        "label": "Pixel_7",
+        "serial": "emulator-5554"
+      },
+      "error": "The build failed; nothing was installed.",
+      "name": "Default",
+      "origin": {
+        "clientName": "Claude Code",
+        "kind": "agent",
+        "sessionId": 2,
+        "standalone": false
+      },
+      "phase": "failed",
       "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
       "steps": []
     }
@@ -4049,6 +4147,9 @@ export const eventFixtures = {
         },
         "error": null,
         "name": "Default",
+        "origin": {
+          "kind": "app"
+        },
         "phase": "building",
         "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
         "steps": []
@@ -4061,6 +4162,9 @@ export const eventFixtures = {
         },
         "error": null,
         "name": "Default",
+        "origin": {
+          "kind": "app"
+        },
         "phase": "installing",
         "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
         "steps": [
@@ -4077,6 +4181,9 @@ export const eventFixtures = {
         },
         "error": null,
         "name": "Default",
+        "origin": {
+          "kind": "app"
+        },
         "phase": "launching",
         "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
         "steps": [
@@ -4093,6 +4200,9 @@ export const eventFixtures = {
         },
         "error": null,
         "name": "Default",
+        "origin": {
+          "kind": "app"
+        },
         "phase": "done",
         "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
         "steps": []
@@ -4105,6 +4215,9 @@ export const eventFixtures = {
         },
         "error": "The build failed; nothing was installed.",
         "name": "Default",
+        "origin": {
+          "kind": "app"
+        },
         "phase": "failed",
         "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
         "steps": []
@@ -4117,7 +4230,90 @@ export const eventFixtures = {
         },
         "error": null,
         "name": "Default",
+        "origin": {
+          "kind": "app"
+        },
         "phase": "cancelled",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "steps": []
+      },
+      {
+        "buildId": 21,
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "error": null,
+        "name": "Default",
+        "origin": {
+          "clientName": "Claude Code",
+          "kind": "agent",
+          "sessionId": 2,
+          "standalone": false
+        },
+        "phase": "installing",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "steps": [
+          "APK (build #21): /work/app/build/outputs/apk/debug/app-debug.apk",
+          "Installing on: sdk_gphone64_arm64 (API 35) [emulator-5554]",
+          "adb install /work/app/build/outputs/apk/debug/app-debug.apk"
+        ]
+      },
+      {
+        "buildId": 21,
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "error": null,
+        "name": "Default",
+        "origin": {
+          "clientName": "Claude Code",
+          "kind": "agent",
+          "sessionId": 2,
+          "standalone": false
+        },
+        "phase": "launching",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "steps": [
+          "Install: Success (1.2s)",
+          "Package (from APK): com.example.app.debug",
+          "adb shell am start -W (package: com.example.app.debug)"
+        ]
+      },
+      {
+        "buildId": 21,
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "error": null,
+        "name": "Default",
+        "origin": {
+          "clientName": "Claude Code",
+          "kind": "agent",
+          "sessionId": 2,
+          "standalone": false
+        },
+        "phase": "done",
+        "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
+        "steps": []
+      },
+      {
+        "buildId": 22,
+        "device": {
+          "label": "Pixel_7",
+          "serial": "emulator-5554"
+        },
+        "error": "The build failed; nothing was installed.",
+        "name": "Default",
+        "origin": {
+          "clientName": "Claude Code",
+          "kind": "agent",
+          "sessionId": 2,
+          "standalone": false
+        },
+        "phase": "failed",
         "plan": "Run 'Default': build :app:assembleDebug → install this build's APK → launch the app on Pixel_7 → filter package:mine",
         "steps": []
       }

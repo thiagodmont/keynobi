@@ -4,7 +4,10 @@
 mod common;
 mod headless;
 
-use headless::{Sandbox, TestApp};
+use headless::{
+    gradlew_writing_the_debug_apk, one_emulator_adb_that_installs_and_launches,
+    write_run_configurations, Sandbox, TestApp,
+};
 use serde_json::json;
 
 #[test]
@@ -2795,42 +2798,6 @@ fn an_attached_session_serves_only_the_clients_toolsets() {
 
 // ── Run configurations ───────────────────────────────────────────────────────
 
-/// A project whose application module `:app` declares debug and release, in
-/// a registry entry (trusted or not) holding `configurations` with their
-/// local state `local`; `Default` is active.
-fn write_run_configurations(
-    sandbox: &Sandbox,
-    trusted: serde_json::Value,
-    configurations: serde_json::Value,
-    local: serde_json::Value,
-) {
-    std::fs::write(
-        sandbox.project.join("settings.gradle.kts"),
-        "rootProject.name = \"sandbox\"\ninclude(\":app\")\n",
-    )
-    .unwrap();
-    let app = sandbox.project.join("app");
-    std::fs::create_dir_all(&app).unwrap();
-    std::fs::write(
-        app.join("build.gradle.kts"),
-        r#"plugins { id("com.android.application") }
-android {
-    defaultConfig { applicationId = "com.example.sandbox" }
-    buildTypes {
-        release {
-        }
-    }
-}
-"#,
-    )
-    .unwrap();
-    let mut entry = headless::project_entry(&sandbox.project, trusted);
-    entry["runConfigurations"] = configurations;
-    entry["runLocal"] = local;
-    entry["activeRunConfiguration"] = json!("Default");
-    sandbox.write_projects(json!([entry]), None);
-}
-
 /// `Default` (debug on emulator-5554), `Staging` (a variant `:app` does not
 /// declare), and `Tablet` (on an AVD that is not running).
 fn write_three_run_configurations(sandbox: &Sandbox, trusted: serde_json::Value) {
@@ -2868,25 +2835,6 @@ fn one_emulator_adb(sandbox: &Sandbox) {
   *"ro.build.version.release"*) echo 15 ;;
 esac"#,
     );
-}
-
-/// A `gradlew` that writes `:app`'s debug APK, records its arguments in the
-/// returned file, and succeeds.
-fn gradlew_writing_the_debug_apk(sandbox: &Sandbox) -> std::path::PathBuf {
-    let args = sandbox.home.join("gradlew-args");
-    let debug = sandbox.project.join("app/build/outputs/apk/debug");
-    sandbox.write_gradlew(&format!(
-        "echo \"$*\" > '{args}'\n\
-         mkdir -p '{debug}'\n\
-         printf 'debug apk' > '{debug}/app-debug.apk'\n\
-         printf '%s' '{{\"applicationId\":\"com.example.sandbox\",\"variantName\":\"debug\",\
-         \"elements\":[{{\"versionCode\":1,\"outputFile\":\"app-debug.apk\"}}]}}' \
-         > '{debug}/output-metadata.json'\n\
-         echo 'BUILD SUCCESSFUL in 1s'",
-        args = args.display(),
-        debug = debug.display(),
-    ));
-    args
 }
 
 #[test]
@@ -3137,31 +3085,6 @@ fn run_configuration_tools_belong_to_the_core_toolset() {
     assert_hidden(&mut ui, "list_run_configurations", "core");
     assert_hidden(&mut ui, "build_run_configuration", "core");
     assert!(!marker.exists(), "a hidden tool ran gradlew");
-}
-
-/// An `adb` that sees one emulator running the AVD Pixel_7, installs, and
-/// launches the sandbox app.
-fn one_emulator_adb_that_installs_and_launches(sandbox: &Sandbox) {
-    sandbox.write_adb(
-        r#"case "$*" in
-  "devices -l")
-    echo 'List of devices attached'
-    echo 'emulator-5554          device product:sdk_gphone64 model:sdk_gphone64_arm64 device:emu64a transport_id:1'
-    ;;
-  *"emu avd name"*) printf 'Pixel_7\nOK\n' ;;
-  *"ro.build.version.sdk"*) echo 35 ;;
-  *"ro.build.version.release"*) echo 15 ;;
-  *" install "*) echo Success ;;
-  *"resolve-activity"*) printf 'priority=0\ncom.example.sandbox/com.example.sandbox.MainActivity\n' ;;
-  *"am start -W -n"*)
-    echo 'Status: ok'
-    echo 'LaunchState: COLD'
-    echo 'TotalTime: 812'
-    echo 'WaitTime: 815'
-    echo 'Complete'
-    ;;
-esac"#,
-    );
 }
 
 /// Call `run_run_configuration` with `arguments` and a progress token;
