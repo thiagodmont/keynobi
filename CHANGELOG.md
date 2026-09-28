@@ -7,6 +7,63 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.30] — 2026-09-28
+
+### Added
+- attach the UI hierarchy to a debug session
+- show an agent's run steps in the app (#347)
+- attach screenshots to a debug session (#346)
+- run a run configuration (#345)
+- import a shared debug session (#344)
+- run build, install and launch in the backend (#343)
+- export a debug session with redaction (#341)
+- list and build run configurations (#340)
+- record build provenance and compare it (#339)
+- share run configurations with the project (#338)
+- list, inspect and compare debug sessions (#337)
+- pick and edit run configurations (#336)
+- show debug sessions and their timeline (#335)
+- run the active run configuration (#334)
+- capture crashes and attribute them to the installed build (#333)
+- record a debug session per install with its timeline (#332)
+- store run configurations per project (#331)
+- let clients choose toolsets to shorten the tool list (#329)
+- record time to initial and full display after a launch (#328)
+- verify the installed APK before deobfuscating (#325)
+- pair with Android CLI and ship a Keynobi agent skill (#324)
+- deobfuscate stack traces with the installed build's mapping (#323)
+- record which build is installed on each device (#321)
+- keep each build's R8 mapping (#320)
+- show why the app's processes exited (#319)
+- record launch time per build (#318)
+- report build progress and cancel builds when a request is cancelled (#305)
+- share builds between the app and attached agents (#303)
+- attach keynobi --mcp to the running app (#302)
+- downscale screenshots and report the scale back to device pixels (#298)
+
+### Fixed
+- refuse deep links whose scheme opens no app (#342)
+- build and install only Run App's application module (#330)
+- take turns on a device's UI Automator across processes (#327)
+- read exit reasons and offer retrace in diagnose-crash (#326)
+- keep the exception in its crash group after the Process line (#322)
+- find the application module instead of assuming app (#317)
+- identify emulators by AVD name and report emulator operations truthfully (#316)
+- save version codes reliably and edit build files safely (#313)
+- keep APK and project resource reads inside the project (#312)
+- bring the payload fixtures up to date with the merged IPC changes (#311)
+- make build history selection consistent and the sidebar keyboard-accessible (#309)
+- stop processes through their handles and bound shutdown (#308)
+- register a stable binary path at user scope and show version mismatches (#306)
+- serialize UI Automator calls per device and stop leaking timed-out processes (#300)
+- keep one device polling loop and pick up SDK path changes (#301)
+- send only allowlisted crash report fields and apply opt-out immediately (#299)
+
+### Changed
+- bound per-batch pipeline work and add a repeatable soak measurement (#310)
+
+---
+
 ## [0.1.29] — 2026-09-25
 
 ### Breaking Changes
