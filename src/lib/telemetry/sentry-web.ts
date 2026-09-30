@@ -235,7 +235,20 @@ export function createSentryWebController(deps: SentryWebDeps): SentryWebControl
         debug: import.meta.env.DEV && import.meta.env.MODE !== "test",
         environment: import.meta.env.MODE === "production" ? "production" : "development",
         release: import.meta.env.VITE_APP_VERSION,
-        sendDefaultPii: false,
+        // Every category defaults to on, so turn each one off explicitly.
+        dataCollection: {
+          userInfo: false,
+          cookies: false,
+          httpHeaders: false,
+          httpBodies: [],
+          urlQueryParams: false,
+          graphQL: { document: false, variables: false },
+          genAI: { inputs: false, outputs: false },
+          databaseQueryData: false,
+          queues: false,
+          stackFrameVariables: false,
+          frameContextLines: 0,
+        },
         // Off so plain messages never gain a synthetic exception and slip past the allowlist.
         attachStacktrace: false,
         // Only integrations whose output passes through the allowlist.
