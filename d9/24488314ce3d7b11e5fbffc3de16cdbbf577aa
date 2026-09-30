@@ -1,0 +1,19 @@
+src/lib/telemetry/sentry-web.ts
+  s_c77661a84f158f::t_db8bbc3e62e8cd 238-251
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "d924488314ce3d7b11e5fbffc3de16cdbbf577aa",
+  "prompts": {},
+  "sessions": {
+    "s_c77661a84f158f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "acfbb65b-7569-4c1e-b597-a6852b5a590c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
