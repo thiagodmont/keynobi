@@ -46,7 +46,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@sentry/browser": "^10.75.1",
+    "@sentry/browser": "^11.0.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2",
     "@tauri-apps/plugin-opener": "^2",
