@@ -59,7 +59,7 @@
     "@sentry/vite-plugin": "^5.4.0",
     "@solidjs/testing-library": "^0.8.10",
     "@storybook/addon-a11y": "^10.6.0",
-    "@storybook/addon-docs": "^10.6.0",
+    "@storybook/addon-docs": "^10.6.1",
     "@tauri-apps/cli": "^2",
     "@typescript-eslint/eslint-plugin": "^8.70.1",
     "@typescript-eslint/parser": "^8.70.1",
