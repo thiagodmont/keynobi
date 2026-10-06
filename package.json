@@ -72,7 +72,7 @@
     "jsdom": "^30.1.1",
     "lint-staged": "^17.5.1",
     "prettier": "^3.9.9",
-    "storybook": "^10.6.0",
+    "storybook": "^10.6.1",
     "storybook-solidjs-vite": "^10.7.2",
     "typescript": "~6.0.3",
     "vite": "^8.3.1",
