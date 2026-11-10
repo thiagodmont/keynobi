@@ -374,7 +374,7 @@ async fn soak(config: Config) -> serde_json::Value {
     );
     let _ = tracing::subscriber::set_global_default(tracing_subscriber::registry().with(recorder));
 
-    let mut system = sysinfo::System::new();
+    let mut system = sysinfo::System::new().expect("process info");
     let rss_start = rss_bytes(&mut system);
     let state: LogcatState = Arc::new(tokio::sync::Mutex::new(LogcatStateInner::new()));
     let adb = std::env::current_exe().expect("path of this binary");

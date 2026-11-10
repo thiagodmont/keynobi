@@ -89,7 +89,10 @@ pub async fn run_monitor(app_handle: AppHandle, log_dir: PathBuf, log_max_size_b
     use sysinfo::{Pid, ProcessesToUpdate, System};
 
     let pid = Pid::from(std::process::id() as usize);
-    let mut sys = System::new();
+    // Without process info the monitor still rotates logs and reports 0 bytes.
+    let mut sys = System::new()
+        .inspect_err(|e| tracing::warn!("Process memory monitor unavailable: {e}"))
+        .ok();
 
     let mut interval = tokio::time::interval(Duration::from_secs(5));
     interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -98,8 +101,10 @@ pub async fn run_monitor(app_handle: AppHandle, log_dir: PathBuf, log_max_size_b
         interval.tick().await;
 
         // 1. Read app process RSS memory
-        sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), false);
-        let app_memory_bytes = sys.process(pid).map(|p| p.memory()).unwrap_or(0);
+        let app_memory_bytes = sys.as_mut().map_or(0, |sys| {
+            sys.refresh_processes(ProcessesToUpdate::Some(&[pid]), false);
+            sys.process(pid).map(|p| p.memory()).unwrap_or(0)
+        });
 
         // 2. Scan log folder
         let (log_folder_bytes, files) = collect_log_files(&log_dir);
