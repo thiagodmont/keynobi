@@ -491,11 +491,11 @@ mod tests {
         for i in 0..archive.len() {
             let mut file = archive.by_index(i).unwrap();
             assert_eq!(file.compression(), zip::CompressionMethod::Deflated);
-            assert!(file.is_file(), "{} is not a file", file.name());
+            assert!(file.is_file(), "{} is not a file", file.name().unwrap());
             assert_eq!(file.last_modified(), Some(zip::DateTime::default()));
             let mut text = String::new();
             file.read_to_string(&mut text).unwrap();
-            files.push((file.name().to_string(), text));
+            files.push((file.name().unwrap().to_string(), text));
         }
         files
     }
