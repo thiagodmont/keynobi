@@ -1,0 +1,25 @@
+src-tauri/Cargo.lock
+  s_1ed8c72fd87125::t_1b958a5283c273 646-654,1551,1555,5171,5173,6067-6080,6117,6119,6121,6124,6126,6128,6130-6131
+src-tauri/src/services/debug_sessions/attachments.rs
+  s_1ed8c72fd87125::t_d381d0637ceb19 743
+src-tauri/src/services/debug_sessions/export.rs
+  s_1ed8c72fd87125::t_661d8db7101696 494,498
+src-tauri/src/services/debug_sessions/import.rs
+  s_1ed8c72fd87125::t_3407dbc3361e78 1048
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "41e3f36e9a03be6318c6fff5fd439b2d59764dd6",
+  "prompts": {},
+  "sessions": {
+    "s_1ed8c72fd87125": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7c4ff98-3ec7-4d9f-927e-97995ecba8fb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Thiago M. Dolabella <thiago.dmont@gmail.com>"
+    }
+  }
+}
