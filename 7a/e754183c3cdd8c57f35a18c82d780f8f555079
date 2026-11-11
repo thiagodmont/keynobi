@@ -1,0 +1,27 @@
+.github/workflows/release.yml
+  s_1ed8c72fd87125::t_d351f81c8757a2 4-5
+  s_1ed8c72fd87125::t_0982719ac39844 25
+  s_1ed8c72fd87125::t_82356933be8a40 188-191,193,198
+scripts/release-guard.test.mjs
+  s_1ed8c72fd87125::t_f0c2da35cc8f65 1-22,34-93,98-119
+  s_1ed8c72fd87125::t_2dcef8b20d4943 23-33
+  s_1ed8c72fd87125::t_16f10586bd7d8f 94-97
+references/BEST_PRACTICES.md
+  s_1ed8c72fd87125::t_2ce08a9f929a01 142-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7ae754183c3cdd8c57f35a18c82d780f8f555079",
+  "prompts": {},
+  "sessions": {
+    "s_1ed8c72fd87125": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d7c4ff98-3ec7-4d9f-927e-97995ecba8fb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": null
+    }
+  }
+}
