@@ -95,11 +95,17 @@ describe("release workflow guard", () => {
     expect(names).toContain("check");
     expect(names.length).toBeGreaterThan(1);
     for (const name of names.filter((n) => n !== "check")) {
-      const needs = jobBlock(yml, name).find((l) => /^ {4}needs:/.test(l));
-      expect(needs, `job "${name}" does not need check`).toMatch(/\bcheck\b/);
+      const line = jobBlock(yml, name).find((l) => /^ {4}needs:/.test(l)) ?? "";
+      const needs = line
+        .replace(/^ {4}needs:\s*/, "")
+        .replace(/^\[|\]\s*$/g, "")
+        .split(",")
+        .map((item) => item.trim());
+      expect(needs, `job "${name}" does not need check`).toContain("check");
     }
-    // always() and friends run a job even when the jobs it needs were skipped.
-    expect(yml).not.toMatch(/\b(always|failure|cancelled)\(\)/);
+    // A status function in a condition (always(), !success(), ...) can run a
+    // job even when the jobs it needs were skipped.
+    expect(yml).not.toMatch(/\b(always|success|failure|cancelled)\(\)/);
   });
 
   it("finds the run scripts it checks", () => {
