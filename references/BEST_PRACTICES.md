@@ -139,6 +139,12 @@ Crash reporting is opt-in and off by default. Build every outgoing report from a
 
 Every network call the app makes on its own must be disclosed in `USER_MANUAL.md`.
 
+### Workflows
+
+- A workflow that uses release secrets or publishes artifacts runs only for pushes to this repository. `release.yml` starts from a completed CI run and its `check` job, which every other job needs, requires that run to have succeeded, to be a `push`, and to come from this repository.
+- Values from the triggering event, earlier steps, or earlier jobs (`github.event.*`, `steps.*`, `needs.*`) reach a `run:` script through `env:` and are quoted there. Never paste them into the script with `${{ }}`.
+- `scripts/release-guard.test.mjs` checks both rules for `release.yml`.
+
 ---
 
 ## Performance
