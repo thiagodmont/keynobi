@@ -1,7 +1,8 @@
 name: Release
 
 # Gated on CI: this workflow starts only after the CI workflow completes on
-# main, and proceeds only when it went green. Every checkout below pins the
+# main, and proceeds only when it went green on a push to this repository.
+# Every checkout below pins the
 # commit CI actually validated — workflow_run checks out the branch tip by
 # default, which could otherwise build and tag a newer, untested commit.
 on:
@@ -21,7 +22,7 @@ jobs:
   # ── Job 1: Detect whether package.json version changed ──────────────────────
   check:
     name: Check version bump
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository }}
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.check.outputs.should_release }}
@@ -184,14 +185,17 @@ jobs:
 
       - name: Locate and rename DMG
         id: dmg
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          TARGET: ${{ matrix.target }}
+          ARCH: ${{ matrix.arch }}
         run: |
-          VERSION=${{ needs.check.outputs.version }}
-          DMG=$(find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -name "*.dmg" | head -1)
+          DMG=$(find "src-tauri/target/${TARGET}/release/bundle/dmg" -name "*.dmg" | head -1)
           if [ -z "$DMG" ]; then
             echo "ERROR: No DMG found after build" >&2
             exit 1
           fi
-          DEST="Keynobi_${VERSION}_${{ matrix.arch }}.dmg"
+          DEST="Keynobi_${VERSION}_${ARCH}.dmg"
           mv "$DMG" "$DEST"
           echo "path=$DEST" >> "$GITHUB_OUTPUT"
           echo "Built: $DEST"
