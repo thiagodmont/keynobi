@@ -7,6 +7,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.1.31] — 2026-11-12
+
+### Fixed
+- replace sendDefaultPii with dataCollection for Sentry v11
+
+---
+
 ## [0.1.30] — 2026-09-28
 
 ### Added

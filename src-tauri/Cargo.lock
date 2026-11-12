@@ -2281,7 +2281,7 @@ dependencies = [
 
 [[package]]
 name = "keynobi"
-version = "0.1.30"
+version = "0.1.31"
 dependencies = [
  "base64 0.23.1",
  "chrono",
